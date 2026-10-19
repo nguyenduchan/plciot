@@ -18,7 +18,56 @@ services:
       - mqtt-data:/mosquitto/data
     networks: [plciot]
 
-  tunnel:                        # Cloudflare Tunnel: wss://<broker host> -> mqtt:9001, no open ports
+  app:                           # Login API + per-user webapp bundles (SQLite user → folder_path)
+    build: ./app
+    container_name: plciot-app
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    ports:
+      - "127.0.0.1:3080:3080"
+    environment:
+      PORT: "3080"
+      DATA_DIR: /app/data
+      SHELL_DIR: /app/shell
+      WEBAPP_SRC: /app/shell
+      APP_JWT_SECRET: ${APP_JWT_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_BOT_POLLING: ${TELEGRAM_BOT_POLLING:-false}
+      TELEGRAM_NOTIFY_CHAT_IDS: ${TELEGRAM_NOTIFY_CHAT_IDS:-}
+      TELEGRAM_SHARED_PG_HOST: ${TELEGRAM_SHARED_PG_HOST:-host.docker.internal}
+      TELEGRAM_SHARED_PG_PORT: ${TELEGRAM_SHARED_PG_PORT:-5432}
+      TELEGRAM_SHARED_PG_USER: ${TELEGRAM_SHARED_PG_USER:-}
+      TELEGRAM_SHARED_PG_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD:-}
+      TELEGRAM_SHARED_PG_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
+      TELEGRAM_SHARED_DATABASE_URL: ${TELEGRAM_SHARED_DATABASE_URL:-}
+      WEBAPP_PUBLIC_URL: ${WEBAPP_PUBLIC_URL:-https://plc.dieukhientudong.net}
+      MQTT_URL: mqtt://mqtt:1883
+      MQTT_USER: ${MQTT_NOTIFY_USER:-ingest}
+      MQTT_PASS: ${MQTT_NOTIFY_PASS:-}
+      MQTT_INGEST: ${MQTT_INGEST:-true}
+      MQTT_INGEST_MIN_MS: ${MQTT_INGEST_MIN_MS:-0}
+      HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-3}
+      HISTORY_OPEN_ACCESS: ${HISTORY_OPEN_ACCESS:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      RATE_LIMIT_API: ${RATE_LIMIT_API:-120}
+      RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}
+      RATE_LIMIT_OTP: ${RATE_LIMIT_OTP:-5}
+      MQTT_CONFIG_DIR: /mosquitto/config
+      MQTT_DOCKER_CONTAINER: plciot-mqtt
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./app/data:/app/data
+      - ../webapp:/app/shell:ro
+      - ./config:/mosquitto/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on: [mqtt]
+    networks: [plciot]
+
+  tunnel:                        # Cloudflare Tunnel: wss broker + HTTPS app, no open ports
     image: cloudflare/cloudflared:latest
     container_name: plciot-tunnel
     restart: unless-stopped
@@ -28,7 +77,7 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}   # a NEW tunnel dedicated to this project
-    depends_on: [mqtt]
+    depends_on: [mqtt, app]
     networks: [plciot]
 
 networks:

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Đăng nhập — Giám sát PLC</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+<style>
+.login-wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom));max-width:420px;margin:auto}
+.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.login-brand img{width:48px;height:48px}
+.login-brand h1{font-size:24px;margin:0;letter-spacing:-.02em}
+.login-brand p{margin:4px 0 0;color:var(--mut);font-size:14px}
+#progress{display:none;margin-top:16px}
+#progress.on{display:block}
+.bar-track{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar-track i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#error{color:var(--bad);font-size:14px;margin:0 0 12px;min-height:1.2em}
+.login-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.login-actions button{width:100%}
+.modes{display:flex;gap:4px;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:14px}
+.modes button{flex:1;border:0;background:none;padding:10px;border-radius:10px;font-weight:500;color:var(--mut)}
+.modes button.on{background:var(--card);color:var(--acc);font-weight:600;box-shadow:0 1px 3px #0002}
+.hint{font-size:13px;color:var(--mut);margin:0 0 12px;line-height:1.45}
+.hint a{color:var(--acc);font-weight:600}
+.phone-row{display:flex;gap:8px;align-items:flex-end}
+.phone-row .cc{flex:0 0 72px}
+.phone-row .cc input{text-align:center}
+.phone-row .ph{flex:1}
+.step[hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-brand">
+    <img src="icon.svg" alt="">
+    <div>
+      <h1>Giám sát PLC</h1>
+      <p>Username = SĐT Việt Nam · OTP qua Telegram</p>
+    </div>
+  </div>
+  <div class="panel form">
+    <div class="modes" id="modes">
+      <button type="button" data-mode="login" class="on">Đăng nhập</button>
+      <button type="button" data-mode="register">Đăng ký</button>
+    </div>
+    <p id="error"></p>
+    <p class="hint" id="tg-hint">Mở bot Telegram → <b>/start</b> → chia sẻ SĐT Việt Nam (cùng số sẽ dùng làm username).</p>
+
+    <div id="step-creds" class="step">
+      <div class="phone-row">
+        <label class="cc">Mã vùng<input id="cc" value="84" inputmode="numeric" autocomplete="tel-country-code" readonly></label>
+        <label class="ph">Số di động VN<input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321" required></label>
+      </div>
+      <label id="pass-wrap">Mật khẩu<input id="password" type="password" autocomplete="current-password"></label>
+      <div class="login-actions">
+        <button type="button" id="btn-pass" class="primary">Đăng nhập bằng mật khẩu</button>
+        <button type="button" id="btn-otp" class="fit">Gửi OTP Telegram</button>
+        <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
+      </div>
+    </div>
+
+    <div id="step-otp" class="step" hidden>
+      <p class="hint">Nhập mã 6 số đã gửi vào Telegram.</p>
+      <label>Mã OTP<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+      <div class="login-actions">
+        <button type="button" id="btn-verify" class="primary">Xác nhận</button>
+        <button type="button" id="btn-back" class="fit">Quay lại</button>
+      </div>
+    </div>
+
+    <p class="hint" style="margin-top:14px;text-align:center"><a href="recover.html">Mất số điện thoại / Telegram cũ? Khôi phục tài khoản</a></p>
+
+    <div id="progress">
+      <div class="muted" id="prog-label">Đang tải ứng dụng…</div>
+      <div class="bar-track"><i id="prog-bar"></i></div>
+    </div>
+  </div>
+</div>
+<script src="login.js"></script>
+</body>
+</html>

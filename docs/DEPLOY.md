@@ -1,52 +1,153 @@
-# Triển khai: domain Cloudflare + broker chạy trên PC của bạn
+# Triển khai: domain Cloudflare + broker + app server trên PC của bạn
 
-Domain: `dieukhientudong.net`. Webapp ở `plc.dieukhientudong.net`, broker ở `plc-mqtt.dieukhientudong.net` (`mqtt.` đang do dự án khác dùng).
+Domain: `dieukhientudong.net`. Webapp (login + bundle theo user) ở `plc.dieukhientudong.net`, broker ở `plc-mqtt.dieukhientudong.net` (`mqtt.` đang do dự án khác dùng).
 
 ```
-iPhone/PC (webapp chạy từ file đã cache) ──wss──┐
-                                                ├─> Cloudflare ──tunnel──> PC của bạn: cloudflared -> Mosquitto :9001
-Gateway ESP32 tại nhà máy ───────────wss────────┘
-plc.dieukhientudong.net : chỉ là file tĩnh trên Cloudflare Pages (không có server, không tốn tiền vận hành)
-plc-mqtt.dieukhientudong.net: đường vào broker
+iPhone ──HTTPS──> Cloudflare Tunnel ──> PC: plciot-app :3080
+      │                                   (login/OTP Telegram, bundle theo user,
+      │                                    MQTT→Telegram khi đếm đủ + link mở app)
+      └─wss────> Cloudflare Tunnel ──> PC: Mosquitto :9001
+Gateway ESP32 ──wss─────────────────────> Mosquitto
+Telegram user ←── Bot API ←───────────── plciot-app (polling + sendMessage)
 ```
 
-Không mở cổng router, không cần IP tĩnh, TLS do Cloudflare cấp. Sau này chuyển broker lên VPS: chạy lại đúng `docker compose up -d` với cùng token tunnel, điện thoại và gateway không phải sửa gì.
+Không mở cổng router, không cần IP tĩnh, TLS do Cloudflare cấp. Sau này chuyển lên VPS: chạy lại `docker compose up -d` với cùng token tunnel.
 
-## 1. Webapp lên `plc.dieukhientudong.net` (Cloudflare Pages)
+## 1. Tunnel: hai hostname
 
-1. dash.cloudflare.com → **Workers & Pages** → **Create** → tab **Pages** → **Upload assets**.
-2. Đặt tên project (ví dụ `plc-app`) → **Create project** → kéo thả thư mục `C:\workspace\embedded\plciot\webapp` → **Deploy**.
-3. Vào project → **Custom domains** → **Set up a custom domain** → nhập `plc.dieukhientudong.net` → Cloudflare tự thêm bản ghi DNS.
-4. Cập nhật bản mới: **Create deployment** và upload lại thư mục. Nhớ tăng `CACHE` trong `webapp/sw.js` (`plc-v3` → `plc-v4`).
+1. one.dash.cloudflare.com → **Networks** → **Tunnels** → tunnel dự án (ví dụ `plc-broker`).
+2. **Public hostname** (giữ MQTT):
+   - Subdomain `plc-mqtt`, Domain `dieukhientudong.net`
+   - Service type **HTTP**, URL `mqtt:9001` (tên service Docker trong compose)
+3. **Thêm Public hostname** cho webapp:
+   - Subdomain `plc`, Domain `dieukhientudong.net`
+   - Service type **HTTP**, URL `app:3080`
+4. Copy **TUNNEL_TOKEN** vào `cloud/.env` (xem dưới).
 
-## 2. Broker + tunnel trên PC
+Nếu trước đây `plc.dieukhientudong.net` trỏ Cloudflare Pages: xoá custom domain Pages hoặc đổi DNS về tunnel (CNAME do Zero Trust quản lý).
 
-### 2.1 Tạo tunnel trên Cloudflare
-1. one.dash.cloudflare.com → **Networks** → **Tunnels** → **Create a tunnel** → **Cloudflared** → tên `plc-broker`.
-2. Ở màn hình chọn hệ điều hành, **chỉ cần copy phần token** (chuỗi dài sau `--token` hoặc `service install`). Không cần cài cloudflared trên Windows, vì docker sẽ chạy nó.
-3. Bước **Public hostname**: Subdomain `plc-mqtt`, Domain `dieukhientudong.net`, Service type **HTTP**, URL `mqtt:9001`. Lưu.
-   (WebSocket được Cloudflare hỗ trợ mặc định, không cần bật thêm.)
+## 2. Chạy stack trên PC (Docker Desktop)
 
-### 2.2 Chạy trên PC (Docker Desktop đã có)
+Stack tách biệt: project `plciot`, container `plciot-mqtt` / `plciot-app` / `plciot-tunnel`, network `plciot_net`, cổng loopback `127.0.0.1:21883` (MQTT), `127.0.0.1:29001` (WS), `127.0.0.1:3080` (app).
 
-Stack này **tách biệt hoàn toàn** khỏi các dự án Docker khác trên máy (ví dụ `mqtt_server` với EMQX/ThingsBoard): project `plciot`, container `plciot-mqtt` và `plciot-tunnel`, network `plciot_net`, volume `plciot_mqtt_data`, cổng host chỉ trên loopback `127.0.0.1:21883` (MQTT) và `127.0.0.1:29001` (WebSocket). Tunnel Cloudflare cũng là tunnel **riêng mới** cho dự án này, không dùng chung tunnel của dự án cũ. Dừng/xoá dự án này không ảnh hưởng dự án kia: `docker compose -p plciot down`.
 ```powershell
 cd C:\workspace\embedded\plciot\cloud
-copy .env.example .env          # mở .env, dán TUNNEL_TOKEN=...
+copy .env.example .env
+# .env: TUNNEL_TOKEN, APP_JWT_SECRET, MQTT_NOTIFY_PASS (= mật khẩu user MQTT app),
+#       TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, WEBAPP_PUBLIC_URL
 
-# tạo user (đổi mật khẩu của bạn, dùng mật khẩu dài, ngẫu nhiên)
-docker run --rm -v "${PWD}/config:/mosquitto/config" eclipse-mosquitto:2 sh -c "touch /mosquitto/config/passwd && mosquitto_passwd -b /mosquitto/config/passwd gw MATKHAU_GW && mosquitto_passwd -b /mosquitto/config/passwd app MATKHAU_APP"
+# User Mosquitto (MQTT): gw=gateway, app=điện thoại (có quyền cmd), ingest=server chỉ đọc
+docker run --rm -v "${PWD}/config:/mosquitto/config" eclipse-mosquitto:2 sh -c "touch /mosquitto/config/passwd && mosquitto_passwd -b /mosquitto/config/passwd gw MATKHAU_GW && mosquitto_passwd -b /mosquitto/config/passwd app MATKHAU_APP && mosquitto_passwd -b /mosquitto/config/passwd ingest MATKHAU_INGEST"
 
-docker compose up -d
-docker compose logs -f tunnel   # thấy "Registered tunnel connection" là thông
+docker compose up -d --build
+docker compose logs -f tunnel   # "Registered tunnel connection"
 ```
-Kiểm tra: Cloudflare Tunnels hiện trạng thái **Healthy**. Mở `https://plc-mqtt.dieukhientudong.net` bằng trình duyệt sẽ báo lỗi `Upgrade Required` hoặc tương tự, đó là bình thường (broker chỉ nói WebSocket).
 
-### 2.3 Giữ PC chạy ổn định (vì PC đang làm server)
-- Docker Desktop → Settings → General → **Start Docker Desktop when you sign in**.
-- Windows → Power & sleep → Sleep = **Never** (khi cắm điện).
-- `restart: unless-stopped` trong compose đã tự khởi động lại container sau khi bật máy.
-- PC tắt/ngủ thì app và gateway mất kết nối; gateway tự nối lại, PLC vẫn chạy độc lập.
+### Telegram — dùng chung bot với `mqtt_server`
+
+**Một bot chỉ được một process long-polling.** Giữ `telegram_bot` của `D:\Project\mqtt_server` chạy như hiện tại; plciot **không** poll.
+
+| Vai trò | Ai làm |
+|---|---|
+| `/start` + chia sẻ SĐT → `telegram_users` | `mqtt_server` container `telegram_bot` |
+| Gửi OTP / tin “đếm đủ” (`sendMessage`) | `plciot-app` (cùng `TELEGRAM_BOT_TOKEN`) |
+| Tra `phone → chat_id` | plciot đọc Postgres `telegram_users` của mqtt_server |
+
+1. Copy cùng `TELEGRAM_BOT_TOKEN` (và username bot) từ `mqtt_server/.env` sang `cloud/.env`.
+2. `TELEGRAM_BOT_POLLING=false` (mặc định).
+3. Kết nối DB chung (map cổng `5432` của `scada_db` đã có trong mqtt_server compose):
+
+```env
+TELEGRAM_SHARED_PG_HOST=host.docker.internal
+TELEGRAM_SHARED_PG_PORT=5432
+TELEGRAM_SHARED_PG_USER=...   # = POSTGRES_USER mqtt_server
+TELEGRAM_SHARED_PG_PASSWORD=...
+TELEGRAM_SHARED_PG_DB=iot_postgres
+TELEGRAM_BOT_USERNAME=TenBot
+WEBAPP_PUBLIC_URL=https://plc.dieukhientudong.net
+MQTT_NOTIFY_PASS=<mật khẩu MQTT user app>
+```
+
+4. User đã `/start` + chia sẻ SĐT trên bot mqtt_server → đăng ký/OTP trên webapp PLC dùng luôn liên kết đó.
+5. Khi PLC `D8` → **2** (đếm đủ), plciot gửi Telegram + link mở webapp. Tuỳ chọn `TELEGRAM_NOTIFY_CHAT_IDS`.
+
+Chỉ bật `TELEGRAM_BOT_POLLING=true` khi **tắt** bot mqtt_server (không chạy song song).
+
+### Lưu lịch sử MQTT trên server (offline khi mở app)
+
+`plciot-app` ghi mọi topic `plc/<site>/<device>/*` vào SQLite (`mqtt_events`), mặc định **3 ngày** (`HISTORY_DEFAULT_DAYS`); gói cao hơn đặt riêng từng tài khoản (≥ 4 ngày hoặc không giới hạn, xem `docs/ACCOUNT-RECOVERY.md`/`scripts/plan.js`).
+
+```env
+MQTT_INGEST=true
+MQTT_NOTIFY_PASS=<mật khẩu user MQTT app>
+HISTORY_DEFAULT_DAYS=3
+# MQTT_INGEST_MIN_MS=10000   # tuỳ chọn: chỉ ghi telemetry tối đa mỗi 10s
+```
+
+Webapp đã login: khi mở (và khi trở lại foreground) gọi `/api/history/telemetry` → ghi IndexedDB → biểu đồ/báo cáo dùng được offline. Live vẫn MQTT trực tiếp. History chỉ trả `site`/`dev` trùng `notify_site`/`notify_device` của user (trừ `HISTORY_OPEN_ACCESS=true`).
+
+### Bảo mật app (đã có trong code)
+- Rate limit login/OTP; CORS theo `CORS_ORIGINS` / `WEBAPP_PUBLIC_URL`
+- Header cơ bản (`X-Frame-Options`, …); `/api/health` chỉ `{ok:true}`
+- Broker: **Eclipse Mosquitto 2** (C, không phải framework Node). Chống DDoS chính: **Cloudflare Tunnel** + bind localhost
+
+### Định danh user = SĐT Việt Nam ↔ Telegram
+- **Username** lưu dạng chuẩn `84xxxxxxxxx` (11 số); nhập `09…` cũng được, server đổi sang `84…`.
+- **Bắt buộc** đã chia sẻ đúng SĐT đó với bot Telegram (mqtt_server hoặc bot plciot) trước khi nhận OTP.
+- Đăng ký/đăng nhập OTP gửi về `chat_id` tra theo SĐT; mỗi lần OTP login có thể làm mới `users.chat_id` từ DB Telegram chung.
+- Seed: `seed-user.js 0987654321 MATKHAU factory1 plc01`
+
+### Cách ly multi-tenant (chống user A đọc/ghi PLC của B)
+- **HTTP history**: luôn theo `notify_site`/`notify_device` của JWT user (query `site`/`dev` không đổi được tenant).
+- **Bundle**: chỉ folder của user đăng nhập.
+- **MQTT**: mỗi user có `mqtt_user`/`mqtt_pass` riêng; ACL chỉ `plc/<site>/<device>/{telemetry,status,ack,history,cmd}`. Không còn user `app` wildcard trên ACL.
+- Đăng ký tự gán `site=s<phone>`, `device=plc01`. Seed: `seed-user.js <user> <pass> <site> <device>`.
+- Gateway khách phải dùng đúng `SITE`/`DEVICE` đã cấp.
+- Sau seed/register, app ghi `config/acl` + `passwd` và `SIGHUP` Mosquitto (cần docker.sock hoặc chạy `docker kill -s HUP plciot-mqtt`).
+
+### Tạo user webapp thủ công (không qua Telegram)
+
+Mỗi user có thư mục `cloud/app/data/bundles/<folder>/`. SQLite lưu `username` → `folder_path` + `version`.
+
+```powershell
+# Trong container (WEBAPP_SRC đã mount từ ../webapp)
+docker compose exec app node scripts/seed-user.js 84987654321 MATKHAU factory1 1
+```
+
+Hoặc trên máy host (đã `npm install` trong `cloud/app`):
+
+```powershell
+cd C:\workspace\embedded\plciot\cloud\app
+$env:DATA_DIR="$PWD\data"
+$env:WEBAPP_SRC="$PWD\..\..\webapp"
+node scripts/seed-user.js alice MATKHAU_ALICE factory1 1
+```
+
+Kiểm tra nhanh API:
+
+```powershell
+curl http://127.0.0.1:3080/api/health
+# Đăng nhập: POST http://127.0.0.1:3080/api/login  {"username":"alice","password":"..."}
+```
+
+Mở `https://plc.dieukhientudong.net` → form đăng nhập → sau khi tải xong bundle, app chạy từ Cache Storage (offline được).
+
+### Cập nhật source của một user
+
+1. Sửa file trong `cloud/app/data/bundles/<folder>/` (hoặc seed lại từ `webapp/`).
+2. Tăng `version` (seed lại với version mới, hoặc SQL):
+
+```powershell
+docker compose exec app node scripts/seed-user.js alice MATKHAU_ALICE factory1 2
+```
+
+3. User mở app khi còn mạng: `boot.js` / login phát hiện version mới → yêu cầu đăng nhập lại để tải bundle.
+
+### Giữ PC ổn định
+
+- Docker Desktop → Start when you sign in.
+- Sleep = Never khi cắm điện.
+- `restart: unless-stopped` đã bật.
 
 ## 3. Gateway
 
@@ -56,22 +157,21 @@ Sửa `gateway/src/config.h`:
 #define MQTT_USER  "gw"
 #define MQTT_PASS  "MATKHAU_GW"
 ```
-Nạp lại firmware. Gateway cần ra internet qua cổng 443 (mạng nhà máy thường cho phép). Kiểm tra thấy `online`: `docker compose logs mqtt` hiện kết nối của `gw-plc01`.
+Nạp lại firmware. Thử broker:
 
-Thử riêng broker từ PC (không cần gateway), chạy ngay trong container của stack này:
 ```powershell
 docker exec plciot-mqtt mosquitto_sub -h localhost -u app -P MATKHAU_APP -t "plc/#" -v
 ```
 
 ## 4. iPhone
 
-Làm theo [IPHONE.md](IPHONE.md), Bước 3 và 4, với:
-- Địa chỉ cài app: `https://plc.dieukhientudong.net`
-- Broker WebSocket URL trong app: `wss://plc-mqtt.dieukhientudong.net`
-- Tài khoản `app` + mật khẩu `MATKHAU_APP`
+Làm theo [IPHONE.md](IPHONE.md):
+- Cài PWA từ `https://plc.dieukhientudong.net` (màn hình đăng nhập)
+- MQTT trong Cài đặt: `wss://plc-mqtt.dieukhientudong.net`, user Mosquitto `app`
 
-## Bảo mật cần làm
-- Mật khẩu `gw` và `app` dài và khác nhau. Quyền theo topic nằm trong `cloud/config/acl`: `app` chỉ ghi được `cmd`, `gw` chỉ ghi được `telemetry/status/ack`.
-- Lệnh điều khiển từ internet đi thẳng xuống PLC: chỉ whitelist D3, D4, D6, D7, D9 trong gateway; E-stop và khoá liên động nằm trong PLC. Không đấu thiết bị nguy hiểm vào đầu ra điều khiển được từ xa khi chưa có người giám sát.
-- Mất điện thoại: đổi mật khẩu user `app` (chạy lại lệnh `mosquitto_passwd` rồi `docker compose restart mqtt`).
-- Chạy lại lệnh `mosquitto_passwd -b` với cùng tên user sẽ đổi mật khẩu. File `config/passwd` và `.env` không được commit lên git.
+## Bảo mật
+
+- `APP_JWT_SECRET`, mật khẩu webapp user, mật khẩu MQTT `gw`/`app` đều dài và khác nhau. Không commit `cloud/.env`, `cloud/config/passwd`, `cloud/app/data/app.db`.
+- ACL MQTT trong `cloud/config/acl` không đổi: `app` chỉ ghi `cmd`, `gw` ghi telemetry/status/ack.
+- Mất điện thoại: đổi mật khẩu user webapp (seed lại) và/hoặc MQTT `app`; JWT cũ hết hạn tối đa 7 ngày.
+- Lệnh điều khiển từ internet vẫn qua whitelist gateway; E-stop nằm trong PLC.

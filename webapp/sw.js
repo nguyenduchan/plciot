@@ -1,12 +1,75 @@
-﻿// Cache-first app shell so the app runs with no network and no server.
-const CACHE = 'plc-v8';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'mqtt-lite.js', 'db.js', 'dash.js',
-  'vendor/uPlot.iife.min.js', 'vendor/uPlot.min.css', 'vendor/gridstack-all.js', 'vendor/gridstack.min.css', 'manifest.json', 'icon.svg',
-  'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
-self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())));
-self.addEventListener('activate', (e) => e.waitUntil(
-  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
+﻿/* Per-user cache-first shell. Active bundle name lives in cache "plc-meta". */
+const META = 'plc-meta';
+
+async function activeCacheName() {
+  try {
+    const c = await caches.open(META);
+    const r = await c.match('/active');
+    if (!r) return null;
+    const j = await r.json();
+    return j.cacheName || null;
+  } catch {
+    return null;
+  }
+}
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
+  const req = e.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // API always hits the network (auth, version check, bundle download).
+  if (url.pathname.startsWith('/api/')) {
+    e.respondWith(fetch(req).catch(() => new Response(JSON.stringify({ error: 'offline' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+    return;
+  }
+
+  e.respondWith((async () => {
+    const name = await activeCacheName();
+    if (name) {
+      const cache = await caches.open(name);
+      const hit = await cache.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      // SPA-ish: directory / → index.html
+      if (url.pathname === '/' || url.pathname.endsWith('/')) {
+        const idx = await cache.match(new URL('index.html', self.location.origin).href);
+        if (idx) return idx;
+      }
+    }
+
+    // Login shell / first visit: network, then any matching cache.
+    try {
+      const net = await fetch(req);
+      return net;
+    } catch {
+      const all = await caches.keys();
+      for (const k of all) {
+        if (k === META) continue;
+        const hit = await caches.open(k).then((c) => c.match(req, { ignoreSearch: true }));
+        if (hit) return hit;
+      }
+      // Offline login page fallback
+      if (url.pathname.endsWith('login.html') || url.pathname === '/') {
+        for (const k of all) {
+          if (k === META) continue;
+          const idx = await caches.open(k).then((c) => c.match(new URL('index.html', self.location.origin)));
+          if (idx) return idx;
+        }
+      }
+      return new Response('Offline', { status: 503, statusText: 'Offline' });
+    }
+  })());
 });

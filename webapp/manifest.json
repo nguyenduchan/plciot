@@ -1,7 +1,7 @@
 {
   "name": "Giám sát PLC",
   "short_name": "Giám sát PLC",
-  "start_url": "./index.html",
+  "start_url": "./login.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0b1015",

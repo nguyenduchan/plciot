@@ -9,7 +9,9 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const cfg = Object.assign({ url: 'wss://plc-mqtt.dieukhientudong.net', user: 'app', pass: '', site: 'factory1', dev: 'plc01',
-  demo: true, inNames: '', outNames: '', maxRate: '60', pitchCm: '0' }, LS.get('cfg', {}));
+  demo: true, inNames: '', outNames: '', maxRate: '60', pitchCm: '0',
+  keepMinDays: '30', keepHourDays: '730', maxMB: '0' }, LS.get('cfg', {}));
+const applyDbLimits = () => DB.setLimits({ minDays: cfg.keepMinDays, hourDays: cfg.keepHourDays, maxMB: cfg.maxMB });
 const names = (str, p) => Array.from({ length: 8 }, (_, i) => (str.split(',')[i] || '').trim() || p + i);
 
 const S = { regs: new Array(R.NREG).fill(0), status: 'offline', ts: 0 };
@@ -322,10 +324,89 @@ function renderWidgets() {
 
 /* ------------------------------------------------------------- wiring */
 const dbName = () => (cfg.demo ? 'demo' : `${cfg.site}-${cfg.dev}`);
+
+/** Pull server MQTT history into IndexedDB for offline charts (when logged in). */
+async function syncCloudHistory() {
+  if (cfg.demo) return;
+  const session = LS.get('session', null);
+  if (!session?.token || session.demo) return;
+  const base = session.apiBase || location.origin;
+  // Server plan window (3 days default; longer on paid plans, null = unlimited → cap at 2 years)
+  const retentionMs = LS.get('retentionDays', 3) * 86400e3;
+  let since = Number(await DB.kvGet('cloud_since')) || 0;
+  const floor = Date.now() - retentionMs;
+  if (since < floor) since = floor;
+
+  let total = 0;
+  for (let n = 0; n < 40; n++) {
+    const url = `${base}/api/history/telemetry?site=${encodeURIComponent(cfg.site)}`
+      + `&dev=${encodeURIComponent(cfg.dev)}&since=${since}&limit=5000`;
+    let data;
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${session.token}` } });
+      if (r.status === 401) return;
+      if (!r.ok) break;
+      data = await r.json();
+      if (data.unlimited || data.retentionDays) LS.set('retentionDays', data.unlimited ? 730 : data.retentionDays);
+    } catch { break; }
+    const samples = data.samples || [];
+    if (samples.length) {
+      await DB.putMany('raw', samples.map((x) => ({
+        t: x.t, o: x.o, i: x.i, a: x.a, c: x.c, s: x.s,
+      })));
+      total += samples.length;
+      since = data.nextSince || samples[samples.length - 1].t;
+      await DB.kvSet('cloud_since', since);
+    }
+    if (data.done || !samples.length) break;
+  }
+  if (total) {
+    await DB.compact();
+    console.log('cloud history synced', total, 'samples');
+  }
+}
+
 async function openDb() {
   await DB.open(dbName());
+  try { await syncCloudHistory(); } catch (e) { console.warn('syncCloudHistory', e); }
   const rows = await DB.range('raw', Date.now() - 3600e3, Date.now());
   hist = rows.map((r) => [r.t, r.o, r.i, r.a, r.c]);
+}
+
+/* Keep cfg.site/dev aligned with account binding so history sync is authorized. */
+function lockTenantFields(locked) {
+  ['site', 'dev', 'user', 'pass'].forEach((id) => {
+    const el = $('#' + id);
+    if (el) el.readOnly = locked;
+  });
+}
+
+async function alignSiteDevFromSession() {
+  const session = LS.get('session', null);
+  if (!session?.token || session.demo || cfg.demo) {
+    lockTenantFields(false);
+    return;
+  }
+  try {
+    const r = await fetch(`${session.apiBase || location.origin}/api/me`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!r.ok) return;
+    const me = await r.json();
+    let changed = false;
+    if (me.mqtt) {
+      if (cfg.user !== me.mqtt.user) { cfg.user = me.mqtt.user; changed = true; }
+      if (cfg.pass !== me.mqtt.pass) { cfg.pass = me.mqtt.pass; changed = true; }
+      if (cfg.site !== me.mqtt.site) { cfg.site = me.mqtt.site; changed = true; }
+      if (cfg.dev !== me.mqtt.device) { cfg.dev = me.mqtt.device; changed = true; }
+    } else if (me.notifySite) {
+      if (cfg.site !== me.notifySite) { cfg.site = me.notifySite; changed = true; }
+      if (cfg.dev !== me.notifyDevice) { cfg.dev = me.notifyDevice; changed = true; }
+    }
+    if (changed) LS.set('cfg', cfg);
+    loadSettings();
+    lockTenantFields(true);
+  } catch {}
 }
 function connect() {
   if (link) link.stop();
@@ -336,7 +417,19 @@ function connect() {
 }
 function loadSettings() {
   $('#demo').checked = cfg.demo;
-  ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm'].forEach((k) => { $('#' + k).value = cfg[k]; });
+  ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm', 'keepMinDays', 'keepHourDays', 'maxMB'].forEach((k) => { $('#' + k).value = cfg[k]; });
+  showStorage();
+}
+
+/* Local storage panel: usage vs. cap, and clear button */
+async function showStorage() {
+  const el = $('#storage-info'); if (!el) return;
+  try {
+    const s = await DB.stats(), mb = (b) => (b / 1048576).toFixed(1);
+    el.textContent = `Đang dùng ~${mb(s.estBytes)} MB (${s.min} điểm/phút, ${s.hour} điểm/giờ, ${s.raw} điểm thô)`
+      + (s.maxBytes ? ` · giới hạn ${mb(s.maxBytes)} MB` : ' · không giới hạn dung lượng')
+      + (s.quota ? ` · trình duyệt cấp tối đa ${mb(s.quota)} MB` : '');
+  } catch { el.textContent = ''; }
 }
 
 document.querySelectorAll('nav button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
@@ -360,18 +453,55 @@ $('#c-set').onclick = () => { const v = parseInt($('#target').value || '0', 10);
 $('#c-reset').onclick = () => { if (confirm('Xoá số đếm hiện tại về 0?')) sendReg(R.RESET, 1); };
 $('#save').onclick = () => {
   cfg.demo = $('#demo').checked;
-  ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm'].forEach((k) => { cfg[k] = $('#' + k).value.trim(); });
-  LS.set('cfg', cfg); openDb().then(() => { connect(); showTab('dash'); toast('Đã lưu'); });
+  const session = LS.get('session', null);
+  const locked = session?.token && !session.demo && !cfg.demo;
+  const keys = locked
+    ? ['url', 'inNames', 'outNames', 'maxRate', 'pitchCm']
+    : ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm'];
+  keys.concat(['keepMinDays', 'keepHourDays', 'maxMB']).forEach((k) => { cfg[k] = $('#' + k).value.trim(); });
+  applyDbLimits();
+  // Tenant fields always come from account when logged in (cannot pivot to another user/PLC)
+  if (locked) {
+    /* keep cfg.user/pass/site/dev from alignSiteDevFromSession */
+  }
+  LS.set('cfg', cfg); openDb().then(() => { connect(); DB.compact().then(showStorage); showTab('dash'); toast('Đã lưu'); });
+};
+$('#storage-clear').onclick = async () => {
+  if (!confirm('Xoá toàn bộ dữ liệu lịch sử lưu trên thiết bị này? (dữ liệu trên máy chủ không bị ảnh hưởng)')) return;
+  await DB.clearAll(); hist = []; showStorage(); toast('Đã xoá dữ liệu trên thiết bị');
+};
+$('#logout').onclick = async () => {
+  if (!confirm('Đăng xuất? Ứng dụng đã tải trên máy vẫn giữ lại đến khi bạn đăng nhập tài khoản khác.')) return;
+  const session = LS.get('session', null);
+  try {
+    if (session?.token) {
+      await fetch(`${session.apiBase || location.origin}/api/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+    }
+  } catch {}
+  LS.set('session', null);
+  try { localStorage.removeItem('session'); } catch {}
+  location.replace('login.html');
 };
 let hideTimer = null;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('visibilitychange', () => {
   clearTimeout(hideTimer);
   if (document.hidden) { if (!cfg.demo) hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
-  else if (!cfg.demo && S.status === 'offline') connect();
+  else if (!cfg.demo) {
+    if (S.status === 'offline') connect();
+    syncCloudHistory().then(() => DB.range('raw', Date.now() - 3600e3, Date.now())).then((rows) => {
+      if (rows?.length) hist = rows.map((r) => [r.t, r.o, r.i, r.a, r.c]);
+    }).catch(() => {});
+  }
 });
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+applyDbLimits();
 loadSettings();
-openDb().then(() => { connect(); showTab('dash'); DB.compact(); });
+alignSiteDevFromSession()
+  .then(() => openDb())
+  .then(() => { connect(); showTab('dash'); DB.compact(); });
 setInterval(() => { DB.compact().then(() => { if (!$('#tab-rep').hidden) Dash.refresh(true); }); }, 60000);
 setInterval(() => { if (!document.hidden && !$('#tab-rep').hidden) Dash.refresh(false); }, 10000);

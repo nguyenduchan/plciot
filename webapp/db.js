@@ -1,13 +1,25 @@
 'use strict';
 /* Time-series store living in the browser (IndexedDB), managed entirely by the app.
    Three retention tiers; finer data is folded into coarser buckets and then expired:
-     raw   every ~10 s   kept 24 h
-     min   1 minute      kept 30 days
-     hour  1 hour        kept 2 years
-   Nothing leaves the device unless the user exports a backup. */
+     raw   every ~10 s   kept 24 h (cloud sync may refill; then rollup → min)
+     min   1 minute      kept N days  (setting; default 30)
+     hour  1 hour        kept N days  (setting; default 730)
+   Both windows and an optional size cap (MB) are user settings → DB.setLimits().
+   Cloud history is pulled on open into raw, then compact() folds it. */
 const DB = (() => {
   const MIN = 60e3, HOUR = 3600e3, DAY = 86400e3;
   const KEEP = { raw: DAY, min: 30 * DAY, hour: 730 * DAY };
+  let maxBytes = 0;                                   // 0 = no size cap
+  const EST = { raw: 100, min: 170, hour: 170 };      // approx. stored bytes per record (structured clone)
+  const PRUNE_ORDER = ['min', 'raw', 'hour'];         // size cap drops finest detail first, keeps the long-range overview
+
+  /** minDays/hourDays: retention windows; maxMB: 0 = unlimited. Hour window is never shorter than the minute window. */
+  function setLimits({ minDays, hourDays, maxMB } = {}) {
+    const d = (v, def) => (Number.isFinite(+v) && +v >= 1 ? Math.min(+v, 3650) : def);
+    KEEP.min = d(minDays, 30) * DAY;
+    KEEP.hour = Math.max(d(hourDays, 730) * DAY, KEEP.min);
+    maxBytes = Number.isFinite(+maxMB) && +maxMB > 0 ? Math.round(+maxMB * 1048576) : 0;
+  }
   const TIER_MS = { raw: 10e3, min: MIN, hour: HOUR };
   let db = null, ok = false, name = '';
 
@@ -83,13 +95,40 @@ const DB = (() => {
         tx.objectStore(s).delete(IDBKeyRange.upperBound(now - KEEP[s]));
         await done(tx);
       }
+      await enforceSize();
     } catch (e) { console.warn('compact:', e && e.message); }  // storage full or closed: retry next minute
+  }
+
+  const count = (s) => wrap(store(s).count());
+  async function estimateBytes() {
+    let n = 0;
+    for (const s of Object.keys(KEEP)) n += (await count(s)) * EST[s];
+    return n;
+  }
+  /* delete the `n` oldest records of a tier */
+  function dropOldest(s, n) {
+    return new Promise((res, rej) => {
+      const tx = db.transaction(s, 'readwrite'), c = tx.objectStore(s).openCursor();
+      let left = n;
+      c.onsuccess = () => { const cur = c.result; if (cur && left-- > 0) { cur.delete(); cur.continue(); } };
+      tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error);
+    });
+  }
+  /* keep the estimated size under the cap by trimming the oldest data, finest tier first */
+  async function enforceSize() {
+    if (!maxBytes) return;
+    let over = (await estimateBytes()) - maxBytes;
+    for (const s of PRUNE_ORDER) {
+      if (over <= 0) break;
+      const have = await count(s), drop = Math.min(have, Math.ceil(over / EST[s]));
+      if (drop > 0) { await dropOldest(s, drop); over -= drop * EST[s]; }
+    }
   }
 
   /* Rows between from..to at a suitable resolution, in the common shape plus d = products in that step. */
   async function series(from, to) {
     const span = to - from, now = Date.now();
-    let tier = span <= 6 * HOUR && from >= now - KEEP.raw ? 'raw' : span <= 30 * DAY && from >= now - KEEP.min ? 'min' : 'hour';
+    let tier = span <= 6 * HOUR && from >= now - KEEP.raw ? 'raw' : span <= Math.min(30 * DAY, KEEP.min) && from >= now - KEEP.min ? 'min' : 'hour';
     let rows = await range(tier, from, to);
     if (tier === 'raw') {
       let prev = null;
@@ -101,6 +140,7 @@ const DB = (() => {
   async function stats() {
     const o = { name, ok };
     for (const s of Object.keys(KEEP)) o[s] = ok ? await wrap(store(s).count()) : 0;
+    o.estBytes = ok ? await estimateBytes() : 0; o.maxBytes = maxBytes;
     try { const e = await navigator.storage.estimate(); o.usage = e.usage; o.quota = e.quota; } catch {}
     return o;
   }
@@ -123,5 +163,9 @@ const DB = (() => {
     try { return navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : null; } catch { return null; }
   }
 
-  return { open, addRaw, putMany, compact, series, stats, exportAll, importAll, clearAll, persist, range, get ok() { return ok; }, KEEP };
+  return {
+    open, addRaw, putMany, compact, setLimits, series, stats, exportAll, importAll, clearAll, persist, range,
+    kvGet, kvSet,
+    get ok() { return ok; }, KEEP,
+  };
 })();

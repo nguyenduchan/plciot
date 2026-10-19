@@ -1,0 +1,157 @@
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { execFileSync } from 'child_process';
+
+const HEADER = `# plciot ACL — static roles (do not put per-user lines above MARKER)
+user gw
+topic write plc/+/+/telemetry
+topic write plc/+/+/status
+topic write plc/+/+/ack
+topic write plc/+/+/history
+topic read plc/+/+/cmd
+
+user ingest
+topic read plc/+/+/telemetry
+topic read plc/+/+/status
+topic read plc/+/+/ack
+topic read plc/+/+/history
+
+# MARKER_USER_ACL
+`;
+
+function configDir() {
+  return path.resolve(process.env.MQTT_CONFIG_DIR || path.join(process.env.DATA_DIR || './data', '..', '..', 'config'));
+}
+
+function aclPath() {
+  return path.join(configDir(), 'acl');
+}
+
+function passwdPath() {
+  return path.join(configDir(), 'passwd');
+}
+
+function sanitize(s) {
+  return String(s || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48);
+}
+
+export function randomMqttPassword() {
+  return crypto.randomBytes(18).toString('base64url');
+}
+
+export function mqttUsernameFor(userId) {
+  return `u${userId}`;
+}
+
+/** ACL block: user may only touch their site/device. */
+export function userAclBlock(mqttUser, site, device) {
+  const s = sanitize(site);
+  const d = sanitize(device);
+  const u = sanitize(mqttUser);
+  const base = `plc/${s}/${d}`;
+  return [
+    `user ${u}`,
+    `topic read ${base}/telemetry`,
+    `topic read ${base}/status`,
+    `topic read ${base}/ack`,
+    `topic read ${base}/history`,
+    `topic write ${base}/cmd`,
+    '',
+  ].join('\n');
+}
+
+/**
+ * Rebuild acl file from DB users that have mqtt_user set.
+ * Keeps gw + ingest; drops shared wildcard "app" from active ACL
+ * (legacy app user in passwd may remain but has no ACL → deny).
+ */
+export function rebuildAclFromUsers(db) {
+  const dir = configDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const users = db.prepare(`
+    SELECT id, mqtt_user, notify_site, notify_device FROM users
+    WHERE mqtt_user IS NOT NULL AND mqtt_user != ''
+  `).all();
+  let body = HEADER;
+  for (const u of users) {
+    body += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device);
+  }
+  fs.writeFileSync(aclPath(), body, 'utf8');
+  return users.length;
+}
+
+/** Set/update password in mosquitto passwd (shared config volume). */
+export function setMosquittoPassword(username, password) {
+  const user = sanitize(username);
+  const pp = passwdPath();
+  try {
+    if (!fs.existsSync(pp)) fs.writeFileSync(pp, '');
+    execFileSync('mosquitto_passwd', ['-b', pp, user, password], { stdio: 'pipe' });
+    return { ok: true, via: 'local' };
+  } catch (e1) {
+    const container = process.env.MQTT_DOCKER_CONTAINER || 'plciot-mqtt';
+    try {
+      execFileSync('docker', [
+        'exec', container, 'mosquitto_passwd', '-b', '/mosquitto/config/passwd', user, password,
+      ], { stdio: 'pipe' });
+      return { ok: true, via: 'docker' };
+    } catch (e2) {
+      return { ok: false, error: e2.message || e1.message || 'mosquitto_passwd failed' };
+    }
+  }
+}
+
+export function reloadMosquitto() {
+  const container = process.env.MQTT_DOCKER_CONTAINER || 'plciot-mqtt';
+  try {
+    execFileSync('docker', ['kill', '-s', 'HUP', container], { stdio: 'pipe' });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Provision (or rotate) per-user MQTT credentials scoped to site/device.
+ * Stores mqtt_user + mqtt_pass on the user row; rebuilds ACL; HUPs broker when possible.
+ */
+export function provisionUserMqtt(db, user, { site, device, rotate = false } = {}) {
+  const u = typeof user === 'object' ? user : db.prepare('SELECT * FROM users WHERE id = ?').get(user);
+  if (!u) throw new Error('user_not_found');
+  const siteName = site || u.notify_site || 'factory1';
+  const deviceName = device || u.notify_device || 'plc01';
+  const mqttUser = u.mqtt_user || mqttUsernameFor(u.id);
+  let mqttPass = u.mqtt_pass;
+  if (rotate || !mqttPass) mqttPass = randomMqttPassword();
+
+  db.prepare(`
+    UPDATE users
+    SET mqtt_user = ?, mqtt_pass = ?, notify_site = ?, notify_device = ?
+    WHERE id = ?
+  `).run(mqttUser, mqttPass, siteName, deviceName, u.id);
+
+  const pw = setMosquittoPassword(mqttUser, mqttPass);
+  rebuildAclFromUsers(db);
+  const reload = reloadMosquitto();
+
+  return {
+    user: findFresh(db, u.id),
+    provision: { password: pw, reload },
+  };
+}
+
+function findFresh(db, id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+
+export function mqttClientConfig(user) {
+  if (!user?.mqtt_user || !user?.mqtt_pass) return null;
+  return {
+    user: user.mqtt_user,
+    pass: user.mqtt_pass,
+    site: user.notify_site,
+    device: user.notify_device,
+    topicBase: `plc/${user.notify_site}/${user.notify_device}`,
+  };
+}

@@ -1,25 +1,27 @@
 # plciot
 
 ```
- Xinje XD3-16T-E ──RS485/Modbus RTU──> Gateway ESP32 ──Ethernet/wss MQTT──> Mosquitto (PC + Cloudflare Tunnel) <──wss── Webapp (điện thoại)
- (chạy offline)                        (WT32-ETH01+MAX485)               (chỉ quản lý kết nối)            (PWA, chạy từ file local)
+ Xinje XD3-16T-E ──RS485──> Gateway ESP32 ──wss MQTT──> Mosquitto (PC + Tunnel)
+                                              ▲
+ Webapp (điện thoại) ──HTTPS login──> App server (SQLite user→folder) ──phát bundle──> cache offline
+                 └──────────wss MQTT──────────────────────────────────────┘
 ```
 
 | Thư mục | Nội dung |
 |---|---|
 | `plc/xd3_logic.st` | Chương trình điều khiển cho XD3-16T-E (XDPPro, ST). PLC tự chạy, không cần mạng. |
 | `gateway/` | Firmware PlatformIO: poll Modbus (D0–D39) → MQTT, nhận lệnh ghi (whitelist) qua wss. |
-| `cloud/` | Mosquitto + user/ACL. Không có code, không có giao diện. |
-| `webapp/` | PWA thuần HTML/JS, không phụ thuộc thư viện ngoài, tự chứa MQTT client. |
+| `cloud/` | Mosquitto + ACL + **app server** (JWT, OTP Telegram, bundle, ingest MQTT → SQLite 30 ngày, Telegram đếm đủ). |
+| `webapp/` | PWA: đăng ký/đăng nhập Telegram OTP → tải bundle; MQTT client tự chứa. |
 | `edge/` | Node-RED (Docker) cầu nối PLC Siemens S7 / Modbus TCP vào cùng hợp đồng MQTT. |
 | `tools/` | Bộ giả lập gateway/PLC, bộ sinh luồng Node-RED, tạo icon. |
 | `docs/PROTOCOL.md` | Bản đồ thanh ghi và topic MQTT. |
 
 ## Chạy thử
 
-**Webapp (demo, không cần phần cứng):** mở `webapp/index.html` (hoặc `python -m http.server` trong `webapp/`). App mặc định ở chế độ demo.
+**Webapp (demo, không cần phần cứng):** phục vụ `webapp/` (`python -m http.server`) → mở `login.html` → **Chạy thử không đăng nhập**. Hoặc chạy app server (xem DEPLOY) rồi đăng nhập user đã seed.
 
-**Cloud (broker trên PC + Cloudflare Tunnel) và domain:** xem [docs/DEPLOY.md](docs/DEPLOY.md).
+**Cloud (broker + app server trên PC + Cloudflare Tunnel):** xem [docs/DEPLOY.md](docs/DEPLOY.md).
 **Máy chủ MQTT tại Việt Nam (độ trễ thấp, nối thẳng):** xem [docs/MAY-CHU-VIET-NAM.md](docs/MAY-CHU-VIET-NAM.md).
 
 **PLC khác (Siemens S7, Modbus TCP...):** dùng Node-RED làm cầu nối thay gateway, xem [docs/NODE-RED.md](docs/NODE-RED.md).
@@ -35,11 +37,12 @@
 
 Hướng dẫn từng bước (host HTTPS, wss, Thêm vào Màn hình chính): [docs/IPHONE.md](docs/IPHONE.md). Icon PNG tạo bằng `python tools/make_icons.py`.
 
-## Dùng webapp trên điện thoại không cần server
+## Dùng webapp trên điện thoại
 
-- **Cách đơn giản:** đặt 7 file trong `webapp/` lên bất kỳ static host HTTPS (GitHub Pages…), mở một lần, "Thêm vào màn hình chính". Service worker cache toàn bộ, sau đó chạy offline hoàn toàn; host không xử lý gì.
-- **Hoàn toàn local:** đóng gói bằng Capacitor (`npx cap add ios|android`, `webDir: webapp`) — file nằm trong app, không cần host.
-- Trang HTTPS chỉ kết nối được `wss://`; TLS do Cloudflare Tunnel đảm nhiệm (xem DEPLOY.md).
+- **Có server (khuyến nghị):** login tại `https://plc.<domain>` → tải bundle của user → cache offline; cập nhật bằng cách bump `version` trên server (DEPLOY.md).
+- **Demo không server:** nút 「Chạy thử không đăng nhập」 trên `login.html`.
+- **Hoàn toàn local:** Capacitor (`webDir: webapp`) nếu cần đóng gói native.
+- HTTPS chỉ nối được `wss://`; TLS qua Cloudflare Tunnel (DEPLOY.md).
 
 ## Băng tải (đếm & dừng)
 

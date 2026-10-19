@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
 <link rel="stylesheet" href="style.css">
+<script src="boot.js"></script>
 </head>
 <body>
 <div class="app">
@@ -113,7 +114,68 @@
           <label>Tên đầu ra Y0..Y7<input id="outNames"></label>
           <label>Tốc độ tối đa của băng tải (sản phẩm/phút, để vẽ thanh đo)<input id="maxRate" type="number" min="1" inputmode="numeric"></label>
           <label>Khoảng cách giữa 2 sản phẩm (cm, để đổi sang m/phút, 0 = ẩn)<input id="pitchCm" type="number" min="0" inputmode="decimal"></label>
+          <h2>Lưu dữ liệu trên thiết bị</h2>
+          <label>Giữ dữ liệu chi tiết (theo phút) — số ngày<input id="keepMinDays" type="number" min="1" max="3650" inputmode="numeric"></label>
+          <label>Giữ dữ liệu tổng hợp (theo giờ) — số ngày<input id="keepHourDays" type="number" min="1" max="3650" inputmode="numeric"></label>
+          <label>Giới hạn dung lượng (MB, 0 = không giới hạn). Vượt giới hạn sẽ xoá dữ liệu cũ nhất, ưu tiên bỏ dữ liệu chi tiết<input id="maxMB" type="number" min="0" inputmode="numeric"></label>
+          <p class="muted" id="storage-info"></p>
+          <div class="row"><button id="storage-clear" type="button" class="danger">Xoá dữ liệu trên thiết bị</button></div>
+          <p class="muted">Đây là bộ nhớ trên thiết bị này. Thời gian lưu trên máy chủ phụ thuộc gói tài khoản (mặc định 3 ngày).</p>
           <div class="row"><button id="save" class="primary">Lưu &amp; kết nối</button></div>
+          <div class="row"><button id="logout" type="button">Đăng xuất</button></div>
+        </div>
+        <div class="panel form" id="acct" style="margin-top:12px" hidden>
+          <h2>Tài khoản &amp; bảo mật</h2>
+          <div id="acct-sum" class="muted">Đang tải…</div>
+          <div id="acct-pending"></div>
+
+          <details class="sec">
+            <summary>Đổi số điện thoại</summary>
+            <p class="muted">Cần mật khẩu + mã OTP gửi tới kênh cũ và OTP gửi vào Telegram của <b>số mới</b> (số mới phải đã /start bot và chia sẻ SĐT).</p>
+            <div id="pc-1">
+              <label>Số mới<input id="pc-new" inputmode="tel" placeholder="0912345678" autocomplete="off"></label>
+              <label>Mật khẩu hiện tại<input id="pc-pass" type="password" autocomplete="current-password"></label>
+              <label>Xác minh số cũ bằng<select id="pc-chan"></select></label>
+              <div class="row"><button id="pc-start" class="primary">Gửi mã xác nhận</button></div>
+            </div>
+            <div id="pc-2" hidden>
+              <label>Mã OTP gửi vào Telegram số MỚI<input id="pc-otp-new" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+              <label id="pc-old-wrap">Mã OTP kênh cũ<input id="pc-otp-old" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+              <label id="pc-code-wrap" hidden>Mã khôi phục<input id="pc-code" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></label>
+              <div class="row"><button id="pc-confirm" class="primary">Xác nhận đổi số</button><button id="pc-abort" class="fit">Huỷ</button></div>
+            </div>
+          </details>
+
+          <details class="sec">
+            <summary>Email khôi phục</summary>
+            <p class="muted">Dùng khi mất điện thoại. Email mới thêm chỉ dùng được để xác minh đổi số sau thời gian chờ (hiện ở trên).</p>
+            <div id="em-1">
+              <label>Email<input id="em-addr" type="email" autocomplete="email"></label>
+              <label>Mật khẩu hiện tại<input id="em-pass" type="password" autocomplete="current-password"></label>
+              <div class="row"><button id="em-send" class="primary">Gửi mã xác minh</button></div>
+            </div>
+            <div id="em-2" hidden>
+              <label>Mã xác minh gửi vào email<input id="em-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+              <div class="row"><button id="em-verify" class="primary">Xác minh</button></div>
+            </div>
+          </details>
+
+          <details class="sec">
+            <summary>Mã khôi phục (dự phòng)</summary>
+            <p class="muted">10 mã dùng một lần. Lưu ở nơi an toàn (in ra / trình quản lý mật khẩu). Tạo lại sẽ vô hiệu bộ cũ.</p>
+            <label>Mật khẩu hiện tại<input id="rc-pass" type="password" autocomplete="current-password"></label>
+            <div class="row"><button id="rc-gen" class="primary">Tạo bộ mã mới</button></div>
+            <pre id="rc-out" class="codes" hidden></pre>
+            <div class="row" id="rc-actions" hidden><button id="rc-copy" class="fit">Sao chép</button><button id="rc-dl" class="fit">Tải .txt</button></div>
+          </details>
+          <details class="sec">
+            <summary>Dữ liệu lịch sử</summary>
+            <p class="muted" id="ret-info"></p>
+            <p class="muted">Xoá toàn bộ lịch sử đã lưu trên máy chủ cho thiết bị này (ví dụ trước khi bán/chuyển nhượng). Không thể hoàn tác.</p>
+            <label>Mật khẩu hiện tại<input id="wp-pass" type="password" autocomplete="current-password"></label>
+            <div class="row"><button id="wp-go" class="danger">Xoá lịch sử trên máy chủ</button></div>
+          </details>
+          <p class="muted" id="acct-msg"></p>
         </div>
         <div class="panel form" style="margin-top:12px">
           <h2>Truy vấn dữ liệu PLC</h2>
@@ -133,5 +195,7 @@
 <script src="db.js"></script>
 <script src="dash.js"></script>
 <script src="app.js"></script>
+<script src="account.js"></script>
 </body>
 </html>
+

@@ -127,3 +127,13 @@ canvas{width:100%;display:block;margin-bottom:6px}
 .chart{height:200px;position:relative}.chart .c{text-align:center;padding-top:60px}
 .gs-body .ctlw,.gs-body .ctlbox{display:block}.gs-body .ctlbox .row{margin-top:8px}.gs-body .ctlbox .row button{padding:12px;font-weight:600}
 @media (min-width:900px){.widgets{grid-template-columns:repeat(3,1fr)}}
+
+/* account security */
+.sec{border-top:1px solid var(--line);padding:10px 0}
+.sec summary{cursor:pointer;font-weight:600;padding:6px 0}
+.sec .muted{margin:6px 0 12px}
+select{display:block;width:100%;margin-top:6px;padding:13px;font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid transparent;border-radius:12px}
+.codes{background:var(--bg);border-radius:12px;padding:12px;font:600 15px/1.8 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;user-select:all}
+.pend{background:var(--accbg);border-radius:12px;padding:10px 12px;margin:10px 0;font-size:14px}
+.pend button{margin-top:8px;padding:8px 12px}
+#acct-msg.err{color:var(--bad)}
