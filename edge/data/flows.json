@@ -1,0 +1,444 @@
+[
+ {
+  "id": "tab_plc",
+  "type": "tab",
+  "label": "PLC MODBUS → MQTT",
+  "disabled": false,
+  "info": ""
+ },
+ {
+  "id": "mq",
+  "type": "mqtt-broker",
+  "name": "Broker",
+  "broker": "wss://plc-mqtt.dieukhientudong.net:443/mqtt",
+  "port": "1883",
+  "clientid": "edge-plc01",
+  "autoConnect": true,
+  "usetls": false,
+  "protocolVersion": "4",
+  "keepalive": "30",
+  "cleansession": true,
+  "autoUnsubscribe": true,
+  "birthTopic": "plc/factory1/plc01/status",
+  "birthQos": "1",
+  "birthRetain": "true",
+  "birthPayload": "online",
+  "birthMsg": {},
+  "closeTopic": "",
+  "closeQos": "0",
+  "closePayload": "",
+  "closeMsg": {},
+  "willTopic": "plc/factory1/plc01/status",
+  "willQos": "1",
+  "willRetain": "true",
+  "willPayload": "offline",
+  "willMsg": {},
+  "userProps": "",
+  "sessionExpiry": ""
+ },
+ {
+  "id": "in_cmd",
+  "type": "mqtt in",
+  "name": "lệnh từ app",
+  "topic": "plc/factory1/plc01/cmd",
+  "qos": "1",
+  "datatype": "utf8",
+  "broker": "mq",
+  "nl": false,
+  "rap": true,
+  "rh": 0,
+  "inputs": 0,
+  "x": 140,
+  "y": 420,
+  "wires": [
+   [
+    "fn_cmd"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "out_mq",
+  "type": "mqtt out",
+  "name": "MQTT out",
+  "topic": "",
+  "qos": "",
+  "retain": "",
+  "respTopic": "",
+  "contentType": "",
+  "userProps": "",
+  "correl": "",
+  "expiry": "",
+  "broker": "mq",
+  "x": 1100,
+  "y": 260,
+  "wires": [],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_wd",
+  "type": "function",
+  "name": "giám sát mất PLC",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nif (Date.now() - (flow.get('lastOk') || 0) > 5000 && flow.get('status') !== 'plc_fault') {\n  flow.set('status', 'plc_fault');\n  return {topic: BASE + '/status', payload: 'plc_fault', qos: 1, retain: true};\n}\nreturn null;\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 320,
+  "y": 40,
+  "wires": [
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "inj_wd",
+  "type": "inject",
+  "name": "mỗi 2 s",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "2",
+  "crontab": "",
+  "once": false,
+  "onceDelay": "2",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 40,
+  "wires": [
+   [
+    "fn_wd"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "mbc",
+  "type": "modbus-client",
+  "name": "PLC Modbus TCP",
+  "clienttype": "tcp",
+  "bufferCommands": true,
+  "stateLogEnabled": false,
+  "queueLogEnabled": false,
+  "failureLogEnabled": false,
+  "tcpHost": "192.168.1.50",
+  "tcpPort": "502",
+  "tcpType": "DEFAULT",
+  "serialPort": "/dev/ttyUSB0",
+  "serialType": "RTU-BUFFERD",
+  "serialBaudrate": "9600",
+  "serialDatabits": "8",
+  "serialStopbits": "1",
+  "serialParity": "none",
+  "serialConnectionDelay": "100",
+  "serialAsciiResponseStartDelimiter": "0x3A",
+  "unit_id": "1",
+  "commandDelay": "1",
+  "clientTimeout": "1500",
+  "reconnectOnTimeout": true,
+  "reconnectTimeout": "2000",
+  "parallelUnitIdsAllowed": true
+ },
+ {
+  "id": "inj_poll",
+  "type": "inject",
+  "name": "đọc D0-D39 mỗi 1 s",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "1",
+  "crontab": "",
+  "once": true,
+  "onceDelay": "2",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 120,
+  "wires": [
+   [
+    "fn_rd"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_rd",
+  "type": "function",
+  "name": "tạo lệnh đọc",
+  "func": "msg.payload = {fc: 3, unitid: 1, address: 0, quantity: 40};\nreturn msg;",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 320,
+  "y": 120,
+  "wires": [
+   [
+    "mb_get"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "mb_get",
+  "type": "modbus-flex-getter",
+  "name": "",
+  "showStatusActivities": false,
+  "showErrors": false,
+  "showWarnings": false,
+  "logIOActivities": false,
+  "server": "mbc",
+  "useIOFile": false,
+  "ioFile": "",
+  "useIOForPayload": false,
+  "emptyMsgOnFail": false,
+  "keepMsgProperties": true,
+  "delayOnStart": false,
+  "startDelayTime": "",
+  "x": 520,
+  "y": 120,
+  "wires": [
+   [
+    "fn_tele"
+   ],
+   []
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_tele",
+  "type": "function",
+  "name": "telemetry",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nconst arr = Array.isArray(msg.payload) ? msg.payload : null;\nif (!arr || arr.length < 40) return null;\nconst r = arr.slice(0, 40).map(v => v & 0xFFFF);          // INT (signed) -> unsigned register\nconst now = Date.now(), out = [];\nflow.set('lastOk', now); flow.set('regs', r);\nif (flow.get('status') !== 'online') { flow.set('status', 'online'); out.push({topic: BASE + '/status', payload: 'online', qos: 1, retain: true}); }\nconst last = context.get('last') || [];\nconst skip = i => i === 10 || i === 11 || (i >= 20 && i <= 35);   // per-second counters ride along\nlet changed = last.length !== r.length;\nfor (let i = 0; i < r.length && !changed; i++) if (!skip(i) && r[i] !== last[i]) changed = true;\nif (changed || now - (context.get('lp') || 0) >= 10000) {\n  context.set('last', r); context.set('lp', now);\n  out.push({topic: BASE + '/telemetry', payload: JSON.stringify({r}), qos: 0, retain: true});\n}\nreturn [out.length ? out : null];\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 720,
+  "y": 120,
+  "wires": [
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "inj_hist",
+  "type": "inject",
+  "name": "lịch sử mỗi 60 s",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "60",
+  "crontab": "",
+  "once": true,
+  "onceDelay": "5",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 200,
+  "wires": [
+   [
+    "fn_rdh"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_rdh",
+  "type": "function",
+  "name": "tạo lệnh đọc lịch sử",
+  "func": "return [[\n  {part: 'a', payload: {fc: 3, unitid: 1, address: 100, quantity: 51}},\n  {part: 'b', payload: {fc: 3, unitid: 1, address: 199, quantity: 50}}]];",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 320,
+  "y": 200,
+  "wires": [
+   [
+    "mb_geth"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "mb_geth",
+  "type": "modbus-flex-getter",
+  "name": "",
+  "showStatusActivities": false,
+  "showErrors": false,
+  "showWarnings": false,
+  "logIOActivities": false,
+  "server": "mbc",
+  "useIOFile": false,
+  "ioFile": "",
+  "useIOForPayload": false,
+  "emptyMsgOnFail": false,
+  "keepMsgProperties": true,
+  "delayOnStart": false,
+  "startDelayTime": "",
+  "x": 520,
+  "y": 200,
+  "wires": [
+   [
+    "fn_hist"
+   ],
+   []
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_hist",
+  "type": "function",
+  "name": "lịch sử theo giờ",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nif (!Array.isArray(msg.payload)) return null;\ncontext.set(msg.part, msg.payload.map(v => v & 0xFFFF));\nconst A = context.get('a'), B = context.get('b');\nif (msg.part !== 'b' || !A || !B || A.length < 51 || B.length < 50) return null;\nif (Date.now() - (context.get('lh') || 0) < 55000) return null;       // once a minute\ncontext.set('lh', Date.now()); flow.set('ha', A); flow.set('hb', B);\nconst hist = {c: A.slice(0, 49), s: A[49], n: A[50], r: B[0], m: B.slice(1, 50)};\nreturn {topic: BASE + '/history', payload: JSON.stringify(hist), qos: 0, retain: true};\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 720,
+  "y": 200,
+  "wires": [
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_cmd",
+  "type": "function",
+  "name": "phân tích lệnh",
+  "func": "\nconst BASE = \"plc/factory1/plc01\", W = [3, 4, 6, 7, 9], UNIT = 1;\nlet c; try { c = (typeof msg.payload === 'object' && !Buffer.isBuffer(msg.payload)) ? msg.payload : JSON.parse(String(msg.payload)); } catch (e) { return null; }\nconst ack = (ok) => ({topic: BASE + '/ack', payload: JSON.stringify({id: c.id, ok}), qos: 0, retain: false});\nconst a = Number(c.a);\nif (c.op === 'read') {                                  // query any register range 0..299 straight from the PLC\n  const n = Number(c.n || 1);\n  if (!Number.isInteger(a) || !Number.isInteger(n) || a < 0 || n < 1 || n > 60 || a + n > 300) return [null, null, ack(false)];\n  return [null, {payload: {fc: 3, unitid: UNIT, address: a, quantity: n}, cmd: {id: c.id, op: 'read', a, n}}, null];\n}\nconst v = Number(c.v);\nif (!W.includes(a) || !Number.isInteger(v) || v < 0 || v > 65535) return [null, null, ack(false)];\nreturn [{payload: {value: v, fc: 6, unitid: UNIT, address: a, quantity: 1}, cmd: {id: c.id, op: 'w', a, v}}, null, null];\n",
+  "outputs": 3,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 320,
+  "y": 420,
+  "wires": [
+   [
+    "mb_w"
+   ],
+   [
+    "mb_q"
+   ],
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "mb_w",
+  "type": "modbus-flex-write",
+  "name": "",
+  "showStatusActivities": false,
+  "showErrors": false,
+  "showWarnings": false,
+  "server": "mbc",
+  "emptyMsgOnFail": true,
+  "keepMsgProperties": true,
+  "x": 540,
+  "y": 380,
+  "wires": [
+   [
+    "ack_w"
+   ],
+   []
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "mb_q",
+  "type": "modbus-flex-getter",
+  "name": "",
+  "showStatusActivities": false,
+  "showErrors": false,
+  "showWarnings": false,
+  "logIOActivities": false,
+  "server": "mbc",
+  "useIOFile": false,
+  "ioFile": "",
+  "useIOForPayload": false,
+  "emptyMsgOnFail": true,
+  "keepMsgProperties": true,
+  "delayOnStart": false,
+  "startDelayTime": "",
+  "x": 540,
+  "y": 460,
+  "wires": [
+   [
+    "ack_r"
+   ],
+   []
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "ack_w",
+  "type": "function",
+  "name": "ack ghi",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nconst id = msg.cmd && msg.cmd.id;\nconst ok = !(msg.payload === '' || msg.payload === undefined || msg.error);   // a failed Modbus request comes back as an empty payload (emptyMsgOnFail)\nconst extra = (false && Array.isArray(msg.payload)) ? {a: msg.cmd.a, v: msg.payload.map(v => v & 0xFFFF)} : {};\nreturn {topic: BASE + '/ack', payload: JSON.stringify(Object.assign({id, ok}, extra)), qos: 0, retain: false};\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 760,
+  "y": 380,
+  "wires": [
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "ack_r",
+  "type": "function",
+  "name": "ack đọc",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nconst id = msg.cmd && msg.cmd.id;\nconst ok = Array.isArray(msg.payload);   // a failed Modbus request comes back as an empty payload (emptyMsgOnFail)\nconst extra = (true && Array.isArray(msg.payload)) ? {a: msg.cmd.a, v: msg.payload.map(v => v & 0xFFFF)} : {};\nreturn {topic: BASE + '/ack', payload: JSON.stringify(Object.assign({id, ok}, extra)), qos: 0, retain: false};\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 760,
+  "y": 460,
+  "wires": [
+   [
+    "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ }
+]

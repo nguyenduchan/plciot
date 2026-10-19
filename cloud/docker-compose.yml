@@ -1,0 +1,40 @@
+# Self-contained stack, isolated from any other Docker project on this machine:
+# own compose project name, own containers/network/volume, own loopback-only host ports.
+name: plciot
+
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: plciot-mqtt
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+    ports:                       # loopback only; the internet reaches the broker through the tunnel
+      - "127.0.0.1:21883:1883"
+      - "127.0.0.1:29001:9001"
+    volumes:
+      - ./config:/mosquitto/config
+      - mqtt-data:/mosquitto/data
+    networks: [plciot]
+
+  tunnel:                        # Cloudflare Tunnel: wss://<broker host> -> mqtt:9001, no open ports
+    image: cloudflare/cloudflared:latest
+    container_name: plciot-tunnel
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}   # a NEW tunnel dedicated to this project
+    depends_on: [mqtt]
+    networks: [plciot]
+
+networks:
+  plciot:
+    name: plciot_net
+
+volumes:
+  mqtt-data:
+    name: plciot_mqtt_data

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Giám sát PLC</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<meta name="apple-mobile-web-app-title" content="Giám sát PLC">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="vendor/gridstack.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <nav id="nav">
+    <div class="brand"><img src="icon.svg" alt="" width="32" height="32"><span>Giám sát PLC</span></div>
+    <button data-tab="dash" class="on"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span>Tổng quan</span></button>
+    <button data-tab="conv"><svg viewBox="0 0 24 24"><rect x="2" y="12" width="20" height="6" rx="3"/><circle cx="6" cy="15" r="1"/><circle cx="18" cy="15" r="1"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="7" width="4" height="4" rx="1"/></svg><span>Băng tải</span></button>
+    <button data-tab="ctrl"><svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="9" r="2" class="f"/><circle cx="12" cy="15" r="2" class="f"/><circle cx="19" cy="8" r="2" class="f"/></svg><span>Điều khiển</span></button>
+    <button data-tab="rep"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Báo cáo</span></button>
+    <button data-tab="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Cài đặt</span></button>
+  </nav>
+
+  <div class="content">
+    <header>
+      <h1 id="title">Tổng quan</h1>
+      <span id="pill" class="pill off">Mất kết nối</span>
+    </header>
+
+    <main>
+      <section id="tab-dash" class="tab cols">
+        <div class="panel span">
+          <div class="widgets">
+            <div class="w"><div class="k">Số lượng hiện tại</div><div class="v" id="w-cnt">0</div><div class="d" id="w-state">—</div></div>
+            <div class="w"><div class="k">Giờ này</div><div class="v" id="w-hour">—</div><div class="d" id="w-hourd"></div></div>
+            <div class="w"><div class="k">24 giờ qua</div><div class="v" id="w-24">—</div><div class="d" id="w-24d"></div></div>
+            <div class="w ringw"><div class="ring" id="w-ring"><span id="w-runp">—</span></div><div><div class="k">Thời gian chạy</div><div class="d" id="w-rund">24 giờ qua</div></div></div>
+            <div class="w"><div class="k">Tốc độ băng tải</div><div class="v"><span id="w-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="w-spdbar"></i></div><div class="d" id="w-spdd"></div></div>
+            <div class="w ctlw"><div class="k">Điều khiển máy</div><div class="row"><button id="w-start" class="primary">▶ Chạy</button><button id="w-stop" class="danger">■ Dừng máy</button></div><div class="d" id="w-d"></div></div>
+          </div>
+        </div>
+        <div class="panel span">
+          <h2>Số lượng đếm được theo thời gian</h2>
+          <div class="seg" id="cum-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
+          <div id="wcum" class="chart"></div>
+          <p class="muted">Tổng số sản phẩm đếm được cộng dồn từ đầu khoảng chọn (dữ liệu ghi trên thiết bị khi app mở).</p>
+        </div>
+        <div class="panel"><h2>Sản lượng mỗi giờ (24 giờ qua)</h2><canvas id="wbars" data-h="170"></canvas><p class="muted" id="w-note"></p></div>
+        <div class="panel"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
+        <div class="panel"><h2>Đầu vào</h2><div id="ins" class="grid"></div></div>
+        <div class="panel"><h2>Đầu ra</h2><div id="outs" class="grid"></div></div>
+        <div class="panel span"><h2>Cảnh báo</h2><div id="alarms"></div><p class="muted" id="stamp"></p></div>
+      </section>
+
+      <section id="tab-conv" class="tab cols" hidden>
+        <div class="panel">
+          <div class="big">
+            <div><span class="muted">Số lượng hiện tại</span><div id="cnt" class="num">0</div></div>
+            <div class="right"><span class="muted">Trạng thái</span><div id="cstate" class="state">—</div></div>
+          </div>
+          <div class="row"><button id="c-start" class="primary">▶ Chạy</button><button id="c-stop" class="danger">■ Dừng máy</button></div>
+          <div class="w" style="margin-top:12px"><div class="k">Tốc độ băng tải</div><div class="v"><span id="c-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="c-spdbar"></i></div><div class="d" id="c-spdd"></div></div>
+          <h2>Dừng khi đạt số lượng</h2>
+          <div class="row"><input id="target" type="number" min="0" max="65535" inputmode="numeric" placeholder="0 = không giới hạn"><button id="c-set" class="fit">Đặt</button><button id="c-reset" class="fit">Xoá đếm</button></div>
+          <p class="muted" id="ctarget"></p>
+        </div>
+        <div class="panel">
+          <h2>Sản lượng</h2>
+          <div class="seg conv-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
+          <canvas id="bars" data-h="200"></canvas>
+          <h2>Số lượng đếm theo thời gian</h2>
+          <div id="cumc" class="chart"></div>
+          <table id="cstats"></table>
+        </div>
+      </section>
+
+      <section id="tab-ctrl" class="tab cols" hidden>
+        <div class="panel">
+          <h2>Chế độ</h2>
+          <div class="seg"><button id="m-auto">Tự động</button><button id="m-man">Thủ công</button></div>
+          <p class="muted" id="ctrl-hint"></p>
+        </div>
+        <div class="panel"><h2>Điều khiển đầu ra</h2><div id="switches" class="switches"></div></div>
+      </section>
+
+      <section id="tab-rep" class="tab" hidden>
+        <div class="dash-bar">
+          <div class="seg" id="drange">
+            <button data-ms="900000">15 phút</button><button data-ms="3600000">1 giờ</button><button data-ms="21600000">6 giờ</button>
+            <button data-ms="86400000">24 giờ</button><button data-ms="604800000">7 ngày</button><button data-ms="2592000000">30 ngày</button>
+          </div>
+          <div class="dash-actions"><button id="d-edit" class="fit">Sắp xếp</button><button id="d-reset" class="fit">Đặt lại</button></div>
+        </div>
+        <div class="grid-stack" id="dgrid"></div>
+      </section>
+
+      <section id="tab-set" class="tab" hidden>
+        <div class="panel form">
+          <label class="check"><input type="checkbox" id="demo"> Chạy thử (dữ liệu giả, không cần máy chủ)</label>
+          <label>Địa chỉ máy chủ MQTT (WebSocket bảo mật)<input id="url" placeholder="wss://plc-mqtt.dieukhientudong.net" autocapitalize="off" autocorrect="off"></label>
+          <label>Tên đăng nhập<input id="user" autocapitalize="off" autocorrect="off"></label>
+          <label>Mật khẩu<input id="pass" type="password"></label>
+          <label>Mã nhà máy<input id="site" autocapitalize="off"></label>
+          <label>Mã thiết bị<input id="dev" autocapitalize="off"></label>
+          <label>Tên đầu vào X0..X7 (cách nhau bằng dấu phẩy)<input id="inNames"></label>
+          <label>Tên đầu ra Y0..Y7<input id="outNames"></label>
+          <label>Tốc độ tối đa của băng tải (sản phẩm/phút, để vẽ thanh đo)<input id="maxRate" type="number" min="1" inputmode="numeric"></label>
+          <label>Khoảng cách giữa 2 sản phẩm (cm, để đổi sang m/phút, 0 = ẩn)<input id="pitchCm" type="number" min="0" inputmode="decimal"></label>
+          <div class="row"><button id="save" class="primary">Lưu &amp; kết nối</button></div>
+        </div>
+        <div class="panel form" style="margin-top:12px">
+          <h2>Truy vấn dữ liệu PLC</h2>
+          <p class="muted" style="margin-top:0">Đọc trực tiếp thanh ghi từ PLC qua gateway hoặc Node-RED (chỉ đọc). Địa chỉ 0–299.</p>
+          <div class="row"><input id="q-a" type="number" min="0" max="299" inputmode="numeric" placeholder="Địa chỉ, ví dụ 100"><input id="q-n" type="number" min="1" max="20" value="4" inputmode="numeric" style="max-width:84px" aria-label="Số lượng"><button id="q-go" class="fit primary">Đọc</button></div>
+          <div id="q-out" class="muted"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="vendor/uPlot.iife.min.js"></script>
+<script src="vendor/gridstack-all.js"></script>
+<script src="mqtt-lite.js"></script>
+<script src="db.js"></script>
+<script src="dash.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

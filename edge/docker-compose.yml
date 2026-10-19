@@ -1,0 +1,20 @@
+# Protocol bridge for non-Modbus-RTU PLCs (Siemens S7, Modbus TCP, ...). Replaces the ESP32 gateway when the
+# PLC speaks Ethernet. Same MQTT contract, so the webapp does not change. Generate the flow first:
+#   python ../tools/gen_flows.py --protocol s7 --plc-host 192.168.0.1 --mqtt-pass <gw password>
+name: plciot-edge
+
+services:
+  nodered:
+    build: .
+    container_name: plciot-nodered
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 1
+    ports:
+      - "127.0.0.1:21880:1880"    # editor, local only; do not publish it to the internet
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: Asia/Ho_Chi_Minh

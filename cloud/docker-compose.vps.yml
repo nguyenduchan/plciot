@@ -1,0 +1,43 @@
+# Máy chủ MQTT đặt tại Việt Nam (VPS), kết nối trực tiếp, không qua Cloudflare Tunnel.
+#   Điện thoại / gateway --wss:443--> Caddy (TLS Let's Encrypt) --> Mosquitto :9001
+# Chạy:  docker compose -f docker-compose.vps.yml up -d
+name: plciot
+
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: plciot-mqtt
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+    volumes:                     # không mở cổng ra ngoài; chỉ Caddy trong mạng nội bộ truy cập được
+      - ./config:/mosquitto/config
+      - mqtt-data:/mosquitto/data
+    networks: [plciot]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: plciot-caddy
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+    ports:
+      - "80:80"                  # cần cho Let's Encrypt cấp/gia hạn chứng chỉ
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [mqtt]
+    networks: [plciot]
+
+networks:
+  plciot:
+    name: plciot_net
+
+volumes:
+  mqtt-data:
+    name: plciot_mqtt_data
+  caddy-data:
+    name: plciot_caddy_data
