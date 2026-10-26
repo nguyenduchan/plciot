@@ -114,7 +114,14 @@ function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2000);
 }
+function applyRole(role) {
+  S.role = role || 'operator';
+  document.body.classList.toggle('viewer', S.role === 'viewer');
+  const l = $('#admin-link'); if (l) l.hidden = S.role !== 'admin';
+}
 function sendReg(a, v) {
+  if (S.role === 'viewer') return toast('Tài khoản chỉ xem — không được điều khiển');
+  if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kênh không mã hoá (ws://) chỉ xem được. Dùng wss:// để điều khiển');
   const id = Date.now().toString(36);
   if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Không có kết nối tới PLC');
   pending[id] = setTimeout(() => { delete pending[id]; toast('PLC không phản hồi'); }, 4000);
@@ -393,6 +400,8 @@ async function alignSiteDevFromSession() {
     });
     if (!r.ok) return;
     const me = await r.json();
+    applyRole(me.role);
+    LS.set('session', { ...session, role: me.role });
     let changed = false;
     if (me.mqtt) {
       if (cfg.user !== me.mqtt.user) { cfg.user = me.mqtt.user; changed = true; }
@@ -500,6 +509,7 @@ document.addEventListener('visibilitychange', () => {
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 applyDbLimits();
 loadSettings();
+applyRole(LS.get('session', null)?.role);
 alignSiteDevFromSession()
   .then(() => openDb())
   .then(() => { connect(); showTab('dash'); DB.compact(); });

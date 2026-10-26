@@ -11,8 +11,10 @@ services:
     cpus: 0.5
     pids_limit: 64
     ports:                       # loopback only; the internet reaches the broker through the tunnel
-      - "127.0.0.1:21883:1883"
-      - "127.0.0.1:29001:9001"
+      - "127.0.0.1:21883:1883"   # không mã hoá → MONITOR ONLY
+      - "127.0.0.1:29001:9001"   # không mã hoá → MONITOR ONLY
+      - "127.0.0.1:21884:1884"   # kênh có CONTROL: chỉ để thử trên chính máy này, KHÔNG mở ra ngoài
+      - "127.0.0.1:29002:9002"
     volumes:
       - ./config:/mosquitto/config
       - mqtt-data:/mosquitto/data
@@ -51,6 +53,8 @@ services:
       MQTT_INGEST_MIN_MS: ${MQTT_INGEST_MIN_MS:-0}
       HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-3}
       HISTORY_OPEN_ACCESS: ${HISTORY_OPEN_ACCESS:-false}
+      ADMIN_PHONES: ${ADMIN_PHONES:-}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       RATE_LIMIT_API: ${RATE_LIMIT_API:-120}
       RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}

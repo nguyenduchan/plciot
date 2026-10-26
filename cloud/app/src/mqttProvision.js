@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { userScopes } from './roles.js';
 
+// Hai file ACL cho hai nhóm listener của Mosquitto (per_listener_settings):
+//   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
+//   acl-monitor  — listener KHÔNG mã hoá: chỉ monitor, không ai (trừ gateway) được ghi cmd
 const HEADER = `# plciot ACL — static roles (do not put per-user lines above MARKER)
 user gw
 topic write plc/+/+/telemetry
@@ -28,6 +32,10 @@ function aclPath() {
   return path.join(configDir(), 'acl');
 }
 
+function aclMonitorPath() {
+  return path.join(configDir(), 'acl-monitor');
+}
+
 function passwdPath() {
   return path.join(configDir(), 'passwd');
 }
@@ -44,19 +52,24 @@ export function mqttUsernameFor(userId) {
   return `u${userId}`;
 }
 
-/** ACL block: user may only touch their site/device. */
-export function userAclBlock(mqttUser, site, device) {
+/**
+ * ACL block: user may only touch their site/device.
+ * @param {string[]} scopes nhóm topic được đọc (monitor)
+ * @param {boolean} secure true = listener mã hoá (cho phép control theo vai trò); false = chỉ monitor
+ */
+export function userAclBlock(mqttUser, site, device, role = 'operator', scopes = ['telemetry', 'status', 'ack', 'history'], secure = true) {
   const s = sanitize(site);
   const d = sanitize(device);
   const u = sanitize(mqttUser);
   const base = `plc/${s}/${d}`;
+  const control = secure && role !== 'viewer';
+  // người điều khiển cần đọc ack để biết lệnh đã được PLC thực hiện
+  const readKinds = ['telemetry', 'status', 'ack', 'history'].filter((k) => scopes.includes(k) || (control && k === 'ack'));
   return [
     `user ${u}`,
-    `topic read ${base}/telemetry`,
-    `topic read ${base}/status`,
-    `topic read ${base}/ack`,
-    `topic read ${base}/history`,
-    `topic write ${base}/cmd`,
+    ...readKinds.map((k) => `topic read ${base}/${k}`),
+    // control: chỉ qua kênh mã hoá và chỉ với vai trò operator/admin (viewer luôn chỉ xem)
+    ...(control ? [`topic write ${base}/cmd`] : []),
     '',
   ].join('\n');
 }
@@ -70,14 +83,18 @@ export function rebuildAclFromUsers(db) {
   const dir = configDir();
   fs.mkdirSync(dir, { recursive: true });
   const users = db.prepare(`
-    SELECT id, mqtt_user, notify_site, notify_device FROM users
-    WHERE mqtt_user IS NOT NULL AND mqtt_user != ''
+    SELECT id, mqtt_user, notify_site, notify_device, role, monitor_scopes FROM users
+    WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND disabled = 0
   `).all();
-  let body = HEADER;
+  let secure = HEADER;
+  let plain = HEADER;
   for (const u of users) {
-    body += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device);
+    const scopes = userScopes(u);
+    secure += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device, u.role, scopes, true);
+    plain += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device, u.role, scopes, false);
   }
-  fs.writeFileSync(aclPath(), body, 'utf8');
+  fs.writeFileSync(aclPath(), secure, 'utf8');
+  fs.writeFileSync(aclMonitorPath(), plain, 'utf8');
   return users.length;
 }
 
@@ -150,6 +167,8 @@ export function mqttClientConfig(user) {
   return {
     user: user.mqtt_user,
     pass: user.mqtt_pass,
+    scopes: userScopes(user),
+    canControl: user.role !== 'viewer',
     site: user.notify_site,
     device: user.notify_device,
     topicBase: `plc/${user.notify_site}/${user.notify_device}`,

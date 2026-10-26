@@ -1,5 +1,9 @@
 cloud/.env
 cloud/config/passwd
+cloud/app/node_modules/
+cloud/app/data/app.db
+cloud/app/data/app.db-*
+cloud/app/data/bundles/
 __pycache__/
 .pio/
 cloud/.secrets.txt
@@ -7,3 +11,4 @@ edge/data/flows_cred.json
 edge/data/.config*
 edge/data/node_modules/
 edge/data/context/
+edge/.env

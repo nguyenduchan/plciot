@@ -1,6 +1,8 @@
-# Protocol bridge for non-Modbus-RTU PLCs (Siemens S7, Modbus TCP, ...). Replaces the ESP32 gateway when the
-# PLC speaks Ethernet. Same MQTT contract, so the webapp does not change. Generate the flow first:
-#   python ../tools/gen_flows.py --protocol s7 --plc-host 192.168.0.1 --mqtt-pass <gw password>
+# Phần mềm local tại nhà máy: Node-RED (đọc/ghi PLC nhiều giao thức, MQTT lên cloud, trang /scada, server Modbus/OPC UA)
+#                              + InfluxDB (lưu chuỗi thời gian) + Grafana (dashboard giám sát).
+#   cp .env.example .env  (điền mật khẩu)  →  python ../tools/gen_flows.py ...  →  docker compose up -d --build
+# Sinh luồng ví dụ:
+#   python ../tools/gen_flows.py --protocol modbus --plc-host 192.168.1.10 --mqtt-pass <mật khẩu gw> --serve modbus,opcua
 name: plciot-edge
 
 services:
@@ -8,13 +10,86 @@ services:
     build: .
     container_name: plciot-nodered
     restart: unless-stopped
-    mem_limit: 384m
+    mem_limit: 512m
     cpus: 1
+    env_file: .env
+    environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      SCADA_USERS: ${SCADA_USERS:-}
+      SCADA_ALLOW_REMOTE: ${SCADA_ALLOW_REMOTE:-false}
     ports:
-      - "127.0.0.1:21880:1880"    # editor, local only; do not publish it to the internet
+      - "127.0.0.1:21880:1880"                         # trình soạn thảo: chỉ máy này, KHÔNG mở ra LAN/Internet
+      - "${MODBUS_SERVER_PORT:-1502}:1502"             # Modbus TCP server (chỉ đọc) cho HMI/MES khác — chỉ có khi sinh luồng với --serve modbus
+      - "${OPCUA_SERVER_PORT:-4840}:4840"              # OPC UA server (chỉ đọc) — chỉ có khi sinh luồng với --serve opcua
     volumes:
       - ./data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on: [influxdb]
+    networks: [edge]
+
+  scada-web:                                           # cổng LAN vào trang điều khiển /scada (có giới hạn tốc độ)
+    image: nginx:1.27-alpine
+    container_name: plciot-scada-web
+    restart: unless-stopped
+    mem_limit: 32m
+    ports:
+      - "${SCADA_WEB_PORT:-8080}:80"
+    volumes:
+      - ./nginx-scada.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [nodered]
+    networks: [edge]
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: plciot-influxdb
+    restart: unless-stopped
+    mem_limit: 512m
     environment:
-      TZ: Asia/Ho_Chi_Minh
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_ADMIN_USER:-plciot}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_ADMIN_PASSWORD:?đặt INFLUX_ADMIN_PASSWORD trong .env}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-plciot}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-plc}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION:-90d}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:?đặt INFLUX_TOKEN trong .env}
+    ports:
+      - "127.0.0.1:8086:8086"                          # chỉ máy này (Grafana/Node-RED dùng mạng Docker)
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    networks: [edge]
+
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: plciot-grafana
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?đặt GRAFANA_ADMIN_PASSWORD trong .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/plciot.json
+      INFLUX_ORG: ${INFLUX_ORG:-plciot}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-plc}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [influxdb]
+    networks: [edge]
+
+networks:
+  edge:
+    name: plciot_edge_net
+
+volumes:
+  influx-data:
+  grafana-data:

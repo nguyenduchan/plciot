@@ -27,6 +27,8 @@ import {
 } from './accountSecurity.js';
 import { audit } from './audit.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
+import { isAdmin, userScopes } from './roles.js';
+import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 
 const PORT = Number(process.env.PORT || 3080);
@@ -42,6 +44,7 @@ if (!JWT_SECRET || JWT_SECRET.length < 16) {
 }
 
 const db = openDb(DATA_DIR);
+applyBootstrapAdmins(db);
 const app = express();
 
 app.disable('x-powered-by');
@@ -81,10 +84,18 @@ function requireAuth(req, res, next) {
   if (!user) return res.status(401).json({ error: 'unauthorized' });
   // token_version bumps on phone change/recovery: every older session is revoked.
   if ((payload.tv | 0) !== (user.token_version | 0)) return res.status(401).json({ error: 'session_revoked' });
+  if (user.disabled) return res.status(403).json({ error: 'account_disabled' });
   req.user = user;
   req.tokenPayload = payload;
   next();
 }
+
+function requireAdmin(req, res, next) {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
+  next();
+}
+
+const registrationOpen = () => String(process.env.REGISTRATION_OPEN || 'true').toLowerCase() !== 'false';
 
 function loginPayload(user) {
   let bundleRoot;
@@ -114,6 +125,7 @@ function loginPayload(user) {
     mqtt: mqttClientConfig(u),
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
+    role: u.role,
   };
 }
 
@@ -144,6 +156,7 @@ app.post('/api/login', authStrict, (req, res) => {
     if (user) audit(db, 'login_fail', { userId: user.id, ip: clientIp(req) });
     return res.status(401).json({ error: 'invalid_credentials' });
   }
+  if (user.disabled) return res.status(403).json({ error: 'account_disabled' });
   audit(db, 'login_ok', { userId: user.id, ip: clientIp(req), detail: 'password' });
   const out = loginPayload(user);
   if (out.error) return res.status(out.status).json({ error: out.error });
@@ -151,6 +164,7 @@ app.post('/api/login', authStrict, (req, res) => {
 });
 
 app.post('/api/register/request-otp', authStrict, otpStrict, async (req, res) => {
+  if (!registrationOpen()) return res.status(403).json({ error: 'registration_closed' });
   const phone = String(req.body?.phone || req.body?.username || '');
   const password = String(req.body?.password || '');
   const result = await requestRegisterOtp(db, { phone, password, dataDir: DATA_DIR, webappSrc: WEBAPP_SRC });
@@ -159,6 +173,7 @@ app.post('/api/register/request-otp', authStrict, otpStrict, async (req, res) =>
 });
 
 app.post('/api/register/verify', authStrict, otpStrict, async (req, res) => {
+  if (!registrationOpen()) return res.status(403).json({ error: 'registration_closed' });
   const phone = String(req.body?.phone || req.body?.username || '');
   const otp = String(req.body?.otp || '');
   const result = await verifyRegisterOtp(db, { phone, otp, dataDir: DATA_DIR, webappSrc: WEBAPP_SRC });
@@ -287,9 +302,34 @@ app.get('/api/me', requireAuth, (req, res) => {
     version: u.version,
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
+    role: u.role,
     ...retentionInfo(u),
     mqtt: mqttClientConfig(u),
   });
+});
+
+/* ---------- Admin: quản lý người dùng & phân quyền ---------- */
+const adminOnly = [requireAuth, requireAdmin];
+const adminWrite = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.RATE_LIMIT_ADMIN || 30),
+  keyFn: (req) => `${clientIp(req)}:admin:${req.user?.id || 'na'}`,
+});
+
+app.get('/api/admin/users', ...adminOnly, (_req, res) => {
+  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, users: listUsers(db) });
+});
+
+app.post('/api/admin/users', ...adminOnly, adminWrite, (req, res) => {
+  send(res, createUser(db, req.user, req.body || {}, { dataDir: DATA_DIR, webappSrc: WEBAPP_SRC, ip: ipOf(req) }));
+});
+
+app.patch('/api/admin/users/:id', ...adminOnly, adminWrite, (req, res) => {
+  send(res, updateUser(db, req.user, Number(req.params.id), req.body || {}, { ip: ipOf(req) }));
+});
+
+app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, (req, res) => {
+  send(res, deleteUser(db, req.user, Number(req.params.id), { ip: ipOf(req) }));
 });
 
 app.post('/api/logout', (_req, res) => {
@@ -308,6 +348,7 @@ app.get('/api/history/telemetry', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'bad_range' });
   }
 
+  if (!userScopes(req.user).includes('telemetry')) return res.status(403).json({ error: 'scope_denied' });
   const samples = queryTelemetry(db, { site, device, since, until, limit });
   const last = samples.length ? samples[samples.length - 1].t : since;
   res.json({
@@ -326,7 +367,9 @@ app.get('/api/history/events', requireAuth, (req, res) => {
   const since = Math.max(Number(req.query.since || 0), retentionFloor(req.user));
   const until = Number(req.query.until || Date.now());
   const kinds = String(req.query.kinds || 'status,history')
-    .split(',').map((k) => k.trim()).filter(Boolean);
+    .split(',').map((k) => k.trim()).filter(Boolean)
+    .filter((k) => userScopes(req.user).includes(k)); // chỉ trả nhóm thông tin user được phép đọc
+  if (!kinds.length) return res.status(403).json({ error: 'scope_denied' });
   const events = queryEvents(db, {
     site, device, since, until, kinds, limit: Number(req.query.limit || 2000),
   });

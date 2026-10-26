@@ -60,6 +60,7 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--acc)}
 input:not([type=checkbox]){display:block;width:100%;margin-top:6px;padding:13px;font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid transparent;border-radius:12px;outline:0}
 input:not([type=checkbox]):focus{border-color:var(--acc)}
 .form{max-width:560px}
+body.viewer #switches .sw,body.viewer #m-auto,body.viewer #m-man,body.viewer #c-start,body.viewer #c-stop,body.viewer #c-set,body.viewer #c-reset,body.viewer #w-start,body.viewer #w-stop,body.viewer #dc-start,body.viewer #dc-stop{opacity:.4;pointer-events:none}
 table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}td{padding:8px 0;border-bottom:1px solid var(--line)}tr:last-child td{border:0}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 canvas{width:100%;display:block;margin-bottom:6px}
 .al{color:var(--bad);font-weight:500;padding:3px 0}

@@ -22,6 +22,12 @@ function migrate(db) {
   add('email_verified_at', 'email_verified_at INTEGER');
   // Bumped on phone change / recovery → every older JWT stops working.
   add('token_version', 'token_version INTEGER NOT NULL DEFAULT 0');
+  // Phân quyền: admin | operator | viewer (xem roles.js). Người dùng cũ = operator như trước.
+  add('role', "role TEXT NOT NULL DEFAULT 'operator'");
+  add('disabled', 'disabled INTEGER NOT NULL DEFAULT 0');
+  add('created_by', 'created_by INTEGER');
+  // Các nhóm topic được đọc, ví dụ 'telemetry,status'. NULL = tất cả. Xem roles.js
+  add('monitor_scopes', 'monitor_scopes TEXT');
 }
 
 export function openDb(dataDir) {
@@ -228,6 +234,7 @@ export function findNotifyUsers(db, site, device) {
   return db.prepare(`
     SELECT * FROM users
     WHERE chat_id IS NOT NULL
+      AND disabled = 0
       AND notify_site = ?
       AND notify_device = ?
   `).all(site, device);

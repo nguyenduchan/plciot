@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCADA nhà máy</title>
+<style>
+:root{--bg:#f2f4f7;--card:#fff;--fg:#14202b;--mut:#6b7885;--line:#e3e8ee;--acc:#0f766e;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#10161c;--card:#18212a;--fg:#e6edf3;--mut:#8b99a6;--line:#27323d}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0}
+header h1{font-size:17px;margin:0;flex:1}
+.pill{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:#6b788522;color:var(--mut)}
+.pill.on{background:#16a34a22;color:var(--ok)}.pill.bad{background:#dc262622;color:var(--bad)}.pill.warn{background:#d9770622;color:var(--warn)}
+nav{display:flex;gap:4px;padding:8px 16px 0}nav button{border:0;background:none;padding:9px 14px;border-radius:10px 10px 0 0;color:var(--mut);font:inherit;cursor:pointer}
+nav button.on{background:var(--card);color:var(--acc);font-weight:700}
+main{padding:0 16px 24px;max-width:980px;margin:auto}
+.tab{display:none;background:var(--card);border-radius:0 14px 14px 14px;padding:16px;box-shadow:0 0 0 1px var(--line)}.tab.on{display:block}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:16px 0 8px}h2:first-child{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--bg);border-radius:12px;padding:12px}.kpi small{color:var(--mut);display:block}.kpi b{font-size:22px}
+.leds{display:flex;flex-wrap:wrap;gap:8px}.led{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;background:var(--bg);font-size:13px}
+.led i{width:12px;height:12px;border-radius:50%;background:#9aa5b1}.led.on i{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+button.b{font:inherit;padding:12px 18px;border:0;border-radius:12px;background:var(--bg);color:var(--fg);cursor:pointer;min-height:44px}
+button.b.pri{background:var(--acc);color:#fff;font-weight:700}button.b.dan{background:#dc262618;color:var(--bad);font-weight:700}
+button.b.sw.on{background:var(--ok);color:#fff}button.b:disabled{opacity:.4;cursor:not-allowed}
+input{font:inherit;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:140px}
+canvas{width:100%;height:200px;background:var(--bg);border-radius:12px}
+pre{background:var(--bg);padding:12px;border-radius:12px;max-height:340px;overflow:auto;font-size:12.5px;margin:0}
+.hint{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1 id="title">SCADA</h1>
+    <span class="pill" id="p-plc">PLC</span>
+    <span class="pill" id="p-cloud">Cloud</span>
+    <span class="pill" id="p-role"></span>
+    
+  </header>
+  <nav id="nav">
+    <button data-t="mon" class="on">Giám sát</button><button data-t="ctl">Điều khiển</button>
+    <button data-t="rep">Báo cáo</button><button data-t="log">Nhật ký</button>
+  </nav>
+  <main>
+    <section class="tab on" id="t-mon">
+      <h2>Máy</h2>
+      <div class="grid">
+        <div class="kpi"><small>Băng tải</small><b id="k-conv">–</b></div>
+        <div class="kpi"><small>Đếm hiện tại / mục tiêu</small><b id="k-count">–</b></div>
+        <div class="kpi"><small>Tổng đếm</small><b id="k-total">–</b></div>
+        <div class="kpi"><small>Thời gian chạy PLC</small><b id="k-run">–</b></div>
+        <div class="kpi"><small>Chế độ</small><b id="k-mode">–</b></div>
+        <div class="kpi"><small>Số lần khởi động bơm</small><b id="k-pump">–</b></div>
+      </div>
+      <h2>Cảnh báo</h2><div id="alarms" class="leds"></div>
+      <h2>Đầu vào X</h2><div id="xs" class="leds"></div>
+      <h2>Đầu ra Y</h2><div id="ys" class="leds"></div>
+      <p class="hint" id="sys"></p>
+    </section>
+
+    <section class="tab" id="t-ctl">
+      <p class="hint" id="ctl-hint"></p>
+      <h2>Chế độ</h2>
+      <div class="row"><button class="b" id="m-auto">Tự động</button><button class="b" id="m-man">Thủ công</button></div>
+      <h2>Đầu ra (chỉ ở chế độ thủ công)</h2>
+      <div class="row" id="sw"></div>
+      <h2>Băng tải</h2>
+      <div class="row"><button class="b pri" id="c-start">Chạy</button><button class="b dan" id="c-stop">Dừng</button></div>
+      <div class="row"><label>Số lượng mục tiêu (0 = không giới hạn)&nbsp;<input id="tgt" type="number" min="0" max="65535"></label>
+        <button class="b" id="c-set">Đặt</button><button class="b dan" id="c-reset">Xoá số đếm</button></div>
+      <p class="hint" id="ack"></p>
+    </section>
+
+    <section class="tab" id="t-rep">
+      <h2>Sản lượng theo giờ (48 giờ gần nhất)</h2>
+      <canvas id="cv"></canvas>
+      <p class="hint" id="rep-info"></p>
+    </section>
+
+    <section class="tab" id="t-log"><pre id="logtxt">…</pre></section>
+  </main>
+</div>
+<script src="/scada/app.js"></script>
+</body>
+</html>

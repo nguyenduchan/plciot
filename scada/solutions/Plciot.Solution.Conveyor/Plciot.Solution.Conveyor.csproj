@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- GIẢI PHÁP THAM CHIẾU: giao diện WPF cho dây chuyền băng tải. Mọi thứ riêng của khách hàng này nằm trong thư mục này.
+       Tham chiếu Framework (không tham chiếu Core/Services trực tiếp, không sửa chúng). Xem SOLUTION.md. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>Plciot.Solution.Conveyor</AssemblyName>
+    <RootNamespace>Plciot.Solution.Conveyor</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Plciot.Scada.Framework\Plciot.Scada.Framework.csproj" />
+  </ItemGroup>
+
+</Project>

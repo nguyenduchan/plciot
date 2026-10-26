@@ -52,7 +52,30 @@
   "y": 420,
   "wires": [
    [
+    "fn_gate"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_gate",
+  "type": "function",
+  "name": "cổng điều khiển từ xa",
+  "func": "\nconst BASE = \"plc/factory1/plc01\";\nlet c; try { c = (typeof msg.payload === 'object' && !Buffer.isBuffer(msg.payload)) ? msg.payload : JSON.parse(String(msg.payload)); } catch (e) { return null; }\nif (!c || typeof c !== 'object') return null;\nconst reject = (err) => ({topic: BASE + '/ack', payload: JSON.stringify({id: c.id, ok: false, err}), qos: 0, retain: false});\nif (JSON.stringify(c).length > 512) return [null, reject('bad_size')];\nconst now = Date.now(), win = (context.get('win') || []).filter(t => now - t < 1000);\nif (win.length >= Number(env.get('SCADA_REMOTE_RATE') || 5)) return [null, reject('rate_limited')];\nwin.push(now); context.set('win', win);\nif (c.op !== 'read' && String(env.get('SCADA_ALLOW_REMOTE') || 'false').toLowerCase() !== 'true') {\n  const audit = flow.get('audit') || []; audit.push(new Date().toISOString().slice(11, 19) + ' Từ chối lệnh từ xa D' + c.a + ' (remote_disabled)');\n  flow.set('audit', audit.slice(-200));\n  return [null, reject('remote_disabled')];\n}\nif (c.op !== 'read') { const audit = flow.get('audit') || []; audit.push(new Date().toISOString().slice(11, 19) + ' Lệnh từ xa D' + c.a + ' = ' + c.v); flow.set('audit', audit.slice(-200)); }\nreturn [{payload: c}, null];\n",
+  "outputs": 2,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 140,
+  "y": 480,
+  "wires": [
+   [
     "fn_cmd"
+   ],
+   [
+    "out_mq"
    ]
   ],
   "z": "tab_plc"
@@ -129,7 +152,7 @@
   "stateLogEnabled": false,
   "queueLogEnabled": false,
   "failureLogEnabled": false,
-  "tcpHost": "192.168.1.50",
+  "tcpHost": "192.168.1.10",
   "tcpPort": "502",
   "tcpType": "DEFAULT",
   "serialPort": "/dev/ttyUSB0",
@@ -437,6 +460,495 @@
   "wires": [
    [
     "out_mq"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "influx",
+  "type": "influxdb",
+  "name": "InfluxDB",
+  "influxdbVersion": "2.0",
+  "url": "http://influxdb:8086",
+  "hostname": "influxdb",
+  "port": 8086,
+  "protocol": "http",
+  "database": "database",
+  "usetls": false,
+  "timeout": "10",
+  "rejectUnauthorized": true
+ },
+ {
+  "id": "inj_influx",
+  "type": "inject",
+  "name": "ghi InfluxDB mỗi 2 s",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "2",
+  "crontab": "",
+  "once": true,
+  "onceDelay": "5",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 560,
+  "wires": [
+   [
+    "fn_influx"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_influx",
+  "type": "function",
+  "name": "điểm dữ liệu",
+  "func": "\nconst R = flow.get('regs'); if (!R) return null;\nconst tags = {site: \"factory1\", device: \"plc01\"}, ts = new Date();\nconst fresh = Date.now() - (flow.get('lastOk') || 0) < 5000;\nconst pts = [{measurement: 'plc_status', tags, fields: {online: (fresh && flow.get('status') === 'online') ? 1 : 0}, timestamp: ts}];\nif (fresh) {\n  const f = {inputs: R[0], outputs: R[1], alarms: R[2], mode: R[3], run_req: R[6], target: R[7], conveyor: R[8],\n    count: R[14] + R[15] * 65536, total: R[16] + R[17] * 65536, run_s: R[10] + R[11] * 65536, pump_starts: R[12] + R[13] * 65536,\n    estop: R[2] & 1, level_fault: (R[2] >> 1) & 1};\n  for (let i = 0; i < 8; i++) { f['x' + i] = (R[0] >> i) & 1; f['y' + i] = (R[1] >> i) & 1; }\n  pts.push({measurement: 'plc', tags, fields: f, timestamp: ts});\n}\nreturn {payload: pts};\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 340,
+  "y": 560,
+  "wires": [
+   [
+    "out_influx"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "out_influx",
+  "type": "influxdb batch",
+  "influxdb": "influx",
+  "name": "InfluxDB",
+  "precision": "",
+  "retentionPolicy": "",
+  "database": "database",
+  "precisionV18FluxV20": "ms",
+  "retentionPolicyV18Flux": "",
+  "org": "plciot",
+  "bucket": "plc",
+  "x": 560,
+  "y": 560,
+  "wires": [],
+  "z": "tab_plc"
+ },
+ {
+  "id": "http_resp",
+  "type": "http response",
+  "name": "",
+  "statusCode": "",
+  "headers": {},
+  "x": 980,
+  "y": 700,
+  "wires": [],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_page",
+  "type": "http in",
+  "name": "trang điều khiển",
+  "url": "/scada",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 660,
+  "wires": [
+   [
+    "wf_page"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_page",
+  "type": "function",
+  "name": "trang điều khiển",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\nreturn {statusCode: 200, headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer'}, payload: \"<!doctype html>\\n<html lang=\\\"vi\\\">\\n<head>\\n<meta charset=\\\"utf-8\\\">\\n<meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">\\n<title>SCADA nh\\u00e0 m\\u00e1y</title>\\n<style>\\n:root{--bg:#f2f4f7;--card:#fff;--fg:#14202b;--mut:#6b7885;--line:#e3e8ee;--acc:#0f766e;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}\\n@media (prefers-color-scheme:dark){:root{--bg:#10161c;--card:#18212a;--fg:#e6edf3;--mut:#8b99a6;--line:#27323d}}\\n*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg)}\\nheader{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0}\\nheader h1{font-size:17px;margin:0;flex:1}\\n.pill{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:#6b788522;color:var(--mut)}\\n.pill.on{background:#16a34a22;color:var(--ok)}.pill.bad{background:#dc262622;color:var(--bad)}.pill.warn{background:#d9770622;color:var(--warn)}\\nnav{display:flex;gap:4px;padding:8px 16px 0}nav button{border:0;background:none;padding:9px 14px;border-radius:10px 10px 0 0;color:var(--mut);font:inherit;cursor:pointer}\\nnav button.on{background:var(--card);color:var(--acc);font-weight:700}\\nmain{padding:0 16px 24px;max-width:980px;margin:auto}\\n.tab{display:none;background:var(--card);border-radius:0 14px 14px 14px;padding:16px;box-shadow:0 0 0 1px var(--line)}.tab.on{display:block}\\nh2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:16px 0 8px}h2:first-child{margin-top:0}\\n.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}\\n.kpi{background:var(--bg);border-radius:12px;padding:12px}.kpi small{color:var(--mut);display:block}.kpi b{font-size:22px}\\n.leds{display:flex;flex-wrap:wrap;gap:8px}.led{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;background:var(--bg);font-size:13px}\\n.led i{width:12px;height:12px;border-radius:50%;background:#9aa5b1}.led.on i{background:var(--ok);box-shadow:0 0 6px var(--ok)}\\n.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}\\nbutton.b{font:inherit;padding:12px 18px;border:0;border-radius:12px;background:var(--bg);color:var(--fg);cursor:pointer;min-height:44px}\\nbutton.b.pri{background:var(--acc);color:#fff;font-weight:700}button.b.dan{background:#dc262618;color:var(--bad);font-weight:700}\\nbutton.b.sw.on{background:var(--ok);color:#fff}button.b:disabled{opacity:.4;cursor:not-allowed}\\ninput{font:inherit;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:140px}\\ncanvas{width:100%;height:200px;background:var(--bg);border-radius:12px}\\npre{background:var(--bg);padding:12px;border-radius:12px;max-height:340px;overflow:auto;font-size:12.5px;margin:0}\\n.hint{color:var(--mut);font-size:13px}\\n</style>\\n</head>\\n<body>\\n<div id=\\\"app\\\">\\n  <header>\\n    <h1 id=\\\"title\\\">SCADA</h1>\\n    <span class=\\\"pill\\\" id=\\\"p-plc\\\">PLC</span>\\n    <span class=\\\"pill\\\" id=\\\"p-cloud\\\">Cloud</span>\\n    <span class=\\\"pill\\\" id=\\\"p-role\\\"></span>\\n    \\n  </header>\\n  <nav id=\\\"nav\\\">\\n    <button data-t=\\\"mon\\\" class=\\\"on\\\">Gi\\u00e1m s\\u00e1t</button><button data-t=\\\"ctl\\\">\\u0110i\\u1ec1u khi\\u1ec3n</button>\\n    <button data-t=\\\"rep\\\">B\\u00e1o c\\u00e1o</button><button data-t=\\\"log\\\">Nh\\u1eadt k\\u00fd</button>\\n  </nav>\\n  <main>\\n    <section class=\\\"tab on\\\" id=\\\"t-mon\\\">\\n      <h2>M\\u00e1y</h2>\\n      <div class=\\\"grid\\\">\\n        <div class=\\\"kpi\\\"><small>B\\u0103ng t\\u1ea3i</small><b id=\\\"k-conv\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>\\u0110\\u1ebfm hi\\u1ec7n t\\u1ea1i / m\\u1ee5c ti\\u00eau</small><b id=\\\"k-count\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>T\\u1ed5ng \\u0111\\u1ebfm</small><b id=\\\"k-total\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>Th\\u1eddi gian ch\\u1ea1y PLC</small><b id=\\\"k-run\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>Ch\\u1ebf \\u0111\\u1ed9</small><b id=\\\"k-mode\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>S\\u1ed1 l\\u1ea7n kh\\u1edfi \\u0111\\u1ed9ng b\\u01a1m</small><b id=\\\"k-pump\\\">\\u2013</b></div>\\n      </div>\\n      <h2>C\\u1ea3nh b\\u00e1o</h2><div id=\\\"alarms\\\" class=\\\"leds\\\"></div>\\n      <h2>\\u0110\\u1ea7u v\\u00e0o X</h2><div id=\\\"xs\\\" class=\\\"leds\\\"></div>\\n      <h2>\\u0110\\u1ea7u ra Y</h2><div id=\\\"ys\\\" class=\\\"leds\\\"></div>\\n      <p class=\\\"hint\\\" id=\\\"sys\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-ctl\\\">\\n      <p class=\\\"hint\\\" id=\\\"ctl-hint\\\"></p>\\n      <h2>Ch\\u1ebf \\u0111\\u1ed9</h2>\\n      <div class=\\\"row\\\"><button class=\\\"b\\\" id=\\\"m-auto\\\">T\\u1ef1 \\u0111\\u1ed9ng</button><button class=\\\"b\\\" id=\\\"m-man\\\">Th\\u1ee7 c\\u00f4ng</button></div>\\n      <h2>\\u0110\\u1ea7u ra (ch\\u1ec9 \\u1edf ch\\u1ebf \\u0111\\u1ed9 th\\u1ee7 c\\u00f4ng)</h2>\\n      <div class=\\\"row\\\" id=\\\"sw\\\"></div>\\n      <h2>B\\u0103ng t\\u1ea3i</h2>\\n      <div class=\\\"row\\\"><button class=\\\"b pri\\\" id=\\\"c-start\\\">Ch\\u1ea1y</button><button class=\\\"b dan\\\" id=\\\"c-stop\\\">D\\u1eebng</button></div>\\n      <div class=\\\"row\\\"><label>S\\u1ed1 l\\u01b0\\u1ee3ng m\\u1ee5c ti\\u00eau (0 = kh\\u00f4ng gi\\u1edbi h\\u1ea1n)&nbsp;<input id=\\\"tgt\\\" type=\\\"number\\\" min=\\\"0\\\" max=\\\"65535\\\"></label>\\n        <button class=\\\"b\\\" id=\\\"c-set\\\">\\u0110\\u1eb7t</button><button class=\\\"b dan\\\" id=\\\"c-reset\\\">Xo\\u00e1 s\\u1ed1 \\u0111\\u1ebfm</button></div>\\n      <p class=\\\"hint\\\" id=\\\"ack\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-rep\\\">\\n      <h2>S\\u1ea3n l\\u01b0\\u1ee3ng theo gi\\u1edd (48 gi\\u1edd g\\u1ea7n nh\\u1ea5t)</h2>\\n      <canvas id=\\\"cv\\\"></canvas>\\n      <p class=\\\"hint\\\" id=\\\"rep-info\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-log\\\"><pre id=\\\"logtxt\\\">\\u2026</pre></section>\\n  </main>\\n</div>\\n<script src=\\\"/scada/app.js\\\"></script>\\n</body>\\n</html>\\n\"};\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 660,
+  "wires": [
+   [
+    "http_resp"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_page2",
+  "type": "http in",
+  "name": "trang điều khiển /",
+  "url": "/scada/",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 700,
+  "wires": [
+   [
+    "wf_page2"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_page2",
+  "type": "function",
+  "name": "trang điều khiển /",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\nreturn {statusCode: 200, headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer'}, payload: \"<!doctype html>\\n<html lang=\\\"vi\\\">\\n<head>\\n<meta charset=\\\"utf-8\\\">\\n<meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">\\n<title>SCADA nh\\u00e0 m\\u00e1y</title>\\n<style>\\n:root{--bg:#f2f4f7;--card:#fff;--fg:#14202b;--mut:#6b7885;--line:#e3e8ee;--acc:#0f766e;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}\\n@media (prefers-color-scheme:dark){:root{--bg:#10161c;--card:#18212a;--fg:#e6edf3;--mut:#8b99a6;--line:#27323d}}\\n*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg)}\\nheader{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0}\\nheader h1{font-size:17px;margin:0;flex:1}\\n.pill{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:#6b788522;color:var(--mut)}\\n.pill.on{background:#16a34a22;color:var(--ok)}.pill.bad{background:#dc262622;color:var(--bad)}.pill.warn{background:#d9770622;color:var(--warn)}\\nnav{display:flex;gap:4px;padding:8px 16px 0}nav button{border:0;background:none;padding:9px 14px;border-radius:10px 10px 0 0;color:var(--mut);font:inherit;cursor:pointer}\\nnav button.on{background:var(--card);color:var(--acc);font-weight:700}\\nmain{padding:0 16px 24px;max-width:980px;margin:auto}\\n.tab{display:none;background:var(--card);border-radius:0 14px 14px 14px;padding:16px;box-shadow:0 0 0 1px var(--line)}.tab.on{display:block}\\nh2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:16px 0 8px}h2:first-child{margin-top:0}\\n.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}\\n.kpi{background:var(--bg);border-radius:12px;padding:12px}.kpi small{color:var(--mut);display:block}.kpi b{font-size:22px}\\n.leds{display:flex;flex-wrap:wrap;gap:8px}.led{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;background:var(--bg);font-size:13px}\\n.led i{width:12px;height:12px;border-radius:50%;background:#9aa5b1}.led.on i{background:var(--ok);box-shadow:0 0 6px var(--ok)}\\n.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}\\nbutton.b{font:inherit;padding:12px 18px;border:0;border-radius:12px;background:var(--bg);color:var(--fg);cursor:pointer;min-height:44px}\\nbutton.b.pri{background:var(--acc);color:#fff;font-weight:700}button.b.dan{background:#dc262618;color:var(--bad);font-weight:700}\\nbutton.b.sw.on{background:var(--ok);color:#fff}button.b:disabled{opacity:.4;cursor:not-allowed}\\ninput{font:inherit;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:140px}\\ncanvas{width:100%;height:200px;background:var(--bg);border-radius:12px}\\npre{background:var(--bg);padding:12px;border-radius:12px;max-height:340px;overflow:auto;font-size:12.5px;margin:0}\\n.hint{color:var(--mut);font-size:13px}\\n</style>\\n</head>\\n<body>\\n<div id=\\\"app\\\">\\n  <header>\\n    <h1 id=\\\"title\\\">SCADA</h1>\\n    <span class=\\\"pill\\\" id=\\\"p-plc\\\">PLC</span>\\n    <span class=\\\"pill\\\" id=\\\"p-cloud\\\">Cloud</span>\\n    <span class=\\\"pill\\\" id=\\\"p-role\\\"></span>\\n    \\n  </header>\\n  <nav id=\\\"nav\\\">\\n    <button data-t=\\\"mon\\\" class=\\\"on\\\">Gi\\u00e1m s\\u00e1t</button><button data-t=\\\"ctl\\\">\\u0110i\\u1ec1u khi\\u1ec3n</button>\\n    <button data-t=\\\"rep\\\">B\\u00e1o c\\u00e1o</button><button data-t=\\\"log\\\">Nh\\u1eadt k\\u00fd</button>\\n  </nav>\\n  <main>\\n    <section class=\\\"tab on\\\" id=\\\"t-mon\\\">\\n      <h2>M\\u00e1y</h2>\\n      <div class=\\\"grid\\\">\\n        <div class=\\\"kpi\\\"><small>B\\u0103ng t\\u1ea3i</small><b id=\\\"k-conv\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>\\u0110\\u1ebfm hi\\u1ec7n t\\u1ea1i / m\\u1ee5c ti\\u00eau</small><b id=\\\"k-count\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>T\\u1ed5ng \\u0111\\u1ebfm</small><b id=\\\"k-total\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>Th\\u1eddi gian ch\\u1ea1y PLC</small><b id=\\\"k-run\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>Ch\\u1ebf \\u0111\\u1ed9</small><b id=\\\"k-mode\\\">\\u2013</b></div>\\n        <div class=\\\"kpi\\\"><small>S\\u1ed1 l\\u1ea7n kh\\u1edfi \\u0111\\u1ed9ng b\\u01a1m</small><b id=\\\"k-pump\\\">\\u2013</b></div>\\n      </div>\\n      <h2>C\\u1ea3nh b\\u00e1o</h2><div id=\\\"alarms\\\" class=\\\"leds\\\"></div>\\n      <h2>\\u0110\\u1ea7u v\\u00e0o X</h2><div id=\\\"xs\\\" class=\\\"leds\\\"></div>\\n      <h2>\\u0110\\u1ea7u ra Y</h2><div id=\\\"ys\\\" class=\\\"leds\\\"></div>\\n      <p class=\\\"hint\\\" id=\\\"sys\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-ctl\\\">\\n      <p class=\\\"hint\\\" id=\\\"ctl-hint\\\"></p>\\n      <h2>Ch\\u1ebf \\u0111\\u1ed9</h2>\\n      <div class=\\\"row\\\"><button class=\\\"b\\\" id=\\\"m-auto\\\">T\\u1ef1 \\u0111\\u1ed9ng</button><button class=\\\"b\\\" id=\\\"m-man\\\">Th\\u1ee7 c\\u00f4ng</button></div>\\n      <h2>\\u0110\\u1ea7u ra (ch\\u1ec9 \\u1edf ch\\u1ebf \\u0111\\u1ed9 th\\u1ee7 c\\u00f4ng)</h2>\\n      <div class=\\\"row\\\" id=\\\"sw\\\"></div>\\n      <h2>B\\u0103ng t\\u1ea3i</h2>\\n      <div class=\\\"row\\\"><button class=\\\"b pri\\\" id=\\\"c-start\\\">Ch\\u1ea1y</button><button class=\\\"b dan\\\" id=\\\"c-stop\\\">D\\u1eebng</button></div>\\n      <div class=\\\"row\\\"><label>S\\u1ed1 l\\u01b0\\u1ee3ng m\\u1ee5c ti\\u00eau (0 = kh\\u00f4ng gi\\u1edbi h\\u1ea1n)&nbsp;<input id=\\\"tgt\\\" type=\\\"number\\\" min=\\\"0\\\" max=\\\"65535\\\"></label>\\n        <button class=\\\"b\\\" id=\\\"c-set\\\">\\u0110\\u1eb7t</button><button class=\\\"b dan\\\" id=\\\"c-reset\\\">Xo\\u00e1 s\\u1ed1 \\u0111\\u1ebfm</button></div>\\n      <p class=\\\"hint\\\" id=\\\"ack\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-rep\\\">\\n      <h2>S\\u1ea3n l\\u01b0\\u1ee3ng theo gi\\u1edd (48 gi\\u1edd g\\u1ea7n nh\\u1ea5t)</h2>\\n      <canvas id=\\\"cv\\\"></canvas>\\n      <p class=\\\"hint\\\" id=\\\"rep-info\\\"></p>\\n    </section>\\n\\n    <section class=\\\"tab\\\" id=\\\"t-log\\\"><pre id=\\\"logtxt\\\">\\u2026</pre></section>\\n  </main>\\n</div>\\n<script src=\\\"/scada/app.js\\\"></script>\\n</body>\\n</html>\\n\"};\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 700,
+  "wires": [
+   [
+    "http_resp"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_js",
+  "type": "http in",
+  "name": "app.js",
+  "url": "/scada/app.js",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 740,
+  "wires": [
+   [
+    "wf_js"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_js",
+  "type": "function",
+  "name": "app.js",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\nreturn {statusCode: 200, headers: {'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer'}, payload: \"'use strict';\\n(function () {\\n  const $ = (s) => document.querySelector(s);\\n  const H = { 'Content-Type': 'application/json', 'X-Requested-With': 'scada' };\\n  const R = { MODE: 3, MAN: 4, RUN: 6, TGT: 7, RESET: 9 };\\n  let S = null, tab = 'mon';\\n\\n  const ERR = {\\n    invalid_credentials: 'Sai t\\u00e0i kho\\u1ea3n ho\\u1eb7c m\\u1eadt kh\\u1ea9u.',\\n    rate_limited: 'Sai qu\\u00e1 nhi\\u1ec1u l\\u1ea7n, th\\u1eed l\\u1ea1i sau v\\u00e0i ph\\u00fat.',\\n    forbidden: 'T\\u00e0i kho\\u1ea3n ch\\u1ec9 xem, kh\\u00f4ng \\u0111\\u01b0\\u1ee3c \\u0111i\\u1ec1u khi\\u1ec3n.',\\n    not_writable: 'Thanh ghi n\\u00e0y kh\\u00f4ng \\u0111\\u01b0\\u1ee3c ph\\u00e9p ghi.',\\n  };\\n\\n  async function api(path, method = 'GET', body) {\\n    const r = await fetch(path, { method, headers: H, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' });\\n    const j = await r.json().catch(() => ({}));\\n    if (r.status === 401) { location.reload(); throw new Error('unauthorized'); }\\n    if (!r.ok) throw new Error(ERR[j.error] || j.error || 'L\\u1ed7i ' + r.status);\\n    return j;\\n  }\\n\\n  const pill = (el, text, cls) => { el.textContent = text; el.className = 'pill ' + (cls || ''); };\\n  const hms = (s) => `${Math.floor(s / 3600)} gi\\u1edd ${String(Math.floor(s / 60) % 60).padStart(2, '0')} ph\\u00fat`;\\n  const led = (on, name) => `<span class=\\\"led ${on ? 'on' : ''}\\\"><i></i>${name}</span>`;\\n  const bits = (v, p) => [...Array(8).keys()].map((i) => led(v >> i & 1, p + i)).join('');\\n\\n  function render() {\\n    if (!S) return;\\n    $('#title').textContent = `SCADA \\u00b7 ${S.site}/${S.device}`;\\n    const online = S.status === 'online' && S.fresh;\\n    pill($('#p-plc'), online ? 'PLC online' : S.status === 'plc_fault' ? 'PLC l\\u1ed7i' : 'PLC m\\u1ea5t k\\u1ebft n\\u1ed1i', online ? 'on' : 'bad');\\n    pill($('#p-cloud'), { connected: 'Cloud \\u2713', connecting: 'Cloud\\u2026', disconnected: 'Cloud \\u2717', disabled: 'Cloud t\\u1eaft' }[S.cloud] || S.cloud,\\n      S.cloud === 'connected' ? 'on' : S.cloud === 'disabled' ? '' : 'warn');\\n    pill($('#p-role'), S.role === 'operator' ? S.user + ' \\u00b7 \\u0111i\\u1ec1u khi\\u1ec3n' : S.user + ' \\u00b7 ch\\u1ec9 xem');\\n\\n    $('#k-conv').textContent = S.conveyorText;\\n    $('#k-count').textContent = `${S.count} / ${S.target || '\\u221e'}`;\\n    $('#k-total').textContent = S.total;\\n    $('#k-run').textContent = hms(S.runSeconds);\\n    $('#k-mode').textContent = S.manual ? 'Th\\u1ee7 c\\u00f4ng' : 'T\\u1ef1 \\u0111\\u1ed9ng';\\n    $('#k-pump').textContent = S.pumpStarts;\\n    $('#alarms').innerHTML = led(S.alarms & 1, 'E-stop') + led(S.alarms & 2, 'L\\u1ed7i c\\u1ea3m bi\\u1ebfn m\\u1ee9c');\\n    $('#xs').innerHTML = bits(S.inputs, 'X');\\n    $('#ys').innerHTML = bits(S.outputs, 'Y');\\n    $('#sys').textContent = `Thi\\u1ebft b\\u1ecb LAN \\u0111ang n\\u1ed1i: ${S.localClients} \\u00b7 \\u0110i\\u1ec1u khi\\u1ec3n t\\u1eeb xa (\\u0111i\\u1ec7n tho\\u1ea1i): ${S.remoteAllowed ? 'B\\u1eacT' : 'T\\u1eaeT'}`;\\n\\n    const ctl = S.role === 'operator' && online;\\n    $('#ctl-hint').textContent = S.role !== 'operator' ? 'T\\u00e0i kho\\u1ea3n ch\\u1ec9 xem. \\u0110\\u0103ng nh\\u1eadp t\\u00e0i kho\\u1ea3n \\u0111i\\u1ec1u khi\\u1ec3n \\u0111\\u1ec3 ghi l\\u1ec7nh.'\\n      : online ? 'Kho\\u00e1 li\\u00ean \\u0111\\u1ed9ng an to\\u00e0n (E-stop, \\u0111\\u1ee7 s\\u1ed1 l\\u01b0\\u1ee3ng) lu\\u00f4n do PLC quy\\u1ebft \\u0111\\u1ecbnh.' : 'PLC ch\\u01b0a s\\u1eb5n s\\u00e0ng.';\\n    ['#m-auto', '#m-man', '#c-start', '#c-stop', '#c-set', '#c-reset'].forEach((s) => { $(s).disabled = !ctl; });\\n    $('#m-auto').classList.toggle('pri', !S.manual); $('#m-man').classList.toggle('pri', S.manual);\\n    $('#c-start').disabled = !ctl || S.runRequested; $('#c-stop').disabled = !ctl || !S.runRequested;\\n    $('#sw').innerHTML = [...Array(8).keys()].map((i) =>\\n      `<button class=\\\"b sw ${S.manualMask >> i & 1 ? 'on' : ''}\\\" data-i=\\\"${i}\\\" ${ctl && S.manual && i !== 1 ? '' : 'disabled'}>Y${i}</button>`).join('');\\n    if (document.activeElement !== $('#tgt')) $('#tgt').value = S.target;\\n    $('#ack').textContent = S.lastAck ? 'Ph\\u1ea3n h\\u1ed3i cu\\u1ed1i: ' + S.lastAck : '';\\n    if (tab === 'rep') drawChart();\\n  }\\n\\n  async function send(a, v) {\\n    try { await api('/scada/api/cmd', 'POST', { a, v }); } catch (e) { $('#ack').textContent = e.message; }\\n  }\\n\\n  function drawChart() {\\n    const cv = $('#cv'), h = S.history;\\n    const dpr = window.devicePixelRatio || 1;\\n    cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;\\n    const g = cv.getContext('2d'); g.scale(dpr, dpr);\\n    const w = cv.clientWidth, ht = cv.clientHeight;\\n    g.clearRect(0, 0, w, ht);\\n    if (!h) { $('#rep-info').textContent = 'Ch\\u01b0a nh\\u1eadn l\\u1ecbch s\\u1eed gi\\u1edd t\\u1eeb PLC.'; return; }\\n    const vals = h.c.slice(0, 49).reverse();                  // c\\u0169 \\u2192 m\\u1edbi; ph\\u1ea7n t\\u1eed cu\\u1ed1i l\\u00e0 gi\\u1edd hi\\u1ec7n t\\u1ea1i\\n    const max = Math.max(1, ...vals);\\n    const bw = w / vals.length;\\n    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--acc') || '#0f766e';\\n    vals.forEach((v, i) => { const bh = (v / max) * (ht - 20); g.fillRect(i * bw + 1, ht - bh - 4, bw - 2, bh); });\\n    $('#rep-info').textContent = `Cao nh\\u1ea5t ${max} s\\u1ea3n ph\\u1ea9m/gi\\u1edd \\u00b7 \\u0111\\u00e3 ghi ${h.n} gi\\u1edd \\u00b7 gi\\u1edd hi\\u1ec7n t\\u1ea1i: ${vals[vals.length - 1]} (${Math.floor(h.s / 60)} ph\\u00fat)`;\\n  }\\n\\n  async function loadLog() { try { $('#logtxt').textContent = (await api('/scada/api/log')).join('\\\\n') || '(tr\\u1ed1ng)'; } catch { /* ignore */ } }\\n\\n  document.addEventListener('click', (e) => {\\n    const t = e.target.closest('nav button');\\n    if (t) {\\n      tab = t.dataset.t;\\n      document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b === t));\\n      document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x.id === 't-' + tab));\\n      if (tab === 'log') loadLog();\\n      if (tab === 'rep') drawChart();\\n    }\\n    const sw = e.target.closest('#sw .sw');\\n    if (sw && !sw.disabled) send(R.MAN, S.manualMask ^ (1 << +sw.dataset.i));\\n  });\\n  $('#m-auto').onclick = () => send(R.MODE, 0);\\n  $('#m-man').onclick = () => send(R.MODE, 1);\\n  $('#c-start').onclick = () => send(R.RUN, 1);\\n  $('#c-stop').onclick = () => send(R.RUN, 0);\\n  $('#c-set').onclick = () => { const v = parseInt($('#tgt').value || '0', 10); if (v >= 0 && v <= 65535) send(R.TGT, v); };\\n  $('#c-reset').onclick = () => { if (confirm('Xo\\u00e1 s\\u1ed1 \\u0111\\u1ebfm hi\\u1ec7n t\\u1ea1i v\\u1ec1 0?')) send(R.RESET, 1); };\\n  async function poll() {\\n    try { S = await api('/scada/api/state'); render(); } catch { /* m\\u1ea5t m\\u1ea1ng: th\\u1eed l\\u1ea1i */ }\\n  }\\n  poll(); setInterval(poll, 1000);\\n})();\\n\"};\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 740,
+  "wires": [
+   [
+    "http_resp"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_state",
+  "type": "http in",
+  "name": "trạng thái",
+  "url": "/scada/api/state",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 780,
+  "wires": [
+   [
+    "wf_state"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_state",
+  "type": "function",
+  "name": "trạng thái",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\n\nconst R = flow.get('regs') || new Array(40).fill(0), H = flow.get('ha'), HB = flow.get('hb');\nconst fresh = Date.now() - (flow.get('lastOk') || 0) < 5000;\nconst conv = ['Dừng', 'Chạy', 'Đủ số lượng', 'E-stop'];\nconst u32 = (i) => R[i] + R[i + 1] * 65536;\nconst body = {user: msg.req.scadaUser, role: msg.req.scadaRole, site: \"factory1\", device: \"plc01\",\n  status: flow.get('status') || 'offline', fresh, regs: R, inputs: R[0], outputs: R[1], alarms: R[2], manual: R[3] === 1, manualMask: R[4],\n  runRequested: R[6] === 1, target: R[7], conveyor: R[8], conveyorText: conv[R[8]] || '?', count: u32(14), total: u32(16), runSeconds: u32(10), pumpStarts: u32(12),\n  history: (H && HB) ? {c: H.slice(0, 49), s: H[49], n: H[50], m: HB.slice(1, 50)} : null,\n  lastAck: null, cloud: flow.get('mqtt') || 'unknown', localClients: 0,\n  remoteAllowed: String(env.get('SCADA_ALLOW_REMOTE') || 'false').toLowerCase() === 'true'};\nreturn {statusCode: 200, headers: {'content-type': 'application/json', 'cache-control': 'no-store'}, payload: JSON.stringify(body)};\n\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 780,
+  "wires": [
+   [
+    "http_resp"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_log",
+  "type": "http in",
+  "name": "nhật ký",
+  "url": "/scada/api/log",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 820,
+  "wires": [
+   [
+    "wf_log"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_log",
+  "type": "function",
+  "name": "nhật ký",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\nreturn {statusCode: 200, headers: {'content-type': 'application/json', 'cache-control': 'no-store'}, payload: JSON.stringify(flow.get('audit') || [])};\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 820,
+  "wires": [
+   [
+    "http_resp"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wi_cmd",
+  "type": "http in",
+  "name": "lệnh điều khiển",
+  "url": "/scada/api/cmd",
+  "method": "post",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 140,
+  "y": 860,
+  "wires": [
+   [
+    "wf_cmd"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "wf_cmd",
+  "type": "function",
+  "name": "lệnh điều khiển",
+  "func": "const __f = () => {\nif (!msg.req || !msg.req.scadaRole) return {statusCode: 401, payload: 'unauthorized', headers: {'content-type': 'text/plain'}};\n\nconst W = [3, 4, 6, 7, 9], fail = (code, err) => [{statusCode: code, headers: {'content-type': 'application/json'}, payload: JSON.stringify({error: err})}, null];\nif (msg.req.headers['x-requested-with'] !== 'scada') return fail(400, 'bad_request');\nif (msg.req.scadaRole !== 'operator') return fail(403, 'forbidden');\nconst c = msg.payload || {}, a = Number(c.a), v = Number(c.v);\nif (!W.includes(a)) return fail(400, 'not_writable');\nif (!Number.isInteger(v) || v < 0 || v > 65535) return fail(400, 'bad_value');\nconst audit = flow.get('audit') || []; audit.push(new Date().toISOString().slice(11, 19) + ' Điều khiển cục bộ (' + msg.req.scadaUser + '): D' + a + ' = ' + v);\nflow.set('audit', audit.slice(-200));\nreturn [{statusCode: 200, headers: {'content-type': 'application/json'}, payload: JSON.stringify({ok: true})}, {payload: {id: 'w' + Date.now().toString(36), a, v}}];\n\n};\nconst __r = __f();\nconst __fix = (m) => (m && m.statusCode !== undefined) ? Object.assign(m, {req: msg.req, res: msg.res}) : m;\nreturn Array.isArray(__r) ? __r.map(__fix) : __fix(__r);",
+  "outputs": 2,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 860,
+  "wires": [
+   [
+    "http_resp"
+   ],
+   [
+    "fn_cmd"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "tcp_in",
+  "type": "tcp in",
+  "name": "Modbus TCP server",
+  "server": "server",
+  "host": "",
+  "port": "1502",
+  "datamode": "stream",
+  "datatype": "buffer",
+  "newline": "",
+  "topic": "",
+  "trim": false,
+  "base64": false,
+  "tls": "",
+  "x": 140,
+  "y": 940,
+  "wires": [
+   [
+    "fn_mbs"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_mbs",
+  "type": "function",
+  "name": "trả lời Modbus (chỉ đọc)",
+  "func": "\nconst I = flow.get('img') ? flow.get('img').slice() : new Array(300).fill(0);\nif (!flow.get('img')) { (flow.get('regs') || []).forEach((v, i) => I[i] = v); (flow.get('ha') || []).forEach((v, i) => I[100 + i] = v); (flow.get('hb') || []).forEach((v, i) => I[199 + i] = v); }\n\nconst sid = msg._session && msg._session.id; if (!sid || !Buffer.isBuffer(msg.payload)) return null;\nconst key = 'b' + sid;\nlet buf = Buffer.concat([context.get(key) || Buffer.alloc(0), msg.payload]);\nif (buf.length > 1024) { context.set(key, null); return null; }\nconst fresh = Date.now() - (flow.get('lastOk') || 0) < 5000;\nconst out = [];\nwhile (buf.length >= 8) {\n  const len = buf.readUInt16BE(4);\n  if (buf.readUInt16BE(2) !== 0 || len < 2 || len > 254) { buf = Buffer.alloc(0); break; }     // không phải Modbus TCP\n  if (buf.length < 6 + len) break;\n  const fc = buf[7], hdr = Buffer.from(buf.subarray(0, 4));\n  let pdu;\n  const exc = (code) => Buffer.from([fc | 0x80, code]);\n  if ((fc === 3 || fc === 4) && len === 6) {\n    const addr = buf.readUInt16BE(8), qty = buf.readUInt16BE(10);\n    if (qty < 1 || qty > 125) pdu = exc(3);\n    else if (addr + qty > 300) pdu = exc(2);\n    else if (!fresh) pdu = exc(4);                              // PLC mất liên lạc: báo lỗi thay vì dữ liệu cũ\n    else { pdu = Buffer.alloc(2 + qty * 2); pdu[0] = fc; pdu[1] = qty * 2; for (let i = 0; i < qty; i++) pdu.writeUInt16BE(I[addr + i] & 0xFFFF, 2 + i * 2); }\n  } else pdu = exc(1);                                           // chỉ giám sát: mọi lệnh ghi bị từ chối\n  const rsp = Buffer.alloc(7 + pdu.length);\n  hdr.copy(rsp, 0); rsp.writeUInt16BE(pdu.length + 1, 4); rsp[6] = buf[6]; pdu.copy(rsp, 7);\n  out.push({payload: rsp, _session: msg._session});\n  buf = buf.subarray(6 + len);\n}\ncontext.set(key, buf.length ? Buffer.from(buf) : null);\nreturn [out];\n",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 360,
+  "y": 940,
+  "wires": [
+   [
+    "tcp_out"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "tcp_out",
+  "type": "tcp out",
+  "name": "",
+  "host": "",
+  "port": "",
+  "beserver": "reply",
+  "base64": false,
+  "end": false,
+  "tls": "",
+  "x": 580,
+  "y": 940,
+  "wires": [],
+  "z": "tab_plc"
+ },
+ {
+  "id": "ua_srv",
+  "type": "OpcUa-Server",
+  "port": "4840",
+  "name": "OPC UA server (chỉ đọc)",
+  "endpoint": "",
+  "usersFile": "users.json",
+  "nodesetDir": "",
+  "autoAcceptUnknownCertificate": false,
+  "registerToDiscovery": false,
+  "constructDefaultAddressSpace": true,
+  "allowAnonymous": true,
+  "endpointNone": true,
+  "endpointSign": true,
+  "endpointSignEncrypt": true,
+  "endpointBasic128Rsa15": false,
+  "endpointBasic256": false,
+  "endpointBasic256Sha256": true,
+  "maxSessions": 10,
+  "maxConnectionsPerEndpoint": 10,
+  "maxMessageSize": 4096,
+  "maxBufferSize": 4096,
+  "x": 560,
+  "y": 1020,
+  "wires": [
+   []
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "inj_ua_init",
+  "type": "inject",
+  "name": "tạo biến OPC UA",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "",
+  "crontab": "",
+  "once": true,
+  "onceDelay": "3",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 1020,
+  "wires": [
+   [
+    "fn_ua_init"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_ua_init",
+  "type": "function",
+  "name": "khai báo biến",
+  "func": "const out = [{topic: 'ns=1;s=PLC', payload: {opcuaCommand: 'addFolder'}}];\nout.push({topic: 'ns=1;s=Status;datatype=String', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Online;datatype=Boolean', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Inputs;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Outputs;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Alarms;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Mode;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=RunRequest;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Target;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Conveyor;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Count;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=Total;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=RunSeconds;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nout.push({topic: 'ns=1;s=PumpStarts;datatype=Int32', payload: {opcuaCommand: 'addVariable'}});\nreturn [out];",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 340,
+  "y": 1020,
+  "wires": [
+   [
+    "ua_srv"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "inj_ua",
+  "type": "inject",
+  "name": "cập nhật mỗi 1 s",
+  "props": [
+   {
+    "p": "payload"
+   }
+  ],
+  "repeat": "1",
+  "crontab": "",
+  "once": true,
+  "onceDelay": "6",
+  "topic": "",
+  "payload": "",
+  "payloadType": "date",
+  "x": 140,
+  "y": 1080,
+  "wires": [
+   [
+    "fn_ua"
+   ]
+  ],
+  "z": "tab_plc"
+ },
+ {
+  "id": "fn_ua",
+  "type": "function",
+  "name": "giá trị",
+  "func": "\nconst R = flow.get('regs'); if (!R) return null;\nconst fresh = Date.now() - (flow.get('lastOk') || 0) < 5000, u32 = (i) => R[i] + R[i + 1] * 65536;\nconst v = {Status: flow.get('status') || 'offline', Online: fresh && flow.get('status') === 'online', Inputs: R[0], Outputs: R[1], Alarms: R[2], Mode: R[3], RunRequest: R[6],\n  Target: R[7], Conveyor: R[8], Count: u32(14), Total: u32(16), RunSeconds: u32(10), PumpStarts: u32(12)};\nreturn [Object.keys(v).map(k => ({payload: {messageType: 'Variable', namespace: '1', variableName: k, variableValue: v[k]}}))];",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 340,
+  "y": 1080,
+  "wires": [
+   [
+    "ua_srv"
    ]
   ],
   "z": "tab_plc"

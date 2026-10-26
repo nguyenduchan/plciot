@@ -14,6 +14,8 @@
 | `cloud/` | Mosquitto + ACL + **app server** (JWT, OTP Telegram, bundle, ingest MQTT → SQLite 30 ngày, Telegram đếm đủ). |
 | `webapp/` | PWA: đăng ký/đăng nhập Telegram OTP → tải bundle; MQTT client tự chứa. |
 | `edge/` | Node-RED (Docker) cầu nối PLC Siemens S7 / Modbus TCP vào cùng hợp đồng MQTT. |
+| `edge/` + `docs/EDGE-LOCAL.md` | **Phần mềm local khuyến nghị:** Node-RED (Modbus/S7/OPC UA/EtherNet-IP/MC/FINS/ADS, MQTT, trang `/scada`, server Modbus/OPC UA) + InfluxDB + Grafana. |
+| `scada/` | **SCADA nội bộ nhà máy (C#/.NET 8)**: Core + Services + **Framework** (một/nhiều màn hình, quyền điều khiển, điện thoại) và **giải pháp riêng từng khách hàng** ở `scada/solutions/`. Xem [docs/SCADA-FRAMEWORK.md](docs/SCADA-FRAMEWORK.md), [docs/SCADA.md](docs/SCADA.md). |
 | `tools/` | Bộ giả lập gateway/PLC, bộ sinh luồng Node-RED, tạo icon. |
 | `docs/PROTOCOL.md` | Bản đồ thanh ghi và topic MQTT. |
 

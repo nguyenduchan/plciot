@@ -1,0 +1,4 @@
+# IP/CIDR được bỏ qua mọi giới hạn của HAProxy (mỗi dòng một mục). Ví dụ:
+#   203.0.113.10        # NAT của nhà máy có nhiều gateway
+#   198.51.100.0/24
+# Để trống nếu không cần.

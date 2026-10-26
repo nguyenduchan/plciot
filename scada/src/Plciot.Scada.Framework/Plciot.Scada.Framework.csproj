@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- FRAMEWORK: phần cố định dùng chung cho mọi khách hàng (chế độ một/nhiều màn hình, quyền điều khiển, điện thoại, vòng đời ứng dụng).
+       Giải pháp của từng khách hàng nằm ở scada/solutions/<Ten> và chỉ tham chiếu dự án này; KHÔNG sửa Core/Services/Framework cho nhu cầu riêng. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
+  </ItemGroup>
+
+</Project>

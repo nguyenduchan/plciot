@@ -1,5 +1,5 @@
 # Caddy tự xin và gia hạn chứng chỉ Let's Encrypt cho tên miền này.
 # Bản ghi DNS của plc-mqtt phải là loại A trỏ về IP của VPS, ở chế độ "DNS only" (đám mây xám).
 plc-mqtt.dieukhientudong.net {
-	reverse_proxy mqtt:9001
+	reverse_proxy haproxy:9002
 }

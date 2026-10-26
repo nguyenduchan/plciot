@@ -1,5 +1,9 @@
 # Máy chủ MQTT đặt tại Việt Nam (VPS), kết nối trực tiếp, không qua Cloudflare Tunnel.
-#   Điện thoại / gateway --wss:443--> Caddy (TLS Let's Encrypt) --> Mosquitto :9001
+#   wss://  :443  --> Caddy (TLS Let's Encrypt) --> HAProxy :9002 --+
+#   mqtts:// :48263 -> HAProxy (TLS, dùng chung chứng chỉ của Caddy) --+--> Mosquitto (chỉ nội bộ)
+#   mqtt://  :38417 -> HAProxy (không mã hóa) ------------------------+
+#   ws://    :36921 -> HAProxy (không mã hóa) ------------------------+
+# HAProxy giới hạn kết nối/tốc độ theo IP, cắt slowloris, ban IP tấn công (config/haproxy.cfg).
 # Chạy:  docker compose -f docker-compose.vps.yml up -d
 name: plciot
 
@@ -14,6 +18,34 @@ services:
     volumes:                     # không mở cổng ra ngoài; chỉ Caddy trong mạng nội bộ truy cập được
       - ./config:/mosquitto/config
       - mqtt-data:/mosquitto/data
+    networks: [plciot]
+
+  haproxy:                       # cổng vào MQTT: TLS + chống DDoS lớp kết nối
+    image: haproxy:2.8-alpine
+    container_name: plciot-haproxy
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 1.0
+    pids_limit: 64
+    user: root                   # entrypoint đọc khoá TLS của Caddy; haproxy tự bỏ quyền worker
+    entrypoint: ["/bin/sh", "/usr/local/etc/haproxy/haproxy-entrypoint.sh"]
+    environment:
+      MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
+      MAX_CONN_PER_IP: ${MAX_CONN_PER_IP:-30}
+      MAX_CONN_RATE: ${MAX_CONN_RATE:-60}
+      BAN_CONN_RATE: ${BAN_CONN_RATE:-300}
+      MAX_BYTES_10S: ${MAX_BYTES_10S:-262144}
+      MAX_TLS_RATE: ${MAX_TLS_RATE:-100}
+    ports:
+      - "${PUB_PORT_MQTT:-38417}:1883"   # MQTT không mã hóa, cổng ngoài ngẫu nhiên (bỏ dòng này nếu chỉ muốn mã hóa)
+      - "${PUB_PORT_MQTTS:-48263}:8883"  # MQTTS, cổng ngoài ngẫu nhiên
+      - "${PUB_PORT_WS:-36921}:9001"    # ws:// không mã hóa, cổng ngoài ngẫu nhiên (bỏ dòng này nếu chỉ muốn mã hóa)
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./config/trusted.lst:/usr/local/etc/haproxy/trusted.lst:ro
+      - ./config/haproxy-entrypoint.sh:/usr/local/etc/haproxy/haproxy-entrypoint.sh:ro
+      - caddy-data:/caddy:ro
+    depends_on: [mqtt, caddy]
     networks: [plciot]
 
   caddy:

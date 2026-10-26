@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Quản lý người dùng — Giám sát PLC</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:16px;max-width:760px;margin:auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
+.top h1{font-size:20px;margin:0}
+.top a{color:var(--acc);text-decoration:none;font-weight:600}
+.u{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.u:last-child{border:0}
+.u b{font-size:15px}
+.u small{color:var(--mut);display:block;font-size:12.5px}
+.u .acts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.u .acts button,.u .acts select{padding:8px 10px;font-size:13px;border-radius:10px}
+.u.dis b{text-decoration:line-through;opacity:.6}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accbg);color:var(--acc);text-transform:uppercase}
+.tag.viewer{background:#6b788522;color:var(--mut)}.tag.admin{background:#d9770622;color:var(--warn)}
+select{font:inherit;background:var(--bg);color:var(--fg);border:0}
+#msg{min-height:1.3em;font-size:14px;margin:0 0 10px}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
+.scopes{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}.scopes label{display:flex;align-items:center;gap:6px;margin:0;font-size:14px;color:var(--fg)}.scopes input{width:18px;height:18px}
+.help{font-size:13px;color:var(--mut);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="top"><h1>Quản lý người dùng</h1><a href="index.html">← Về ứng dụng</a></div>
+<p id="msg"></p>
+
+<div class="panel form" style="max-width:none;margin-bottom:14px">
+  <h2>Thêm người dùng</h2>
+  <label>Số điện thoại (Việt Nam)<input id="n-phone" inputmode="tel" autocomplete="off" placeholder="09xxxxxxxx"></label>
+  <label>Mật khẩu (tối thiểu 8 ký tự)<input id="n-pass" type="text" autocomplete="off" autocapitalize="off"></label>
+  <label>Vai trò
+    <select id="n-role" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
+  </label>
+  <label>Mã nhà máy (site) — để trống = tạo site riêng; nhập site có sẵn để chia sẻ cùng PLC<input id="n-site" autocapitalize="off" autocomplete="off"></label>
+  <label>Mã thiết bị<input id="n-dev" value="plc01" autocapitalize="off" autocomplete="off"></label>
+  <div class="help" style="margin:0">Được xem (monitor)</div>
+  <div id="n-scopes" class="scopes" style="margin-bottom:14px"></div>
+  <div class="row"><button id="n-add" class="primary">Thêm người dùng</button></div>
+  <p class="help"><b>admin</b>: quản lý người dùng + điều khiển. <b>operator</b>: xem + điều khiển. <b>viewer</b>: chỉ xem (broker không cấp quyền gửi lệnh).<br>Kênh <b>không mã hoá</b> (mqtt:// , ws://) luôn chỉ xem; điều khiển chỉ qua <b>mqtts:// , wss://</b> và phải có vai trò admin/operator.</p>
+</div>
+
+<div class="panel" style="max-width:none">
+  <h2>Danh sách (<span id="count">0</span>)</h2>
+  <div id="list">Đang tải…</div>
+</div>
+<script src="admin.js"></script>
+</body>
+</html>

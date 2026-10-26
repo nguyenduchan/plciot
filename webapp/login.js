@@ -9,6 +9,8 @@ const LS = {
 const $ = (s) => document.querySelector(s);
 const ERR = {
   invalid_credentials: 'Sai số điện thoại hoặc mật khẩu.',
+  account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
+  registration_closed: 'Đăng ký tự do đã đóng. Liên hệ quản trị viên để được thêm tài khoản.',
   missing_credentials: 'Nhập đủ số điện thoại và mật khẩu.',
   telegram_not_linked: 'SĐT chưa liên kết Telegram. Mở bot → /start → chia sẻ đúng số VN này.',
   user_exists: 'Số này đã là tài khoản. Hãy đăng nhập.',
@@ -127,6 +129,7 @@ async function finishLogin(data) {
     token: data.token,
     userId: data.userId,
     username: data.username,
+    role: data.role,
     version: data.version,
     cacheName,
     apiBase: base,

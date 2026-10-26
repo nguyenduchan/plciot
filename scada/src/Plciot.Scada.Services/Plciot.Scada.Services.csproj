@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dịch vụ tích hợp (tuỳ chọn, bật theo cấu hình): broker LAN, cầu nối cloud TLS, web giám sát, server Modbus/OPC UA, InfluxDB,
+       máy chủ/khách giám sát từ xa. Phụ thuộc Core; giao diện của khách hàng không bắt buộc phải dùng. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="Web\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Server" Version="1.5.376.244" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Plciot.Scada.Core\Plciot.Scada.Core.csproj" />
+  </ItemGroup>
+
+</Project>
