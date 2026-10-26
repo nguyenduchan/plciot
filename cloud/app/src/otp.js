@@ -22,7 +22,8 @@ function genCode() {
 export async function requestRegisterOtp(db, { phone, password, dataDir, webappSrc }) {
   const p = normalizePhone(phone);
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
-  if (!password || String(password).length < 6) return { error: 'weak_password', status: 400 };
+  // Đăng ký không cần mật khẩu (OTP Telegram); nếu có gửi lên thì vẫn kiểm tra độ dài.
+  if (password && String(password).length < 6) return { error: 'weak_password', status: 400 };
 
   // username === canonical VN phone (84…)
   if (findUserByPhone(db, p)) return { error: 'user_exists', status: 409 };
@@ -36,7 +37,7 @@ export async function requestRegisterOtp(db, { phone, password, dataDir, webappS
     phone: p,
     purpose: 'register',
     codeHash: hashCode(code),
-    passwordHash: hashPassword(password),
+    passwordHash: hashPassword(password || crypto.randomBytes(24).toString('hex')),
   });
 
   try {

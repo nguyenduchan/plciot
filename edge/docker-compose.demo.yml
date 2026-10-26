@@ -1,0 +1,26 @@
+# Chạy thử trên PC: PLC giả lập đếm vật + broker + webapp, cùng stack Node-RED/Grafana.
+#   python ../tools/gen_flows.py --protocol modbus --plc-host plc-sim --plc-port 5020 --mqtt mosquitto ... (xem docs/EDGE-LOCAL.md)
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+services:
+  nodered:
+    networks: [edge, plciot_net]      # tới broker của stack cloud (plciot-mqtt)
+
+  plc-sim:
+    image: python:3.12-alpine
+    container_name: plciot-plc-sim
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5020:5020"                          # cho SCADA C# chạy trực tiếp trên PC này
+    volumes:
+      - ../tools:/tools:ro
+    command: >
+      sh -c "python -u /tools/modbus_tcp_sim.py --port 5020 --hour 60 &
+      sleep 2;
+      python -c \"import socket,struct;s=socket.create_connection(('127.0.0.1',5020));[s.sendall(struct.pack('>HHHBBHH',1,0,6,1,6,a,v)) or s.recv(12) for a,v in((7,0),(6,1))]\";
+      wait"
+    networks: [edge]
+
+networks:
+  plciot_net:
+    name: plciot_net
+    external: true

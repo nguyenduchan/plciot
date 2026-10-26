@@ -11,7 +11,7 @@ const ERR = {
   invalid_credentials: 'Sai số điện thoại hoặc mật khẩu.',
   account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
   registration_closed: 'Đăng ký tự do đã đóng. Liên hệ quản trị viên để được thêm tài khoản.',
-  missing_credentials: 'Nhập đủ số điện thoại và mật khẩu.',
+  missing_credentials: 'Nhập số điện thoại.',
   telegram_not_linked: 'SĐT chưa liên kết Telegram. Mở bot → /start → chia sẻ đúng số VN này.',
   user_exists: 'Số này đã là tài khoản. Hãy đăng nhập.',
   user_not_found: 'Chưa có tài khoản. Chọn Đăng ký.',
@@ -62,7 +62,7 @@ function setError(codeOrMsg) {
 }
 
 function setBusy(on) {
-  ['btn-pass', 'btn-otp', 'btn-verify', 'btn-back', 'demo'].forEach((id) => {
+  ['btn-otp', 'btn-verify', 'btn-back', 'demo'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on;
   });
@@ -119,12 +119,16 @@ async function registerSw() {
 
 async function finishLogin(data) {
   const base = location.origin;
-  const cacheName = cacheNameFor(data.userId, data.version);
-  await putBundleFiles(data.token, data.files || [], cacheName, base);
-  await setActiveMeta(cacheName, data.userId, data.version);
-  const keys = await caches.keys();
-  await Promise.all(keys.filter((k) => k.startsWith('plc-') && k !== cacheName && k !== 'plc-meta')
-    .map((k) => caches.delete(k)));
+  // Cache API / Service Worker chỉ có trên HTTPS hoặc localhost. Trên HTTP trong LAN: bỏ qua gói offline, vào thẳng app (cần mạng).
+  const offlineOk = 'caches' in window;
+  const cacheName = offlineOk ? cacheNameFor(data.userId, data.version) : null;
+  if (offlineOk) {
+    await putBundleFiles(data.token, data.files || [], cacheName, base);
+    await setActiveMeta(cacheName, data.userId, data.version);
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k.startsWith('plc-') && k !== cacheName && k !== 'plc-meta')
+      .map((k) => caches.delete(k)));
+  }
   LS.set('session', {
     token: data.token,
     userId: data.userId,
@@ -133,6 +137,7 @@ async function finishLogin(data) {
     version: data.version,
     cacheName,
     apiBase: base,
+    online: !offlineOk,
   });
   const cfg = LS.get('cfg', {});
   cfg.demo = false;
@@ -147,6 +152,8 @@ async function finishLogin(data) {
   }
   LS.set('cfg', cfg);
   await registerSw();
+  // báo thành công ~1 giây rồi vào trang chính
+  await new Promise((r) => setTimeout(r, 900));
   location.replace('index.html');
 }
 
@@ -169,24 +176,25 @@ function applyMode() {
   document.querySelectorAll('#modes button').forEach((b) => {
     b.classList.toggle('on', b.dataset.mode === mode);
   });
-  const passWrap = $('#pass-wrap');
-  const btnPass = $('#btn-pass');
-  if (mode === 'register') {
-    passWrap.hidden = false;
-    $('#password').autocomplete = 'new-password';
-    btnPass.hidden = true;
-    $('#btn-otp').textContent = 'Gửi OTP đăng ký';
-    $('#btn-otp').className = 'primary';
-  } else {
-    passWrap.hidden = false;
-    $('#password').autocomplete = 'current-password';
-    btnPass.hidden = false;
-    btnPass.className = 'primary';
-    $('#btn-otp').textContent = 'Đăng nhập bằng OTP Telegram';
-    $('#btn-otp').className = 'fit';
-  }
+  stopOtpTimer();
   showStep(false);
   setError('');
+}
+
+let otpTimer = null;
+function stopOtpTimer() { if (otpTimer) clearInterval(otpTimer); otpTimer = null; }
+function startOtpTimer() {
+  stopOtpTimer();
+  let left = 300;
+  const tick = () => {
+    const m = String(Math.floor(left / 60)).padStart(2, '0');
+    const s = String(left % 60).padStart(2, '0');
+    $('#otp-timer').textContent = left > 0 ? `Mã hết hạn sau ${m}:${s}` : 'Mã đã hết hạn. Hãy gửi lại.';
+    $('#btn-resend').disabled = left > 240;   // cho gửi lại sau 60 giây
+    if (left-- <= 0) stopOtpTimer();
+  };
+  tick();
+  otpTimer = setInterval(tick, 1000);
 }
 
 async function loadAuthConfig() {
@@ -197,7 +205,7 @@ async function loadAuthConfig() {
     if (j.botLink) {
       hint.innerHTML = `Trước tiên mở <a href="${j.botLink}" target="_blank" rel="noopener">@${j.botUsername.replace(/^@/, '')}</a>, bấm <b>/start</b> và chia sẻ số điện thoại để nhận OTP.`;
     } else if (!j.telegram) {
-      hint.textContent = 'Máy chủ chưa cấu hình Telegram — dùng mật khẩu (seed user) hoặc chạy thử.';
+      hint.textContent = 'Máy chủ chưa cấu hình Telegram — dùng chạy thử.';
     }
   } catch {}
 }
@@ -205,7 +213,8 @@ async function loadAuthConfig() {
 async function tryResume() {
   const session = LS.get('session', null);
   if (!session || session.demo) return false;
-  if (!(await hasBundle(session))) return false;
+  if (!session.online && !(await hasBundle(session))) return false;
+  if (session.online && !session.token) return false;
   const wantUpdate = new URLSearchParams(location.search).get('update') === '1';
   if (!wantUpdate && navigator.onLine && session.token) {
     try {
@@ -226,52 +235,21 @@ async function tryResume() {
   return true;
 }
 
-$('#modes').onclick = (e) => {
-  const b = e.target.closest('button[data-mode]');
-  if (!b) return;
-  mode = b.dataset.mode;
-  applyMode();
-};
-
-$('#btn-pass').onclick = async () => {
-  setError('');
-  const phone = requireVnPhone();
-  if (!phone) return;
-  setBusy(true);
-  try {
-    const { ok, data } = await api('/api/login', {
-      username: phone,
-      phone,
-      password: $('#password').value,
-    });
-    if (!ok) { setError(data.error); return; }
-    await finishLogin(data);
-  } catch (ex) {
-    setError(ex.message || 'Không kết nối được máy chủ.');
-  } finally {
-    setBusy(false);
-  }
-};
-
 $('#btn-otp').onclick = async () => {
   setError('');
   const phone = requireVnPhone();
   if (!phone) return;
   setBusy(true);
   try {
-    if (mode === 'register') {
-      const password = $('#password').value;
-      const { ok, data } = await api('/api/register/request-otp', { phone, password });
-      if (!ok) { setError(data.error || data.detail); return; }
-      pendingPhone = data.phone || phone;
-      otpPurpose = 'register';
-    } else {
-      const { ok, data } = await api('/api/login/request-otp', { phone });
-      if (!ok) { setError(data.error || data.detail); return; }
-      pendingPhone = data.phone || phone;
-      otpPurpose = 'login';
-    }
+    const { ok, data } = await api('/api/login/request-otp', { phone });
+    if (!ok) { setError(data.error || data.detail); return; }
+    pendingPhone = data.phone || phone;
+    otpPurpose = data.purpose === 'register' ? 'register' : 'login';
+    $('#otp-info').textContent = otpPurpose === 'register'
+      ? 'Số điện thoại chưa đăng ký. Nhập OTP để tạo tài khoản và vào ứng dụng.'
+      : 'Người dùng đã đăng ký rồi. Nhập OTP để đăng nhập.';
     showStep(true);
+    startOtpTimer();
     $('#otp').focus();
   } catch (ex) {
     setError(ex.message || 'Không kết nối được máy chủ.');
@@ -287,6 +265,10 @@ $('#btn-verify').onclick = async () => {
     const path = otpPurpose === 'register' ? '/api/register/verify' : '/api/login/verify-otp';
     const { ok, data } = await api(path, { phone: pendingPhone, otp: $('#otp').value.trim() });
     if (!ok) { setError(data.error); return; }
+    stopOtpTimer();
+    $('#step-otp').hidden = true;
+    $('#ok-msg').textContent = otpPurpose === 'register' ? '✓ Tạo tài khoản thành công. Đang vào ứng dụng…' : '✓ Đăng nhập thành công. Đang vào ứng dụng…';
+    $('#ok-msg').hidden = false;
     await finishLogin(data);
   } catch (ex) {
     setError(ex.message || 'Không kết nối được máy chủ.');
@@ -295,7 +277,8 @@ $('#btn-verify').onclick = async () => {
   }
 };
 
-$('#btn-back').onclick = () => { showStep(false); setError(''); };
+$('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
+$('#btn-resend').onclick = () => $('#btn-otp').onclick();
 
 $('#demo').onclick = async () => {
   const cfg = Object.assign(LS.get('cfg', {}), { demo: true });

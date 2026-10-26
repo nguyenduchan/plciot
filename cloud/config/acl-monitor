@@ -1,4 +1,4 @@
-# Static roles. Per-user ACL lines are rewritten by plciot-app (mqttProvision) below MARKER.
+# plciot ACL — static roles (do not put per-user lines above MARKER)
 user gw
 topic write plc/+/+/telemetry
 topic write plc/+/+/status
@@ -13,3 +13,8 @@ topic read plc/+/+/ack
 topic read plc/+/+/history
 
 # MARKER_USER_ACL
+user u1
+topic read plc/s84967414167/plc01/telemetry
+topic read plc/s84967414167/plc01/status
+topic read plc/s84967414167/plc01/ack
+topic read plc/s84967414167/plc01/history

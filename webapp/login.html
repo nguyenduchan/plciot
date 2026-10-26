@@ -21,6 +21,8 @@
 #progress.on{display:block}
 .bar-track{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
 .bar-track i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#ok-msg{color:var(--ok,#16a34a);font-weight:600;font-size:15px;margin:0 0 12px}
+#ok-msg[hidden]{display:none}
 #error{color:var(--bad);font-size:14px;margin:0 0 12px;min-height:1.2em}
 .login-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .login-actions button{width:100%}
@@ -42,15 +44,12 @@
     <img src="icon.svg" alt="">
     <div>
       <h1>Giám sát PLC</h1>
-      <p>Username = SĐT Việt Nam · OTP qua Telegram</p>
+      <p>Số điện thoại Việt Nam · mã OTP qua Telegram (không cần mật khẩu)</p>
     </div>
   </div>
   <div class="panel form">
-    <div class="modes" id="modes">
-      <button type="button" data-mode="login" class="on">Đăng nhập</button>
-      <button type="button" data-mode="register">Đăng ký</button>
-    </div>
     <p id="error"></p>
+    <p id="ok-msg" class="ok" hidden></p>
     <p class="hint" id="tg-hint">Mở bot Telegram → <b>/start</b> → chia sẻ SĐT Việt Nam (cùng số sẽ dùng làm username).</p>
 
     <div id="step-creds" class="step">
@@ -58,19 +57,20 @@
         <label class="cc">Mã vùng<input id="cc" value="84" inputmode="numeric" autocomplete="tel-country-code" readonly></label>
         <label class="ph">Số di động VN<input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321" required></label>
       </div>
-      <label id="pass-wrap">Mật khẩu<input id="password" type="password" autocomplete="current-password"></label>
       <div class="login-actions">
-        <button type="button" id="btn-pass" class="primary">Đăng nhập bằng mật khẩu</button>
-        <button type="button" id="btn-otp" class="fit">Gửi OTP Telegram</button>
+        <button type="button" id="btn-otp" class="primary">Gửi OTP qua Telegram</button>
         <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
       </div>
     </div>
 
     <div id="step-otp" class="step" hidden>
+      <p class="hint" id="otp-info" style="font-weight:600"></p>
       <p class="hint">Nhập mã 6 số đã gửi vào Telegram.</p>
-      <label>Mã OTP<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+      <label>Mã OTP Telegram<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+      <p class="hint" id="otp-timer"></p>
       <div class="login-actions">
         <button type="button" id="btn-verify" class="primary">Xác nhận</button>
+        <button type="button" id="btn-resend" class="fit" disabled>Gửi lại mã</button>
         <button type="button" id="btn-back" class="fit">Quay lại</button>
       </div>
     </div>

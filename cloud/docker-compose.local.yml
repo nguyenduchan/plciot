@@ -1,0 +1,9 @@
+# Chạy thử trong LAN nhà: mở app server (đăng nhập Telegram) ra 0.0.0.0:3080 để điện thoại truy cập.
+services:
+  app:
+    ports: !override
+      - "3080:3080"
+      - "8000:3080"   # trang cũ http://<ip>:8000 cũng dùng được đăng ký/đăng nhập Telegram
+  mqtt:
+    ports: !override
+      - "29001:9001"   # ws:// chỉ xem (acl-monitor) cho webapp trong LAN

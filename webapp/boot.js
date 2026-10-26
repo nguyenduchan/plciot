@@ -30,8 +30,14 @@
       return;
     }
 
-    const name = await activeCacheName(session);
-    if (!name || !('caches' in window) || !(await caches.has(name))) {
+    // HTTP (không có Cache API): phiên chỉ dựa vào token, không cần gói offline.
+    if (!session.online) {
+      const name = await activeCacheName(session);
+      if (!name || !('caches' in window) || !(await caches.has(name))) {
+        toLogin();
+        return;
+      }
+    } else if (!session.token) {
       toLogin();
       return;
     }

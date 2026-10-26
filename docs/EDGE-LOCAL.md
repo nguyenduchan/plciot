@@ -57,3 +57,13 @@ Dashboard "Giám sát PLC" được provision sẵn (`edge/grafana/dashboards/pl
 - Mọi luồng giao thức đã nạp vào Node-RED thật; các node khởi tạo, chỉ báo lỗi kết nối do không có PLC/InfluxDB (đúng dự kiến).
 - **Chưa chạy**: Docker compose (máy dev không có Docker), ghi InfluxDB và dashboard Grafana thực tế, các PLC thật, OPC UA (cả client lẫn server).
 - Giữ mật khẩu MQTT/InfluxDB trong `edge/data/flows_cred.json` và `edge/.env` ngoài git (đã có trong `.gitignore`). HTTP Basic của `/scada` và Grafana không mã hoá: dùng trong LAN tin cậy hoặc đặt reverse proxy TLS.
+
+## Chạy thử trên PC bằng Docker (PLC giả lập đếm vật)
+`edge/docker-compose.demo.yml` thêm PLC giả lập (`tools/modbus_tcp_sim.py`, băng tải tự chạy) vào stack Node-RED + InfluxDB + Grafana; Node-RED nối vào broker `plciot-mqtt` của stack `cloud/` (user `edge`, thêm trong `cloud/config/acl*` và `passwd`). Webapp + đăng ký/đăng nhập Telegram do `plciot-app` phục vụ ở cổng 3080 và 8000 (`cloud/docker-compose.local.yml`); bot Telegram nằm trong `cloud/telegram-bot/`.
+```powershell
+cd cloud; docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+cd ..\edge
+python ..	ools\gen_flows.py --protocol modbus --plc-host plc-sim --plc-port 5020 --site s<SĐT dạng 84…> --mqtt plciot-mqtt --mqtt-user edge --mqtt-pass <mật khẩu edge> --influx-url http://influxdb:8086 --influx-token <INFLUX_TOKEN> --serve modbus,opcua --out data
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+```
+Sau khi đăng nhập webapp: Cài đặt → broker `ws://<ip-PC>:29001` (chỉ xem). Site của tài khoản là `s<SĐT>`, phải trùng `--site` của luồng Node-RED. Đặt `SCADA_WEB_PORT` trong `.env` nếu cổng 8080 bị chiếm.

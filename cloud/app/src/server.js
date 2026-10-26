@@ -185,7 +185,17 @@ app.post('/api/register/verify', authStrict, otpStrict, async (req, res) => {
 
 app.post('/api/login/request-otp', authStrict, otpStrict, async (req, res) => {
   const phone = String(req.body?.phone || req.body?.username || '');
-  const result = await requestLoginOtp(db, { phone });
+  // Một cửa duy nhất: số đã có tài khoản → OTP đăng nhập; số mới → OTP tạo tài khoản (nếu đăng ký đang mở).
+  const known = findUserByPhone(db, normalizePhone(phone));
+  let result;
+  if (known || !isValidVnPhone(phone)) {
+    result = await requestLoginOtp(db, { phone });
+    if (!result.error) result.purpose = 'login';
+  } else {
+    if (!registrationOpen()) return res.status(403).json({ error: 'registration_closed' });
+    result = await requestRegisterOtp(db, { phone, dataDir: DATA_DIR, webappSrc: WEBAPP_SRC });
+    if (!result.error) result.purpose = 'register';
+  }
   if (result.error) return res.status(result.status || 400).json(result);
   res.json(result);
 });

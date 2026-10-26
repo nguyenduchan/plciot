@@ -1,4 +1,5 @@
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
@@ -125,7 +126,14 @@ export function reloadMosquitto() {
     execFileSync('docker', ['kill', '-s', 'HUP', container], { stdio: 'pipe' });
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e.message };
+    // Image không có lệnh docker: gọi thẳng Docker API qua socket (tín hiệu HUP để broker nạp lại passwd/acl).
+    const sock = process.env.DOCKER_SOCKET || '/var/run/docker.sock';
+    if (!fs.existsSync(sock)) return { ok: false, error: e.message };
+    const req = http.request({ socketPath: sock, method: 'POST', path: `/containers/${encodeURIComponent(container)}/kill?signal=HUP` },
+      (res) => { res.resume(); });
+    req.on('error', (err) => console.error('mosquitto reload', err.message));
+    req.end();
+    return { ok: true, via: 'socket' };
   }
 }
 

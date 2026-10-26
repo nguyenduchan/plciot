@@ -68,7 +68,37 @@ services:
       - ../webapp:/app/shell:ro
       - ./config:/mosquitto/config
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on: [mqtt]
+    depends_on: [mqtt, telegram-db]
+    networks: [plciot]
+
+  telegram-db:                   # Postgres chứa telegram_users (SĐT ↔ chat_id), chỉ trong mạng Docker
+    image: postgres:15-alpine
+    container_name: plciot-telegram-db
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      POSTGRES_USER: ${TELEGRAM_SHARED_PG_USER}
+      POSTGRES_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD}
+      POSTGRES_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
+    volumes:
+      - telegram-pg:/var/lib/postgresql/data
+    networks: [plciot]
+
+  telegram-bot:                  # Bot Telegram (long-polling): /start + chia sẻ SĐT → telegram_users
+    build: ./telegram-bot
+    container_name: plciot-telegram-bot
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DB_TYPE: postgresql
+      POSTGRES_HOST: telegram-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${TELEGRAM_SHARED_PG_USER}
+      POSTGRES_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD}
+      POSTGRES_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
+      DB_POOL_SIZE: "5"
+    depends_on: [telegram-db]
     networks: [plciot]
 
   tunnel:                        # Cloudflare Tunnel: wss broker + HTTPS app, no open ports
@@ -89,5 +119,8 @@ networks:
     name: plciot_net
 
 volumes:
+  telegram-pg:
+    name: mqtt_server_postgres_data   # dùng lại volume cũ để giữ nguyên telegram_users
+    external: true
   mqtt-data:
     name: plciot_mqtt_data
