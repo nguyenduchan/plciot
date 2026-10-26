@@ -472,11 +472,11 @@ if 'opcua' in SERVE:
          autoAcceptUnknownCertificate=False, registerToDiscovery=False, constructDefaultAddressSpace=True, allowAnonymous=True, endpointNone=True, endpointSign=True,
          endpointSignEncrypt=True, endpointBasic128Rsa15=False, endpointBasic256=False, endpointBasic256Sha256=True, maxSessions=10, maxConnectionsPerEndpoint=10,
          maxMessageSize=4096, maxBufferSize=4096, x=560, y=1020, wires=[[]])
-    inject('inj_ua_init', 'tạo biến OPC UA', 1, 140, 1020, [['fn_ua_init']], once=True, delay=3)
+    inject('inj_ua_init', 'tạo biến OPC UA', 1, 140, 1020, [['fn_ua_init']], once=True, delay=15)
     nodes[-1]['repeat'] = ''
     ADDV = ";\n".join(f"out.push({{topic: 'ns=1;s={n};datatype={t}', payload: {{opcuaCommand: 'addVariable'}}}})" for n, t in VARS)
     fn('fn_ua_init', 'khai báo biến', "const out = [{topic: 'ns=1;s=PLC', payload: {opcuaCommand: 'addFolder'}}];\n" + ADDV + ";\nreturn [out];", 1, 340, 1020, [['ua_srv']])
-    inject('inj_ua', 'cập nhật mỗi 1 s', 1, 140, 1080, [['fn_ua']], delay=6)
+    inject('inj_ua', 'cập nhật mỗi 1 s', 1, 140, 1080, [['fn_ua']], delay=20)
     fn('fn_ua', 'giá trị', r'''
 const R = flow.get('regs'); if (!R) return null;
 const fresh = Date.now() - (flow.get('lastOk') || 0) < 5000, u32 = (i) => R[i] + R[i + 1] * 65536;

@@ -6,6 +6,13 @@ topic write plc/+/+/ack
 topic write plc/+/+/history
 topic read plc/+/+/cmd
 
+user edge
+topic write plc/+/+/telemetry
+topic write plc/+/+/status
+topic write plc/+/+/ack
+topic write plc/+/+/history
+topic read plc/+/+/cmd
+
 user ingest
 topic read plc/+/+/telemetry
 topic read plc/+/+/status
