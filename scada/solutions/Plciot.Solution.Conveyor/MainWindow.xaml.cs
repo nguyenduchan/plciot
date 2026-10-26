@@ -16,7 +16,7 @@ public partial class MainWindow : Window
 {
     static readonly PlcSource[] Sources =
     {
-        PlcSource.Gateway, PlcSource.ModbusTcp, PlcSource.S7, PlcSource.EtherNetIp,
+        PlcSource.Gateway, PlcSource.ModbusTcp, PlcSource.ModbusRtu, PlcSource.S7, PlcSource.EtherNetIp,
         PlcSource.MitsubishiMc, PlcSource.OmronFins, PlcSource.BeckhoffAds, PlcSource.OpcUa,
     };
 

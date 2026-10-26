@@ -40,7 +40,7 @@ public sealed class ControlPolicy
     public bool Lan { get; set; } = false;
 }
 
-public enum PlcSource { Gateway, ModbusTcp, S7, EtherNetIp, MitsubishiMc, OmronFins, BeckhoffAds, OpcUa }
+public enum PlcSource { Gateway, ModbusTcp, ModbusRtu, S7, EtherNetIp, MitsubishiMc, OmronFins, BeckhoffAds, OpcUa }
 public enum LocalRole { Device, Monitor, Operator }
 
 public sealed class LocalUser
@@ -85,6 +85,8 @@ public sealed class ScadaConfig
     /// <summary>0 = cổng mặc định của giao thức (Modbus 502, S7 102, EtherNet/IP 44818, MC 5001, FINS 9600, ADS 48898).</summary>
     public int PlcPort { get; set; } = 0;
     public int ModbusUnit { get; set; } = 1;
+    // Modbus RTU (RS485): PlcHost = tên cổng (COM3), PlcPort = baud (0 = 19200), parity Even/None/Odd (PLC Xinje: 19200 8E1)
+    public string SerialParity { get; set; } = "Even";
     // Siemens S7 (DB chứa INT[300]: thanh ghi D n = DBW(2*n))
     public string S7Cpu { get; set; } = "S71500";      // S7200 | S7300 | S7400 | S71200 | S71500
     public int S7Rack { get; set; } = 0;
@@ -193,6 +195,7 @@ public sealed class ScadaConfig
         if (ModbusServerEnabled && (ModbusServerPort is < 1 or > 65535)) return "Cổng Modbus server không hợp lệ.";
         if (OpcUaServerEnabled && (OpcUaServerPort is < 1 or > 65535)) return "Cổng OPC UA server không hợp lệ.";
         if (InfluxEnabled && (string.IsNullOrWhiteSpace(InfluxUrl) || string.IsNullOrWhiteSpace(InfluxToken))) return "Thiếu URL/token InfluxDB.";
+        if (Source == PlcSource.ModbusRtu && !Enum.TryParse<System.IO.Ports.Parity>(SerialParity, true, out _)) return "SerialParity phải là None, Even hoặc Odd.";
         if (PollMs < 100) return "Chu kỳ đọc tối thiểu 100 ms.";
         if (CloudEnabled)
         {

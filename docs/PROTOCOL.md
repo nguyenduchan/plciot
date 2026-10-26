@@ -33,6 +33,11 @@ Gateway chỉ cho ghi D3, D4, D6, D7, D9 (`WRITABLE` trong config.h).
 
 Băng tải: Y1 do khối băng tải điều khiển ở cả hai chế độ (bit Y1 của D4 bị bỏ qua). Dừng ngay trong cùng chu kỳ quét khi đếm đủ D7 hoặc khi E-stop; việc dừng không phụ thuộc mạng. Cảm biến cần xung đủ rộng so với thời gian quét PLC (X3 là ngõ vào thường; nếu băng tải nhanh, dùng ngõ vào tốc độ cao của XD3 thay cho đếm bằng scan).
 
+### PC đọc thẳng RS485 (không gateway ESP32)
+Máy SCADA nối bộ chuyển USB–RS485 vào COM2 của PLC (A↔A, B↔B). Trong cài đặt chọn nguồn **Modbus RTU RS485**:
+địa chỉ PLC = tên cổng (`COM3`), cổng PLC = baud (0 → 19200), `SerialParity` trong `config.json` (mặc định `Even` → 19200 8E1, trùng XDPPro), `ModbusUnit` = số trạm.
+Cùng bản đồ D như trên; giao diện PC, web nhiều màn hình và điện thoại (qua cloud) dùng chung đường này. Mỗi cổng COM chỉ một master: không chạy đồng thời gateway ESP32 trên cùng bus.
+
 ## 2. MQTT (Gateway ⇄ Cloud ⇄ App)
 
 Base topic: `plc/<site>/<device>`

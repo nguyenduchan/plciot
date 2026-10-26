@@ -7,6 +7,7 @@ public static class DriverFactory
     {
         PlcSource.Gateway => null,
         PlcSource.ModbusTcp => modbusOverride ?? new ModbusTcpClient(c.PlcHost, c.PlcPort > 0 ? c.PlcPort : 502, c.ModbusUnit),
+        PlcSource.ModbusRtu => ModbusRtuClient.ForSerial(c.PlcHost, c.PlcPort, c.SerialParity, c.ModbusUnit),
         PlcSource.S7 => new S7Driver(c.PlcHost, c.PlcPort, c.S7Cpu, c.S7Rack, c.S7Slot, c.S7Db),
         PlcSource.EtherNetIp => new EtherNetIpDriver(c.PlcHost, c.EipSlot, c.EipTag),
         PlcSource.MitsubishiMc => new MitsubishiMcDriver(c.PlcHost, c.PlcPort, c.McPlcType),

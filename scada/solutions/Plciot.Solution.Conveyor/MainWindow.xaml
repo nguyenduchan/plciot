@@ -65,7 +65,7 @@
                     <TextBlock Text="Mã thiết bị"/><TextBox x:Name="SDevice"/>
                     <TextBlock Text="Nguồn dữ liệu PLC"/>
                     <ComboBox x:Name="SSource">
-                        <ComboBoxItem Content="Gateway ESP32 (qua broker LAN)"/><ComboBoxItem Content="Modbus TCP"/>
+                        <ComboBoxItem Content="Gateway ESP32 (qua broker LAN)"/><ComboBoxItem Content="Modbus TCP"/><ComboBoxItem Content="Modbus RTU RS485 (COM: địa chỉ = COM3, cổng = baud)"/>
                         <ComboBoxItem Content="Siemens S7"/><ComboBoxItem Content="Rockwell EtherNet/IP"/><ComboBoxItem Content="Mitsubishi MC"/>
                         <ComboBoxItem Content="Omron FINS"/><ComboBoxItem Content="Beckhoff ADS"/><ComboBoxItem Content="OPC UA"/>
                     </ComboBox>
