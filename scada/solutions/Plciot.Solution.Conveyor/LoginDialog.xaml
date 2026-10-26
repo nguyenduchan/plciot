@@ -1,0 +1,25 @@
+<Window x:Class="Plciot.Solution.Conveyor.LoginDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource WindowBase}" Title="Đăng nhập" Width="400" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
+    <Border Padding="28,24">
+        <StackPanel>
+            <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" Text="Đăng nhập"/>
+            <TextBlock x:Name="SubText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+            <TextBlock Style="{StaticResource Label}" Text="Tên đăng nhập"/>
+            <TextBox x:Name="UserBox" InputMethod.IsInputMethodEnabled="False"/>
+            <TextBlock Style="{StaticResource Label}" Text="Mật khẩu"/>
+            <PasswordBox x:Name="PassBox"/>
+            <StackPanel x:Name="ConfirmRow" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource Label}" Text="Nhập lại mật khẩu"/>
+                <PasswordBox x:Name="Pass2Box"/>
+            </StackPanel>
+            <TextBlock x:Name="Err" Foreground="{StaticResource Red}" TextWrapping="Wrap" Margin="0,8,0,0" MinHeight="18"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button Content="Huỷ" Click="OnCancel" IsCancel="True"/>
+                <Button x:Name="OkBtn" Style="{StaticResource Primary}" Content="Đăng nhập" Click="OnOk" IsDefault="True" Margin="0,0,0,8"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

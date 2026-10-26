@@ -1,87 +1,229 @@
 ﻿<Window x:Class="Plciot.Solution.Conveyor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SCADA nhà máy" Height="640" Width="900" MinWidth="720" MinHeight="520">
-    <Window.Resources>
-        <Style TargetType="Button"><Setter Property="Padding" Value="16,10"/><Setter Property="Margin" Value="0,0,8,8"/></Style>
-        <Style TargetType="TextBox"><Setter Property="Padding" Value="4"/><Setter Property="Margin" Value="0,2,0,8"/></Style>
-        <Style TargetType="ComboBox"><Setter Property="Margin" Value="0,2,0,8"/></Style>
-        <Style TargetType="TextBlock" x:Key="Kpi"><Setter Property="FontSize" Value="22"/><Setter Property="FontWeight" Value="Bold"/></Style>
-        <Style TargetType="TextBlock" x:Key="Cap"><Setter Property="Foreground" Value="Gray"/></Style>
-    </Window.Resources>
-    <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="12,8" Background="#F2F4F7">
+        xmlns:local="clr-namespace:Plciot.Solution.Conveyor"
+        Style="{StaticResource WindowBase}" Title="SCADA nhà máy" Height="700" Width="1180" WindowStartupLocation="CenterScreen" MinWidth="900" MinHeight="620">
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+
+        <!-- ============ Thanh bên ============ -->
+        <Border Grid.Column="0" Background="#0b0c0e" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
             <DockPanel>
-                <TextBlock x:Name="CloudText" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="PlcText" DockPanel.Dock="Right" VerticalAlignment="Center" FontWeight="Bold"/>
-                <TextBlock x:Name="TitleText" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Top" Margin="16,16,16,18">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="26" Height="26" CornerRadius="4" Background="{StaticResource Orange}"><TextBlock Text="◆" Foreground="#111217" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14"/></Border>
+                        <TextBlock Text="SCADA" FontSize="17" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="White"/>
+                    </StackPanel>
+                    <TextBlock x:Name="SideSite" Style="{StaticResource MutedText}" Margin="0,8,0,0" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- người dùng ở đáy thanh bên -->
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="Avatar" Width="30" Height="30" CornerRadius="15" Background="{StaticResource Off}">
+                                <TextBlock x:Name="AvatarText" Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White"/>
+                            </Border>
+                            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="UserName" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock x:Name="UserRole" Style="{StaticResource MutedText}" FontSize="11"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock x:Name="IdleText" Style="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0"/>
+                        <Button x:Name="AuthBtn" Style="{StaticResource Primary}" Content="Đăng nhập" Click="OnAuthButton" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel>
+                    <RadioButton x:Name="NavOverview" Style="{StaticResource Nav}" GroupName="nav" Tag="Overview" Content="▦  Tổng quan" IsChecked="True" Checked="OnNav"/>
+                    <RadioButton x:Name="NavControl" Style="{StaticResource Nav}" GroupName="nav" Tag="Control" Content="⚙  Điều khiển" Checked="OnNav"/>
+                    <RadioButton x:Name="NavLog" Style="{StaticResource Nav}" GroupName="nav" Tag="Log" Content="≣  Nhật ký" Checked="OnNav"/>
+                    <RadioButton x:Name="NavSettings" Style="{StaticResource Nav}" GroupName="nav" Tag="Settings" Content="🔧  Cài đặt" Checked="OnNav"/>
+                    <RadioButton x:Name="NavUsers" Style="{StaticResource Nav}" GroupName="nav" Tag="Users" Content="👤  Người dùng" Checked="OnNav"/>
+                </StackPanel>
             </DockPanel>
         </Border>
-        <TabControl Margin="8">
-            <TabItem Header="Giám sát">
-                <ScrollViewer><StackPanel Margin="12">
-                    <UniformGrid Columns="3" Margin="0,0,0,12">
-                        <StackPanel Margin="0,0,0,12"><TextBlock Style="{StaticResource Cap}" Text="Băng tải"/><TextBlock x:Name="KConv" Style="{StaticResource Kpi}"/></StackPanel>
-                        <StackPanel><TextBlock Style="{StaticResource Cap}" Text="Đếm hiện tại / mục tiêu"/><TextBlock x:Name="KCount" Style="{StaticResource Kpi}"/></StackPanel>
-                        <StackPanel><TextBlock Style="{StaticResource Cap}" Text="Tổng đếm"/><TextBlock x:Name="KTotal" Style="{StaticResource Kpi}"/></StackPanel>
-                        <StackPanel><TextBlock Style="{StaticResource Cap}" Text="Chế độ"/><TextBlock x:Name="KMode" Style="{StaticResource Kpi}"/></StackPanel>
-                        <StackPanel><TextBlock Style="{StaticResource Cap}" Text="Thời gian chạy PLC"/><TextBlock x:Name="KRun" Style="{StaticResource Kpi}"/></StackPanel>
-                        <StackPanel><TextBlock Style="{StaticResource Cap}" Text="Khởi động bơm"/><TextBlock x:Name="KPump" Style="{StaticResource Kpi}"/></StackPanel>
-                    </UniformGrid>
-                    <TextBlock Style="{StaticResource Cap}" Text="Cảnh báo"/><WrapPanel x:Name="AlarmPanel" Margin="0,4,0,12"/>
-                    <TextBlock Style="{StaticResource Cap}" Text="Đầu vào X"/><WrapPanel x:Name="XPanel" Margin="0,4,0,12"/>
-                    <TextBlock Style="{StaticResource Cap}" Text="Đầu ra Y"/><WrapPanel x:Name="YPanel" Margin="0,4,0,12"/>
-                    <TextBlock x:Name="SysText" Style="{StaticResource Cap}" TextWrapping="Wrap"/>
-                </StackPanel></ScrollViewer>
-            </TabItem>
-            <TabItem Header="Điều khiển">
-                <ScrollViewer><StackPanel Margin="12">
-                    <TextBlock x:Name="CtlHint" Style="{StaticResource Cap}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                    <TextBlock Text="Chế độ" FontWeight="Bold"/>
-                    <WrapPanel Margin="0,4,0,8">
-                        <Button x:Name="BAuto" Content="Tự động" Click="OnAuto"/><Button x:Name="BMan" Content="Thủ công" Click="OnMan"/>
-                    </WrapPanel>
-                    <TextBlock Text="Đầu ra (chỉ ở chế độ thủ công)" FontWeight="Bold"/>
-                    <WrapPanel x:Name="SwPanel" Margin="0,4,0,8"/>
-                    <TextBlock Text="Băng tải" FontWeight="Bold"/>
-                    <WrapPanel Margin="0,4,0,8">
-                        <Button x:Name="BStart" Content="Chạy" Click="OnStart"/><Button x:Name="BStop" Content="Dừng" Click="OnStop"/>
-                    </WrapPanel>
-                    <WrapPanel>
-                        <TextBlock Text="Mục tiêu (0 = không giới hạn): " VerticalAlignment="Center"/>
-                        <TextBox x:Name="TargetBox" Width="90" Margin="4,0,8,0"/>
-                        <Button x:Name="BSetTarget" Content="Đặt" Click="OnSetTarget"/>
-                        <Button x:Name="BReset" Content="Xoá số đếm" Click="OnReset"/>
-                    </WrapPanel>
-                    <TextBlock x:Name="AckText" Style="{StaticResource Cap}" TextWrapping="Wrap"/>
-                </StackPanel></ScrollViewer>
-            </TabItem>
-            <TabItem Header="Nhật ký"><TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" Margin="8"/></TabItem>
-            <TabItem Header="Cài đặt">
-                <ScrollViewer><StackPanel Margin="12" MaxWidth="560" HorizontalAlignment="Left">
-                    <TextBlock x:Name="ModeText" TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"/>
-                    <TextBlock Text="Thiết bị" FontWeight="Bold"/>
-                    <TextBlock Text="Mã nhà máy (site)"/><TextBox x:Name="SSite"/>
-                    <TextBlock Text="Mã thiết bị"/><TextBox x:Name="SDevice"/>
-                    <TextBlock Text="Nguồn dữ liệu PLC"/>
-                    <ComboBox x:Name="SSource">
-                        <ComboBoxItem Content="Gateway ESP32 (qua broker LAN)"/><ComboBoxItem Content="Modbus TCP"/><ComboBoxItem Content="Modbus RTU RS485 (COM: địa chỉ = COM3, cổng = baud)"/>
-                        <ComboBoxItem Content="Siemens S7"/><ComboBoxItem Content="Rockwell EtherNet/IP"/><ComboBoxItem Content="Mitsubishi MC"/>
-                        <ComboBoxItem Content="Omron FINS"/><ComboBoxItem Content="Beckhoff ADS"/><ComboBoxItem Content="OPC UA"/>
-                    </ComboBox>
-                    <TextBlock Text="Địa chỉ PLC"/><TextBox x:Name="SHost"/>
-                    <TextBlock Text="Cổng PLC (0 = mặc định của giao thức; tuỳ chọn riêng từng hãng sửa trong config.json)"/><TextBox x:Name="SPort"/>
-                    <TextBlock Text="Điện thoại / Cloud (TLS) — chế độ xem/điều khiển do giải pháp quyết định" FontWeight="Bold" Margin="0,8,0,0"/>
-                    <TextBlock Text="Máy chủ MQTT"/><TextBox x:Name="SCloudHost"/>
-                    <TextBlock Text="Cổng (mqtts / wss)"/><TextBox x:Name="SCloudPort"/>
-                    <TextBlock Text="Tài khoản"/><TextBox x:Name="SCloudUser"/>
-                    <TextBlock Text="Mật khẩu"/><PasswordBox x:Name="SCloudPass" Margin="0,2,0,8" Padding="4"/>
-                    <TextBlock Text="Ghim chứng chỉ SHA-256 (trống = xác thực bình thường)"/><TextBox x:Name="SPin"/>
-                    <TextBlock x:Name="ScreensText" TextWrapping="Wrap" Foreground="Gray" Margin="0,8,0,8"/>
-                    <Button Content="Lưu và chạy lại ứng dụng" Click="OnSaveSettings" HorizontalAlignment="Left"/>
-                    <TextBlock x:Name="SettingsMsg" TextWrapping="Wrap"/>
-                </StackPanel></ScrollViewer>
-            </TabItem>
-        </TabControl>
-    </DockPanel>
+
+        <!-- ============ Nội dung ============ -->
+        <DockPanel Grid.Column="1">
+            <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="20,12">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="CloudText" Style="{StaticResource MutedText}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                        <Border x:Name="PlcPill" CornerRadius="10" Padding="10,3" Background="#1f3a22">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="PlcDot" Width="8" Height="8" Fill="{StaticResource Green}" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="PlcText" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock x:Name="ClockText" Style="{StaticResource MutedText}" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="PageTitle" FontSize="18" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+
+            <Grid Margin="20,16,8,8">
+                <!-- ======== Tổng quan ======== -->
+                <ScrollViewer x:Name="ViewOverview" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Băng tải"/><TextBlock x:Name="KConv" Style="{StaticResource StatValue}"/><TextBlock x:Name="KMode" Style="{StaticResource MutedText}"/></StackPanel></Border>
+                            <Border Grid.Column="1" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Đếm hiện tại"/><TextBlock x:Name="KCount" Style="{StaticResource StatValue}" Foreground="{StaticResource Blue}"/><TextBlock x:Name="KTarget" Style="{StaticResource MutedText}"/></StackPanel></Border>
+                            <Border Grid.Column="2" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Tốc độ"/><TextBlock x:Name="KRate" Style="{StaticResource StatValue}" Foreground="{StaticResource Yellow}"/><TextBlock Style="{StaticResource MutedText}" Text="sản phẩm / phút (60 giây gần nhất)"/></StackPanel></Border>
+                            <Border Grid.Column="3" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Tổng đếm"/><TextBlock x:Name="KTotal" Style="{StaticResource StatValue}" Foreground="White"/><TextBlock x:Name="KRun" Style="{StaticResource MutedText}"/></StackPanel></Border>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Tốc độ băng tải (sp/phút) — 5 phút gần nhất"/><local:TimeSeries x:Name="ChartRate" Height="190" Margin="0,8,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="1" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Số đếm hiện tại — 5 phút gần nhất"/><local:TimeSeries x:Name="ChartCount" Height="190" Margin="0,8,0,0"/></StackPanel></Border>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="0.8*"/></Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Đầu vào X"/><WrapPanel x:Name="XPanel" Margin="0,10,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="1" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Đầu ra Y"/><WrapPanel x:Name="YPanel" Margin="0,10,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="2" Style="{StaticResource PanelBox}"><StackPanel><TextBlock Style="{StaticResource PanelTitle}" Text="Cảnh báo"/><WrapPanel x:Name="AlarmPanel" Margin="0,10,0,0"/><TextBlock x:Name="PumpText" Style="{StaticResource MutedText}" Margin="0,4,0,0"/></StackPanel></Border>
+                        </Grid>
+                        <TextBlock x:Name="SysText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="2,0,0,12"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ======== Điều khiển ======== -->
+                <ScrollViewer x:Name="ViewControl" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+                        <Border x:Name="CtlBanner" Style="{StaticResource PanelBox}" Background="#2a2314" BorderBrush="{StaticResource Orange}">
+                            <TextBlock x:Name="CtlHint" TextWrapping="Wrap"/>
+                        </Border>
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Băng tải"/>
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button x:Name="BStart" Style="{StaticResource Success}" Content="▶  Chạy" Click="OnStart" Padding="28,12" FontSize="15"/>
+                                    <Button x:Name="BStop" Style="{StaticResource Danger}" Content="■  Dừng" Click="OnStop" Padding="28,12" FontSize="15"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Chế độ"/>
+                                <WrapPanel Margin="0,10,0,0"><Button x:Name="BAuto" Content="Tự động" Click="OnAuto"/><Button x:Name="BMan" Content="Thủ công" Click="OnMan"/></WrapPanel>
+                                <TextBlock Style="{StaticResource Label}" Text="Đầu ra (chỉ ở chế độ thủ công; Y1 do khối băng tải điều khiển)"/>
+                                <WrapPanel x:Name="SwPanel"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Mục tiêu và số đếm"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Dừng khi đạt số lượng (0 = không giới hạn)"/>
+                                <WrapPanel>
+                                    <TextBox x:Name="TargetBox" Width="110" Margin="0,0,8,0"/>
+                                    <Button x:Name="BSetTarget" Content="Đặt" Click="OnSetTarget"/>
+                                    <Button x:Name="BReset" Style="{StaticResource Danger}" Content="Xoá số đếm" Click="OnReset"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="AckText" Style="{StaticResource MutedText}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ======== Nhật ký ======== -->
+                <Grid x:Name="ViewLog" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource PanelBox}">
+                        <DockPanel><TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelTitle}" Text="Nhật ký hệ thống" Margin="0,0,0,8"/>
+                            <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Consolas" FontSize="12" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"/></DockPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource PanelBox}">
+                        <DockPanel><TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelTitle}" Text="Kiểm toán (ai làm gì, lúc nào)" Margin="0,0,0,8"/>
+                            <TextBox x:Name="AuditBox" IsReadOnly="True" FontFamily="Consolas" FontSize="12" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"/></DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ======== Cài đặt ======== -->
+                <ScrollViewer x:Name="ViewSettings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="620" HorizontalAlignment="Left">
+                        <Border x:Name="SetBanner" Style="{StaticResource PanelBox}" Background="#2a2314" BorderBrush="{StaticResource Orange}" Visibility="Collapsed">
+                            <TextBlock Text="Cần đăng nhập vai trò Kỹ thuật hoặc Quản trị để sửa cài đặt." TextWrapping="Wrap"/>
+                        </Border>
+                        <Border x:Name="SettingsPanel" Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock x:Name="ModeText" TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,0,0,8"/>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Thiết bị"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Mã nhà máy (site)"/><TextBox x:Name="SSite"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Mã thiết bị"/><TextBox x:Name="SDevice"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Nguồn dữ liệu PLC"/>
+                                <ComboBox x:Name="SSource">
+                                    <ComboBoxItem Content="Gateway ESP32 (qua broker LAN)"/><ComboBoxItem Content="Modbus TCP"/><ComboBoxItem Content="Modbus RTU RS485 (COM: địa chỉ = COM3, cổng = baud)"/>
+                                    <ComboBoxItem Content="Siemens S7"/><ComboBoxItem Content="Rockwell EtherNet/IP"/><ComboBoxItem Content="Mitsubishi MC"/>
+                                    <ComboBoxItem Content="Omron FINS"/><ComboBoxItem Content="Beckhoff ADS"/><ComboBoxItem Content="OPC UA"/>
+                                </ComboBox>
+                                <TextBlock Style="{StaticResource Label}" Text="Địa chỉ PLC"/><TextBox x:Name="SHost"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Cổng PLC (0 = mặc định của giao thức)"/><TextBox x:Name="SPort"/>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Điện thoại / Cloud (TLS)" Margin="0,16,0,0"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Máy chủ MQTT"/><TextBox x:Name="SCloudHost"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Cổng (mqtts / wss)"/><TextBox x:Name="SCloudPort"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Tài khoản"/><TextBox x:Name="SCloudUser"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Mật khẩu"/><PasswordBox x:Name="SCloudPass"/>
+                                <TextBlock Style="{StaticResource Label}" Text="Ghim chứng chỉ SHA-256 (trống = xác thực bình thường)"/><TextBox x:Name="SPin"/>
+                                <TextBlock x:Name="ScreensText" TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,10,0,10"/>
+                                <Button x:Name="BSave" Style="{StaticResource Primary}" Content="Lưu và chạy lại ứng dụng" Click="OnSaveSettings" HorizontalAlignment="Left"/>
+                                <TextBlock x:Name="SettingsMsg" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ======== Người dùng ======== -->
+                <ScrollViewer x:Name="ViewUsers" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Tài khoản trên máy này"/>
+                                <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,2,0,8" Text="Chỉ xem &lt; Vận hành (điều khiển) &lt; Kỹ thuật (cài đặt) &lt; Quản trị (người dùng, kiểm toán). Không có mật khẩu mặc định."/>
+                                <DataGrid x:Name="UserGrid" MaxHeight="260" SelectionChanged="OnUserSelected">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Tên đăng nhập" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Vai trò" Binding="{Binding RoleText}" Width="130"/>
+                                        <DataGridTextColumn Header="Trạng thái" Binding="{Binding StateText}" Width="120"/>
+                                        <DataGridTextColumn Header="Tạo lúc" Binding="{Binding CreatedText}" Width="150"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock x:Name="SelTitle" Style="{StaticResource PanelTitle}" Text="Chọn một tài khoản ở bảng trên"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <ComboBox x:Name="EditRole" Width="150" Margin="0,0,8,8"/>
+                                    <Button x:Name="BApplyRole" Content="Đổi vai trò" Click="OnApplyRole"/>
+                                    <PasswordBox x:Name="EditPass" Width="170" Margin="16,0,8,8"/>
+                                    <Button x:Name="BSetPass" Content="Đặt mật khẩu mới" Click="OnSetPassword"/>
+                                    <Button x:Name="BToggle" Content="Khoá / mở khoá" Click="OnToggleDisabled" Margin="16,0,8,8"/>
+                                    <Button x:Name="BDelete" Style="{StaticResource Danger}" Content="Xoá" Click="OnDeleteUser"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource PanelTitle}" Text="Thêm tài khoản"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <TextBox x:Name="NewName" Width="170" Margin="0,0,8,8" ToolTip="Tên đăng nhập (chữ không dấu)" InputMethod.IsInputMethodEnabled="False"/>
+                                    <PasswordBox x:Name="NewPass" Width="170" Margin="0,0,8,8" ToolTip="Mật khẩu"/>
+                                    <ComboBox x:Name="NewRole" Width="150" Margin="0,0,8,8"/>
+                                    <Button x:Name="BAddUser" Style="{StaticResource Primary}" Content="Thêm" Click="OnAddUser"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="UserMsg" TextWrapping="Wrap" Foreground="{StaticResource Orange}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+
+        <!-- thông báo nổi -->
+        <Border x:Name="Toast" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,24,24" Padding="16,10"
+                Background="#22252b" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="2" Visibility="Collapsed">
+            <TextBlock x:Name="ToastText"/>
+        </Border>
+    </Grid>
 </Window>

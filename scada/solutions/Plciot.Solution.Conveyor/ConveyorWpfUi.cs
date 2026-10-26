@@ -14,6 +14,8 @@ public sealed class ConveyorWpfUi : IScadaUi
             try
             {
                 var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+                // chủ đề Grafana tối dùng chung cho mọi cửa sổ (kể cả hộp thoại đăng nhập)
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/Plciot.Solution.Conveyor;component/Theme.xaml", UriKind.Relative) });
                 using var reg = ct.Register(() => app.Dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Normal));
                 app.Run(new MainWindow(ctx));
             }

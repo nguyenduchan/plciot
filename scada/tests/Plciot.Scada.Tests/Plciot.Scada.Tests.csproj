@@ -26,4 +26,9 @@
     <ProjectReference Include="..\..\solutions\Plciot.Solution.Template\Plciot.Solution.Template.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Logic đăng nhập của giải pháp Conveyor không phụ thuộc WPF nên biên dịch thẳng vào đây để kiểm thử -->
+    <Compile Include="..\..\solutions\Plciot.Solution.Conveyor\Auth\*.cs" Link="ConveyorAuth\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
