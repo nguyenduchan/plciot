@@ -1,5 +1,7 @@
 # Bảo mật đăng nhập & điều khiển
 
+> Muốn hiểu **nguyên lý và lý do** đằng sau từng lớp bảo mật: đọc [SECURITY-DESIGN.md](SECURITY-DESIGN.md). Tài liệu này là cấu hình/API chi tiết.
+
 > **Mã nguồn bảo mật cố định nằm ở một vùng riêng: [`packages/security`](../packages/security/README.md) (`@plciot/security`)** để tái sử dụng cho mọi app/khách hàng.
 > Gói chứa Passkey/TOTP, phiên điều khiển, thêm thiết bị, ghép PC, CSP/giới hạn tần suất và client trình duyệt; **không biết** app điều khiển PLC hay nhắn Telegram.
 > Phần riêng của app PLC ở lại `cloud/app/src`: `plcCommands.js` (whitelist/khoảng giá trị thanh ghi), `plcControlRoutes.js` (route lệnh, nút vật lý), `sites.js`/`siteRoutes.js`, `accountSecurity.js` (đổi số/khôi phục), OTP Telegram. Hướng dẫn cắm vào app mới: README của gói.
@@ -50,6 +52,9 @@ Trong thời gian chờ chủ tài khoản được báo (Telegram + email) kèm
 Nếu mất cả máy cũ lẫn mã khôi phục và email thì vẫn còn luồng ticket cho admin (docs/ACCOUNT-RECOVERY.md).
 
 API: `POST /api/devices/request` · `POST /api/devices/requests/:id/{poll,recovery,email/start,email/confirm}` (máy mới) · `GET /api/devices/requests` · `POST /api/devices/requests/:id/{approve,deny}` (máy cũ, cần phiên điều khiển) · `GET /api/device/cancel?id=&t=` (link huỷ). Vé gửi trong header `X-Enroll-Ticket`.
+
+## PC không có vân tay / Face ID / Windows Hello
+Webapp kiểm tra `isUserVerifyingPlatformAuthenticatorAvailable()`: **máy không có sinh trắc không thấy nút "Đăng nhập bằng vân tay"** (trừ khi từng dùng passkey), hộp thoại thiết lập chỉ còn **Authenticator**, và Cài đặt ẩn nút "Thêm vân tay" kèm ghi chú. Mở khoá điều khiển trên PC bằng mã 6 số (nhớ 7 ngày, gắn mạng). Passkey tạo trên điện thoại vẫn dùng được trên PC qua trình duyệt nếu nền tảng đồng bộ (iCloud/Google).
 
 ## Không có bậc bảo mật thấp để điều khiển
 Điều khiển **chỉ** có hai yếu tố: vân tay/Face ID (Passkey) hoặc mã Authenticator (TOTP). **OTP Telegram/SMS không bao giờ đủ để điều khiển**: nó dựa vào SIM/Telegram, ai đổi SIM hoặc chiếm Telegram sẽ có luôn quyền điều khiển máy móc. OTP Telegram vẫn dùng để **đăng nhập, xem số liệu và đọc thanh ghi**.

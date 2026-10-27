@@ -285,7 +285,8 @@ $('#btn-verify').onclick = async () => {
 /* Đăng nhập bằng passkey: ưu tiên hàng đầu khi thiết bị hỗ trợ; OTP Telegram là lần đầu / dự phòng. */
 async function passkeyLogin(auto) {
   setError('');
-  setBusy(true);
+  // Lần tự động thử khi mở trang KHÔNG khoá nút: hộp thoại vân tay của hệ thống có thể treo tới 60 giây, người dùng vẫn phải bấm được OTP.
+  if (!auto) setBusy(true);
   try {
     const data = await window.Ctl.loginWithPasskey();
     if (data.error) { if (!auto) setError(data.error); return; }
@@ -296,15 +297,23 @@ async function passkeyLogin(auto) {
   } catch (ex) {
     if (!auto) setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : 'webauthn_failed');
   } finally {
-    setBusy(false);
+    if (!auto) setBusy(false);
   }
 }
-if (window.Ctl?.passkeySupported()) {
+// Nút vân tay chỉ hiện khi máy THẬT SỰ có sinh trắc (hoặc từng dùng passkey): PC không có Windows Hello/vân tay chỉ thấy OTP.
+(async () => {
+  if (!window.Ctl?.passkeySupported()) return;
+  if (!LS.get('hasPasskey', false) && !(await window.Ctl.platformAvailable())) return;
   $('#btn-passkey').hidden = false;
   $('#btn-passkey').onclick = () => passkeyLogin(false);
-  $('#btn-otp').classList.remove('primary');
-  if (LS.get('hasPasskey', false)) setTimeout(() => passkeyLogin(true), 300);
-}
+  if (LS.get('hasPasskey', false)) {
+    $('#btn-otp').classList.remove('primary'); // máy đã có vân tay: vân tay là lối chính, OTP là dự phòng
+    // vừa đăng xuất chủ động (?out=1) thì chờ người dùng bấm, không tự vào lại ngay
+    if (!new URLSearchParams(location.search).get('out')) setTimeout(() => passkeyLogin(true), 300);
+  } else {
+    $('#btn-passkey').classList.remove('primary'); // người mới/máy mới: OTP Telegram là bước đầu
+  }
+})();
 
 $('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
 $('#btn-resend').onclick = () => $('#btn-otp').onclick();

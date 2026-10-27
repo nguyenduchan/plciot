@@ -272,7 +272,13 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   app.post('/api/devices/request', requireAuth, strict, async (req, res) => {
     sendR(res, await startDeviceRequest(db, req.user, { ip: clientIp(req), label: req.body?.label }));
   });
-  app.post('/api/devices/requests/:id/poll', requireAuth, strict, (req, res) => {
+  // Máy mới hỏi trạng thái mỗi ~3 giây: hạn mức riêng, KHÔNG dùng chung với mở khoá/duyệt (strict)
+  const pollLimit = rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_DEVICE_POLL || 40),
+    keyFn: (req) => `${clientIp(req)}:devpoll:${req.user?.id || 'na'}`,
+  });
+  app.post('/api/devices/requests/:id/poll', requireAuth, pollLimit, (req, res) => {
     sendR(res, pollDeviceRequest(db, req.user, req.params.id, String(req.body?.pollToken || '')));
   });
   app.post('/api/devices/requests/:id/recovery', requireAuth, strict, (req, res) => {

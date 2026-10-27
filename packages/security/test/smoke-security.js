@@ -95,6 +95,17 @@ ok(r.status === 401 && r.body.error === 'step_up_required', 'reauth dùng lại 
 r = await call('POST', '/toy/rename', alice, {}, { 'x-control-token': tok });
 ok(r.status === 200 && r.body.reauthed === true, '… và qua được khi đã xác nhận');
 
+// Hồi quy: vòng poll của máy mới (3 giây/lần) dùng hạn mức riêng, không chặn mở khoá của chính người dùng
+const dev = (await call('POST', '/api/devices/request', alice, { label: 'Máy mới' }, { 'x-device-id': 'toy-device-aaaaaaaaaaaa' })).body;
+let polls429 = 0;
+for (let i = 0; i < 20; i++) {
+  const pr = await call('POST', `/api/devices/requests/${dev.id}/poll`, alice, { pollToken: dev.pollToken });
+  if (pr.status === 429) polls429++;
+}
+ok(polls429 === 0, 'poll thiết bị mới 20 lần liên tiếp không bị 429');
+r = await call('POST', '/api/control/unlock', alice, { code: S.hotp(secret, S.stepOf() + 1) });
+ok(r.status === 200, 'ngay sau đó người dùng vẫn mở khoá được (hạn mức không bị poll ăn mất)');
+
 // Khoá điều khiển khi quá hạn
 const bob = mk('bob');
 db.prepare('UPDATE users SET enroll_deadline = ? WHERE id = ?').run(Date.now() - 1000, bob);

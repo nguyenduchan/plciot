@@ -6,6 +6,7 @@ import mqtt from 'mqtt';
  */
 let client = null;
 let override = null;
+const CONNECT_WAIT_MS = 2500;
 
 /** Dùng trong test: thay đường publish thật. */
 export function setPublisher(fn) { override = fn; }
@@ -22,10 +23,25 @@ function ensure() {
   return client;
 }
 
-export function publishCmd(site, device, cmd) {
+/** Kết nối sẵn lúc server khởi động để lệnh đầu tiên không rơi vào lúc chưa kết nối. */
+export function startControlPublisher() {
+  if (!override) ensure();
+}
+
+/** Nếu đang kết nối dở (vừa khởi động / đang tự nối lại) thì chờ một chút thay vì từ chối ngay. */
+function whenConnected(c) {
+  if (c.connected) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { c.off('connect', ok); reject(new Error('mqtt_unavailable')); }, CONNECT_WAIT_MS);
+    const ok = () => { clearTimeout(t); resolve(); };
+    c.once('connect', ok);
+  });
+}
+
+export async function publishCmd(site, device, cmd) {
   if (override) return override(site, device, cmd);
   const c = ensure();
-  if (!c.connected) return Promise.reject(new Error('mqtt_unavailable'));
+  await whenConnected(c);
   return new Promise((resolve, reject) => {
     c.publish(`plc/${site}/${device}/cmd`, JSON.stringify(cmd), { qos: 1 }, (err) => (err ? reject(err) : resolve()));
   });

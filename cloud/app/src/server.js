@@ -32,6 +32,7 @@ import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, RO
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
 import { plcControlConfig } from './plcCommands.js';
+import { startControlPublisher } from './controlPublisher.js';
 import { sendEmail } from './mailer.js';
 import { mountSite } from './siteRoutes.js';
 
@@ -468,6 +469,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`DATA_DIR=${DATA_DIR}`);
   console.log(`SHELL_DIR=${SHELL_DIR}`);
   startTelegramBot(db);
+  startControlPublisher();
   startMqttIngest(db);
   startHistoryPurge(db);
   const tick = () => processDueChanges(db).catch((e) => console.error('processDueChanges', e.message));

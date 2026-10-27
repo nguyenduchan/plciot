@@ -108,7 +108,7 @@
         },
       },
     });
-    if (r.ok) { saveToken(r.body); if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes); }
+    if (r.ok) { saveToken(r.body); LS.set('hasPasskey', true); if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes); }
     return r.body;
   }
 
@@ -478,10 +478,8 @@
     if (skipped && Date.now() - skipped < 7 * 86_400_000) return;
     const st = await api('GET', '/api/control/status');
     if (!st.ok || !st.body.stepUp) return;
-    if (st.body.methods.passkey) LS.set('hasPasskey', true);
     if (st.body.methods.enrolled) return;
     if (!(await unlock({ methods: st.body.methods }))) LS.set('ctlSkip', Date.now());
-    else if ((await api('GET', '/api/control/status')).body.methods?.passkey) LS.set('hasPasskey', true);
   }
 
   /* ---------- thông báo trong tab Điều khiển: bắt buộc bật vân tay / Authenticator ---------- */
@@ -515,7 +513,7 @@
   };
 
   window.Security = {
-    api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, passkeySupported,
+    api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, passkeySupported, platformAvailable: platformAuthenticator,
     reviewDevices, renderBanner, devId,
   };
 
@@ -527,15 +525,19 @@
     root.hidden = false;
     const msg = (t, bad) => { const e = $('#ctl-msg'); e.textContent = t || ''; e.classList.toggle('err', Boolean(bad)); };
 
+    const hasBiometric = await platformAuthenticator();
+    $('#ctl-pk-add').hidden = !hasBiometric; // máy không có vân tay/Face ID/Windows Hello: chỉ còn Authenticator
     async function refresh() {
       const st = await api('GET', '/api/control/status');
       if (!st.ok) { $('#ctl-state').textContent = errText(st.body.error); return; }
       const m = st.body.methods;
       $('#ctl-state').textContent = !st.body.stepUp ? 'Xác thực bổ sung đang tắt trên máy chủ.'
         : `${m.passkey ? 'Vân tay / Face ID: đã bật. ' : ''}${m.totp ? 'Authenticator: đã bật. ' : ''}${!m.enrolled ? 'Chưa thiết lập — bạn sẽ không điều khiển được cho tới khi thiết lập.' : ''}`
+        + (hasBiometric || m.passkey ? '' : ' Máy này không có vân tay / Face ID / Windows Hello nên dùng Authenticator.')
         + (st.body.unlocked ? ' Đang mở khoá điều khiển.' : '')
         + (m.enrolled ? ' Mã khôi phục còn ' + st.body.recoveryCodesLeft + '.' + (st.body.recoveryCodesLeft ? '' : ' ⚠️ Hãy tạo mã mới ở mục Mã khôi phục.') : '');
       if (st.body.pendingDevices > 0 && !refresh.prompted) { refresh.prompted = true; reviewDevices(); }
+      $('#ctl-totp-add').textContent = m.totp ? 'Đặt lại Authenticator (máy mới)' : 'Bật Authenticator';
       $('#ctl-totp-off').hidden = !m.totp;
       $('#ctl-lock').hidden = !st.body.unlocked;
       const l = await api('GET', '/api/webauthn/credentials');
@@ -545,6 +547,7 @@
         b.onclick = async () => {
           let r = await api('DELETE', `/api/webauthn/credentials/${b.dataset.del}`);
           if (r.status === 401 && r.body.error === 'step_up_required' && await unlock(r.body)) r = await api('DELETE', `/api/webauthn/credentials/${b.dataset.del}`);
+          if (r.ok) LS.del('ctl'); // xoá vân tay thu hồi mọi phiên điều khiển trên server → bỏ token cục bộ
           msg(r.ok ? 'Đã xoá.' : errText(r.body.error), !r.ok); refresh();
         };
       });

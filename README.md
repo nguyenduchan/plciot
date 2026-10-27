@@ -18,6 +18,7 @@
 | `scada/` | **SCADA nội bộ nhà máy (C#/.NET 8)**: Core + Services + **Framework** (một/nhiều màn hình, quyền điều khiển, điện thoại) và **giải pháp riêng từng khách hàng** ở `scada/solutions/`. Xem [docs/SCADA-FRAMEWORK.md](docs/SCADA-FRAMEWORK.md), [docs/SCADA.md](docs/SCADA.md). |
 | `tools/` | Bộ giả lập gateway/PLC, bộ sinh luồng Node-RED, tạo icon. |
 | `packages/security/` | **Lõi bảo mật dùng chung** (`@plciot/security`): Passkey/TOTP, step-up điều khiển, thêm thiết bị, ghép PC, CSP. Dùng lại cho app khác — xem [README](packages/security/README.md) và [docs/CONTROL-SECURITY.md](docs/CONTROL-SECURITY.md). |
+| `docs/SECURITY-DESIGN.md` | **Thiết kế bảo mật** đăng ký/đăng nhập/điều khiển: mô hình đe doạ, nguyên lý, giới hạn đã biết. |
 | `docs/PROTOCOL.md` | Bản đồ thanh ghi và topic MQTT. |
 
 ## Chạy thử

@@ -505,6 +505,14 @@ $('#logout').onclick = async () => {
   const session = LS.get('session', null);
   try {
     if (session?.token) {
+      const ctl = LS.get('ctl', null);
+      // thu hồi phiên điều khiển phía server rồi mới đăng xuất
+      if (ctl?.token) {
+        await fetch(`${session.apiBase || location.origin}/api/control/lock`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.token}`, 'X-Control-Token': ctl.token },
+        });
+      }
       await fetch(`${session.apiBase || location.origin}/api/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.token}` },
@@ -512,8 +520,9 @@ $('#logout').onclick = async () => {
     }
   } catch {}
   LS.set('session', null);
-  try { localStorage.removeItem('session'); } catch {}
-  location.replace('login.html');
+  // token điều khiển, vé đăng ký và yêu cầu thiết bị dở dang không được ở lại sau khi đăng xuất
+  try { ['session', 'ctl', 'enroll', 'devReq'].forEach((k) => localStorage.removeItem(k)); } catch {}
+  location.replace('login.html?out=1'); // out=1: người dùng chủ động đăng xuất → không tự đăng nhập lại bằng vân tay
 };
 let hideTimer = null;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('visibilitychange', () => {
