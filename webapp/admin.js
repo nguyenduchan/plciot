@@ -1,5 +1,5 @@
 'use strict';
-/* Trang quản trị: thêm user, đổi vai trò, đổi site/thiết bị, khoá, đặt lại mật khẩu, xoá. Chỉ role admin. */
+/* Trang quản trị: thêm user, đổi vai trò, đổi site/thiết bị, khoá, đăng xuất mọi máy, xoá. Chỉ role admin. */
 (function () {
   const $ = (s) => document.querySelector(s);
   let session = null;
@@ -14,23 +14,31 @@
     account_disabled: 'Tài khoản đã bị khoá.',
     invalid_phone: 'Cần số di động Việt Nam hợp lệ.',
     invalid_role: 'Vai trò không hợp lệ.',
-    weak_password: 'Mật khẩu tối thiểu 8 ký tự.',
     phone_in_use: 'Số này đã có tài khoản.',
     invalid_site_or_device: 'Site/thiết bị chỉ gồm chữ, số, "_" và "-" (tối đa 48 ký tự).',
     last_admin: 'Không thể hạ quyền/khoá/xoá admin cuối cùng (hoặc chính bạn).',
     user_not_found: 'Không tìm thấy người dùng.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
+    step_up_required: 'Cần xác nhận bằng vân tay / Authenticator.',
+    reauth_required: 'Hãy đăng xuất rồi đăng nhập lại trước khi thao tác quản trị.',
   };
 
   function msg(text, cls) { const m = $('#msg'); m.textContent = text || ''; m.className = cls || ''; }
 
-  async function api(path, method = 'GET', body) {
+  async function api(path, method = 'GET', body, retried) {
+    let ctlTok = null;
+    try { ctlTok = JSON.parse(localStorage.getItem('ctl'))?.token; } catch {}
     const r = await fetch(base + path, {
       method,
-      headers: { Authorization: `Bearer ${session.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Authorization: `Bearer ${session.token}`, ...(ctlTok ? { 'X-Control-Token': ctlTok } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await r.json().catch(() => ({}));
+    // thao tác ghi của admin cần xác nhận lại bằng vân tay / Authenticator
+    if (r.status === 401 && data.error === 'step_up_required' && !retried && window.Ctl) {
+      try { localStorage.removeItem('ctl'); } catch {}
+      if (await window.Ctl.unlock(data)) return api(path, method, body, true);
+    }
     if (!r.ok) throw new Error(ERR[data.error] || data.error || `Lỗi ${r.status}`);
     return data;
   }
@@ -57,7 +65,7 @@
         <div class="acts">
           <select data-act="role">${roleOpts(u.role)}</select>
           <button data-act="site">Đổi site/thiết bị</button>
-          <button data-act="pass">Đặt mật khẩu</button>
+          <button data-act="logout">Đăng xuất mọi máy</button>
           <button data-act="toggle">${u.disabled ? 'Mở khoá' : 'Khoá'}</button>
           <button data-act="del" class="danger">Xoá</button>
         </div>
@@ -85,11 +93,11 @@
 
   $('#n-add').onclick = () => run(async () => {
     await api('/api/admin/users', 'POST', {
-      phone: $('#n-phone').value.trim(), password: $('#n-pass').value,
+      phone: $('#n-phone').value.trim(),
       scopes: [...document.querySelectorAll('[data-nsc]')].filter((c) => c.checked).map((c) => c.dataset.nsc),
       role: $('#n-role').value, site: $('#n-site').value.trim() || undefined, device: $('#n-dev').value.trim() || undefined,
     });
-    $('#n-phone').value = ''; $('#n-pass').value = '';
+    $('#n-phone').value = '';
   }, 'Đã thêm người dùng.');
 
   $('#list').addEventListener('change', (e) => {
@@ -111,9 +119,8 @@
     if (b.dataset.act === 'toggle') {
       if (!u.disabled && !confirm(`Khoá ${u.phoneLocal}? Họ bị đăng xuất và mất quyền MQTT ngay.`)) return;
       run(() => api(`/api/admin/users/${id}`, 'PATCH', { disabled: !u.disabled }), u.disabled ? 'Đã mở khoá.' : 'Đã khoá.');
-    } else if (b.dataset.act === 'pass') {
-      const p = prompt(`Mật khẩu mới cho ${u.phoneLocal} (tối thiểu 8 ký tự). Họ sẽ bị đăng xuất khỏi mọi thiết bị.`);
-      if (p) run(() => api(`/api/admin/users/${id}`, 'PATCH', { password: p }), 'Đã đặt mật khẩu.');
+    } else if (b.dataset.act === 'logout') {
+      if (confirm(`Đăng xuất ${u.phoneLocal} khỏi mọi thiết bị?`)) run(() => api(`/api/admin/users/${id}`, 'PATCH', { revokeSessions: true }), 'Đã đăng xuất mọi máy.');
     } else if (b.dataset.act === 'site') {
       const site = prompt('Site mới:', u.site); if (!site) return;
       const device = prompt('Thiết bị mới:', u.device); if (!device) return;

@@ -1,11 +1,28 @@
 /** Simple in-memory sliding-window rate limiter (single process). */
 
+import { ipInCidrs } from './controlAuth.js';
+
+/**
+ * Chỉ tin CF-Connecting-IP / X-Forwarded-For khi kết nối TCP đến từ proxy tin cậy (TRUST_PROXY_CIDRS, mặc định
+ * loopback + dải riêng của Docker/LAN). Truy cập thẳng từ internet không giả được IP bằng header.
+ * X-Forwarded-For đọc từ phải sang trái, bỏ các hop tin cậy; phần tử đầu tiên không tin cậy là client.
+ */
+const DEFAULT_TRUSTED = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1'];
+const trustedList = () => (process.env.TRUST_PROXY_CIDRS ? process.env.TRUST_PROXY_CIDRS.split(',').map((s) => s.trim()).filter(Boolean) : DEFAULT_TRUSTED);
+
 export function clientIp(req) {
+  const remote = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '') || 'unknown';
+  const trusted = trustedList();
+  if (!ipInCidrs(remote, trusted)) return remote;
   const cf = req.headers['cf-connecting-ip'];
   if (cf) return String(cf).trim();
   const xff = req.headers['x-forwarded-for'];
-  if (xff) return String(xff).split(',')[0].trim();
-  return req.socket?.remoteAddress || 'unknown';
+  if (xff) {
+    const hops = String(xff).split(',').map((x) => x.trim()).filter(Boolean);
+    for (let i = hops.length - 1; i >= 0; i--) if (!ipInCidrs(hops[i], trusted)) return hops[i];
+    return hops[0] || remote;
+  }
+  return remote;
 }
 
 /**

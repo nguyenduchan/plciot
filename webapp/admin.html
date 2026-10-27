@@ -35,7 +35,6 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <div class="panel form" style="max-width:none;margin-bottom:14px">
   <h2>Thêm người dùng</h2>
   <label>Số điện thoại (Việt Nam)<input id="n-phone" inputmode="tel" autocomplete="off" placeholder="09xxxxxxxx"></label>
-  <label>Mật khẩu (tối thiểu 8 ký tự)<input id="n-pass" type="text" autocomplete="off" autocapitalize="off"></label>
   <label>Vai trò
     <select id="n-role" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
   </label>
@@ -51,6 +50,8 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   <h2>Danh sách (<span id="count">0</span>)</h2>
   <div id="list">Đang tải…</div>
 </div>
+<script src="session.js"></script>
+<script src="control.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

@@ -51,7 +51,7 @@
       st.textContent = `Yêu cầu chuyển sang ${d.newPhone} đang chờ quản trị viên duyệt. Chủ tài khoản đã được thông báo.`;
       plcBtn.hidden = false;
     } else if (d.status === 'cooling') {
-      st.textContent = `Đã được chấp thuận. Tài khoản sẽ chuyển sang ${d.newPhone} lúc ${fmt(d.executeAt)} nếu chủ tài khoản không huỷ. Sau đó đăng nhập bằng số mới (mật khẩu giữ nguyên, hoặc dùng OTP Telegram).`;
+      st.textContent = `Đã được chấp thuận. Tài khoản sẽ chuyển sang ${d.newPhone} lúc ${fmt(d.executeAt)} nếu chủ tài khoản không huỷ. Sau đó đăng nhập bằng số mới (bằng vân tay hoặc OTP Telegram).`;
       plcBtn.hidden = false;
     } else if (d.status === 'applied') {
       st.textContent = `Hoàn tất. Hãy đăng nhập bằng số ${d.newPhone} (OTP Telegram).`;

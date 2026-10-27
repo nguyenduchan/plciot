@@ -30,6 +30,7 @@ tests/Plciot.Scada.Tests     Kiểm thử cho framework và giải pháp mẫu
 | Thanh ghi D được ghi | `.UseWritableRegisters(...)` |
 | Logic riêng (cảnh báo, báo cáo ca, thông báo…) | một file trong `solutions/<Ten>/Modules/` implement `IScadaModule`, thêm vào `CreateModules()` |
 | Giao diện riêng | implement `IScadaUi` (xem `Plciot.Solution.Conveyor`), trả về từ `CreateUi()` |
+| PC ghép cặp với cloud (không mật khẩu) | `StationClient` trong Services: `PairAsync(mã)` rồi `WriteAsync/PingAsync` (ký bằng khoá thiết bị, xem docs/CONTROL-SECURITY.md) |
 | Giao thức PLC khác | `.UsePlc(PlcSource.X, host)`; giao thức mới → thêm `IRegisterDriver` trong Core + `DriverFactory` + test |
 | Máy màn hình phụ | chạy cùng giải pháp với `--station screen` và file cấu hình có `ScreenServerUrl/User/Password` |
 

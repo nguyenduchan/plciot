@@ -33,6 +33,9 @@
     email_send_failed: 'Không gửi được email.',
     otp_send_failed: 'Không gửi được Telegram.',
     session_revoked: 'Phiên đã bị thu hồi.',
+    reauth_required: 'Để bảo mật, hãy đăng xuất rồi đăng nhập lại (vân tay hoặc OTP Telegram) trước khi thực hiện thao tác này.',
+    step_up_required: 'Cần xác nhận bằng vân tay / Authenticator.',
+    cancelled: 'Đã huỷ.',
     unauthorized: 'Phiên hết hạn, đăng nhập lại.',
   };
 
@@ -48,13 +51,24 @@
   const errText = (d) => ERR[d.error] || d.detail || d.error || 'Lỗi không xác định';
   const fmt = (ms) => new Date(ms).toLocaleString('vi-VN');
 
-  async function api(path, body) {
+  // Thao tác nhạy cảm không còn hỏi mật khẩu: server đòi xác nhận bằng vân tay / Authenticator (step_up_required).
+  async function api(path, body, retried) {
+    const ctl = LS.get('ctl', null);
     const r = await fetch(`${session.apiBase || location.origin}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json',
+        ...(ctl?.token ? { 'X-Control-Token': ctl.token } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401 && data.error === 'step_up_required' && !retried && window.Ctl) {
+      LS.del('ctl');
+      if (await window.Ctl.unlock(data)) return api(path, body, true);
+      return { ok: false, data: { error: 'cancelled' } };
+    }
+    if (r.status === 401 && data.error === 'reauth_required') return { ok: false, data };
     if (r.status === 401) {
       LS.del('session');
       location.replace('login.html?revoked=1');
@@ -138,7 +152,7 @@
     if (!chan) { msg('Chưa có kênh xác minh nào khả dụng.', true); return; }
     busy(['pc-start'], true);
     const { ok, data } = await api('/api/account/phone/start', {
-      newPhone: $('#pc-new').value.trim(), password: $('#pc-pass').value, oldChannel: chan,
+      newPhone: $('#pc-new').value.trim(), oldChannel: chan,
     });
     busy(['pc-start'], false);
     if (!ok) { msg(errText(data), true); return; }
@@ -186,7 +200,7 @@
     msg('');
     busy(['em-send'], true);
     const { ok, data } = await api('/api/account/email/request', {
-      email: $('#em-addr').value.trim(), password: $('#em-pass').value,
+      email: $('#em-addr').value.trim(),
     });
     busy(['em-send'], false);
     if (!ok) { msg(errText(data), true); return; }
@@ -201,7 +215,6 @@
     if (!ok) { msg(errText(data), true); return; }
     $('#em-1').hidden = false;
     $('#em-2').hidden = true;
-    $('#em-pass').value = '';
     $('#em-otp').value = '';
     msg('Đã xác minh email.');
     load();
@@ -211,13 +224,12 @@
   let lastCodes = '';
   $('#rc-gen').onclick = async () => {
     msg('');
-    const { ok, data } = await api('/api/account/recovery-codes', { password: $('#rc-pass').value });
+    const { ok, data } = await api('/api/account/recovery-codes', {});
     if (!ok) { msg(errText(data), true); return; }
     lastCodes = data.codes.join('\n');
     $('#rc-out').textContent = lastCodes;
     $('#rc-out').hidden = false;
     $('#rc-actions').hidden = false;
-    $('#rc-pass').value = '';
     msg('Lưu các mã này ngay — chúng sẽ không hiển thị lại.');
     load();
   };
@@ -235,9 +247,8 @@
   $('#wp-go').onclick = async () => {
     msg('');
     if (!confirm('Xoá toàn bộ lịch sử trên máy chủ? Không thể hoàn tác.')) return;
-    const { ok, data } = await api('/api/account/data/wipe', { password: $('#wp-pass').value });
+    const { ok, data } = await api('/api/account/data/wipe', {});
     if (!ok) { msg(errText(data), true); return; }
-    $('#wp-pass').value = '';
     msg(`Đã xoá ${data.deleted} bản ghi trên máy chủ.`);
   };
 

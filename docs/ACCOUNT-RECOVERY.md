@@ -1,10 +1,12 @@
 # Đổi số điện thoại & khôi phục tài khoản
 
+> Không còn mật khẩu: nơi nào trước đây hỏi "mật khẩu hiện tại" nay yêu cầu xác nhận lại bằng vân tay/Authenticator. **Đổi máy điện thoại (giữ nguyên số)** xem [CONTROL-SECURITY.md](CONTROL-SECURITY.md#thêm-máy-điện-thoại-mới-không-cần-admin).
+
 SĐT là **danh tính** (username = SĐT, OTP qua Telegram). Vì vậy đổi SĐT được bảo vệ theo 3 mức:
 
 | Mức | Bằng chứng | Hiệu lực |
 |---|---|---|
-| Mạnh | Đăng nhập + mật khẩu + OTP kênh **cũ** (Telegram hoặc email đã xác minh) + OTP vào Telegram của **số mới** | Ngay |
+| Mạnh | Đăng nhập + xác nhận vân tay/Authenticator (hoặc vừa đăng nhập) + OTP kênh **cũ** (Telegram hoặc email đã xác minh) + OTP vào Telegram của **số mới** | Ngay |
 | Yếu | Như trên nhưng thay OTP kênh cũ bằng **mã khôi phục** (dùng 1 lần) | Sau `PHONE_CHANGE_COOLING_HOURS` (24h) |
 | Mất hết | Ticket tại `recover.html` + OTP số mới (+ ghi chú, thử thách PLC) → **admin duyệt** | Sau `RECOVERY_COOLING_HOURS` (48h) |
 
@@ -44,6 +46,6 @@ Công khai: `POST /api/recovery/{start,confirm,status,plc/start,plc/check}`, `GE
 - Admin: `node scripts/plan.js set <SĐT> <số ngày ≥4 | unlimited | default>`, `show`, `list`. Hạ gói sẽ xoá dữ liệu cũ hơn cửa sổ mới.
 
 ## Chuyển nhượng thiết bị / xoá dữ liệu
-- Chủ tài khoản: Cài đặt → "Dữ liệu lịch sử" → xoá lịch sử trên máy chủ (cần mật khẩu).
+- Chủ tài khoản: Cài đặt → "Dữ liệu lịch sử" → xoá lịch sử trên máy chủ (cần xác nhận lại bằng vân tay/Authenticator).
 - Admin: `node scripts/plan.js transfer <SĐT_cũ> <SĐT_mới>` — xoá lịch sử, giao site/device cho chủ mới, chủ cũ chuyển sang namespace trống, xoay mật khẩu MQTT, thu hồi phiên cũ của cả hai.
 - Kiểm thử: `node scripts/smoke-retention.js`.

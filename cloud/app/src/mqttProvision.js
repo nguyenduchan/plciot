@@ -32,6 +32,10 @@ topic read plc/+/+/history
 # MARKER_USER_ACL
 `;
 
+// ctl = chỉ app server (controlPublisher.js) được ghi cmd; chỉ có trong ACL của kênh đã mã hoá (listener 1884/9002).
+const CTL_BLOCK = 'user ctl\ntopic write plc/+/+/cmd\n\n';
+const headerFor = (secure) => (secure ? HEADER.replace('user ingest', `${CTL_BLOCK}user ingest`) : HEADER);
+
 function configDir() {
   return path.resolve(process.env.MQTT_CONFIG_DIR || path.join(process.env.DATA_DIR || './data', '..', '..', 'config'));
 }
@@ -56,6 +60,9 @@ export function randomMqttPassword() {
   return crypto.randomBytes(18).toString('base64url');
 }
 
+/** true (mặc định): điện thoại KHÔNG ghi cmd trực tiếp; lệnh đi qua /api/control/cmd để kiểm tra step-up. */
+export const controlViaServer = () => String(process.env.CONTROL_VIA_SERVER || 'true').toLowerCase() !== 'false';
+
 export function mqttUsernameFor(userId) {
   return `u${userId}`;
 }
@@ -71,13 +78,14 @@ export function userAclBlock(mqttUser, site, device, role = 'operator', scopes =
   const u = sanitize(mqttUser);
   const base = `plc/${s}/${d}`;
   const control = secure && role !== 'viewer';
+  const directWrite = control && !controlViaServer();
   // người điều khiển cần đọc ack để biết lệnh đã được PLC thực hiện
   const readKinds = ['telemetry', 'status', 'ack', 'history'].filter((k) => scopes.includes(k) || (control && k === 'ack'));
   return [
     `user ${u}`,
     ...readKinds.map((k) => `topic read ${base}/${k}`),
     // control: chỉ qua kênh mã hoá và chỉ với vai trò operator/admin (viewer luôn chỉ xem)
-    ...(control ? [`topic write ${base}/cmd`] : []),
+    ...(directWrite ? [`topic write ${base}/cmd`] : []),
     '',
   ].join('\n');
 }
@@ -94,8 +102,8 @@ export function rebuildAclFromUsers(db) {
     SELECT id, mqtt_user, notify_site, notify_device, role, monitor_scopes FROM users
     WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND disabled = 0
   `).all();
-  let secure = HEADER;
-  let plain = HEADER;
+  let secure = headerFor(true);
+  let plain = headerFor(false);
   for (const u of users) {
     const scopes = userScopes(u);
     secure += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device, u.role, scopes, true);
@@ -184,6 +192,7 @@ export function mqttClientConfig(user) {
     pass: user.mqtt_pass,
     scopes: userScopes(user),
     canControl: user.role !== 'viewer',
+    controlVia: controlViaServer() ? 'server' : 'mqtt',
     site: user.notify_site,
     device: user.notify_device,
     topicBase: `plc/${user.notify_site}/${user.notify_device}`,

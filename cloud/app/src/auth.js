@@ -11,7 +11,10 @@ export function verifyPassword(password, hash) {
   return bcrypt.compareSync(password, hash);
 }
 
-export function signToken(payload, secret, expiresIn = '7d') {
+/** Hạn JWT (giờ): JWT_TTL_HOURS, mặc định 72. Đang dùng thì được gia hạn trượt (X-Renewed-Token), bỏ 3 ngày mới phải đăng nhập lại. */
+export const jwtTtlSeconds = () => Math.max(1, Number(process.env.JWT_TTL_HOURS || 72)) * 3600;
+
+export function signToken(payload, secret, expiresIn = jwtTtlSeconds()) {
   return jwt.sign(payload, secret, { expiresIn });
 }
 

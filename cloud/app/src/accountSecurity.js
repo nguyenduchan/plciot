@@ -3,7 +3,7 @@
  * (self-service + recovery tickets reviewed by an admin).
  *
  * Strength model for changing the phone (= the identity):
- *   strong  session + password + OTP on OLD channel (Telegram/verified email) + OTP on NEW number → immediate
+ *   strong  session + re-auth (passkey/TOTP) + OTP on OLD channel (Telegram/verified email) + OTP on NEW number → immediate
  *   weak    session/ticket + recovery code + OTP on NEW number               → cooling-off, owner notified
  *   lost    no session/code: ticket + OTP on NEW number + admin review       → cooling-off, owner notified
  * Every path notifies the old owner channels and is written to audit_log.
@@ -12,7 +12,6 @@ import crypto from 'crypto';
 import {
   findUserByPhone, findUserById, upsertTelegramUser,
 } from './db.js';
-import { verifyPassword } from './auth.js';
 import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import { sendTelegramMessage, telegramConfigured } from './telegram.js';
 import { resolveTelegramUser } from './sharedTg.js';
@@ -43,7 +42,7 @@ const coolingMs = () => num('PHONE_CHANGE_COOLING_HOURS', 24) * HOUR;
 /** Cooling-off after admin approval of a recovery ticket. */
 const reviewCoolingMs = () => num('RECOVERY_COOLING_HOURS', 48) * HOUR;
 /** A freshly added email cannot act as "old channel" until this has passed. */
-const emailQuarantineMs = () => num('EMAIL_QUARANTINE_HOURS', 72) * HOUR;
+export const emailQuarantineMs = () => num('EMAIL_QUARANTINE_HOURS', 72) * HOUR;
 
 function hashOtp(code) {
   return crypto.createHash('sha256').update(`otp:${code}`).digest('hex');
@@ -127,13 +126,14 @@ export function accountSecuritySummary(db, user) {
   };
 }
 
-function requirePassword(user, password) {
-  return Boolean(password) && verifyPassword(String(password), user.password_hash);
+/** Xác nhận lại danh tính: phải đã qua step-up (vân tay/Authenticator) hoặc vừa đăng nhập — middleware reauth đặt cờ này. */
+function requireReauth(reauthed) {
+  return reauthed === true;
 }
 
-export async function requestEmailVerify(db, user, { email, password, ip }) {
+export async function requestEmailVerify(db, user, { email, reauthed, ip }) {
   if (!emailConfigured()) return { error: 'email_disabled', status: 501 };
-  if (!requirePassword(user, password)) return { error: 'invalid_credentials', status: 401 };
+  if (!requireReauth(reauthed)) return { error: 'invalid_credentials', status: 401 };
   const addr = String(email || '').trim().toLowerCase();
   if (!isValidEmail(addr)) return { error: 'invalid_email', status: 400 };
   if (countAudit(db, user.id, 'email_verify_request', Date.now() - HOUR) >= 5) {
@@ -183,8 +183,8 @@ export async function verifyEmail(db, user, { otp, ip }) {
 
 /* -------------------------------------------------------- recovery codes */
 
-export async function regenerateRecoveryCodes(db, user, { password, ip }) {
-  if (!requirePassword(user, password)) return { error: 'invalid_credentials', status: 401 };
+export async function regenerateRecoveryCodes(db, user, { reauthed, ip }) {
+  if (!requireReauth(reauthed)) return { error: 'invalid_credentials', status: 401 };
   const codes = generateRecoveryCodes(db, user.id);
   audit(db, 'recovery_codes_regenerated', { userId: user.id, ip });
   notifyOwner(db, user, {
@@ -198,7 +198,7 @@ export async function regenerateRecoveryCodes(db, user, { password, ip }) {
 function recoveryCodeBurst(db, userId) {
   return countAudit(db, userId, 'recovery_code_fail', Date.now() - 24 * HOUR) >= 10;
 }
-function tryRecoveryCode(db, user, code, ip) {
+export function tryRecoveryCode(db, user, code, ip) {
   if (recoveryCodeBurst(db, user.id)) return 'locked';
   if (consumeRecoveryCode(db, user.id, code)) return 'ok';
   audit(db, 'recovery_code_fail', { userId: user.id, ip });
@@ -224,9 +224,9 @@ function newChangeId() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-export async function startSelfChange(db, user, { newPhone, password, oldChannel, ip }) {
-  if (!requirePassword(user, password)) {
-    audit(db, 'phone_change_bad_password', { userId: user.id, ip });
+export async function startSelfChange(db, user, { newPhone, reauthed, oldChannel, ip }) {
+  if (!requireReauth(reauthed)) {
+    audit(db, 'phone_change_unauthorised', { userId: user.id, ip });
     return { error: 'invalid_credentials', status: 401 };
   }
   if (db.prepare("SELECT 1 FROM phone_changes WHERE user_id = ? AND status IN ('pending_review','cooling')").get(user.id)) {

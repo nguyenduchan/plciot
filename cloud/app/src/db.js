@@ -28,6 +28,31 @@ function migrate(db) {
   add('created_by', 'created_by INTEGER');
   // Các nhóm topic được đọc, ví dụ 'telemetry,status'. NULL = tất cả. Xem roles.js
   add('monitor_scopes', 'monitor_scopes TEXT');
+  // TOTP cho điều khiển (máy không có sinh trắc): bí mật đã mã hoá + step đã dùng (chống phát lại).
+  add('totp_secret', 'totp_secret TEXT');
+  add('totp_enabled', 'totp_enabled INTEGER NOT NULL DEFAULT 0');
+  // Bí mật TOTP đang chờ xác nhận (thay thế thiết bị mới) — chỉ thành bí mật chính khi nhập đúng mã.
+  add('totp_pending', 'totp_pending TEXT');
+  // Hạn phải bật vân tay/Authenticator (đặt lười khi lần đầu cần); quá hạn mà chưa có yếu tố → khoá điều khiển.
+  add('enroll_deadline', 'enroll_deadline INTEGER');
+  // Chủ site: được mời thành viên, ghép/thu hồi PC. Lần đầu thêm cột: người dùng id nhỏ nhất mỗi site thành chủ.
+  const hadOwner = cols.includes('site_owner');
+  add('site_owner', 'site_owner INTEGER NOT NULL DEFAULT 0');
+  if (!hadOwner) {
+    db.exec("UPDATE users SET site_owner = 1 WHERE disabled = 0 AND role IN ('admin','operator') AND id IN (SELECT MIN(id) FROM users WHERE disabled = 0 AND role IN ('admin','operator') GROUP BY notify_site, notify_device)");
+  }
+  add('totp_last_step', 'totp_last_step INTEGER NOT NULL DEFAULT 0');
+}
+
+function migrateStations(db) {
+  const cols = db.prepare('PRAGMA table_info(stations)').all().map((c) => c.name);
+  const add = (name, ddl) => { if (!cols.includes(name)) db.exec(`ALTER TABLE stations ADD COLUMN ${ddl}`); };
+  add('kind', "kind TEXT NOT NULL DEFAULT 'legacy'"); // legacy = admin cấp khoá, paired = ghép bằng mã + khoá thiết bị
+  add('public_key', 'public_key TEXT');
+  add('hwid', 'hwid TEXT');
+  add('site', 'site TEXT');
+  add('device', 'device TEXT');
+  add('last_ip', 'last_ip TEXT');
 }
 
 export function openDb(dataDir) {
@@ -120,7 +145,92 @@ export function openDb(dataDir) {
       detail TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, event, ts);
+    -- Passkeys (WebAuthn): khoá công khai SPKI DER base64url.
+    CREATE TABLE IF NOT EXISTS passkeys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      cred_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      alg INTEGER NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      name TEXT,
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_passkeys_user ON passkeys(user_id);
+    -- Phiên điều khiển (step-up): chỉ lưu băm của token. method: passkey | totp
+    CREATE TABLE IF NOT EXISTS control_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      method TEXT NOT NULL,
+      net TEXT,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      revoked INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_ctl_sess_user ON control_sessions(user_id);
+    -- Yêu cầu thêm máy điện thoại mới (xem deviceApproval.js). status: pending → cooling → approved → done | denied | cancelled | expired
+    CREATE TABLE IF NOT EXISTS device_requests (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      method TEXT,
+      poll_hash TEXT NOT NULL,
+      label TEXT,
+      created_ip TEXT,
+      email_otp_hash TEXT,
+      email_otp_expires INTEGER,
+      email_fails INTEGER NOT NULL DEFAULT 0,
+      execute_at INTEGER,
+      ticket_hash TEXT,
+      ticket_expires INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_req_user ON device_requests(user_id, status);
+    -- PC trạm tại xưởng: bỏ qua step-up khi đến từ IP xưởng (CONTROL_LAN_CIDRS) + khoá trạm.
+    CREATE TABLE IF NOT EXISTS stations (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER
+    );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS site_invites (
+      id TEXT PRIMARY KEY,
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      role TEXT NOT NULL,
+      invited_by INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_site_invites_phone ON site_invites(phone, status);
+    CREATE TABLE IF NOT EXISTS known_devices (
+      user_id INTEGER NOT NULL,
+      dev_hash TEXT NOT NULL,
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      last_ip TEXT,
+      PRIMARY KEY (user_id, dev_hash)
+    );
+    CREATE TABLE IF NOT EXISTS pair_codes (
+      code_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      name TEXT,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+  `);
+  migrateStations(db);
   migrate(db);
   initHistoryTables(db);
   return db;

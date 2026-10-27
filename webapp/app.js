@@ -119,8 +119,20 @@ function applyRole(role) {
   document.body.classList.toggle('viewer', S.role === 'viewer');
   const l = $('#admin-link'); if (l) l.hidden = S.role !== 'admin';
 }
+/* Đã đăng nhập (không demo): lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
+const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
+const CTL_ERR = (e) => (e === 'cancelled' ? '' : window.Ctl.errText(e));
 function sendReg(a, v) {
   if (S.role === 'viewer') return toast('Tài khoản chỉ xem — không được điều khiển');
+  if (viaServer()) {
+    if (S.status !== 'online') return toast('Không có kết nối tới PLC');
+    const id = Date.now().toString(36);
+    Ctl.send({ id, a, v }).then((r) => {
+      if (r.error) return CTL_ERR(r.error) && toast(CTL_ERR(r.error));
+      pending[id] = setTimeout(() => { delete pending[id]; toast('PLC không phản hồi'); }, 4000);
+    });
+    return;
+  }
   if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kênh không mã hoá (ws://) chỉ xem được. Dùng wss:// để điều khiển');
   const id = Date.now().toString(36);
   if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Không có kết nối tới PLC');
@@ -131,8 +143,16 @@ function queryRead() {
   const a = parseInt($('#q-a').value, 10), n = parseInt($('#q-n').value || '1', 10), out = $('#q-out');
   if (!(a >= 0 && a <= 299 && n >= 1 && n <= 20)) { out.textContent = 'Địa chỉ 0–299, số lượng 1–20'; return; }
   const id = 'q' + Date.now().toString(36);
-  if (S.status !== 'online' || !link.send({ id, op: 'read', a, n })) { out.textContent = 'Không có kết nối tới PLC'; return; }
+  if (S.status !== 'online') { out.textContent = 'Không có kết nối tới PLC'; return; }
   out.textContent = 'Đang đọc…';
+  if (viaServer()) {
+    Ctl.send({ id, op: 'read', a, n }).then((r) => {
+      if (r.error) { out.textContent = CTL_ERR(r.error) || 'Đã huỷ'; return; }
+      queries[id] = setTimeout(() => { delete queries[id]; out.textContent = 'PLC không phản hồi'; }, 6000);
+    });
+    return;
+  }
+  if (!link.send({ id, op: 'read', a, n })) { out.textContent = 'Không có kết nối tới PLC'; return; }
   queries[id] = setTimeout(() => { delete queries[id]; out.textContent = 'PLC không phản hồi'; }, 6000);
 }
 function onQueryAck(a) {
@@ -404,6 +424,7 @@ async function alignSiteDevFromSession() {
     LS.set('session', { ...session, role: me.role });
     let changed = false;
     if (me.mqtt) {
+      const cv = me.mqtt.controlVia || 'mqtt'; if (cfg.controlVia !== cv) { cfg.controlVia = cv; changed = true; }
       if (cfg.user !== me.mqtt.user) { cfg.user = me.mqtt.user; changed = true; }
       if (cfg.pass !== me.mqtt.pass) { cfg.pass = me.mqtt.pass; changed = true; }
       if (cfg.site !== me.mqtt.site) { cfg.site = me.mqtt.site; changed = true; }

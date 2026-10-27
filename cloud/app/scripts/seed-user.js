@@ -3,11 +3,12 @@
  * Create or update a user, copy webapp bundle, provision per-user MQTT ACL.
  *
  * Usage:
- *   node scripts/seed-user.js <username> <password> [site] [device] [version]
+ *   node scripts/seed-user.js <SĐT_VN> [site] [device] [version]
  *
  * Example:
  *   node scripts/seed-user.js 84987654321 secret factory1 plc01 1
  */
+import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { openDb, upsertUser } from '../src/db.js';
@@ -19,9 +20,10 @@ import { provisionUserMqtt } from '../src/mqttProvision.js';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const WEBAPP_SRC = path.resolve(process.env.WEBAPP_SRC || path.join(DATA_DIR, '..', '..', '..', 'webapp'));
 
-const [username, password, siteArg, deviceArg = 'plc01', version = '1'] = process.argv.slice(2);
-if (!username || !password) {
-  console.error('Usage: node scripts/seed-user.js <SĐT_VN> <password> [site] [device] [version]');
+const [username, siteArg, deviceArg = 'plc01', version = '1'] = process.argv.slice(2);
+const password = crypto.randomBytes(24).toString('hex'); // không mật khẩu: người dùng vào bằng vân tay / OTP Telegram
+if (!username) {
+  console.error('Usage: node scripts/seed-user.js <SĐT_VN> [site] [device] [version]');
   console.error('Example: node scripts/seed-user.js 0987654321 secret factory1 plc01');
   process.exit(1);
 }

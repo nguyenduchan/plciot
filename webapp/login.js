@@ -22,6 +22,8 @@ const ERR = {
   otp_missing: 'Chưa có OTP. Bấm Gửi OTP trước.',
   otp_locked: 'Nhập sai quá nhiều. Thử lại sau.',
   telegram_send_failed: 'Không gửi được Telegram. Thử lại.',
+  webauthn_failed: 'Vân tay / Face ID không thành công. Thử lại hoặc dùng OTP Telegram.',
+  unknown_credential: 'Thiết bị này chưa có vân tay đăng ký. Dùng OTP Telegram.',
 };
 
 /** Client-side VN mobile check (canonical 84 + 9 digits). */
@@ -62,7 +64,7 @@ function setError(codeOrMsg) {
 }
 
 function setBusy(on) {
-  ['btn-otp', 'btn-verify', 'btn-back', 'demo'].forEach((id) => {
+  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on;
   });
@@ -146,12 +148,15 @@ async function finishLogin(data) {
     cfg.pass = data.mqtt.pass;
     cfg.site = data.mqtt.site;
     cfg.dev = data.mqtt.device;
+    cfg.controlVia = data.mqtt.controlVia || 'mqtt';
   } else if (data.notifySite) {
     cfg.site = data.notifySite;
     cfg.dev = data.notifyDevice;
   }
   LS.set('cfg', cfg);
   await registerSw();
+  if (data.controlToken) LS.set('ctl', { token: data.controlToken, method: data.method, expiresAt: data.expiresAt });
+  try { await window.Ctl?.offerEnroll(); } catch {}
   // báo thành công ~1 giây rồi vào trang chính
   await new Promise((r) => setTimeout(r, 900));
   location.replace('index.html');
@@ -160,7 +165,7 @@ async function finishLogin(data) {
 async function api(path, body) {
   const r = await fetch(location.origin + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Device-Id': window.Ctl?.devId() || '' },
     body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
@@ -276,6 +281,30 @@ $('#btn-verify').onclick = async () => {
     setBusy(false);
   }
 };
+
+/* Đăng nhập bằng passkey: ưu tiên hàng đầu khi thiết bị hỗ trợ; OTP Telegram là lần đầu / dự phòng. */
+async function passkeyLogin(auto) {
+  setError('');
+  setBusy(true);
+  try {
+    const data = await window.Ctl.loginWithPasskey();
+    if (data.error) { if (!auto) setError(data.error); return; }
+    $('#step-creds').hidden = true;
+    $('#ok-msg').textContent = '✓ Đăng nhập thành công. Đang vào ứng dụng…';
+    $('#ok-msg').hidden = false;
+    await finishLogin(data);
+  } catch (ex) {
+    if (!auto) setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : 'webauthn_failed');
+  } finally {
+    setBusy(false);
+  }
+}
+if (window.Ctl?.passkeySupported()) {
+  $('#btn-passkey').hidden = false;
+  $('#btn-passkey').onclick = () => passkeyLogin(false);
+  $('#btn-otp').classList.remove('primary');
+  if (LS.get('hasPasskey', false)) setTimeout(() => passkeyLogin(true), 300);
+}
 
 $('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
 $('#btn-resend').onclick = () => $('#btn-otp').onclick();

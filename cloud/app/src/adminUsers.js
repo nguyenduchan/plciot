@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import { findUserById, findUserByPhone } from './db.js';
 import { hashPassword } from './auth.js';
 import { copyDir, resolveBundleRoot } from './bundle.js';
@@ -11,7 +12,6 @@ import { ROLES, MONITOR_SCOPES, isRole, userScopes, parseScopes } from './roles.
 import { audit } from './audit.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
-const MIN_PASS = 8;
 
 export function publicUser(u) {
   return {
@@ -40,13 +40,12 @@ function syncBroker(db) {
 }
 
 export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
-  const { phone, password, role = 'operator', site, device = 'plc01' } = body;
+  const { phone, role = 'operator', site, device = 'plc01' } = body;
   const scopes = body.scopes === undefined ? null : parseScopes(body.scopes);
   if (body.scopes !== undefined && !scopes) return { error: 'invalid_scopes', status: 400 };
   const p = normalizePhone(phone);
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
   if (!isRole(role)) return { error: 'invalid_role', status: 400 };
-  if (String(password || '').length < MIN_PASS) return { error: 'weak_password', status: 400 };
   const siteName = String(site || `s${p}`);
   const dev = String(device || 'plc01');
   if (!SAFE.test(siteName) || !SAFE.test(dev)) return { error: 'invalid_site_or_device', status: 400 };
@@ -58,7 +57,7 @@ export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
   const info = db.prepare(`
     INSERT INTO users (username, password_hash, folder_path, version, phone, notify_site, notify_device, role, created_by)
     VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?)
-  `).run(p, hashPassword(password), folder, p, siteName, dev, role, admin.id);
+  `).run(p, hashPassword(crypto.randomBytes(24).toString('hex')), folder, p, siteName, dev, role, admin.id);
   if (scopes) db.prepare('UPDATE users SET monitor_scopes = ? WHERE id = ?').run(scopes.join(','), info.lastInsertRowid);
   const { user, provision } = provisionUserMqtt(db, findUserById(db, info.lastInsertRowid), { site: siteName, device: dev });
   audit(db, 'admin_user_create', { userId: admin.id, ip, detail: `${user.id} ${role} ${siteName}/${dev}` });
@@ -99,11 +98,7 @@ export function updateUser(db, admin, id, patch, { ip }) {
     if (!sc) return { error: 'invalid_scopes', status: 400 };
     sets.push('monitor_scopes = ?'); vals.push(sc.join(','));
   }
-  if (patch.password !== undefined) {
-    if (String(patch.password).length < MIN_PASS) return { error: 'weak_password', status: 400 };
-    sets.push('password_hash = ?'); vals.push(hashPassword(String(patch.password)));
-    revoke = true;
-  }
+  if (patch.revokeSessions) revoke = true; // đăng xuất mọi máy (token_version + 1)
   if (!sets.length) return { error: 'nothing_to_update', status: 400 };
   if (revoke) sets.push('token_version = token_version + 1');
   db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, u.id);
@@ -115,7 +110,7 @@ export function updateUser(db, admin, id, patch, { ip }) {
   }
   const reload = syncBroker(db);
   audit(db, 'admin_user_update', {
-    userId: admin.id, ip, detail: `${u.id} ${Object.keys(patch).filter((k) => k !== 'password').join(',')}${patch.password ? ',password' : ''}`,
+    userId: admin.id, ip, detail: `${u.id} ${Object.keys(patch).join(',')}`,
   });
   return { ok: true, user: publicUser(findUserById(db, u.id)), reload };
 }

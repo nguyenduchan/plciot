@@ -11,6 +11,22 @@ import { resolveTelegramUser } from './sharedTg.js';
 import { provisionUserMqtt } from './mqttProvision.js';
 import fs from 'fs';
 
+/* Ngân sách theo SỐ ĐIỆN THOẠI (bất kể IP): chặn đoán OTP phân tán và spam Telegram nạn nhân. */
+const HOUR = 3_600_000;
+const reqLog = new Map(); // phone -> mốc thời gian xin OTP
+const failLog = new Map(); // phone -> mốc thời gian nhập sai
+const recent = (map, key, windowMs, now = Date.now()) => { const a = (map.get(key) || []).filter((t) => now - t < windowMs); map.set(key, a); return a; };
+const OTP_REQ_PER_HOUR = () => Number(process.env.OTP_REQ_PER_PHONE_HOUR || 6);
+const OTP_FAIL_PER_15MIN = () => Number(process.env.OTP_FAIL_PER_PHONE_15MIN || 10);
+function takeRequestBudget(phone) {
+  const a = recent(reqLog, phone, HOUR);
+  if (a.length >= OTP_REQ_PER_HOUR()) return false;
+  a.push(Date.now());
+  return true;
+}
+const failLocked = (phone) => recent(failLog, phone, 15 * 60_000).length >= OTP_FAIL_PER_15MIN();
+const noteFail = (phone) => recent(failLog, phone, 15 * 60_000).push(Date.now());
+
 function hashCode(code) {
   return crypto.createHash('sha256').update(String(code)).digest('hex');
 }
@@ -19,14 +35,13 @@ function genCode() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
-export async function requestRegisterOtp(db, { phone, password, dataDir, webappSrc }) {
+export async function requestRegisterOtp(db, { phone, dataDir, webappSrc }) {
   const p = normalizePhone(phone);
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
-  // Đăng ký không cần mật khẩu (OTP Telegram); nếu có gửi lên thì vẫn kiểm tra độ dài.
-  if (password && String(password).length < 6) return { error: 'weak_password', status: 400 };
 
   // username === canonical VN phone (84…)
   if (findUserByPhone(db, p)) return { error: 'user_exists', status: 409 };
+  if (!takeRequestBudget(p)) return { error: 'rate_limited', status: 429 };
 
   // Must already have shared phone with Telegram bot (mqtt_server / local)
   const tg = await resolveTelegramUser(db, p);
@@ -37,7 +52,7 @@ export async function requestRegisterOtp(db, { phone, password, dataDir, webappS
     phone: p,
     purpose: 'register',
     codeHash: hashCode(code),
-    passwordHash: hashPassword(password || crypto.randomBytes(24).toString('hex')),
+    passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')), // cột NOT NULL cũ: không ai biết, không dùng để xác thực
   });
 
   try {
@@ -50,6 +65,7 @@ export async function requestRegisterOtp(db, { phone, password, dataDir, webappS
 
 export async function verifyRegisterOtp(db, { phone, otp, dataDir, webappSrc }) {
   const p = normalizePhone(phone);
+  if (failLocked(p)) return { error: 'otp_locked', status: 429 };
   const ch = getOtpChallenge(db, p, 'register');
   if (!ch) return { error: 'otp_missing', status: 400 };
   if (Date.now() > ch.expires_at) {
@@ -59,6 +75,7 @@ export async function verifyRegisterOtp(db, { phone, otp, dataDir, webappSrc }) 
   if (ch.fails >= 5) return { error: 'otp_locked', status: 429 };
   if (hashCode(otp) !== ch.code_hash) {
     bumpOtpFail(db, ch.id);
+    noteFail(p);
     return { error: 'otp_invalid', status: 401 };
   }
 
@@ -95,6 +112,7 @@ export async function requestLoginOtp(db, { phone }) {
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
   const user = findUserByPhone(db, p);
   if (!user) return { error: 'user_not_found', status: 404 };
+  if (!takeRequestBudget(p)) return { error: 'rate_limited', status: 429 };
 
   // Refresh Telegram link from shared DB (mqtt_server) on each OTP login
   const tg = await resolveTelegramUser(db, p)
@@ -121,6 +139,7 @@ export async function requestLoginOtp(db, { phone }) {
 
 export function verifyLoginOtp(db, { phone, otp }) {
   const p = normalizePhone(phone);
+  if (failLocked(p)) return { error: 'otp_locked', status: 429 };
   const ch = getOtpChallenge(db, p, 'login');
   if (!ch) return { error: 'otp_missing', status: 400 };
   if (Date.now() > ch.expires_at) {
@@ -130,6 +149,7 @@ export function verifyLoginOtp(db, { phone, otp }) {
   if (ch.fails >= 5) return { error: 'otp_locked', status: 429 };
   if (hashCode(otp) !== ch.code_hash) {
     bumpOtpFail(db, ch.id);
+    noteFail(p);
     return { error: 'otp_invalid', status: 401 };
   }
   const user = findUserByPhone(db, p);

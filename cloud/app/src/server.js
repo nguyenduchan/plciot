@@ -3,8 +3,8 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
-import { openDb, findUserByUsername, findUserById, findUserByPhone } from './db.js';
-import { verifyPassword, signToken, bearerUser } from './auth.js';
+import { openDb, findUserById, findUserByPhone } from './db.js';
+import { signToken, bearerUser, jwtTtlSeconds } from './auth.js';
 import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
 import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import {
@@ -30,6 +30,9 @@ import { wipeOwnHistory } from './deviceTransfer.js';
 import { isAdmin, userScopes } from './roles.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
+import { mountControl } from './controlRoutes.js';
+import { mountSite } from './siteRoutes.js';
+import { noteLogin } from './loginAlerts.js';
 
 const PORT = Number(process.env.PORT || 3080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -51,7 +54,7 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
 app.use(securityHeaders);
 app.use(cors(buildCorsOptions()));
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '64kb', verify: (req, _res, buf) => { req.rawBody = buf; } })); // rawBody: chữ ký của PC nhà máy
 
 // Global soft limit (per IP)
 app.use('/api/', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_API || 120) }));
@@ -87,6 +90,10 @@ function requireAuth(req, res, next) {
   if (user.disabled) return res.status(403).json({ error: 'account_disabled' });
   req.user = user;
   req.tokenPayload = payload;
+  // gia hạn trượt: quá nửa hạn thì cấp token mới qua header (webapp/session.js tự cập nhật)
+  if (payload.iat && Date.now() / 1000 - payload.iat > jwtTtlSeconds() / 2) {
+    res.setHeader('X-Renewed-Token', signToken({ uid: user.id, u: user.username, tv: user.token_version | 0 }, JWT_SECRET));
+  }
   next();
 }
 
@@ -143,31 +150,10 @@ app.get('/api/auth/config', (_req, res) => {
   });
 });
 
-app.post('/api/login', authStrict, (req, res) => {
-  // Username = Vietnamese phone (canonical 84…)
-  const raw = String(req.body?.username || req.body?.phone || '').trim();
-  const username = normalizePhone(raw);
-  const password = String(req.body?.password || '');
-  if (!username || !password) return res.status(400).json({ error: 'missing_credentials' });
-  if (!isValidVnPhone(username)) return res.status(400).json({ error: 'invalid_phone' });
-
-  const user = findUserByUsername(db, username) || findUserByPhone(db, username);
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    if (user) audit(db, 'login_fail', { userId: user.id, ip: clientIp(req) });
-    return res.status(401).json({ error: 'invalid_credentials' });
-  }
-  if (user.disabled) return res.status(403).json({ error: 'account_disabled' });
-  audit(db, 'login_ok', { userId: user.id, ip: clientIp(req), detail: 'password' });
-  const out = loginPayload(user);
-  if (out.error) return res.status(out.status).json({ error: out.error });
-  res.json(out);
-});
-
 app.post('/api/register/request-otp', authStrict, otpStrict, async (req, res) => {
   if (!registrationOpen()) return res.status(403).json({ error: 'registration_closed' });
   const phone = String(req.body?.phone || req.body?.username || '');
-  const password = String(req.body?.password || '');
-  const result = await requestRegisterOtp(db, { phone, password, dataDir: DATA_DIR, webappSrc: WEBAPP_SRC });
+  const result = await requestRegisterOtp(db, { phone, dataDir: DATA_DIR, webappSrc: WEBAPP_SRC });
   if (result.error) return res.status(result.status || 400).json(result);
   res.json(result);
 });
@@ -180,6 +166,7 @@ app.post('/api/register/verify', authStrict, otpStrict, async (req, res) => {
   if (result.error) return res.status(result.status || 400).json(result);
   const out = loginPayload(result.user);
   if (out.error) return res.status(out.status).json({ error: out.error });
+  noteLogin(db, result.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'đăng ký OTP' });
   res.json(out);
 });
 
@@ -207,11 +194,15 @@ app.post('/api/login/verify-otp', authStrict, otpStrict, (req, res) => {
   if (result.error) return res.status(result.status || 400).json(result);
   const out = loginPayload(result.user);
   if (out.error) return res.status(out.status).json({ error: out.error });
+  noteLogin(db, result.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'OTP Telegram' });
   res.json(out);
 });
 
 
 /* ---------- Account security: email, recovery codes, change phone ---------- */
+// Xác nhận lại danh tính cho thao tác nhạy cảm (thay cho "mật khẩu hiện tại"): phiên điều khiển (vân tay/TOTP) hoặc vừa đăng nhập.
+let controlApi;
+const reauth = (req, res, next) => controlApi.reauth(req, res, next);
 const send = (res, out) => (out.error ? res.status(out.status || 400).json(out) : res.json(out));
 const ipOf = (req) => clientIp(req);
 
@@ -219,9 +210,9 @@ app.get('/api/account/security', requireAuth, (req, res) => {
   res.json(accountSecuritySummary(db, req.user));
 });
 
-app.post('/api/account/email/request', requireAuth, sensitiveStrict, async (req, res) => {
+app.post('/api/account/email/request', requireAuth, sensitiveStrict, reauth, async (req, res) => {
   send(res, await requestEmailVerify(db, req.user, {
-    email: req.body?.email, password: req.body?.password, ip: ipOf(req),
+    email: req.body?.email, reauthed: req.reauthed, ip: ipOf(req),
   }));
 });
 
@@ -229,18 +220,18 @@ app.post('/api/account/email/verify', requireAuth, sensitiveStrict, async (req, 
   send(res, await verifyEmail(db, req.user, { otp: req.body?.otp, ip: ipOf(req) }));
 });
 
-app.post('/api/account/recovery-codes', requireAuth, sensitiveStrict, async (req, res) => {
-  send(res, await regenerateRecoveryCodes(db, req.user, { password: req.body?.password, ip: ipOf(req) }));
+app.post('/api/account/recovery-codes', requireAuth, sensitiveStrict, reauth, async (req, res) => {
+  send(res, await regenerateRecoveryCodes(db, req.user, { reauthed: req.reauthed, ip: ipOf(req) }));
 });
 
-app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, (req, res) => {
-  send(res, wipeOwnHistory(db, req.user, { password: req.body?.password, ip: ipOf(req) }));
+app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, reauth, (req, res) => {
+  send(res, wipeOwnHistory(db, req.user, { reauthed: req.reauthed, ip: ipOf(req) }));
 });
 
-app.post('/api/account/phone/start', requireAuth, sensitiveStrict, async (req, res) => {
+app.post('/api/account/phone/start', requireAuth, sensitiveStrict, reauth, async (req, res) => {
   send(res, await startSelfChange(db, req.user, {
     newPhone: req.body?.newPhone,
-    password: req.body?.password,
+    reauthed: req.reauthed,
     oldChannel: req.body?.oldChannel,
     ip: ipOf(req),
   }));
@@ -330,17 +321,22 @@ app.get('/api/admin/users', ...adminOnly, (_req, res) => {
   res.json({ roles: ROLES, scopes: MONITOR_SCOPES, users: listUsers(db) });
 });
 
-app.post('/api/admin/users', ...adminOnly, adminWrite, (req, res) => {
+app.post('/api/admin/users', ...adminOnly, adminWrite, reauth, (req, res) => {
   send(res, createUser(db, req.user, req.body || {}, { dataDir: DATA_DIR, webappSrc: WEBAPP_SRC, ip: ipOf(req) }));
 });
 
-app.patch('/api/admin/users/:id', ...adminOnly, adminWrite, (req, res) => {
+app.patch('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
   send(res, updateUser(db, req.user, Number(req.params.id), req.body || {}, { ip: ipOf(req) }));
 });
 
-app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, (req, res) => {
+app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
   send(res, deleteUser(db, req.user, Number(req.params.id), { ip: ipOf(req) }));
 });
+
+/* ---------- Điều khiển: step-up (Passkey / TOTP), PC trạm, nút vật lý ---------- */
+controlApi = mountControl(app, { db, requireAuth, adminOnly, loginPayload, authStrict });
+/* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
+mountSite(app, { db, requireAuth, reauth });
 
 app.post('/api/logout', (_req, res) => {
   res.json({ ok: true });

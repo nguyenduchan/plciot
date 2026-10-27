@@ -50,8 +50,8 @@ ok(count('s10') === 4, 'shared site keeps longest plan');
 ok(Math.abs(R.retentionFloor(free, now) - (now - 3 * DAY)) < 5 && R.retentionFloor({ retention_days: 0 }, now) === 0, 'read floor clamps');
 
 // wipe own + transfer
-ok(wipeOwnHistory(db, free, { password: 'bad' }).error === 'invalid_credentials', 'wipe needs password');
-ok(wipeOwnHistory(db, free, { password: 'pw12345' }).deleted === 2 && count('sfree') === 0, 'wipe own history');
+ok(wipeOwnHistory(db, free, {}).error === 'invalid_credentials', 'wipe needs re-auth');
+ok(wipeOwnHistory(db, free, { reauthed: true }).deleted === 2 && count('sfree') === 0, 'wipe own history');
 const t = await transferDevice(db, p10.id, free.id, { admin: 't' });
 ok(t.ok && count('s10') === 0, 'transfer wipes history');
 const after = db.prepare('SELECT notify_site s, token_version tv FROM users WHERE id = ?');

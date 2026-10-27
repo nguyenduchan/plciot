@@ -45,11 +45,11 @@ upsertTelegramUser(db, '84912345678', 2002);
 upsertTelegramUser(db, '84923456789', 3003);
 upsertTelegramUser(db, '84934567890', 4004);
 
-// 1) wrong password
-ok((await A.startSelfChange(db, u, { newPhone: '0912345678', password: 'bad', oldChannel: 'telegram' })).error === 'invalid_credentials', 'self: wrong password rejected');
+// 1) no re-auth
+ok((await A.startSelfChange(db, u, { newPhone: '0912345678', oldChannel: 'telegram' })).error === 'invalid_credentials', 'self: without re-auth rejected');
 
 // 2) strong path: old OTP + new OTP -> applied immediately, sessions revoked
-let r = await A.startSelfChange(db, u, { newPhone: '0912345678', password: 'secret1', oldChannel: 'telegram' });
+let r = await A.startSelfChange(db, u, { newPhone: '0912345678', reauthed: true, oldChannel: 'telegram' });
 ok(r.ok, 'self: start');
 ok((await A.confirmSelfChange(db, u, { id: r.id, newOtp: '000000', oldOtp: lastCode(1001) })).error === 'otp_invalid', 'self: wrong new OTP');
 r = await A.confirmSelfChange(db, u, { id: r.id, newOtp: lastCode(2002), oldOtp: lastCode(1001) });
@@ -58,9 +58,9 @@ u = findUserById(db, u.id);
 ok(u.username === '84912345678' && u.chat_id === 2002 && u.token_version === 1, 'self: user moved + token_version bumped');
 
 // 3) weak path: recovery code -> cooling -> applied once elapsed
-const codes = (await A.regenerateRecoveryCodes(db, u, { password: 'secret1' })).codes;
+const codes = (await A.regenerateRecoveryCodes(db, u, { reauthed: true })).codes;
 ok(codes.length === 10, 'codes: 10 generated');
-r = await A.startSelfChange(db, u, { newPhone: '0923456789', password: 'secret1', oldChannel: 'recovery_code' });
+r = await A.startSelfChange(db, u, { newPhone: '0923456789', reauthed: true, oldChannel: 'recovery_code' });
 r = await A.confirmSelfChange(db, u, { id: r.id, newOtp: lastCode(3003), recoveryCode: codes[0] });
 ok(r.status === 'cooling', 'weak: recovery code -> cooling');
 ok(findUserById(db, u.id).username === '84912345678', 'weak: not applied during cooling');

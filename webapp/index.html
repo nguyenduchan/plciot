@@ -83,6 +83,7 @@
       </section>
 
       <section id="tab-ctrl" class="tab cols" hidden>
+        <div id="ctl-banner" class="ctl-banner" hidden></div>
         <div class="panel">
           <h2>Chế độ</h2>
           <div class="seg"><button id="m-auto">Tự động</button><button id="m-man">Thủ công</button></div>
@@ -138,7 +139,6 @@
             <p class="muted">Cần mật khẩu + mã OTP gửi tới kênh cũ và OTP gửi vào Telegram của <b>số mới</b> (số mới phải đã /start bot và chia sẻ SĐT).</p>
             <div id="pc-1">
               <label>Số mới<input id="pc-new" inputmode="tel" placeholder="0912345678" autocomplete="off"></label>
-              <label>Mật khẩu hiện tại<input id="pc-pass" type="password" autocomplete="current-password"></label>
               <label>Xác minh số cũ bằng<select id="pc-chan"></select></label>
               <div class="row"><button id="pc-start" class="primary">Gửi mã xác nhận</button></div>
             </div>
@@ -150,12 +150,28 @@
             </div>
           </details>
 
+          <details class="sec" id="ctl-sec" hidden>
+            <summary>Điều khiển: vân tay / Authenticator</summary>
+            <p class="muted">Mỗi lần điều khiển từ xa cần xác nhận. Điện thoại có vân tay / Face ID: chạm một lần. Máy cũ: mã Authenticator, nhớ 7 ngày (đổi mạng sẽ hỏi lại).</p>
+            <p id="ctl-state" class="muted">Đang tải…</p>
+            <div id="ctl-list"></div>
+            <div class="row"><button id="ctl-pk-add" class="primary">Thêm vân tay / Face ID</button><button id="ctl-totp-add" class="fit">Bật Authenticator</button></div>
+            <div class="row"><button id="ctl-review" class="fit">Duyệt thiết bị mới</button><button id="ctl-totp-off" class="fit" hidden>Tắt Authenticator</button><button id="ctl-lock" class="fit" hidden>Khoá điều khiển ngay</button></div>
+            <div class="row"><button id="ctl-logout-all" class="fit danger">Đăng xuất mọi máy</button></div>
+            <p class="muted" id="ctl-msg"></p>
+          </details>
+
+          <details class="sec" id="site-sec" hidden>
+            <summary>Nhà máy &amp; thành viên</summary>
+            <div id="site-body" class="muted">Đang tải…</div>
+            <p class="muted" id="site-msg"></p>
+          </details>
+
           <details class="sec">
             <summary>Email khôi phục</summary>
             <p class="muted">Dùng khi mất điện thoại. Email mới thêm chỉ dùng được để xác minh đổi số sau thời gian chờ (hiện ở trên).</p>
             <div id="em-1">
               <label>Email<input id="em-addr" type="email" autocomplete="email"></label>
-              <label>Mật khẩu hiện tại<input id="em-pass" type="password" autocomplete="current-password"></label>
               <div class="row"><button id="em-send" class="primary">Gửi mã xác minh</button></div>
             </div>
             <div id="em-2" hidden>
@@ -167,7 +183,6 @@
           <details class="sec">
             <summary>Mã khôi phục (dự phòng)</summary>
             <p class="muted">10 mã dùng một lần. Lưu ở nơi an toàn (in ra / trình quản lý mật khẩu). Tạo lại sẽ vô hiệu bộ cũ.</p>
-            <label>Mật khẩu hiện tại<input id="rc-pass" type="password" autocomplete="current-password"></label>
             <div class="row"><button id="rc-gen" class="primary">Tạo bộ mã mới</button></div>
             <pre id="rc-out" class="codes" hidden></pre>
             <div class="row" id="rc-actions" hidden><button id="rc-copy" class="fit">Sao chép</button><button id="rc-dl" class="fit">Tải .txt</button></div>
@@ -176,7 +191,6 @@
             <summary>Dữ liệu lịch sử</summary>
             <p class="muted" id="ret-info"></p>
             <p class="muted">Xoá toàn bộ lịch sử đã lưu trên máy chủ cho thiết bị này (ví dụ trước khi bán/chuyển nhượng). Không thể hoàn tác.</p>
-            <label>Mật khẩu hiện tại<input id="wp-pass" type="password" autocomplete="current-password"></label>
             <div class="row"><button id="wp-go" class="danger">Xoá lịch sử trên máy chủ</button></div>
           </details>
           <p class="muted" id="acct-msg"></p>
@@ -193,11 +207,14 @@
 </div>
 <div id="toast"></div>
 
+<script src="session.js"></script>
 <script src="vendor/uPlot.iife.min.js"></script>
 <script src="vendor/gridstack-all.js"></script>
 <script src="mqtt-lite.js"></script>
 <script src="db.js"></script>
 <script src="dash.js"></script>
+<script src="control.js"></script>
+<script src="site.js"></script>
 <script src="app.js"></script>
 <script src="account.js"></script>
 </body>

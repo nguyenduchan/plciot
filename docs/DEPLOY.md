@@ -37,7 +37,7 @@ copy .env.example .env
 #       TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, WEBAPP_PUBLIC_URL
 
 # User Mosquitto (MQTT): gw=gateway, app=điện thoại (có quyền cmd), ingest=server chỉ đọc
-docker run --rm -v "${PWD}/config:/mosquitto/config" eclipse-mosquitto:2 sh -c "touch /mosquitto/config/passwd && mosquitto_passwd -b /mosquitto/config/passwd gw MATKHAU_GW && mosquitto_passwd -b /mosquitto/config/passwd app MATKHAU_APP && mosquitto_passwd -b /mosquitto/config/passwd ingest MATKHAU_INGEST"
+docker run --rm -v "${PWD}/config:/mosquitto/config" eclipse-mosquitto:2 sh -c "touch /mosquitto/config/passwd && mosquitto_passwd -b /mosquitto/config/passwd gw MATKHAU_GW && mosquitto_passwd -b /mosquitto/config/passwd app MATKHAU_APP && mosquitto_passwd -b /mosquitto/config/passwd ingest MATKHAU_INGEST && mosquitto_passwd -b /mosquitto/config/passwd ctl MATKHAU_CTL"
 
 docker compose up -d --build
 docker compose logs -f tunnel   # "Registered tunnel connection"

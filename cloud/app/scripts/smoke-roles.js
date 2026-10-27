@@ -33,17 +33,17 @@ const admin = findUserById(db, root.id);
 ok(admin.role === 'admin', 'ADMIN_PHONES nâng thành admin');
 
 // thêm user
-let r = A.createUser(db, admin, { phone: '0911111111', password: 'matkhau123', role: 'viewer', site: 'plantA', device: 'plc01' }, ctx);
+let r = A.createUser(db, admin, { phone: '0911111111', role: 'viewer', site: 'plantA', device: 'plc01' }, ctx);
 ok(r.ok && r.user.role === 'viewer', 'admin thêm viewer');
 const viewer = r.user;
-r = A.createUser(db, admin, { phone: '0922222222', password: 'matkhau123', role: 'operator', site: 'plantA', device: 'plc01' }, ctx);
+r = A.createUser(db, admin, { phone: '0922222222', role: 'operator', site: 'plantA', device: 'plc01' }, ctx);
 ok(r.ok, 'admin thêm operator cùng site');
 const oper = r.user;
 
-ok(A.createUser(db, admin, { phone: '0911111111', password: 'matkhau123' }, ctx).error === 'phone_in_use', 'trùng SĐT bị từ chối');
-ok(A.createUser(db, admin, { phone: '0933333333', password: 'ngan' }, ctx).error === 'weak_password', 'mật khẩu yếu bị từ chối');
-ok(A.createUser(db, admin, { phone: '0933333333', password: 'matkhau123', role: 'root' }, ctx).error === 'invalid_role', 'role lạ bị từ chối');
-ok(A.createUser(db, admin, { phone: '0933333333', password: 'matkhau123', site: 'a/../b' }, ctx).error === 'invalid_site_or_device', 'site chứa ký tự nguy hiểm bị từ chối');
+ok(A.createUser(db, admin, { phone: '0911111111' }, ctx).error === 'phone_in_use', 'trùng SĐT bị từ chối');
+ok(A.createUser(db, admin, { phone: '0933333333' }, ctx).ok === true, 'admin tạo user chỉ cần SĐT (không mật khẩu)');
+ok(A.createUser(db, admin, { phone: '0933333333', role: 'root' }, ctx).error === 'invalid_role', 'role lạ bị từ chối');
+ok(A.createUser(db, admin, { phone: '0933333333', site: 'a/../b' }, ctx).error === 'invalid_site_or_device', 'site chứa ký tự nguy hiểm bị từ chối');
 
 // ACL theo vai trò
 const blockOf = (id) => {
@@ -58,11 +58,13 @@ const blockOf = (id) => {
 const vb = blockOf(viewer.id);
 const ob = blockOf(oper.id);
 ok(vb.includes('topic read plc/plantA/plc01/telemetry') && !vb.includes('write'), 'viewer: chỉ đọc, không có quyền ghi');
-ok(ob.includes('topic write plc/plantA/plc01/cmd'), 'operator: có quyền ghi cmd');
+ok(ob.includes('topic read plc/plantA/plc01/ack') && !ob.includes('write'), 'operator: đọc được ack, KHÔNG ghi cmd trực tiếp (lệnh đi qua app server)');
+ok(acl().includes('user ctl\ntopic write plc/+/+/cmd'),'acl (mã hoá): chỉ user ctl của app server được ghi cmd');
+ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').includes('user ctl'), 'acl-monitor: không có user ctl');
 
 // đổi vai trò
 r = A.updateUser(db, admin, viewer.id, { role: 'operator' }, ctx);
-ok(r.ok && blockOf(viewer.id).includes('topic write plc/plantA/plc01/cmd'), 'nâng viewer → operator cấp quyền cmd');
+ok(r.ok && blockOf(viewer.id).includes('topic read plc/plantA/plc01/ack'), 'nâng viewer → operator cấp quyền đọc ack (để xác nhận lệnh)');
 r = A.updateUser(db, admin, viewer.id, { role: 'viewer' }, ctx);
 ok(r.ok && !blockOf(viewer.id).includes('write'), 'hạ → viewer thu hồi quyền cmd');
 
@@ -84,11 +86,18 @@ const blockIn = (file, id) => {
   for (let j = i + 1; j < lines.length && !lines[j].startsWith('user '); j++) out.push(lines[j]);
   return out.join('\n');
 };
-const op2 = A.createUser(db, admin, { phone: '0944444444', password: 'matkhau123', role: 'operator', site: 'plantB' }, ctx).user;
-ok(blockIn('acl', op2.id).includes('topic write plc/plantB/plc01/cmd'), 'kênh mã hoá: operator được ghi cmd');
+const op2 = A.createUser(db, admin, { phone: '0944444444', role: 'operator', site: 'plantB' }, ctx).user;
+ok(!blockIn('acl', op2.id).includes('write'), 'kênh mã hoá: operator không ghi cmd trực tiếp');
 ok(!blockIn('acl-monitor', op2.id).includes('write') && blockIn('acl-monitor', op2.id).includes('topic read plc/plantB/plc01/telemetry'),
   'kênh không mã hoá: operator chỉ đọc, không ghi cmd');
 ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').split('user gw')[1].split('user ingest')[1].includes('cmd'), 'acl-monitor không có dòng cmd cho user');
+
+// chế độ tương thích CONTROL_VIA_SERVER=false: operator ghi cmd trực tiếp như trước
+process.env.CONTROL_VIA_SERVER = 'false';
+A.updateUser(db, admin, op2.id, { role: 'operator' }, ctx);
+ok(blockIn('acl', op2.id).includes('topic write plc/plantB/plc01/cmd'), 'CONTROL_VIA_SERVER=false: khôi phục ghi cmd trực tiếp');
+process.env.CONTROL_VIA_SERVER = 'true';
+A.updateUser(db, admin, op2.id, { role: 'operator' }, ctx);
 
 // phạm vi monitor
 r = A.updateUser(db, admin, op2.id, { scopes: ['telemetry'] }, ctx);
@@ -96,7 +105,7 @@ ok(r.ok && JSON.stringify(r.user.scopes) === '["telemetry"]', 'admin giới hạ
 const sb = blockIn('acl-monitor', op2.id);
 ok(sb.includes('/telemetry') && !sb.includes('/status') && !sb.includes('/history') && !sb.includes('/ack'), 'kênh monitor: chỉ đọc telemetry');
 const sc = blockIn('acl', op2.id);
-ok(sc.includes('/telemetry') && sc.includes('/ack') && !sc.includes('/status') && sc.includes('write'), 'kênh mã hoá: telemetry + ack (để xác nhận lệnh) + cmd');
+ok(sc.includes('/telemetry') && sc.includes('/ack') && !sc.includes('/status') && !sc.includes('write'), 'kênh mã hoá: telemetry + ack (để xác nhận lệnh), không ghi');
 ok(A.updateUser(db, admin, op2.id, { scopes: ['telemetry', 'secrets'] }, ctx).error === 'invalid_scopes', 'scope lạ bị từ chối');
 r = A.updateUser(db, admin, op2.id, { role: 'viewer', scopes: [] }, ctx);
 ok(r.ok && !blockIn('acl', op2.id).includes('topic'), 'viewer không scope nào: không có quyền gì');

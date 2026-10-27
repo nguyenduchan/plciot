@@ -7,12 +7,11 @@ import { findUserById } from './db.js';
 import { wipeDeviceHistory } from './retention.js';
 import { provisionUserMqtt } from './mqttProvision.js';
 import { audit } from './audit.js';
-import { verifyPassword } from './auth.js';
 import { notifyOwner } from './accountSecurity.js';
 
 /** Owner-initiated: erase all stored history of own device (before selling, etc.). */
-export function wipeOwnHistory(db, user, { password, ip }) {
-  if (!password || !verifyPassword(String(password), user.password_hash)) {
+export function wipeOwnHistory(db, user, { reauthed, ip }) {
+  if (reauthed !== true) {
     return { error: 'invalid_credentials', status: 401 };
   }
   const deleted = wipeDeviceHistory(db, user.notify_site, user.notify_device);
