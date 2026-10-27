@@ -1,5 +1,9 @@
 # Bảo mật đăng nhập & điều khiển
 
+> **Mã nguồn bảo mật cố định nằm ở một vùng riêng: [`packages/security`](../packages/security/README.md) (`@plciot/security`)** để tái sử dụng cho mọi app/khách hàng.
+> Gói chứa Passkey/TOTP, phiên điều khiển, thêm thiết bị, ghép PC, CSP/giới hạn tần suất và client trình duyệt; **không biết** app điều khiển PLC hay nhắn Telegram.
+> Phần riêng của app PLC ở lại `cloud/app/src`: `plcCommands.js` (whitelist/khoảng giá trị thanh ghi), `plcControlRoutes.js` (route lệnh, nút vật lý), `sites.js`/`siteRoutes.js`, `accountSecurity.js` (đổi số/khôi phục), OTP Telegram. Hướng dẫn cắm vào app mới: README của gói.
+
 **Không có mật khẩu.** Đăng nhập chính là **Passkey** (vân tay / Face ID, một chạm, không gõ SĐT): `POST /api/login/passkey/{options,verify}`. **OTP Telegram** chỉ dùng lần đầu (tạo tài khoản), thiết bị chưa có passkey, hoặc dự phòng; sau lần OTP đầu, webapp mời bật vân tay hoặc Authenticator (nhắc lại sau 7 ngày nếu bỏ qua). Passkey tạo là *discoverable credential* (`residentKey: required`) nên đồng bộ qua iCloud Keychain / Google Password Manager và dùng được trên máy mới cùng tài khoản đám mây.
 
 Các thao tác nhạy cảm trước đây hỏi "mật khẩu hiện tại" (đổi số, email khôi phục, mã khôi phục, xoá lịch sử) giờ yêu cầu **xác nhận lại bằng vân tay / Authenticator** (middleware `reauth`); người chưa có yếu tố nào chỉ cần vừa đăng nhập ≤ 10 phút. Đường đăng nhập bằng mật khẩu (`POST /api/login`) và mọi ô nhập/đặt mật khẩu (kể cả trang admin) đã bị gỡ. Cột `password_hash` còn trong DB chỉ vì ràng buộc NOT NULL cũ, chứa chuỗi ngẫu nhiên không ai biết.

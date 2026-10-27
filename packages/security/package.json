@@ -1,0 +1,19 @@
+{
+  "name": "@plciot/security",
+  "version": "1.0.0",
+  "description": "Lõi bảo mật dùng chung: Passkey/TOTP, phiên điều khiển (step-up), thêm thiết bị, ghép PC bằng khoá thiết bị, CSP, giới hạn tần suất. Không phụ thuộc PLC/MQTT/Telegram.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client/*": "./client/*"
+  },
+  "files": ["src", "client"],
+  "scripts": {
+    "test": "node test/smoke-security.js",
+    "sync-client": "node scripts/sync-client.js",
+    "check-client": "node scripts/sync-client.js --check"
+  },
+  "engines": { "node": ">=18" }
+}

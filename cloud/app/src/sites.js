@@ -8,7 +8,7 @@
  * Chủ site = users.site_owner = 1. Nếu site chưa có chủ thì người dùng operator/admin có id nhỏ nhất được nâng lên.
  */
 import crypto from 'crypto';
-import { audit, countAudit } from './audit.js';
+import { audit, countAudit } from '@plciot/security';
 import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import { provisionUserMqtt } from './mqttProvision.js';
 import { notifyOwner } from './accountSecurity.js';

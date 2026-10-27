@@ -21,7 +21,9 @@ services:
     networks: [plciot]
 
   app:                           # Login API + per-user webapp bundles (SQLite user → folder_path)
-    build: ./app
+    build:                       # context = gốc repo vì app dùng packages/security
+      context: ..
+      dockerfile: cloud/app/Dockerfile
     container_name: plciot-app
     restart: unless-stopped
     mem_limit: 256m

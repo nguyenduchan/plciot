@@ -1,8 +1,7 @@
-import { rateLimit, clientIp } from './rateLimit.js';
+import { rateLimit, clientIp, createPairCode, revokeStation } from '@plciot/security';
 import {
   siteInfo, isSiteOwner, startClaim, checkClaim, createInvite, cancelInvite, answerInvite, removeMember, sweepInvites,
 } from './sites.js';
-import { createPairCode, revokeStation } from './stationAuth.js';
 
 /**
  * Quản lý nhà máy tự phục vụ. Thao tác của CHỦ SITE (mời/gỡ/ghép PC/thu hồi PC) đi qua `reauth`

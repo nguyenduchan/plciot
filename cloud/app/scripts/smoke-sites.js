@@ -20,9 +20,12 @@ process.env.CONTROL_PHYSICAL_WAIT_SEC = '5';
 
 const { openDb } = await import('../src/db.js');
 const { setPublisher } = await import('../src/controlPublisher.js');
-const { mountControl } = await import('../src/controlRoutes.js');
+const { mountSecurityRoutes } = await import('@plciot/security');
+const { mountPlcControl } = await import('../src/plcControlRoutes.js');
+// ghép lõi bảo mật + phần điều khiển PLC như server.js
+const mountControl = (app, ctx) => { const sec = mountSecurityRoutes(app, ctx); mountPlcControl(app, { db: ctx.db, requireAuth: ctx.requireAuth, security: sec }); return sec; };
 const { mountSite } = await import('../src/siteRoutes.js');
-const { stationMessage } = await import('../src/stationAuth.js');
+const { stationMessage } = await import('@plciot/security');
 const { noteTelemetry } = await import('../src/plcProof.js');
 
 let fails = 0;

@@ -9,16 +9,16 @@
 import crypto from 'crypto';
 import { audit } from './audit.js';
 import { normalizeCode } from './recoveryCodes.js';
-import { notifyOwner } from './accountSecurity.js';
-import { ipInCidrs, controlConfig } from './controlAuth.js';
-import { clientIp } from './rateLimit.js';
+import { keyFrom, notify } from './config.js';
+import { securityConfig } from './sessions.js';
+import { ipInCidrs, clientIp } from './net.js';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_TTL = 10 * 60_000;
 const SKEW = 60_000;
 const nonces = new Map(); // chữ ký -> hết hạn (chống phát lại trong cửa sổ lệch giờ)
 
-const pepper = () => crypto.createHash('sha256').update(`pair:${process.env.APP_JWT_SECRET || ''}`).digest();
+const pepper = () => keyFrom('pair:');
 const hashCode = (c) => crypto.createHmac('sha256', pepper()).update(normalizeCode(c)).digest('hex');
 const sha256hex = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
@@ -69,7 +69,7 @@ export async function pairStation(db, { code, publicKey, hwid, name, ip }) {
   audit(db, 'station_paired', { userId: row.user_id, ip, detail: `${id} ${row.site}/${row.device}` });
   const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
   if (owner) {
-    notifyOwner(db, owner, {
+    notify(db, owner, {
       subject: 'Đã ghép PC nhà máy mới',
       html: `<b>🖥 PC mới "${label.replace(/[&<>]/g, '')}" đã được ghép</b> với ${row.site}/${row.device}.\nKhông phải bạn? Vào Cài đặt → Nhà máy → Thu hồi PC.`,
     });
@@ -104,7 +104,7 @@ export function stationAuth(db) {
       ok = crypto.verify('sha256', Buffer.from(msg), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url'));
     } catch { ok = false; }
     if (!ok) { audit(db, 'station_auth_fail', { ip: clientIp(req), detail: id }); return deny('station_auth_failed'); }
-    const cfg = controlConfig();
+    const cfg = securityConfig();
     const ip = clientIp(req);
     if (cfg.lanCidrs.length && !ipInCidrs(ip, cfg.lanCidrs)) return deny('station_ip_not_allowed', 403);
     const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(st.user_id);

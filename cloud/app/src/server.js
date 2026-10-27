@@ -16,23 +16,24 @@ import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
 import { telegramConfigured } from './telegram.js';
 import { sharedPgConfigured } from './sharedTg.js';
 import { queryTelemetry, queryEvents, historyStats } from './historyStore.js';
-import { rateLimit, clientIp } from './rateLimit.js';
-import { securityHeaders, buildCorsOptions } from './security.js';
+import {
+  configure, mountSecurityRoutes, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit, noteLogin,
+} from '@plciot/security';
 import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import {
-  accountSecuritySummary, requestEmailVerify, verifyEmail, regenerateRecoveryCodes,
+  emailChannelAvailable, notifyOwner, accountSecuritySummary, requestEmailVerify, verifyEmail, regenerateRecoveryCodes,
   startSelfChange, confirmSelfChange, cancelChange,
   startRecovery, confirmRecovery, recoveryStatus, startPlcChallenge, checkPlcChallenge,
   processDueChanges,
 } from './accountSecurity.js';
-import { audit } from './audit.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
-import { isAdmin, userScopes } from './roles.js';
+import { isAdmin, userScopes, canControl } from './roles.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
-import { mountControl } from './controlRoutes.js';
+import { mountPlcControl } from './plcControlRoutes.js';
+import { plcControlConfig } from './plcCommands.js';
+import { sendEmail } from './mailer.js';
 import { mountSite } from './siteRoutes.js';
-import { noteLogin } from './loginAlerts.js';
 
 const PORT = Number(process.env.PORT || 3080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -45,6 +46,16 @@ if (!JWT_SECRET || JWT_SECRET.length < 16) {
   console.error('APP_JWT_SECRET must be set (min 16 chars)');
   process.exit(1);
 }
+
+// Cắm app vào lõi bảo mật dùng chung (packages/security): lõi không biết Telegram/email/PLC.
+configure({
+  secret: () => JWT_SECRET,
+  publicUrl: () => (process.env.WEBAPP_PUBLIC_URL || '').replace(/\/$/, ''),
+  notify: (d, user, msg) => notifyOwner(d, user, msg),
+  email: { available: emailChannelAvailable, send: (user, subject, text) => sendEmail(user.email, subject, text) },
+  canControl: (u) => canControl(u),
+  brand: { rpName: 'Giám sát PLC' },
+});
 
 const db = openDb(DATA_DIR);
 applyBootstrapAdmins(db);
@@ -334,7 +345,11 @@ app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) 
 });
 
 /* ---------- Điều khiển: step-up (Passkey / TOTP), PC trạm, nút vật lý ---------- */
-controlApi = mountControl(app, { db, requireAuth, adminOnly, loginPayload, authStrict });
+controlApi = mountSecurityRoutes(app, {
+  db, requireAuth, adminOnly, loginPayload, authStrict,
+  extraStatus: () => ({ physicalConfirm: plcControlConfig().physicalBit !== null }),
+});
+mountPlcControl(app, { db, requireAuth, security: controlApi });
 /* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
 mountSite(app, { db, requireAuth, reauth });
 

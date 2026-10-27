@@ -1,0 +1,11 @@
+**/node_modules
+.git
+scada
+edge
+gateway
+plc
+tools
+cloud/app/data/app.db
+cloud/app/data/app.db-*
+cloud/app/data/bundles
+**/npm-debug.log

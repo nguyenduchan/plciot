@@ -5,7 +5,7 @@
  */
 import crypto from 'crypto';
 import { audit } from './audit.js';
-import { notifyOwner } from './accountSecurity.js';
+import { notify } from './config.js';
 
 const ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -33,7 +33,7 @@ export function noteLogin(db, user, { deviceId, ip, method }) {
   db.prepare('INSERT INTO known_devices (user_id, dev_hash, first_seen, last_seen, last_ip) VALUES (?, ?, ?, ?, ?)').run(user.id, h, now, now, ip || null);
   if (others > 0) {
     audit(db, 'login_new_device', { userId: user.id, ip, detail: method });
-    notifyOwner(db, user, {
+    notify(db, user, {
       subject: 'Đăng nhập từ thiết bị mới',
       html: `<b>🔔 Đăng nhập từ thiết bị mới</b> bằng ${esc(method)} lúc ${new Date(now).toLocaleString('vi-VN')} (IP ${esc(ip || '?')}).\n`
         + 'Không phải bạn? Mở ứng dụng → Cài đặt → Điều khiển → <b>Đăng xuất mọi máy</b>, rồi kiểm tra danh sách thiết bị.',

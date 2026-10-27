@@ -9,7 +9,7 @@ import {
   setMosquittoPassword, randomMqttPassword,
 } from './mqttProvision.js';
 import { ROLES, MONITOR_SCOPES, isRole, userScopes, parseScopes } from './roles.js';
-import { audit } from './audit.js';
+import { audit } from '@plciot/security';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 

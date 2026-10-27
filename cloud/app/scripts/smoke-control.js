@@ -16,11 +16,14 @@ process.env.RATE_LIMIT_CONTROL_AUTH = '1000';
 process.env.RATE_LIMIT_CONTROL_CMD = '1000';
 
 const { openDb } = await import('../src/db.js');
-const T = await import('../src/totp.js');
+const T = await import('@plciot/security');
 const { setPublisher } = await import('../src/controlPublisher.js');
-const { mountControl } = await import('../src/controlRoutes.js');
+const { mountSecurityRoutes } = await import('@plciot/security');
+const { mountPlcControl } = await import('../src/plcControlRoutes.js');
+// ghép lõi bảo mật + phần điều khiển PLC như server.js
+const mountControl = (app, ctx) => { const sec = mountSecurityRoutes(app, ctx); mountPlcControl(app, { db: ctx.db, requireAuth: ctx.requireAuth, security: sec }); return sec; };
 const { noteTelemetry } = await import('../src/plcProof.js');
-const CA = await import('../src/controlAuth.js');
+const CA = await import('@plciot/security');
 
 let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
@@ -293,7 +296,7 @@ r = await call('POST', '/t/sensitive', uPk, {}, { 'x-control-token': tokPk });
 ok(r.status === 200, 'có phiên điều khiển (vừa vân tay): được phép');
 
 /* ---- Thêm máy điện thoại mới ---- */
-const { deviceCancelToken } = await import('../src/deviceApproval.js');
+const { deviceCancelToken } = await import('@plciot/security');
 const newDev = {}; // máy mới: đã đăng nhập OTP (JWT) nhưng không có phiên điều khiển
 r = await call('POST', '/api/devices/request', uNew, {});
 ok(r.status === 200 && r.body.options.wait === true && r.body.options.device === false, 'chưa có yếu tố: chỉ có đường chờ/email (không có máy cũ để duyệt)');
@@ -413,7 +416,7 @@ r = await call('POST', '/api/admin/stations', uAdmin, { userId: uOp, name: 'x' }
 ok(r.status === 401 && r.body.error === 'step_up_required', 'thao tác admin đòi xác nhận lại khi đã có yếu tố');
 
 /* ---- Cảnh báo thiết bị lạ ---- */
-const { noteLogin } = await import('../src/loginAlerts.js');
+const { noteLogin } = await import('@plciot/security');
 const uDev = db.prepare('SELECT * FROM users WHERE id = ?').get(uOp);
 const nl = (id) => noteLogin(db, uDev, { deviceId: id, ip: '1.2.3.4', method: 'OTP' });
 ok(nl('device-aaaaaaaaaaaaaaaa').notified === false, 'thiết bị đầu tiên: không báo');
@@ -423,7 +426,7 @@ ok(nl('x').known === null, 'device-id sai định dạng bị bỏ qua');
 ok(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE event = 'login_new_device' AND user_id = ?").get(uOp).n === 1, 'ghi audit đăng nhập thiết bị mới');
 
 /* ---- clientIp chỉ tin header từ proxy tin cậy ---- */
-const { clientIp } = await import('../src/rateLimit.js');
+const { clientIp } = await import('@plciot/security');
 const mkReq = (remote, headers) => ({ headers, socket: { remoteAddress: remote } });
 ok(clientIp(mkReq('203.0.113.9', { 'cf-connecting-ip': '1.2.3.4' })) === '203.0.113.9', 'kết nối trực tiếp từ internet: bỏ qua header giả IP');
 ok(clientIp(mkReq('172.18.0.5', { 'cf-connecting-ip': '1.2.3.4' })) === '1.2.3.4', 'qua proxy tin cậy: dùng CF-Connecting-IP');
@@ -442,7 +445,7 @@ createOtpChallenge(db, { phone: '84900000030', purpose: 'login', codeHash: hashO
 ok(OT.verifyLoginOtp(db, { phone: '0900000030', otp: '123456' }).error === 'otp_locked', 'sai 10 lần trong 15 phút: khoá cả khi xin mã mới và nhập đúng');
 
 /* ---- Chống chiếm Telegram tự bật yếu tố đầu tiên: chỉ thiết bị đầu tiên được bật ngay ---- */
-const { noteLogin: noteL } = await import('../src/loginAlerts.js');
+const { noteLogin: noteL } = await import('@plciot/security');
 const uFd = mkUser('84900000040');
 const fdUser = db.prepare('SELECT * FROM users WHERE id = ?').get(uFd);
 const DEV_A = 'device-first-aaaaaaaaaaaa'; const DEV_B = 'device-other-bbbbbbbbbbbb';
@@ -486,7 +489,7 @@ r = await cmd(uTg, { op: 'read', a: 100, n: 1 });
 ok(r.status === 200, 'nhưng vẫn đọc/xem được');
 
 /* ---- Giá trị ghi theo từng thanh ghi ---- */
-const { validateCmd: vc, controlConfig: cc } = await import('../src/controlAuth.js');
+const { validateCmd: vc, plcControlConfig: cc } = await import('../src/plcCommands.js');
 const bad = (a, v) => vc({ a, v }, cc()).error === 'value_out_of_range';
 const good = (a, v) => Boolean(vc({ a, v }, cc()).cmd);
 ok(bad(3, 2) && good(3, 0) && good(3, 1), 'D3 (chế độ) chỉ 0/1');

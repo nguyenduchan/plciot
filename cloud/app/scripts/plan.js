@@ -17,7 +17,7 @@ import {
   parseRetention, setRetention, retentionInfo, defaultDays, purgeByPlan,
 } from '../src/retention.js';
 import { transferDevice } from '../src/deviceTransfer.js';
-import { audit } from '../src/audit.js';
+import { audit } from '@plciot/security';
 
 const db = openDb(path.resolve(process.env.DATA_DIR || './data'));
 const [cmd, a, b] = process.argv.slice(2);

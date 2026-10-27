@@ -10,10 +10,9 @@
  */
 import crypto from 'crypto';
 import { audit, countAudit } from './audit.js';
-import { notifyOwner, tryRecoveryCode, emailQuarantineMs } from './accountSecurity.js';
-import { recoveryCodesRemaining } from './recoveryCodes.js';
-import { sendEmail, emailConfigured } from './mailer.js';
-import { factorSummary } from './controlAuth.js';
+import { getConfig, notify, rawSecret } from './config.js';
+import { tryRecoveryCode, recoveryCodesRemaining } from './recoveryCodes.js';
+import { factorSummary } from './sessions.js';
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -34,10 +33,10 @@ const coolingMs = () => {
   const v = Number(process.env.DEVICE_ADD_COOLING_HOURS);
   return (Number.isFinite(v) && v >= 0 ? v : 24) * HOUR;
 };
-const publicUrl = () => (process.env.WEBAPP_PUBLIC_URL || '').replace(/\/$/, '');
+const publicUrl = () => getConfig().publicUrl();
 
 export function deviceCancelToken(id) {
-  return crypto.createHmac('sha256', process.env.APP_JWT_SECRET || '').update(`devcancel:${id}`).digest('base64url').slice(0, 32);
+  return crypto.createHmac('sha256', rawSecret()).update(`devcancel:${id}`).digest('base64url').slice(0, 32);
 }
 const cancelLink = (id) => `${publicUrl()}/api/device/cancel?id=${id}&t=${deviceCancelToken(id)}`;
 
@@ -48,9 +47,9 @@ const setRow = (db, id, fields) => {
     .run(...keys.map((k) => fields[k]), Date.now(), id);
 };
 
+/** Kênh email do app cung cấp (đã xác minh, qua kỳ cách ly…) — lõi không tự biết. */
 export function emailAvailable(user) {
-  return Boolean(emailConfigured() && user.email && user.email_verified
-    && Date.now() >= (user.email_verified_at || 0) + emailQuarantineMs());
+  return Boolean(getConfig().email.available(user));
 }
 
 /** Dọn hạn và chuyển các yêu cầu hết thời gian chờ sang "approved". */
@@ -75,7 +74,7 @@ export async function startDeviceRequest(db, user, { ip, label }) {
     VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
   `).run(id, user.id, sha(pollToken), String(label || 'Thiết bị mới').slice(0, 80), ip || null, now, now);
   audit(db, 'device_request', { userId: user.id, ip, detail: id });
-  notifyOwner(db, user, {
+  notify(db, user, {
     subject: 'Có thiết bị mới xin quyền điều khiển',
     html: `<b>📱 Một thiết bị mới đang xin quyền điều khiển tài khoản của bạn</b> (${esc(String(label || '').slice(0, 80))}).\n`
       + 'Mở ứng dụng trên máy cũ để <b>Cho phép</b> hoặc <b>Từ chối</b>.\n'
@@ -113,7 +112,7 @@ export function decideDeviceRequest(db, user, id, action, { ip }) {
   if (action === 'approve') {
     setRow(db, id, { status: 'approved' });
     audit(db, 'device_approved', { userId: user.id, ip, detail: id });
-    notifyOwner(db, user, { subject: 'Đã cho phép thiết bị mới', html: '<b>✅ Một thiết bị mới đã được cho phép từ máy cũ.</b>' });
+    notify(db, user, { subject: 'Đã cho phép thiết bị mới', html: '<b>✅ Một thiết bị mới đã được cho phép từ máy cũ.</b>' });
   } else {
     setRow(db, id, { status: 'denied' });
     audit(db, 'device_denied', { userId: user.id, ip, detail: id });
@@ -126,7 +125,7 @@ function toCooling(db, user, row, method, ip) {
   const executeAt = Date.now() + wait;
   setRow(db, row.id, { status: wait === 0 ? 'approved' : 'cooling', method, execute_at: executeAt });
   audit(db, 'device_cooling', { userId: user.id, ip, detail: `${row.id} ${method}` });
-  notifyOwner(db, user, {
+  notify(db, user, {
     subject: 'Thiết bị mới sẽ được cấp quyền sau thời gian chờ',
     html: `<b>⏳ Thiết bị mới xin quyền điều khiển bằng ${method === 'email' ? 'email' : method === 'wait' ? 'thời gian chờ' : 'mã khôi phục'}.</b>\n`
       + `Quyền sẽ được cấp lúc ${new Date(executeAt).toLocaleString('vi-VN')} nếu không bị huỷ.\n`
@@ -164,7 +163,7 @@ export async function deviceEmailStart(db, user, id, { ip }) {
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   setRow(db, id, { email_otp_hash: sha(`devotp:${code}`), email_otp_expires: Date.now() + OTP_TTL, email_fails: 0 });
   try {
-    await sendEmail(user.email, 'Mã xác nhận thêm thiết bị — Giám sát PLC', `Mã xác nhận thêm thiết bị điều khiển: ${code}\nHiệu lực 5 phút. Nếu không phải bạn, hãy bỏ qua email này.`);
+    await getConfig().email.send(user, 'Mã xác nhận thêm thiết bị', `Mã xác nhận thêm thiết bị điều khiển: ${code}\nHiệu lực 5 phút. Nếu không phải bạn, hãy bỏ qua email này.`);
   } catch (e) {
     return { error: 'email_send_failed', detail: e.message, status: 502 };
   }
@@ -221,6 +220,6 @@ export function cancelDeviceByLink(db, id, token, ip) {
   setRow(db, row.id, { status: 'cancelled', ticket_hash: null });
   audit(db, 'device_cancelled', { userId: row.user_id, ip, detail: 'link' });
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
-  if (user) notifyOwner(db, user, { subject: 'Đã huỷ yêu cầu thêm thiết bị', html: '<b>🛑 Yêu cầu thêm thiết bị đã bị huỷ.</b>' });
+  if (user) notify(db, user, { subject: 'Đã huỷ yêu cầu thêm thiết bị', html: '<b>🛑 Yêu cầu thêm thiết bị đã bị huỷ.</b>' });
   return { ok: true };
 }

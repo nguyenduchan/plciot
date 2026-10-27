@@ -17,8 +17,9 @@ import { sendTelegramMessage, telegramConfigured } from './telegram.js';
 import { resolveTelegramUser } from './sharedTg.js';
 import { sendEmail, emailConfigured, isValidEmail } from './mailer.js';
 import { provisionUserMqtt } from './mqttProvision.js';
-import { consumeRecoveryCode, generateRecoveryCodes, recoveryCodesRemaining } from './recoveryCodes.js';
-import { audit, countAudit } from './audit.js';
+import {
+  generateRecoveryCodes, recoveryCodesRemaining, tryRecoveryCode, audit, countAudit,
+} from '@plciot/security';
 import { retentionInfo } from './retention.js';
 import {
   plcSnapshot, edgeSince, pickProofBit,
@@ -76,6 +77,12 @@ const touch = (db, id, fields) => {
   db.prepare(`UPDATE phone_changes SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`)
     .run(...keys.map((k) => fields[k]), Date.now(), id);
 };
+
+/** Kênh email dùng làm "kênh cũ" độc lập: đã cấu hình, đã xác minh và qua kỳ cách ly. (cắm vào @plciot/security) */
+export function emailChannelAvailable(user) {
+  return Boolean(emailConfigured() && user.email && user.email_verified
+    && Date.now() >= (user.email_verified_at || 0) + emailQuarantineMs());
+}
 
 /* ---------------------------------------------------------------- notify */
 
@@ -192,17 +199,6 @@ export async function regenerateRecoveryCodes(db, user, { reauthed, ip }) {
     html: '<b>🔑 Bộ mã khôi phục mới đã được tạo</b>; bộ cũ không còn hiệu lực.\nNếu không phải bạn, hãy đổi mật khẩu ngay.',
   });
   return { ok: true, codes };
-}
-
-/** Recovery-code attempts are capped per account regardless of IP. */
-function recoveryCodeBurst(db, userId) {
-  return countAudit(db, userId, 'recovery_code_fail', Date.now() - 24 * HOUR) >= 10;
-}
-export function tryRecoveryCode(db, user, code, ip) {
-  if (recoveryCodeBurst(db, user.id)) return 'locked';
-  if (consumeRecoveryCode(db, user.id, code)) return 'ok';
-  audit(db, 'recovery_code_fail', { userId: user.id, ip });
-  return 'invalid';
 }
 
 /* --------------------------------------------------- phone change (self) */

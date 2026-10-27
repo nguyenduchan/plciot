@@ -1,11 +1,13 @@
 import crypto from 'crypto';
+import { audit, countAudit } from './audit.js';
+import { keyFrom } from './config.js';
 
 // Crockford base32 (no I L O U): 12 chars = 60 bits, shown as XXXX-XXXX-XXXX.
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const COUNT = 10;
 
 function pepper() {
-  return crypto.createHash('sha256').update(`recovery:${process.env.APP_JWT_SECRET || ''}`).digest();
+  return keyFrom('recovery:');
 }
 
 export function normalizeCode(input) {
@@ -57,4 +59,12 @@ export function consumeRecoveryCode(db, userId, code) {
   const info = db.prepare("UPDATE recovery_codes SET used_at = datetime('now') WHERE id = ? AND used_at IS NULL")
     .run(hit.id);
   return info.changes === 1;
+}
+
+/** Tối đa 10 lần sai/24 giờ/tài khoản bất kể IP. @returns {'ok'|'locked'|'invalid'} */
+export function tryRecoveryCode(db, user, code, ip) {
+  if (countAudit(db, user.id, 'recovery_code_fail', Date.now() - 24 * 3_600_000) >= 10) return 'locked';
+  if (consumeRecoveryCode(db, user.id, code)) return 'ok';
+  audit(db, 'recovery_code_fail', { userId: user.id, ip });
+  return 'invalid';
 }

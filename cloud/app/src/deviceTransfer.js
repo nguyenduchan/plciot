@@ -6,7 +6,7 @@
 import { findUserById } from './db.js';
 import { wipeDeviceHistory } from './retention.js';
 import { provisionUserMqtt } from './mqttProvision.js';
-import { audit } from './audit.js';
+import { audit } from '@plciot/security';
 import { notifyOwner } from './accountSecurity.js';
 
 /** Owner-initiated: erase all stored history of own device (before selling, etc.). */

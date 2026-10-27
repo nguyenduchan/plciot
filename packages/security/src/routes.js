@@ -1,11 +1,14 @@
+/**
+ * Các route bảo mật dùng chung: yếu tố (Passkey / TOTP), phiên điều khiển, đăng nhập bằng passkey, thêm thiết bị mới,
+ * đăng xuất mọi máy, ghép PC bằng mã. KHÔNG biết app điều khiển cái gì (PLC, MQTT…): app tự thêm route lệnh và dùng
+ * `authorize(req)` / `reauth` trả về từ mountSecurityRoutes.
+ */
 import crypto from 'crypto';
-import { rateLimit, clientIp } from './rateLimit.js';
+import { rateLimit } from './rateLimit.js';
+import { clientIp } from './net.js';
 import { audit, countAudit } from './audit.js';
-import { canControl } from './roles.js';
-import { edgeSince } from './plcProof.js';
-import { publishCmd } from './controlPublisher.js';
+import { getConfig, notify } from './config.js';
 import { stationAuth, pairStation } from './stationAuth.js';
-import { notifyOwner } from './accountSecurity.js';
 import { generateRecoveryCodes, recoveryCodesRemaining } from './recoveryCodes.js';
 import {
   startDeviceRequest, listDeviceRequests, pendingDeviceCount, decideDeviceRequest, deviceViaRecoveryCode,
@@ -18,9 +21,9 @@ import {
   registrationOptions, verifyRegistration, authenticationOptions, verifyAuthentication,
 } from './webauthn.js';
 import {
-  controlConfig, createControlSession, revokeControlSessions, checkControlSession, factorSummary,
-  createStation, listStations, deleteStation, stationOk, validateCmd, enrollState,
-} from './controlAuth.js';
+  securityConfig, createControlSession, revokeControlSessions, checkControlSession, factorSummary,
+  createStation, listStations, deleteStation, stationOk, enrollState,
+} from './sessions.js';
 import { noteLogin, isFirstDevice } from './loginAlerts.js';
 
 const FRESH_LOGIN_MS = 10 * 60_000; // đăng ký yếu tố đầu tiên: phải vừa đăng nhập bằng OTP Telegram
@@ -28,23 +31,26 @@ const TOTP_LOCK_FAILS = 5;
 const TOTP_LOCK_WINDOW = 15 * 60_000;
 
 function webauthnEnv() {
-  const origins = String(process.env.WEBAUTHN_ORIGINS || process.env.WEBAPP_PUBLIC_URL || 'http://localhost:3080')
+  const origins = String(process.env.WEBAUTHN_ORIGINS || getConfig().publicUrl() || 'http://localhost:3080')
     .split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
   const rpId = process.env.WEBAUTHN_RP_ID || new URL(origins[0]).hostname;
   return { origins, rpId };
 }
 
-export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, authStrict }) {
-  const pendingConfirm = new Map(); // id -> { userId, site, device, cmd, bit, since, expires }
+/**
+ * @param app Express app
+ * @param ctx.db better-sqlite3 (đã migrateSecurity)
+ * @param ctx.requireAuth middleware: đặt req.user (có id, username, role…) và req.tokenPayload (có iat)
+ * @param ctx.adminOnly mảng middleware cho route quản trị trạm kiểu cũ
+ * @param ctx.loginPayload (user) => payload đăng nhập của app (JWT…) hoặc { error, status }
+ * @param ctx.authStrict middleware giới hạn tần suất cho route chưa đăng nhập
+ * @param ctx.extraStatus (req) => object trộn vào GET /api/control/status
+ */
+export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], loginPayload, authStrict, extraStatus }) {
   const strict = rateLimit({
     windowMs: 60_000,
     max: Number(process.env.RATE_LIMIT_CONTROL_AUTH || 8),
     keyFn: (req) => `${clientIp(req)}:ctlauth:${req.user?.id || 'na'}`,
-  });
-  const cmdLimit = rateLimit({
-    windowMs: 10_000,
-    max: Number(process.env.RATE_LIMIT_CONTROL_CMD || 20),
-    keyFn: (req) => `${clientIp(req)}:ctlcmd:${req.user?.id || 'na'}`,
   });
 
   const out = (res, status, body) => res.status(status).json(body);
@@ -71,7 +77,7 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
 
   /** Yếu tố đầu tiên → tự tạo 10 mã khôi phục (hiện một lần) để người dùng không phải nhờ admin khi mất máy. */
   function firstFactorExtras(userId, ip) {
-    notifyOwner(db, db.prepare('SELECT * FROM users WHERE id = ?').get(userId), {
+    notify(db, db.prepare('SELECT * FROM users WHERE id = ?').get(userId), {
       subject: 'Đã bật xác thực điều khiển',
       html: '<b>🔐 Đã bật vân tay/Authenticator để điều khiển.</b>\nNếu không phải bạn, hãy vào Cài đặt → Điều khiển → Đăng xuất mọi máy ngay.' + (ip ? ` (IP ${ip})` : ''),
     });
@@ -99,14 +105,14 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
 
   /* ---------- trạng thái ---------- */
   app.get('/api/control/status', requireAuth, (req, res) => {
-    const cfg = controlConfig();
+    const cfg = securityConfig();
     const c = checkControlSession(db, req.user.id, tokenOf(req), clientIp(req), cfg);
     res.json({
       stepUp: cfg.stepUp,
       unlocked: !cfg.stepUp || Boolean(c.ok) || stationOk(db, req.user.id, req.headers, clientIp(req), cfg),
       session: c.ok ? { method: c.method, expiresAt: c.expiresAt } : { reason: c.reason },
       methods: methodsFor(req.user),
-      physicalConfirm: cfg.physicalBit !== null,
+      ...(extraStatus ? extraStatus(req) : {}), // app thêm trường riêng (vd. nút vật lý)
       enroll: enrollState(db, req.user),
       pendingDevices: c.ok ? pendingDeviceCount(db, req.user.id) : 0,
       recoveryCodesLeft: recoveryCodesRemaining(db, req.user.id),
@@ -188,7 +194,7 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
     const gate = enrollGate(req, { allowTicket: true });
     if (gate) return out(res, gate.status, gate);
     const { rpId } = webauthnEnv();
-    res.json(registrationOptions({ userId: req.user.id, username: req.user.username, rpId, exclude: credList(req.user.id) }));
+    res.json(registrationOptions({ userId: req.user.id, username: req.user.username, rpId, rpName: getConfig().brand.rpName, exclude: credList(req.user.id) }));
   });
 
   app.post('/api/webauthn/register/verify', requireAuth, strict, (req, res) => {
@@ -333,8 +339,9 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
     res.json({ ...payload, controlToken: s.token, method: 'passkey', expiresAt: s.expiresAt });
   });
 
-  /* ---------- gửi lệnh ---------- */
-  function authorize(req, cfg) {
+
+  /** Đã qua step-up chưa? (PC trạm kiểu cũ hoặc phiên điều khiển). App điều khiển gọi hàm này trước khi thi hành lệnh nhạy cảm. */
+  function authorize(req, cfg = securityConfig()) {
     if (!cfg.stepUp) return { ok: true, via: 'off' };
     const ip = clientIp(req);
     if (stationOk(db, req.user.id, req.headers, ip, cfg)) return { ok: true, via: 'station' };
@@ -348,65 +355,6 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
     };
   }
 
-  async function dispatch(user, cmd, via, ip) {
-    await publishCmd(user.notify_site, user.notify_device, cmd);
-    audit(db, 'control_cmd', { userId: user.id, ip, detail: `${via} ${cmd.op || 'w'} a=${cmd.a} ${cmd.v ?? cmd.n ?? ''}` });
-  }
-
-  app.post('/api/control/cmd', requireAuth, cmdLimit, async (req, res) => {
-    const cfg = controlConfig();
-    if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
-    const v = validateCmd(req.body, cfg);
-    if (v.error) return out(res, 400, v);
-    const ip = clientIp(req);
-    let via = 'read';
-    if (v.write) {
-      const es = enrollState(db, req.user);
-      if (es.locked) {
-        audit(db, 'control_denied', { userId: req.user.id, ip, detail: `enroll_required a=${v.cmd.a}` });
-        return out(res, 403, { error: 'enroll_required', deadline: es.deadline });
-      }
-      const a = authorize(req, cfg);
-      if (a.error) {
-        audit(db, 'control_denied', { userId: req.user.id, ip, detail: `${a.reason} a=${v.cmd.a}` });
-        return out(res, a.status, a);
-      }
-      via = a.via;
-      if (v.critical && cfg.physicalBit !== null) {
-        const id = crypto.randomBytes(8).toString('hex');
-        pendingConfirm.set(id, {
-          userId: req.user.id, site: req.user.notify_site, device: req.user.notify_device,
-          cmd: v.cmd, via, bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
-        });
-        audit(db, 'control_pending_physical', { userId: req.user.id, ip, detail: `a=${v.cmd.a}` });
-        return out(res, 202, { pending: true, confirmId: id, bit: cfg.physicalBit, expiresIn: cfg.physicalWaitMs / 1000, id: v.cmd.id });
-      }
-    }
-    try {
-      await dispatch(req.user, v.cmd, via, ip);
-    } catch (e) {
-      return out(res, 503, { error: 'mqtt_unavailable' });
-    }
-    res.json({ ok: true, id: v.cmd.id, via });
-  });
-
-  /** Client hỏi lại sau khi bấm nút vật lý; lệnh chỉ phát khi PLC báo cạnh tín hiệu mới ở ngõ vào đó. */
-  app.get('/api/control/confirm/:id', requireAuth, cmdLimit, async (req, res) => {
-    const p = pendingConfirm.get(req.params.id);
-    if (!p || p.userId !== req.user.id) return out(res, 404, { error: 'not_found' });
-    if (Date.now() > p.expires) {
-      pendingConfirm.delete(req.params.id);
-      return out(res, 410, { error: 'confirm_expired' });
-    }
-    if (!edgeSince(p.site, p.device, p.bit, p.since)) return res.json({ waiting: true, bit: p.bit });
-    pendingConfirm.delete(req.params.id);
-    try {
-      await dispatch(req.user, p.cmd, `${p.via}+button`, clientIp(req));
-    } catch {
-      return out(res, 503, { error: 'mqtt_unavailable' });
-    }
-    res.json({ ok: true, id: p.cmd.id, sent: true });
-  });
 
   /* ---------- PC nhà máy đã ghép cặp (khoá thiết bị, không cần đăng nhập người dùng) ---------- */
   const stationLimit = rateLimit({
@@ -428,48 +376,9 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
     res.json({ ok: true, station: req.station.id, name: req.station.name, site: req.station.site, device: req.station.device });
   });
 
-  app.post('/api/station/cmd', sAuth, stationLimit, async (req, res) => {
-    const cfg = controlConfig();
-    const owner = req.stationOwner;
-    if (!canControl(owner)) return out(res, 403, { error: 'forbidden' });
-    const v = validateCmd(req.body, cfg);
-    if (v.error) return out(res, 400, v);
-    const target = { id: owner.id, notify_site: req.station.site, notify_device: req.station.device };
-    const ip = clientIp(req);
-    if (v.write && v.critical && cfg.physicalBit !== null) {
-      const id = crypto.randomBytes(8).toString('hex');
-      pendingConfirm.set(id, {
-        userId: owner.id, site: target.notify_site, device: target.notify_device, cmd: v.cmd,
-        via: 'station', bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
-      });
-      audit(db, 'control_pending_physical', { userId: owner.id, ip, detail: `station ${req.station.id} a=${v.cmd.a}` });
-      return out(res, 202, { pending: true, confirmId: id, bit: cfg.physicalBit, expiresIn: cfg.physicalWaitMs / 1000, id: v.cmd.id });
-    }
-    try {
-      await dispatch(target, v.cmd, `station ${req.station.id}`, ip);
-    } catch {
-      return out(res, 503, { error: 'mqtt_unavailable' });
-    }
-    res.json({ ok: true, id: v.cmd.id, via: 'station' });
-  });
-
-  app.get('/api/station/confirm/:id', sAuth, stationLimit, async (req, res) => {
-    const p = pendingConfirm.get(req.params.id);
-    if (!p || p.userId !== req.stationOwner.id || p.site !== req.station.site) return out(res, 404, { error: 'not_found' });
-    if (Date.now() > p.expires) { pendingConfirm.delete(req.params.id); return out(res, 410, { error: 'confirm_expired' }); }
-    if (!edgeSince(p.site, p.device, p.bit, p.since)) return res.json({ waiting: true, bit: p.bit });
-    pendingConfirm.delete(req.params.id);
-    try {
-      await dispatch({ id: p.userId, notify_site: p.site, notify_device: p.device }, p.cmd, `${p.via}+button`, clientIp(req));
-    } catch {
-      return out(res, 503, { error: 'mqtt_unavailable' });
-    }
-    res.json({ ok: true, id: p.cmd.id, sent: true });
-  });
-
   /* ---------- Admin: PC trạm (cấp tay, kiểu cũ) ---------- */
   app.get('/api/admin/stations', ...adminOnly, (_req, res) => {
-    res.json({ lanConfigured: controlConfig().lanCidrs.length > 0, stations: listStations(db) });
+    res.json({ lanConfigured: securityConfig().lanCidrs.length > 0, stations: listStations(db) });
   });
 
   app.post('/api/admin/stations', ...adminOnly, reauth, (req, res) => {
@@ -486,5 +395,8 @@ export function mountControl(app, { db, requireAuth, adminOnly, loginPayload, au
     res.json({ ok: true });
   });
 
-  return { reauth };
+
+  return {
+    reauth, authorize, enrollGate, methodsFor, issue, tokenOf, strict, stationAuth: sAuth, stationLimit,
+  };
 }

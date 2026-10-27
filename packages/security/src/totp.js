@@ -1,8 +1,9 @@
 /**
  * TOTP (RFC 6238, SHA-1, 6 chữ số, 30 s) cho Google/Microsoft Authenticator — không cần thư viện ngoài.
- * Bí mật được mã hoá AES-256-GCM trong DB bằng khoá dẫn xuất từ APP_JWT_SECRET.
+ * Bí mật được mã hoá AES-256-GCM trong DB bằng khoá dẫn xuất từ secret của app (config.secret).
  */
 import crypto from 'crypto';
+import { keyFrom } from './config.js';
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const STEP = 30;
@@ -69,7 +70,7 @@ export function otpauthUri(secretB32, account, issuer = 'Giám sát PLC') {
 
 /* ---- bí mật khi lưu ---- */
 function kek() {
-  return crypto.createHash('sha256').update(`plciot-totp|${process.env.APP_JWT_SECRET || ''}`).digest();
+  return keyFrom('plciot-totp|');
 }
 
 export function sealSecret(plain) {

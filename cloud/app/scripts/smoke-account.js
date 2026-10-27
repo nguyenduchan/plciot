@@ -24,7 +24,7 @@ const lastCode = (chatId) => {
 const { openDb, upsertUser, upsertTelegramUser, findUserById } = await import('../src/db.js');
 const { hashPassword } = await import('../src/auth.js');
 const A = await import('../src/accountSecurity.js');
-const { consumeRecoveryCode } = await import('../src/recoveryCodes.js');
+const { consumeRecoveryCode } = await import('@plciot/security');
 const { noteTelemetry } = await import('../src/plcProof.js');
 
 const db = openDb(tmp);
