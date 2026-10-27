@@ -79,6 +79,8 @@ public partial class MainWindow : Window
         if (new LoginDialog(_session) { Owner = this }.ShowDialog() == true) Notify($"Xin chào {_session.Actor} ({Roles.Display(_session.Role!.Value)})");
     }
 
+    void OnShowQr(object s, RoutedEventArgs e) => Dialogs.ShowQr(this, MobileUrl.Resolve(_ctx.ConfigPath));
+
     void OnAuthButton(object s, RoutedEventArgs e)
     {
         if (_session.User == null) OpenLogin();

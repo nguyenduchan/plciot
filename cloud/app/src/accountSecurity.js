@@ -86,6 +86,14 @@ export function emailChannelAvailable(user) {
 
 /* ---------------------------------------------------------------- notify */
 
+/** HTML của tin Telegram → văn bản cho email. Giữ địa chỉ của liên kết (link huỷ 1 chạm): gỡ thẻ thô sẽ làm mất nó. */
+export function htmlToText(html) {
+  return String(html || '')
+    .replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, label) => `${label.replace(/<[^>]+>/g, '')}:\n${href}\n`) // link riêng một dòng: dấu câu liền sau không dính vào địa chỉ
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+}
+
 /** Tell the account owner (current Telegram + verified email). Never throws. */
 export async function notifyOwner(db, user, { subject, html, text }) {
   const jobs = [];
@@ -93,7 +101,7 @@ export async function notifyOwner(db, user, { subject, html, text }) {
     jobs.push(sendTelegramMessage(user.chat_id, html || esc(text || subject)));
   }
   if (user?.email && user.email_verified && emailConfigured()) {
-    jobs.push(sendEmail(user.email, subject, text || String(html || '').replace(/<[^>]+>/g, '')));
+    jobs.push(sendEmail(user.email, subject, text || htmlToText(html)));
   }
   const r = await Promise.allSettled(jobs);
   r.filter((x) => x.status === 'rejected').forEach((x) => console.error('notifyOwner', x.reason?.message));

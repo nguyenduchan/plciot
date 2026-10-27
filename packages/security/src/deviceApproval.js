@@ -48,6 +48,12 @@ const setRow = (db, id, fields) => {
 };
 
 /** Kênh email do app cung cấp (đã xác minh, qua kỳ cách ly…) — lõi không tự biết. */
+/** c***@example.com — đủ để nhận ra hộp thư, không lộ địa chỉ cho người đang cầm điện thoại của chủ. */
+export function maskEmail(email) {
+  const [name = '', host = ''] = String(email || '').split('@');
+  return `${name.slice(0, 1)}***@${host}`;
+}
+
 export function emailAvailable(user) {
   return Boolean(getConfig().email.available(user));
 }
@@ -88,6 +94,7 @@ export async function startDeviceRequest(db, user, { ip, label }) {
     coolingHours: coolingMs() / HOUR,
     // chưa có yếu tố nào (thiết bị không phải thiết bị đầu tiên): chỉ có email hoặc chờ, không có "máy cũ" để duyệt
     options: { device: hasFactor, wait: !hasFactor, recoveryCode: recoveryCodesRemaining(db, user.id) > 0, email: emailAvailable(user) },
+    emailHint: emailAvailable(user) ? maskEmail(user.email) : null, // cho người dùng biết mã sẽ gửi tới hộp thư nào
   };
 }
 

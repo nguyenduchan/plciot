@@ -33,7 +33,9 @@ public sealed class OpcUaServerHost : IAsyncDisposable
         _server = new ScadaOpcServer(_source);
         _app = new ApplicationInstance(cfg) { ApplicationName = "PlciotScadaServer", ApplicationType = ApplicationType.Server };
         await _app.Start(_server);
-        _timer = new Timer(_ => _server.Manager?.Refresh(), null, 500, 1000);
+        // nạp ảnh ngay khi mở: nếu không, client nối sớm đọc phải toàn số 0 mà vẫn thấy "online"
+        _server.Manager?.Refresh();
+        _timer = new Timer(_ => _server.Manager?.Refresh(), null, 1000, 1000);
     }
 
     public async ValueTask DisposeAsync()
@@ -122,6 +124,13 @@ internal sealed class ScadaNodeManager : CustomNodeManager2
         parent.AddChild(v);
         AddPredefinedNode(SystemContext, v);
         return v;
+    }
+
+    // làm tươi ảnh ngay trước mỗi lần client đọc: timer 1 s có thể chưa kịp chạy sau lần poll PLC đầu → client thấy "online" nhưng toàn số 0
+    public override void Read(OperationContext context, double maxAge, IList<ReadValueId> nodesToRead, IList<DataValue> values, IList<ServiceResult> errors)
+    {
+        Refresh();
+        base.Read(context, maxAge, nodesToRead, values, errors);
     }
 
     public void Refresh()

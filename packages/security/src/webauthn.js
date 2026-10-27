@@ -113,7 +113,8 @@ export function registrationOptions({ userId, username, rpId, rpName = 'Giám s�
     rp: { id: rpId, name: rpName },
     user: { id: b64u(`u${userId}`), name: username, displayName: username },
     pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-    authenticatorSelection: { userVerification: 'required', residentKey: 'required', requireResidentKey: true },
+    // attachment 'platform': chỉ hỏi vân tay/Face ID của chính máy (như app ngân hàng), không đưa ra khoá ngoài hay mã QR
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'required', requireResidentKey: true },
     attestation: 'none',
     excludeCredentials: exclude.map((id) => ({ type: 'public-key', id })),
     timeout: 60_000,

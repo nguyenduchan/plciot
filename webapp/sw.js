@@ -28,6 +28,13 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Địa chỉ gốc luôn đi qua trang đăng nhập (login.js tự vào trang chính nếu phiên còn hợp lệ).
+  // Không để cache của bundle trả index.html cho '/', nếu không trình duyệt cũ bỏ qua bước đăng nhập.
+  if (req.mode === 'navigate' && url.pathname === '/') {
+    e.respondWith(Response.redirect('/login.html' + url.search, 302));
+    return;
+  }
+
   // API always hits the network (auth, version check, bundle download).
   if (url.pathname.startsWith('/api/')) {
     e.respondWith(fetch(req).catch(() => new Response(JSON.stringify({ error: 'offline' }), {

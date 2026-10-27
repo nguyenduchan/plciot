@@ -302,7 +302,18 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     if (!needSession(req, res)) return;
     sendR(res, decideDeviceRequest(db, req.user, req.params.id, req.params.action, { ip: clientIp(req) }));
   });
+  // GET chỉ hiện trang xác nhận: bộ xem trước link của Telegram/trình quét mail tự mở mọi URL, nếu GET huỷ luôn
+  // thì yêu cầu bị huỷ sau ~1 giây mà chủ không hề bấm (đã xảy ra thật). Huỷ chỉ xảy ra ở POST khi bấm nút.
   app.get('/api/device/cancel', authStrict, (req, res) => {
+    const q = `id=${encodeURIComponent(String(req.query.id || ''))}&t=${encodeURIComponent(String(req.query.t || ''))}`;
+    res.type('html').send(
+      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<title>Huỷ yêu cầu</title><body style="font-family:system-ui;max-width:420px;margin:15vh auto;padding:0 16px">'
+      + '<h2>Huỷ yêu cầu thêm thiết bị?</h2><p>Chỉ huỷ nếu <b>không phải bạn</b> vừa yêu cầu thêm thiết bị mới.</p>'
+      + `<form method="post" action="/api/device/cancel?${q}"><button style="font-size:18px;padding:12px 24px">Huỷ yêu cầu</button></form>`,
+    );
+  });
+  app.post('/api/device/cancel', authStrict, (req, res) => {
     const r = cancelDeviceByLink(db, String(req.query.id || ''), String(req.query.t || ''), clientIp(req));
     const msg = r.ok ? 'Đã huỷ yêu cầu thêm thiết bị. Tài khoản của bạn không thay đổi.'
       : r.error === 'request_not_pending' ? 'Yêu cầu này đã được xử lý hoặc đã bị huỷ trước đó.' : 'Liên kết không hợp lệ.';

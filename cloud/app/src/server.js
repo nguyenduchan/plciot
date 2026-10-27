@@ -6,6 +6,7 @@ import mime from 'mime-types';
 import { openDb, findUserById, findUserByPhone } from './db.js';
 import { signToken, bearerUser, jwtTtlSeconds } from './auth.js';
 import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
+import { startBundleSync } from './bundleSync.js';
 import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import {
   requestRegisterOtp, verifyRegisterOtp,
@@ -313,6 +314,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     phone: u.phone || u.username,
     phoneLocal: formatVnLocal(u.phone || u.username),
     version: u.version,
+    files: (() => { try { return listBundleFiles(resolveBundleRoot(DATA_DIR, u.folder_path)); } catch { return []; } })(),
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
     role: u.role,
@@ -460,6 +462,9 @@ app.use((err, _req, res, _next) => {
   if (err?.message === 'CORS_NOT_ALLOWED') {
     return res.status(403).json({ error: 'cors_denied' });
   }
+  // lỗi do người gọi gửi sai (JSON hỏng, thân quá lớn…) là 4xx, không phải lỗi máy chủ
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad_request' });
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'payload_too_large' });
   console.error(err);
   res.status(500).json({ error: 'server_error' });
 });
@@ -470,6 +475,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`SHELL_DIR=${SHELL_DIR}`);
   startTelegramBot(db);
   startControlPublisher();
+  startBundleSync(db, { dataDir: DATA_DIR, shellDir: SHELL_DIR });
   startMqttIngest(db);
   startHistoryPurge(db);
   const tick = () => processDueChanges(db).catch((e) => console.error('processDueChanges', e.message));

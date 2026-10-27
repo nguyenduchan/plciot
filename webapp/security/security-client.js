@@ -32,12 +32,32 @@
     webauthn_failed: 'Xác thực vân tay / Face ID không thành công.',
     credential_exists: 'Thiết bị này đã được đăng ký.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
-    first_device_required: 'Đây không phải thiết bị đầu tiên của tài khoản nên chưa bật được ngay. Hãy xác nhận bằng email hoặc chờ 24 giờ.',
+    first_device_required: 'Máy này chưa được tài khoản tin cậy (không phải máy đầu tiên). Bấm nút bên dưới để thêm máy này: máy cũ duyệt, mã khôi phục, email đã xác minh hoặc chờ 24 giờ.',
     otp_invalid: 'Mã không đúng.',
     otp_expired: 'Mã hết hạn, gửi lại.',
     otp_missing: 'Chưa có mã, bấm Gửi mã trước.',
     otp_locked: 'Nhập sai quá nhiều, thử lại sau.',
     totp_already_enabled: 'Authenticator đã được bật.',
+    session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
+    unauthorized: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
+    forbidden: 'Bạn không có quyền thực hiện thao tác này.',
+    server_error: 'Máy chủ gặp lỗi. Thử lại sau ít phút.',
+    offline: 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.',
+    enroll_required: 'Điều khiển đã bị khoá: hãy bật vân tay / Face ID hoặc Authenticator.',
+    totp_not_enabled: 'Chưa bật Authenticator trên tài khoản này.',
+    no_passkey: 'Tài khoản này chưa đăng ký vân tay / Face ID.',
+    unknown_credential: 'Vân tay / Face ID này chưa được đăng ký cho tài khoản.',
+    old_channel_unavailable: 'Chưa có email đã xác minh (hoặc server chưa cấu hình gửi email). Dùng cách khác: máy cũ duyệt, mã khôi phục, hoặc chờ 24 giờ.',
+    email_send_failed: 'Không gửi được email. Thử lại sau hoặc dùng cách khác.',
+    email_quarantine: 'Email mới thêm chưa dùng được (đang trong thời gian chờ).',
+    recovery_code_invalid: 'Mã khôi phục không đúng hoặc đã dùng.',
+    recovery_locked: 'Nhập sai mã khôi phục quá nhiều lần. Thử lại sau.',
+    no_recovery_codes: 'Tài khoản chưa có mã khôi phục.',
+    request_not_pending: 'Yêu cầu này đã được xử lý hoặc đã bị huỷ.',
+    request_not_active: 'Yêu cầu này không còn hiệu lực. Hãy tạo yêu cầu mới.',
+    request_not_found: 'Không tìm thấy yêu cầu. Hãy tạo yêu cầu mới.',
+    use_existing_device: 'Máy này đã đăng ký. Hãy dùng vân tay / Authenticator đã có.',
+    not_found: 'Không tìm thấy.',
   };
   const errText = (e) => ERR[e] || e || 'Lỗi';
   /** App thêm thông báo lỗi riêng (vd. lệnh PLC) mà không sửa lõi. */
@@ -95,6 +115,7 @@
         ...opts,
         challenge: b64uToBuf(opts.challenge),
         user: { ...opts.user, id: b64uToBuf(opts.user.id) },
+        hints: ['client-device'],
         excludeCredentials: (opts.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
       },
     });
@@ -187,7 +208,12 @@
       m.lastErr = r.error;
       m.q('.ctl-err').textContent = errText(r.error);
     } catch (e) {
-      m.q('.ctl-err').textContent = e?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : errText('webauthn_failed');
+      m.q('.ctl-err').textContent = {
+        NotAllowedError: 'Chưa xác nhận được. Hãy bấm lại và đặt vân tay / nhìn Face ID khi điện thoại yêu cầu. Máy cần đã cài khoá màn hình và vân tay / Face ID.',
+        NotSupportedError: 'Trình duyệt này không hỗ trợ vân tay / Face ID. Mở trang bằng Safari (iPhone) hoặc Chrome (Android), không mở trong Telegram, Zalo… rồi thử lại.',
+        SecurityError: 'Địa chỉ trang không khớp với cấu hình vân tay. Hãy mở đúng địa chỉ https://plc.dieukhientudong.net.',
+        InvalidStateError: 'Máy này đã đăng ký vân tay cho tài khoản rồi.',
+      }[e?.name] || errText('webauthn_failed');
     }
     return false;
   }
@@ -219,12 +245,14 @@
     const body = m.q('.ctl-body');
     {
       body.innerHTML = `
-        <h3>${title}</h3>
-        <p class="muted">Chọn cách xác nhận mỗi khi điều khiển thiết bị từ xa. Chỉ cần làm một lần trên máy này.</p>
+        <h3>${canPkPlatform ? 'Bật đăng nhập bằng vân tay / Face ID' : title}</h3>
+        <p class="muted">${canPkPlatform
+          ? 'Lần sau bạn chỉ cần chạm vân tay hoặc nhìn Face ID để vào ứng dụng và xác nhận điều khiển, không cần OTP hay mật khẩu. Sinh trắc của bạn nằm trong điện thoại, không gửi lên máy chủ.'
+          : 'Chọn cách xác nhận mỗi khi điều khiển thiết bị từ xa. Chỉ cần làm một lần trên máy này.'}</p>
         <div class="ctl-err" style="color:var(--bad)"></div>
         <div class="row" style="flex-direction:column;gap:8px">
-          ${canPkPlatform ? '<button class="primary" data-a="pk">Dùng vân tay / Face ID</button>' : ''}
-          <button class="${canPkPlatform ? 'fit' : 'primary'}" data-a="totp">Dùng ứng dụng Authenticator (mã 6 số)</button>
+          ${canPkPlatform ? '<button class="primary" data-a="pk">Bật vân tay / Face ID</button>' : ''}
+          <button class="fit" data-a="totp">${canPkPlatform ? 'Máy không có vân tay? Dùng ứng dụng Authenticator' : 'Dùng ứng dụng Authenticator (mã 6 số)'}</button>
           <button class="fit" data-a="x">Để sau</button>
         </div>`;
       body.querySelectorAll('button').forEach((b) => {
@@ -238,7 +266,7 @@
           if (m.lastErr === 'first_device_required' && !m.q('.ctl-nd')) {
             const nd = document.createElement('button');
             nd.className = 'primary ctl-nd';
-            nd.textContent = 'Xác nhận bằng email / chờ 24 giờ';
+            nd.textContent = 'Thêm máy này vào tài khoản';
             nd.onclick = () => newDeviceFlow(m, done, canPkPlatform);
             m.q('.ctl-body .row').prepend(nd);
           }
@@ -274,7 +302,7 @@
         body.innerHTML = `<h3>Thêm thiết bị mới</h3><p style="color:var(--bad)">${escHtml(errText(r.body.error))}</p>${closeBtn}`;
         return wireClose();
       }
-      req = { id: r.body.id, pollToken: r.body.pollToken, options: r.body.options, coolingHours: r.body.coolingHours };
+      req = { id: r.body.id, pollToken: r.body.pollToken, options: r.body.options, coolingHours: r.body.coolingHours, emailHint: r.body.emailHint };
       LS.set('devReq', req);
       st = { status: 'pending' };
     }
@@ -291,7 +319,7 @@
         ${o.recoveryCode ? `<hr><p class="muted">Không còn máy cũ? Dùng <b>mã khôi phục</b> (chờ ${req.coolingHours || 24} giờ):</p>
           <input class="ctl-rc" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off">
           <div class="row"><button class="fit ctl-rc-go">Dùng mã khôi phục</button></div>` : ''}
-        ${o.email ? `<hr><p class="muted">Hoặc nhận mã qua <b>email đã xác minh</b>:</p>
+        ${o.email ? `<hr><p class="muted">Hoặc nhận mã 6 số qua <b>email đã xác minh</b>${req.emailHint ? ` (<b>${escHtml(req.emailHint)}</b>)` : ''}. Nhập mã đó ở đây để chờ ${req.coolingHours || 24} giờ rồi được cấp quyền:</p>
           <div class="row ctl-em-1"><button class="fit ctl-em-send">Gửi mã tới email</button></div>
           <div class="ctl-em-2" hidden><input class="ctl-em-otp" inputmode="numeric" maxlength="6" placeholder="Mã 6 số trong email">
             <div class="row"><button class="fit ctl-em-go">Xác nhận</button></div></div>` : ''}
@@ -406,7 +434,7 @@
 
       const render = () => {
         const reason = { network_changed: 'Bạn vừa đổi mạng — cần xác nhận lại.', expired: 'Phiên điều khiển đã hết hạn.' }[info.reason] || '';
-        if (!methods.enrolled) { enrollChoice(m, canPk && canPlatform, done); return; }
+        if (!methods.enrolled) { enrollChoice(m, canPk, done); return; } // vân tay luôn là lựa chọn chính: kiểm tra 'canPlatform' hay sai trong trình duyệt nhúng
         body.innerHTML = `
           <h3>Xác nhận để điều khiển</h3>
           ${reason ? `<p class="muted">${reason}</p>` : ''}
@@ -454,7 +482,7 @@
     const o = await post('/api/login/passkey/options', {});
     if (!o.ok) return o.body;
     const cred = await navigator.credentials.get({
-      publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [] },
+      publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] }, // chỉ passkey trên chính máy này, không đẩy sang mã QR
     });
     const r = await post('/api/login/passkey/verify', {
       cid: o.body.cid,

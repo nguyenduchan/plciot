@@ -362,10 +362,14 @@ ok(r.body.status === 'approved' && r.body.ticket, 'hết thời gian chờ: nh�
 r = await call('POST', '/api/devices/request', uPk, { label: 'Kẻ lạ' });
 const reqC = r.body;
 await call('POST', `/api/devices/requests/${reqC.id}/recovery`, uPk, { code: pkCodes[1] });
-let cr = await fetch(`${base}/api/device/cancel?id=${reqC.id}&t=sai`);
+let cr = await fetch(`${base}/api/device/cancel?id=${reqC.id}&t=sai`, { method: 'POST' });
 ok(cr.status === 403, 'link huỷ sai token bị từ chối');
-cr = await fetch(`${base}/api/device/cancel?id=${reqC.id}&t=${deviceCancelToken(reqC.id)}`);
-ok(cr.status === 200, 'chủ bấm link huỷ');
+cr = await fetch(`${base}/api/device/cancel?id=${reqC.id}&t=${deviceCancelToken(reqC.id)}`); // GET (bộ xem trước link) KHÔNG được huỷ
+ok(cr.status === 200 && /<form/.test(await cr.text()), 'mở link huỷ chỉ hiện trang xác nhận');
+r = await call('POST', `/api/devices/requests/${reqC.id}/poll`, uPk, { pollToken: reqC.pollToken });
+ok(r.body.status !== 'cancelled', 'mở link (GET) không làm huỷ yêu cầu');
+cr = await fetch(`${base}/api/device/cancel?id=${reqC.id}&t=${deviceCancelToken(reqC.id)}`, { method: 'POST' });
+ok(cr.status === 200, 'chủ bấm nút huỷ');
 db.prepare('UPDATE device_requests SET execute_at = ? WHERE id = ?').run(Date.now() - 1, reqC.id);
 r = await call('POST', `/api/devices/requests/${reqC.id}/poll`, uPk, { pollToken: reqC.pollToken });
 ok(r.body.status === 'cancelled' && !r.body.ticket, 'yêu cầu đã huỷ không bao giờ nhận vé');

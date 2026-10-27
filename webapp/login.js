@@ -22,6 +22,14 @@ const ERR = {
   otp_missing: 'Chưa có OTP. Bấm Gửi OTP trước.',
   otp_locked: 'Nhập sai quá nhiều. Thử lại sau.',
   telegram_send_failed: 'Không gửi được Telegram. Thử lại.',
+  rate_limited: 'Bạn thử quá nhiều lần. Đợi vài phút rồi thử lại.',
+  session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
+  unauthorized: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
+  forbidden: 'Bạn không có quyền thực hiện thao tác này.',
+  cors_denied: 'Địa chỉ truy cập không được phép. Hãy mở đúng địa chỉ của ứng dụng.',
+  server_error: 'Máy chủ gặp lỗi. Thử lại sau ít phút.',
+  offline: 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.',
+  no_passkey: 'Tài khoản này chưa đăng ký vân tay / Face ID. Dùng OTP Telegram.',
   webauthn_failed: 'Vân tay / Face ID không thành công. Thử lại hoặc dùng OTP Telegram.',
   unknown_credential: 'Thiết bị này chưa có vân tay đăng ký. Dùng OTP Telegram.',
 };
@@ -60,7 +68,9 @@ function requireVnPhone() {
 }
 
 function setError(codeOrMsg) {
-  $('#error').textContent = ERR[codeOrMsg] || codeOrMsg || '';
+  // mã lỗi chưa có bản dịch vẫn báo bằng tiếng Việt kèm mã để tra cứu, không hiện chữ thô như "rate_limited"
+  const raw = String(codeOrMsg || '');
+  $('#error').textContent = ERR[raw] || (/^[a-z][a-z0-9_]+$/.test(raw) ? `Có lỗi (${raw}). Thử lại hoặc dùng OTP Telegram.` : raw);
 }
 
 function setBusy(on) {
@@ -220,20 +230,10 @@ async function tryResume() {
   if (!session || session.demo) return false;
   if (!session.online && !(await hasBundle(session))) return false;
   if (session.online && !session.token) return false;
-  const wantUpdate = new URLSearchParams(location.search).get('update') === '1';
-  if (!wantUpdate && navigator.onLine && session.token) {
-    try {
-      const r = await fetch(`${session.apiBase || location.origin}/api/me`, {
-        headers: { Authorization: `Bearer ${session.token}` },
-      });
-      if (r.ok) {
-        const me = await r.json();
-        if (me.version !== session.version) {
-          setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
-          return false;
-        }
-      }
-    } catch {}
+  // ?update=1 = boot.js đã thử tự cập nhật mà lỗi (hết hạn phiên, mất mạng…): ở lại để đăng nhập tải lại bản mới.
+  if (new URLSearchParams(location.search).get('update') === '1') {
+    setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
+    return false;
   }
   await registerSw();
   location.replace('index.html');
@@ -300,19 +300,16 @@ async function passkeyLogin(auto) {
     if (!auto) setBusy(false);
   }
 }
-// Nút vân tay chỉ hiện khi máy THẬT SỰ có sinh trắc (hoặc từng dùng passkey): PC không có Windows Hello/vân tay chỉ thấy OTP.
+// Nút vân tay chỉ hiện khi máy này ĐÃ đăng ký passkey cho tên miền này. Máy chưa đăng ký mà bấm thì trình duyệt
+// chuyển sang "dùng thiết bị khác" và hiện mã QR (ngõ cụt), nên người mới/máy mới đi OTP Telegram rồi được mời bật vân tay.
 (async () => {
   if (!window.Ctl?.passkeySupported()) return;
-  if (!LS.get('hasPasskey', false) && !(await window.Ctl.platformAvailable())) return;
+  if (!LS.get('hasPasskey', false)) return;
   $('#btn-passkey').hidden = false;
   $('#btn-passkey').onclick = () => passkeyLogin(false);
-  if (LS.get('hasPasskey', false)) {
-    $('#btn-otp').classList.remove('primary'); // máy đã có vân tay: vân tay là lối chính, OTP là dự phòng
-    // vừa đăng xuất chủ động (?out=1) thì chờ người dùng bấm, không tự vào lại ngay
-    if (!new URLSearchParams(location.search).get('out')) setTimeout(() => passkeyLogin(true), 300);
-  } else {
-    $('#btn-passkey').classList.remove('primary'); // người mới/máy mới: OTP Telegram là bước đầu
-  }
+  $('#btn-otp').classList.remove('primary'); // máy đã có vân tay: vân tay là lối chính, OTP là dự phòng
+  // vừa đăng xuất chủ động (?out=1) thì chờ người dùng bấm, không tự vào lại ngay
+  if (!new URLSearchParams(location.search).get('out')) setTimeout(() => passkeyLogin(true), 300);
 })();
 
 $('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
