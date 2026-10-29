@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { upsertTelegramUser, findUserByPhone } from './db.js';
 import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import { telegramConfigured } from './telegram.js';
+import { canBindVerifiedContact } from '@plciot/security';
 
 /**
  * Optional local long-polling bot.
@@ -43,7 +44,8 @@ export function startTelegramBot(db) {
       await bot.sendMessage(chatId, 'Không nhận được số điện thoại. Thử lại /start.');
       return;
     }
-    if (contact.user_id && msg.from?.id && contact.user_id !== msg.from.id) {
+    const evidence = { actorId: msg.from?.id, contactOwnerId: contact.user_id, isPrivate: msg.chat.type === 'private', newContact: chatId };
+    if (!canBindVerifiedContact(evidence)) {
       await bot.sendMessage(chatId, 'Vui lòng chia sẻ số điện thoại của chính bạn.');
       return;
     }
@@ -54,8 +56,12 @@ export function startTelegramBot(db) {
           '❌ Cần số di động Việt Nam (ví dụ 09xxxxxxxx).\nThử lại /start.');
         return;
       }
-      upsertTelegramUser(db, phone, chatId);
       const appUser = findUserByPhone(db, phone);
+      if (!canBindVerifiedContact({ ...evidence, currentContact: appUser?.chat_id })) {
+        await bot.sendMessage(chatId, 'Số này đã có kênh xác thực. Hãy đổi kênh qua quy trình khôi phục trong ứng dụng.');
+        return;
+      }
+      upsertTelegramUser(db, phone, chatId);
       if (appUser) {
         // Only refresh the Telegram link; username/phone change solely via the verified
         // change-phone flow (accountSecurity.js), never as a side effect of sharing a contact.

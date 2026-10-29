@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # @plciot/security: package.json khai "file:../../packages/security" → từ /app trỏ tới /packages/security
 COPY packages/security /packages/security
+RUN cd /packages/security && npm install --omit=dev
 
 COPY cloud/app/package.json ./
 RUN npm install --omit=dev

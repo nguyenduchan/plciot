@@ -54,6 +54,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Xử lý khi người dùng gửi contact
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
+    if (update.effective_chat.type != "private" or not contact.user_id
+            or not update.effective_user or contact.user_id != update.effective_user.id):
+        await update.message.reply_text("Vui lòng chia sẻ số điện thoại của chính bạn trong chat riêng.")
+        return
     chat_id = update.message.chat_id
     phone = contact.phone_number
 

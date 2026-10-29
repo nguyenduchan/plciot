@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import express from 'express';
+import { signedDevice } from '../../../packages/security/test/device-fixture.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plc-ctl-'));
 process.env.APP_JWT_SECRET = 'x'.repeat(32);
@@ -17,6 +18,7 @@ process.env.RATE_LIMIT_CONTROL_CMD = '1000';
 
 const { openDb } = await import('../src/db.js');
 const T = await import('@plciot/security');
+T.configure({ notify: async () => ({ delivered: true }) });
 const { setPublisher } = await import('../src/controlPublisher.js');
 const { mountSecurityRoutes } = await import('@plciot/security');
 const { mountPlcControl } = await import('../src/plcControlRoutes.js');
@@ -71,9 +73,10 @@ const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', (
 const base = `http://127.0.0.1:${server.address().port}`;
 
 async function call(method, url, uid, body, headers = {}) {
+  const device = signedDevice(uid, url, headers['x-device-id'] ?? 'test-device-aaaaaaaaaaaaaaaa');
   const r = await fetch(base + url, {
-    method, headers: { 'content-type': 'application/json', 'x-uid': String(uid), ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    method, headers: { 'content-type': 'application/json', 'x-uid': String(uid), 'x-device-id': device.deviceId, ...headers },
+    body: method === 'GET' ? undefined : JSON.stringify({ ...body, publicKey: device.publicKey, deviceProof: device.deviceProof }),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }
@@ -110,7 +113,7 @@ ok(Array.isArray(r.body.recoveryCodes) && r.body.recoveryCodes.length === 10, 'b
 const tokTotp = r.body.controlToken;
 
 r = await cmd(uOp, { a: 6, v: 1 });
-ok(r.status === 401 && r.body.reason === 'no_token', 'có yếu tố nhưng không kèm token: bị chặn');
+ok(r.status === 401 && r.body.reason === 'critical_command', 'lệnh nguy hiểm không có token: đi thẳng vào challenge, không hỏi xác thực hai lần');
 r = await cmd(uOp, { id: 'abc1', a: 7, v: 50 }, { 'x-control-token': tokTotp });
 ok(r.status === 200 && r.body.via === 'totp' && published.at(-1).cmd.v === 50 && published.at(-1).site === 'siteA', 'có phiên TOTP: lệnh được phát tới đúng site/device');
 ok(published.at(-1).cmd.id === 'abc1', 'giữ id của client để khớp ack');
@@ -221,11 +224,23 @@ const tokPk = r.body.controlToken;
 opt = (await call('POST', '/api/webauthn/auth/options', uPk)).body;
 r = await call('POST', '/api/webauthn/auth/verify', uPk, { credential: assertion(opt, { cnt: 1 }) });
 ok(r.status === 401 && /counter/.test(r.body.detail), 'bộ đếm lùi (khoá bị sao chép) bị từ chối');
-r = await cmd(uPk, { a: 4, v: 3 }, { 'x-control-token': tokPk });
+r = await cmd(uPk, { id: 'critical1', a: 4, v: 3 }, { 'x-control-token': tokPk });
+ok(r.status === 401 && r.body.reason === 'critical_command' && r.body.commandChallenge, 'lệnh nguy hiểm cần xác thực mới dù phiên còn hạn');
+const criticalCommand = r.body.command;
+const commandChallenge = r.body.commandChallenge;
+opt = (await call('POST', '/api/webauthn/auth/options', uPk)).body;
+r = await call('POST', '/api/webauthn/auth/verify', uPk, { credential: assertion(opt) }, { 'x-command-challenge': commandChallenge });
+ok(r.status === 200, 'passkey xác nhận challenge của lệnh');
+const commandHeaders = { 'x-control-token': r.body.controlToken, 'x-command-challenge': commandChallenge };
+r = await cmd(uPk, { ...criticalCommand, v: 2 }, commandHeaders);
+ok(r.status === 401, 'sửa giá trị sau xác thực không gửi được lệnh');
+r = await cmd(uPk, criticalCommand, commandHeaders);
 ok(r.status === 202 && r.body.pending && r.body.bit === 5, 'lệnh nguy hiểm (D4) chờ nút nhấn vật lý');
 
 /* ---- Nút vật lý ---- */
 const cid = r.body.confirmId;
+r = await cmd(uPk, criticalCommand, commandHeaders);
+ok(r.status === 401, 'challenge lệnh không dùng lại được');
 noteTelemetry('siteA', 'plc01', 0); // mốc ban đầu
 r = await call('GET', `/api/control/confirm/${cid}`, uPk);
 ok(r.status === 200 && r.body.waiting, 'chưa bấm nút: vẫn chờ, chưa phát lệnh');
@@ -299,7 +314,7 @@ ok(r.status === 200, 'có phiên điều khiển (vừa vân tay): được phé
 const { deviceCancelToken } = await import('@plciot/security');
 const newDev = {}; // máy mới: đã đăng nhập OTP (JWT) nhưng không có phiên điều khiển
 r = await call('POST', '/api/devices/request', uNew, {});
-ok(r.status === 200 && r.body.options.wait === true && r.body.options.device === false, 'chưa có yếu tố: chỉ có đường chờ/email (không có máy cũ để duyệt)');
+ok(r.status === 200 && r.body.options.wait === false && r.body.options.device === false, 'chưa có yếu tố: không cấp quyền chỉ bằng thời gian chờ');
 
 // A. Duyệt từ máy cũ
 r = await call('POST', '/api/devices/request', uPk, { label: 'iPhone mới' });
@@ -319,11 +334,15 @@ r = await call('POST', `/api/devices/requests/${reqA.id}/poll`, uPk, { pollToken
 ok(r.body.status === 'pending' && !r.body.ticket, 'chưa duyệt: không có vé');
 r = await call('POST', `/api/devices/requests/${reqA.id}/approve`, uPk, {});
 ok(r.status === 401, 'duyệt mà không có phiên điều khiển bị từ chối');
-r = await call('POST', `/api/devices/requests/${reqA.id}/approve`, uPk, {}, { 'x-control-token': tokPk });
+r = await call('POST', `/api/devices/requests/${reqA.id}/approve`, uPk, { approvalCode: 'wrong' }, { 'x-control-token': tokPk });
+ok(r.status === 401, 'mã ghép sai không duyệt được máy mới');
+r = await call('POST', `/api/devices/requests/${reqA.id}/approve`, uPk, { approvalCode: reqA.approvalCode }, { 'x-control-token': tokPk });
 ok(r.status === 200, 'máy cũ bấm Cho phép');
 r = await call('POST', `/api/devices/requests/${reqA.id}/poll`, uPk, { pollToken: reqA.pollToken });
 ok(r.body.status === 'approved' && r.body.ticket, 'máy mới nhận vé đăng ký');
 const ticketA = r.body.ticket;
+r = await call('POST', '/api/control/totp/setup', uPk, {}, { 'x-device-id': 'stolen-ticket-device-bbbbbbbb', 'x-enroll-ticket': ticketA });
+ok(r.status === 401 && r.body.error === 'device_proof_required', 'vé bị lộ không dùng trên khoá của máy khác');
 r = await call('POST', '/t/sensitive', uPk, {}, { 'x-enroll-ticket': ticketA });
 ok(r.status === 401, 'vé không dùng được cho thao tác nhạy cảm khác');
 r = await call('POST', '/api/control/cmd', uPk, { a: 7, v: 1 }, { 'x-enroll-ticket': ticketA });
@@ -459,20 +478,18 @@ r = await call('POST', '/api/control/totp/setup', uFd, {}, { 'x-device-id': DEV_
 ok(r.status === 401 && r.body.error === 'first_device_required', 'thiết bị thứ hai không bật được yếu tố đầu tiên ngay');
 r = await call('POST', '/api/webauthn/register/options', uFd, {}, { 'x-device-id': DEV_B });
 ok(r.status === 401 && r.body.error === 'first_device_required', '… cả vân tay lẫn Authenticator');
-r = await call('POST', '/api/control/totp/setup', uFd, {});
-ok(r.status === 401 && r.body.error === 'first_device_required', 'thiếu X-Device-Id: coi là không phải thiết bị đầu tiên');
+r = await call('POST', '/api/control/totp/setup', uFd, {}, { 'x-device-id': '' });
+ok(r.status === 401 && r.body.error === 'device_proof_required', 'thiếu X-Device-Id: không qua được chứng minh thiết bị');
 // đường chờ 24 giờ có cảnh báo + link huỷ
 r = await call('POST', '/api/devices/request', uFd, { label: 'Máy khác' }, { 'x-device-id': DEV_B });
 const reqW = r.body;
 r = await call('POST', `/api/devices/requests/${reqW.id}/wait`, uFd, {});
-ok(r.status === 200 && r.body.status === 'cooling', 'chọn chờ: vào thời gian chờ 24 giờ');
-r = await call('POST', `/api/devices/requests/${reqW.id}/poll`, uFd, { pollToken: reqW.pollToken });
-ok(r.body.status === 'cooling' && !r.body.ticket, 'đang chờ: chưa có vé');
+ok(r.status === 403 && r.body.error === 'independent_proof_required', 'chỉ chờ không có bằng chứng độc lập bị chặn');
+r = await call('POST', `/api/devices/requests/${reqW.id}/poll`, uFd, { pollToken: reqW.pollToken }, { 'x-device-id': DEV_B });
+ok(r.body.status === 'pending' && !r.body.ticket, 'chưa chứng minh: không có vé');
 db.prepare('UPDATE device_requests SET execute_at = ? WHERE id = ?').run(Date.now() - 1, reqW.id);
-r = await call('POST', `/api/devices/requests/${reqW.id}/poll`, uFd, { pollToken: reqW.pollToken });
-ok(r.body.status === 'approved' && r.body.ticket, 'hết chờ: nhận vé');
-r = await call('POST', '/api/control/totp/setup', uFd, {}, { 'x-device-id': DEV_B, 'x-enroll-ticket': r.body.ticket });
-ok(r.status === 200 && r.body.secret, 'có vé: thiết bị thứ hai bật được yếu tố');
+r = await call('POST', `/api/devices/requests/${reqW.id}/poll`, uFd, { pollToken: reqW.pollToken }, { 'x-device-id': DEV_B });
+ok(r.body.status === 'pending' && !r.body.ticket, 'hết thời gian cũng không tự cấp quyền');
 r = await call('POST', '/api/control/totp/setup', uFd, {}, { 'x-device-id': DEV_A });
 ok(r.status === 200, 'thiết bị đầu tiên bật yếu tố ngay, không cần chờ');
 

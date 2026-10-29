@@ -11,9 +11,13 @@
   },
   "files": ["src", "client"],
   "scripts": {
-    "test": "node test/smoke-security.js",
+    "test": "node test/smoke-device-proof.js && node test/smoke-auth-flows.js && node test/smoke-session.js && node test/smoke-recovery-ui.js && node test/smoke-security.js",
     "sync-client": "node scripts/sync-client.js",
     "check-client": "node scripts/sync-client.js --check"
   },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
 }

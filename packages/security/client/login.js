@@ -20,6 +20,7 @@ const ERR = {
   otp_invalid: 'Mã OTP sai.',
   otp_expired: 'Mã OTP hết hạn. Gửi lại.',
   otp_missing: 'Chưa có OTP. Bấm Gửi OTP trước.',
+  otp_format: 'Nhập mã OTP gồm 6 chữ số.',
   otp_locked: 'Nhập sai quá nhiều. Thử lại sau.',
   telegram_send_failed: 'Không gửi được Telegram. Thử lại.',
   rate_limited: 'Bạn thử quá nhiều lần. Đợi vài phút rồi thử lại.',
@@ -45,6 +46,8 @@ function isValidVnPhoneClient(digits84) {
 let mode = 'login'; // login | register
 let pendingPhone = '';
 let otpPurpose = 'login'; // login | register
+let otpResendAt = 0;
+let loginBusy = false;
 
 function cacheNameFor(userId, version) {
   return `plc-${userId}-${version}`;
@@ -70,13 +73,16 @@ function requireVnPhone() {
 function setError(codeOrMsg) {
   // mã lỗi chưa có bản dịch vẫn báo bằng tiếng Việt kèm mã để tra cứu, không hiện chữ thô như "rate_limited"
   const raw = String(codeOrMsg || '');
-  $('#error').textContent = ERR[raw] || (/^[a-z][a-z0-9_]+$/.test(raw) ? `Có lỗi (${raw}). Thử lại hoặc dùng OTP Telegram.` : raw);
+  if (!raw) { $('#error').textContent = ''; return; }
+  const coreMessage = window.Security?.errText?.(raw);
+  $('#error').textContent = ERR[raw] || (coreMessage && coreMessage !== raw ? coreMessage : /^[a-z][a-z0-9_]+$/.test(raw) ? `Có lỗi (${raw}). Thử lại hoặc dùng phương thức khác.` : raw);
 }
 
 function setBusy(on) {
-  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey'].forEach((id) => {
+  loginBusy = on;
+  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey', 'btn-resume', 'btn-resend'].forEach((id) => {
     const el = $('#' + id);
-    if (el) el.disabled = on;
+    if (el) el.disabled = on || (id === 'btn-resend' && Date.now() < otpResendAt);
   });
 }
 
@@ -101,16 +107,19 @@ async function putBundleFiles(token, files, cacheName, base) {
   $('#progress').classList.add('on');
 
   for (const f of files) {
-    label.textContent = `Đang tải (${done + 1}/${files.length}): ${f.path}`;
-    const url = `${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`Tải thất bại: ${f.path} (${res.status})`);
-    const buf = await res.arrayBuffer();
-    const headers = new Headers(res.headers);
-    headers.set('Cache-Control', 'public, max-age=31536000');
-    const stored = new Response(buf, { status: 200, statusText: 'OK', headers });
     const abs = new URL(f.path, location.origin).href;
-    await cache.put(abs, stored.clone());
+    let stored = await cache.match(abs);
+    if (!stored) {
+      label.textContent = `Đang tải (${done + 1}/${files.length}): ${f.path}`;
+      const url = `${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Tải thất bại: ${f.path} (${res.status})`);
+      const buf = await res.arrayBuffer();
+      const headers = new Headers(res.headers);
+      headers.set('Cache-Control', 'public, max-age=31536000');
+      stored = new Response(buf, { status: 200, statusText: 'OK', headers });
+      await cache.put(abs, stored.clone());
+    }
     if (f.path === 'index.html') {
       await cache.put(new URL('./', location.origin).href, stored.clone());
       await cache.put(new URL('/', location.origin).href, stored.clone());
@@ -151,31 +160,30 @@ async function finishLogin(data) {
     apiBase: base,
     online: !offlineOk,
   });
-  const cfg = LS.get('cfg', {});
-  cfg.demo = false;
-  if (data.mqtt) {
-    cfg.user = data.mqtt.user;
-    cfg.pass = data.mqtt.pass;
-    cfg.site = data.mqtt.site;
-    cfg.dev = data.mqtt.device;
-    cfg.controlVia = data.mqtt.controlVia || 'mqtt';
-  } else if (data.notifySite) {
-    cfg.site = data.notifySite;
-    cfg.dev = data.notifyDevice;
-  }
-  LS.set('cfg', cfg);
+  await window.AuthApp?.onAuthenticated?.(data);
   await registerSw();
   if (data.controlToken) LS.set('ctl', { token: data.controlToken, method: data.method, expiresAt: data.expiresAt });
-  try { await window.Ctl?.offerEnroll(); } catch {}
+  if (LS.get('reviewDevices', null)?.userId === data.userId) {
+    await window.Security.reviewRegisteredDevices();
+    LS.del('reviewDevices');
+  }
+  try { sessionStorage.setItem('app-entry', data.token); } catch {}
   // báo thành công ~1 giây rồi vào trang chính
   await new Promise((r) => setTimeout(r, 900));
   location.replace('index.html');
 }
 
 async function api(path, body) {
+  let device;
+  if (path === '/api/register/verify' || path === '/api/login/verify-otp') {
+    if (window.SecurityDevice) {
+      device = await window.SecurityDevice.proof(body.phone, 'otp-verify');
+      body = { ...body, publicKey: device.publicKey, deviceProof: device.deviceProof };
+    }
+  }
   const r = await fetch(location.origin + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Device-Id': window.Ctl?.devId() || '' },
+    headers: { 'Content-Type': 'application/json', 'X-Device-Id': device?.deviceId || window.Security?.devId() || '' },
     body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
@@ -185,6 +193,13 @@ async function api(path, body) {
 function showStep(otp) {
   $('#step-creds').hidden = otp;
   $('#step-otp').hidden = !otp;
+}
+
+function restoreLogin() {
+  stopOtpTimer();
+  showStep(false);
+  $('#ok-msg').hidden = true;
+  $('#progress').classList.remove('on');
 }
 
 function applyMode() {
@@ -200,13 +215,15 @@ let otpTimer = null;
 function stopOtpTimer() { if (otpTimer) clearInterval(otpTimer); otpTimer = null; }
 function startOtpTimer() {
   stopOtpTimer();
-  let left = 300;
+  const expiresAt = Date.now() + 300_000;
+  otpResendAt = Date.now() + 60_000;
   const tick = () => {
+    const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
     const m = String(Math.floor(left / 60)).padStart(2, '0');
     const s = String(left % 60).padStart(2, '0');
     $('#otp-timer').textContent = left > 0 ? `Mã hết hạn sau ${m}:${s}` : 'Mã đã hết hạn. Hãy gửi lại.';
-    $('#btn-resend').disabled = left > 240;   // cho gửi lại sau 60 giây
-    if (left-- <= 0) stopOtpTimer();
+    $('#btn-resend').disabled = loginBusy || Date.now() < otpResendAt;
+    if (left <= 0) stopOtpTimer();
   };
   tick();
   otpTimer = setInterval(tick, 1000);
@@ -216,12 +233,7 @@ async function loadAuthConfig() {
   try {
     const r = await fetch(location.origin + '/api/auth/config');
     const j = await r.json();
-    const hint = $('#tg-hint');
-    if (j.botLink) {
-      hint.innerHTML = `Trước tiên mở <a href="${j.botLink}" target="_blank" rel="noopener">@${j.botUsername.replace(/^@/, '')}</a>, bấm <b>/start</b> và chia sẻ số điện thoại để nhận OTP.`;
-    } else if (!j.telegram) {
-      hint.textContent = 'Máy chủ chưa cấu hình Telegram — dùng chạy thử.';
-    }
+    window.AuthApp?.onAuthConfig?.(j);
   } catch {}
 }
 
@@ -235,12 +247,25 @@ async function tryResume() {
     setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
     return false;
   }
-  await registerSw();
-  location.replace('index.html');
-  return true;
+  if (!session.token || session.pending) return false;
+  const resume = $('#btn-resume');
+  resume.hidden = false;
+  resume.onclick = async () => {
+    if (loginBusy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const data = await window.Security.resumeLogin();
+      if (data) await finishLogin(data);
+      else setError('Chưa xác nhận đăng nhập. Hãy thử lại hoặc dùng OTP.');
+    } catch (ex) { restoreLogin(); setError(ex?.name === 'TypeError' ? 'offline' : ex.message || 'unauthorized'); }
+    finally { setBusy(false); }
+  };
+  return false;
 }
 
 $('#btn-otp').onclick = async () => {
+  if (loginBusy) return;
   setError('');
   const phone = requireVnPhone();
   if (!phone) return;
@@ -249,75 +274,90 @@ $('#btn-otp').onclick = async () => {
     const { ok, data } = await api('/api/login/request-otp', { phone });
     if (!ok) { setError(data.error || data.detail); return; }
     pendingPhone = data.phone || phone;
+    $('#otp').value = '';
     otpPurpose = data.purpose === 'register' ? 'register' : 'login';
     $('#otp-info').textContent = otpPurpose === 'register'
-      ? 'Số điện thoại chưa đăng ký. Nhập OTP để tạo tài khoản và vào ứng dụng.'
-      : 'Người dùng đã đăng ký rồi. Nhập OTP để đăng nhập.';
+      ? 'Xác minh số điện thoại để tạo tài khoản.'
+      : 'Xác minh số điện thoại để tiếp tục đăng nhập.';
     showStep(true);
     startOtpTimer();
     $('#otp').focus();
   } catch (ex) {
-    setError(ex.message || 'Không kết nối được máy chủ.');
+    setError(ex?.name === 'TypeError' ? 'offline' : ex.message || 'Không kết nối được máy chủ.');
   } finally {
     setBusy(false);
   }
 };
 
 $('#btn-verify').onclick = async () => {
+  if (loginBusy) return;
   setError('');
+  const otp = $('#otp').value.trim();
+  if (!/^\d{6}$/.test(otp)) { setError('otp_format'); $('#otp').focus(); return; }
+  let consumedOtp = false;
   setBusy(true);
   try {
     const path = otpPurpose === 'register' ? '/api/register/verify' : '/api/login/verify-otp';
-    const { ok, data } = await api(path, { phone: pendingPhone, otp: $('#otp').value.trim() });
+    const { ok, data } = await api(path, { phone: pendingPhone, otp });
     if (!ok) { setError(data.error); return; }
+    consumedOtp = true;
     stopOtpTimer();
+    const verified = await window.Security.completeOtp(data);
+    if (!verified) {
+      setError('Chưa xác nhận đăng nhập. Hãy xác thực lại OTP để tiếp tục.');
+      restoreLogin();
+      return;
+    }
     $('#step-otp').hidden = true;
     $('#ok-msg').textContent = otpPurpose === 'register' ? '✓ Tạo tài khoản thành công. Đang vào ứng dụng…' : '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
-    await finishLogin(data);
+    await finishLogin(verified);
   } catch (ex) {
-    setError(ex.message || 'Không kết nối được máy chủ.');
+    if (consumedOtp) restoreLogin();
+    setError(ex?.name === 'TypeError' ? 'offline' : ex.message || 'Không kết nối được máy chủ.');
   } finally {
     setBusy(false);
   }
 };
 
 /* Đăng nhập bằng passkey: ưu tiên hàng đầu khi thiết bị hỗ trợ; OTP Telegram là lần đầu / dự phòng. */
-async function passkeyLogin(auto) {
+async function passkeyLogin() {
+  if (loginBusy) return;
   setError('');
-  // Lần tự động thử khi mở trang KHÔNG khoá nút: hộp thoại vân tay của hệ thống có thể treo tới 60 giây, người dùng vẫn phải bấm được OTP.
-  if (!auto) setBusy(true);
+  let authenticated = false;
+  setBusy(true);
   try {
-    const data = await window.Ctl.loginWithPasskey();
-    if (data.error) { if (!auto) setError(data.error); return; }
+    const data = await window.Security.loginWithPasskey();
+    if (data.error) { setError(data.error); return; }
+    authenticated = true;
     $('#step-creds').hidden = true;
     $('#ok-msg').textContent = '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
     await finishLogin(data);
   } catch (ex) {
-    if (!auto) setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : 'webauthn_failed');
+    restoreLogin();
+    setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : ex?.name === 'TypeError' ? 'offline' : authenticated ? ex.message : 'webauthn_failed');
   } finally {
-    if (!auto) setBusy(false);
+    setBusy(false);
   }
 }
 // Nút vân tay chỉ hiện khi máy này ĐÃ đăng ký passkey cho tên miền này. Máy chưa đăng ký mà bấm thì trình duyệt
 // chuyển sang "dùng thiết bị khác" và hiện mã QR (ngõ cụt), nên người mới/máy mới đi OTP Telegram rồi được mời bật vân tay.
 (async () => {
-  if (!window.Ctl?.passkeySupported()) return;
+  if (!window.Security?.passkeySupported()) return;
   if (!LS.get('hasPasskey', false)) return;
   $('#btn-passkey').hidden = false;
-  $('#btn-passkey').onclick = () => passkeyLogin(false);
+  $('#btn-passkey').onclick = () => passkeyLogin();
   $('#btn-otp').classList.remove('primary'); // máy đã có vân tay: vân tay là lối chính, OTP là dự phòng
-  // vừa đăng xuất chủ động (?out=1) thì chờ người dùng bấm, không tự vào lại ngay
-  if (!new URLSearchParams(location.search).get('out')) setTimeout(() => passkeyLogin(true), 300);
 })();
 
 $('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
 $('#btn-resend').onclick = () => $('#btn-otp').onclick();
+$('#phone').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); $('#btn-otp').onclick(); } };
+$('#otp').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); $('#btn-verify').onclick(); } };
 
-$('#demo').onclick = async () => {
-  const cfg = Object.assign(LS.get('cfg', {}), { demo: true });
-  LS.set('cfg', cfg);
+if ($('#demo')) $('#demo').onclick = async () => {
+  await window.AuthApp?.onDemo?.();
   LS.set('session', { demo: true, apiBase: location.origin });
   await registerSw();
   location.replace('index.html');

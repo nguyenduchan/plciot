@@ -56,6 +56,7 @@
   }
 
   async function run() {
+    if (window.AppLock?.isLocked()) return;
     const session = LS.get('session', null);
     if (session?.demo) return; // local trial without server bundle
 
@@ -97,7 +98,7 @@
           const me = await r.json();
           if (me.version !== session.version) {
             // PC có mã nguồn mới: tự tải bằng phiên hiện tại (không bắt đăng nhập lại); lỗi mới quay về đăng nhập.
-            if (await silentUpdate(session, me)) location.reload();
+            if (await silentUpdate(session, me)) { window.AppLock?.allowNavigation(); location.reload(); }
             else toLogin('?update=1');
           }
         }

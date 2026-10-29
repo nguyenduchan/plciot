@@ -11,6 +11,18 @@
 export { configure, getConfig, notify, keyFrom, rawSecret } from './config.js';
 export { migrateSecurity } from './schema.js';
 export { mountSecurityRoutes } from './routes.js';
+export { mountAuthentication } from './flows.js';
+export { hashPassword, verifyPassword, signToken, verifyToken, bearerUser, jwtTtlSeconds,
+  loginScopeAllowed, createLoginChallenge, consumeLoginChallenge, createAppSession, createSessionAuth, mountLoginSessions } from './auth.js';
+export { requestLoginOtp, verifyLoginOtp, requestRegisterOtp, verifyRegisterOtp } from './otp.js';
+export { normalizePhone, isValidVnPhone, formatVnLocal, formatVnIntl, phoneVariants } from './phone.js';
+export { canonicalDeviceKey, deviceFingerprint, verifyDeviceProof, rememberAuthDevice, recoveryEnrollmentAllowed } from './deviceProof.js';
+export { canBindVerifiedContact, createOtpChallenge, getOtpChallenge, bumpOtpFail, deleteOtpChallenge } from './accounts.js';
+export { accountSecuritySummary, emailChannelAvailable, requestEmailVerify, verifyEmail, regenerateRecoveryCodes,
+  startSelfChange, confirmSelfChange, startRecovery, confirmRecovery, recoveryStatus, cancelChange,
+  approveRecovery, rejectChange, processDueChanges, listChanges, getChangeRow, applyChange } from './accountSecurity.js';
+export { cancelToken, htmlToText, emailQuarantineMs, startPlcChallenge, checkPlcChallenge,
+  startPlcChallenge as startPresenceProof, checkPlcChallenge as checkPresenceProof } from './accountSecurity.js';
 export { securityHeaders, buildCorsOptions } from './headers.js';
 export { rateLimit } from './rateLimit.js';
 export { clientIp, netOf, ipInCidrs } from './net.js';

@@ -40,11 +40,27 @@
 
   /** @returns {Promise<{ok:true}|{error:string}>} */
   async function send(cmd) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await api('POST', '/api/control/cmd', cmd);
+    if (window.AppLock?.isLocked()) return { error: 'app_locked' };
+    let command = { ...cmd, id: cmd.id || Array.from(crypto.getRandomValues(new Uint8Array(6)), (byte) => byte.toString(16).padStart(2, '0')).join('') };
+    let challenge = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await api('POST', '/api/control/cmd', command, challenge ? { 'X-Command-Challenge': challenge } : undefined);
       if (r.status === 401 && r.body.error === 'step_up_required') {
+        if (r.body.commandChallenge) {
+          const { target, command: requested } = r.body;
+          const confirmed = await new Promise((resolve) => {
+            const m = modal(`<h3>Xác nhận lệnh PLC</h3><p>${S.escHtml(target.site)} / ${S.escHtml(target.device)}</p>
+              <p>Ghi D${requested.a} = <b>${requested.v}</b></p>
+              <div class="row"><button class="primary ctl-confirm">Xác nhận</button><button class="fit ctl-cancel">Huỷ</button></div>`);
+            m.q('.ctl-confirm').onclick = () => { m.close(); resolve(true); };
+            m.q('.ctl-cancel').onclick = () => { m.close(); resolve(false); };
+          });
+          if (!confirmed) return { error: 'cancelled' };
+          challenge = r.body.commandChallenge;
+          command = r.body.command;
+        }
         LS.del('ctl');
-        if (attempt === 0 && await unlock(r.body)) continue;
+        if (attempt < 2 && await unlock({ ...r.body, title: challenge ? 'Xác nhận lệnh PLC' : undefined })) continue;
         return { error: 'cancelled' };
       }
       if (r.status === 403 && r.body.error === 'enroll_required') {

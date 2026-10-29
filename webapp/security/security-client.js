@@ -21,7 +21,8 @@
     del(k) { try { localStorage.removeItem(k); } catch {} },
   };
   const $ = (s) => document.querySelector(s);
-  const session = () => LS.get('session', null);
+  let pendingSession = null;
+  const session = () => pendingSession || LS.get('session', null);
   const base = () => session()?.apiBase || location.origin;
 
   const ERR = {
@@ -32,12 +33,23 @@
     webauthn_failed: 'Xác thực vân tay / Face ID không thành công.',
     credential_exists: 'Thiết bị này đã được đăng ký.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
-    first_device_required: 'Máy này chưa được tài khoản tin cậy (không phải máy đầu tiên). Bấm nút bên dưới để thêm máy này: máy cũ duyệt, mã khôi phục, email đã xác minh hoặc chờ 24 giờ.',
+    first_device_required: 'Đây không phải thiết bị đầu tiên của tài khoản nên chưa bật được ngay. Hãy xác nhận bằng email hoặc chờ 24 giờ.',
     otp_invalid: 'Mã không đúng.',
     otp_expired: 'Mã hết hạn, gửi lại.',
     otp_missing: 'Chưa có mã, bấm Gửi mã trước.',
     otp_locked: 'Nhập sai quá nhiều, thử lại sau.',
     totp_already_enabled: 'Authenticator đã được bật.',
+    device_proof_required: 'Không xác minh được khoá của thiết bị này. Hãy dùng đúng trình duyệt đã tạo yêu cầu.',
+    recovery_device_required: 'Hãy hoàn tất thiết lập trên trình duyệt đã tạo yêu cầu khôi phục.',
+    independent_proof_required: 'Cần máy cũ, mã khôi phục hoặc email đã xác minh; không thể chỉ chờ để được cấp quyền.',
+    notification_required: 'Chưa gửi được cảnh báo bảo mật. Yêu cầu chưa được tự động áp dụng.',
+    approval_code_invalid: 'Mã ghép không đúng. Đối chiếu mã đang hiện trên máy mới.',
+    secure_context_required: 'Cần HTTPS và trình duyệt hỗ trợ lưu khoá thiết bị.',
+    device_storage_unavailable: 'Không lưu được khoá thiết bị. Kiểm tra quyền lưu dữ liệu của trình duyệt.',
+    device_revoked: 'Khoá thiết bị đã bị thu hồi. Hãy dùng quy trình khôi phục được xác minh.',
+    credential_rotation_failed: 'Chưa hoàn tất thu hồi credential cũ. Hãy thử lại sau.',
+    contact_changed: 'Kênh nhận OTP đã thay đổi. Hãy yêu cầu mã mới.',
+    account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
     session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
     unauthorized: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
     forbidden: 'Bạn không có quyền thực hiện thao tác này.',
@@ -46,18 +58,20 @@
     enroll_required: 'Điều khiển đã bị khoá: hãy bật vân tay / Face ID hoặc Authenticator.',
     totp_not_enabled: 'Chưa bật Authenticator trên tài khoản này.',
     no_passkey: 'Tài khoản này chưa đăng ký vân tay / Face ID.',
-    unknown_credential: 'Vân tay / Face ID này chưa được đăng ký cho tài khoản.',
-    old_channel_unavailable: 'Chưa có email đã xác minh (hoặc server chưa cấu hình gửi email). Dùng cách khác: máy cũ duyệt, mã khôi phục, hoặc chờ 24 giờ.',
+    unknown_credential: 'Passkey này chưa được đăng ký cho tài khoản.',
+    old_channel_unavailable: 'Chưa có email đã xác minh. Dùng máy cũ duyệt hoặc mã khôi phục.',
     email_send_failed: 'Không gửi được email. Thử lại sau hoặc dùng cách khác.',
-    email_quarantine: 'Email mới thêm chưa dùng được (đang trong thời gian chờ).',
+    email_quarantine: 'Email mới thêm đang trong thời gian chờ.',
     recovery_code_invalid: 'Mã khôi phục không đúng hoặc đã dùng.',
     recovery_locked: 'Nhập sai mã khôi phục quá nhiều lần. Thử lại sau.',
     no_recovery_codes: 'Tài khoản chưa có mã khôi phục.',
     request_not_pending: 'Yêu cầu này đã được xử lý hoặc đã bị huỷ.',
     request_not_active: 'Yêu cầu này không còn hiệu lực. Hãy tạo yêu cầu mới.',
     request_not_found: 'Không tìm thấy yêu cầu. Hãy tạo yêu cầu mới.',
-    use_existing_device: 'Máy này đã đăng ký. Hãy dùng vân tay / Authenticator đã có.',
+    use_existing_device: 'Máy này đã đăng ký. Hãy dùng passkey / Authenticator đã có.',
     not_found: 'Không tìm thấy.',
+    login_step_up_required: 'Cần xác thực passkey hoặc Authenticator để hoàn tất đăng nhập.',
+    app_locked: 'Ứng dụng đã khoá. Hãy xác thực lại.',
   };
   const errText = (e) => ERR[e] || e || 'Lỗi';
   /** App thêm thông báo lỗi riêng (vd. lệnh PLC) mà không sửa lõi. */
@@ -80,12 +94,19 @@
     const tok = LS.get('ctl', null);
     const en = LS.get('enroll', null);
     try {
+      let device;
+      if (method === 'POST' && (/^\/api\/devices\/(request|requests\/)/.test(path)
+        || /^\/api\/(webauthn\/register|control\/totp\/(setup|enable))/.test(path))) {
+        if (!window.SecurityDevice) throw new Error('device_proof_required');
+        device = await window.SecurityDevice.proof(s?.userId, path);
+        body = { ...body, publicKey: device.publicKey, deviceProof: device.deviceProof };
+      }
       const r = await fetch(base() + path, {
         method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${s?.token || ''}`,
-          'X-Device-Id': devId(),
+          'X-Device-Id': device?.deviceId || devId(),
           ...(tok?.token ? { 'X-Control-Token': tok.token } : {}),
           ...(en?.ticket && en.exp > Date.now() ? { 'X-Enroll-Ticket': en.ticket } : {}),
           ...(extra || {}),
@@ -93,8 +114,8 @@
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       return { status: r.status, ok: r.ok, body: await r.json().catch(() => ({})) };
-    } catch {
-      return { status: 0, ok: false, body: { error: 'offline' } };
+    } catch (error) {
+      return { status: 0, ok: false, body: { error: ['device_proof_required', 'secure_context_required', 'device_storage_unavailable'].includes(error?.message) ? error.message : 'offline' } };
     }
   }
 
@@ -133,8 +154,8 @@
     return r.body;
   }
 
-  async function passkeyUnlock() {
-    const o = await api('POST', '/api/webauthn/auth/options', {});
+  async function passkeyUnlock(extra) {
+    const o = await api('POST', '/api/webauthn/auth/options', {}, extra);
     if (!o.ok) return o.body;
     const opts = o.body;
     const cred = await navigator.credentials.get({
@@ -153,13 +174,13 @@
           signature: bufToB64u(cred.response.signature),
         },
       },
-    });
+    }, extra);
     if (r.ok) saveToken(r.body);
     return r.body;
   }
 
-  async function totpUnlock(code) {
-    const r = await api('POST', '/api/control/unlock', { code });
+  async function totpUnlock(code, extra) {
+    const r = await api('POST', '/api/control/unlock', { code }, extra);
     if (r.ok) saveToken(r.body);
     return r.body;
   }
@@ -171,12 +192,49 @@
   }
 
   /* ---------- hộp thoại ---------- */
+  let modalSequence = 0;
   function modal(html) {
+    const previousFocus = document.activeElement;
     const wrap = document.createElement('div');
     wrap.className = 'ctl-modal';
-    wrap.innerHTML = `<div class="ctl-box" role="dialog" aria-modal="true">${html}</div>`;
+    wrap.innerHTML = `<div class="ctl-box" role="dialog" aria-modal="true" aria-label="Xác thực bảo mật" tabindex="-1">${html}</div>`;
+    const dialog = wrap.querySelector('.ctl-box');
+    const titleId = `security-dialog-${++modalSequence}`;
+    const updateTitle = () => {
+      const heading = wrap.querySelector('h3');
+      if (heading) { heading.id ||= titleId; dialog.setAttribute('aria-labelledby', heading.id); }
+      wrap.querySelectorAll('.ctl-err').forEach((error) => error.setAttribute('role', 'alert'));
+    };
+    updateTitle();
+    const titleObserver = new MutationObserver(updateTitle);
+    titleObserver.observe(dialog, { childList: true, subtree: true });
     document.body.appendChild(wrap);
-    return { el: wrap, q: (s) => wrap.querySelector(s), close: () => wrap.remove() };
+    dialog.focus();
+    const keydown = (event) => {
+      const dialogs = document.querySelectorAll('.ctl-modal');
+      if (dialogs[dialogs.length - 1] !== wrap) return;
+      if (event.key === 'Escape') {
+        const cancel = wrap.querySelector('.ctl-cancel, .ctl-close, [data-a="x"]');
+        if (cancel && !cancel.disabled) { event.preventDefault(); cancel.click(); }
+      }
+      if (event.key !== 'Tab') return;
+      const controls = [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]')]
+        .filter((control) => control.getClientRects().length);
+      const first = controls[0]; const last = controls[controls.length - 1];
+      if (!first) { event.preventDefault(); dialog.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !wrap.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return { el: wrap, q: (s) => wrap.querySelector(s), close: () => {
+      titleObserver.disconnect();
+      document.removeEventListener('keydown', keydown);
+      wrap.remove();
+      if (previousFocus?.isConnected && !previousFocus.disabled) previousFocus.focus();
+    } };
   }
   const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -189,15 +247,24 @@
       <p class="muted">Mở ứng dụng → thêm tài khoản → <b>nhập khoá thiết lập</b>:</p>
       <pre class="codes">${escHtml(s.body.secret)}</pre>
       <p class="muted"><a href="${escHtml(s.body.uri)}">Mở trực tiếp trong ứng dụng</a> (nếu máy hỗ trợ). Rồi nhập mã 6 số:</p>
-      <input class="ctl-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+      <label>Mã Authenticator<input class="ctl-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
       <p class="ctl-err" style="color:var(--bad)"></p>
       <div class="row"><button class="primary ctl-go">Xác nhận</button><button class="fit ctl-cancel">Huỷ</button></div>`;
     return new Promise((resolve) => {
       m.q('.ctl-cancel').onclick = () => resolve(false);
-      m.q('.ctl-go').onclick = async () => {
-        const r = await totpEnable(m.q('.ctl-code').value.trim());
-        if (r.ok) resolve(true); else m.q('.ctl-err').textContent = errText(r.error);
+      const go = m.q('.ctl-go');
+      go.onclick = async () => {
+        if (go.disabled) return;
+        const code = m.q('.ctl-code').value.trim();
+        if (!/^\d{6}$/.test(code)) { m.q('.ctl-err').textContent = 'Nhập mã Authenticator gồm 6 chữ số.'; return; }
+        go.disabled = true;
+        m.q('.ctl-err').textContent = '';
+        try {
+          const r = await totpEnable(code);
+          if (r.ok) resolve(true); else if (m.q('.ctl-err')) m.q('.ctl-err').textContent = errText(r.error);
+        } finally { go.disabled = false; }
       };
+      m.q('.ctl-code').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); go.click(); } };
     });
   }
 
@@ -209,10 +276,10 @@
       m.q('.ctl-err').textContent = errText(r.error);
     } catch (e) {
       m.q('.ctl-err').textContent = {
-        NotAllowedError: 'Chưa xác nhận được. Hãy bấm lại và đặt vân tay / nhìn Face ID khi điện thoại yêu cầu. Máy cần đã cài khoá màn hình và vân tay / Face ID.',
-        NotSupportedError: 'Trình duyệt này không hỗ trợ vân tay / Face ID. Mở trang bằng Safari (iPhone) hoặc Chrome (Android), không mở trong Telegram, Zalo… rồi thử lại.',
-        SecurityError: 'Địa chỉ trang không khớp với cấu hình vân tay. Hãy mở đúng địa chỉ https://plc.dieukhientudong.net.',
-        InvalidStateError: 'Máy này đã đăng ký vân tay cho tài khoản rồi.',
+        NotAllowedError: 'Chưa xác nhận được. Bấm lại và xác nhận trên thiết bị.',
+        NotSupportedError: 'Trình duyệt không hỗ trợ passkey. Hãy mở bằng Safari hoặc Chrome.',
+        SecurityError: 'Hãy mở đúng địa chỉ HTTPS của ứng dụng.',
+        InvalidStateError: 'Thiết bị đã đăng ký passkey cho tài khoản này.',
       }[e?.name] || errText('webauthn_failed');
     }
     return false;
@@ -245,16 +312,14 @@
     const body = m.q('.ctl-body');
     {
       body.innerHTML = `
-        <h3>${canPkPlatform ? 'Bật đăng nhập bằng vân tay / Face ID' : title}</h3>
-        <p class="muted">${canPkPlatform
-          ? 'Lần sau bạn chỉ cần chạm vân tay hoặc nhìn Face ID để vào ứng dụng và xác nhận điều khiển, không cần OTP hay mật khẩu. Sinh trắc của bạn nằm trong điện thoại, không gửi lên máy chủ.'
-          : 'Chọn cách xác nhận mỗi khi điều khiển thiết bị từ xa. Chỉ cần làm một lần trên máy này.'}</p>
+        <h3>${escHtml(title)}</h3>
+        <p class="muted">Chọn cách xác nhận mỗi khi điều khiển thiết bị từ xa. Chỉ cần làm một lần trên máy này.</p>
         <div class="ctl-err" style="color:var(--bad)"></div>
         <div class="row" style="flex-direction:column;gap:8px">
-          ${canPkPlatform ? '<button class="primary" data-a="pk">Bật vân tay / Face ID</button>' : ''}
-          <button class="fit" data-a="totp">${canPkPlatform ? 'Máy không có vân tay? Dùng ứng dụng Authenticator' : 'Dùng ứng dụng Authenticator (mã 6 số)'}</button>
-          <button class="fit" data-a="x">Để sau</button>
-        </div>`;
+          ${canPkPlatform ? '<button class="primary" data-a="pk">Dùng vân tay / Face ID</button>' : ''}
+          <button class="${canPkPlatform ? 'fit' : 'primary'}" data-a="totp">Thiết lập / thay Authenticator (mã 6 số)</button>
+          <button class="fit" data-a="x">${pendingSession ? 'Huỷ đăng nhập' : 'Để sau'}</button>
+        </div><p class="muted">Thiết lập Authenticator mới thay khoá Authenticator cũ của tài khoản; không thêm hai khoá Authenticator song song.</p>`;
       body.querySelectorAll('button').forEach((b) => {
         b.onclick = async () => {
           const a = b.dataset.a;
@@ -291,18 +356,26 @@
     const poll = (req) => api('POST', `/api/devices/requests/${req.id}/poll`, { pollToken: req.pollToken });
 
     let req = LS.get('devReq', null);
+    if (req && req.userId !== session()?.userId) { LS.del('devReq'); req = null; }
     let st = null;
     if (req) {
       const r = await poll(req);
       if (r.ok && ['pending', 'cooling', 'approved'].includes(r.body.status)) st = r.body; else { LS.del('devReq'); req = null; }
     }
     if (!req) {
-      const r = await api('POST', '/api/devices/request', { label });
+      const replaceLost = await new Promise((resolve) => {
+        body.innerHTML = `<h3>Thêm thiết bị</h3><label><input type="checkbox" class="ctl-lost"> Máy cũ bị mất: thu hồi yếu tố và phiên cũ khi máy mới thiết lập xong</label>
+          <div class="row"><button class="primary ctl-request">Tiếp tục</button><button class="fit ctl-close">Huỷ</button></div>`;
+        m.q('.ctl-close').onclick = () => resolve(null);
+        m.q('.ctl-request').onclick = () => resolve(m.q('.ctl-lost').checked);
+      });
+      if (replaceLost === null) return done(false);
+      const r = await api('POST', '/api/devices/request', { label, replaceLost });
       if (!r.ok) {
         body.innerHTML = `<h3>Thêm thiết bị mới</h3><p style="color:var(--bad)">${escHtml(errText(r.body.error))}</p>${closeBtn}`;
         return wireClose();
       }
-      req = { id: r.body.id, pollToken: r.body.pollToken, options: r.body.options, coolingHours: r.body.coolingHours, emailHint: r.body.emailHint };
+      req = { id: r.body.id, pollToken: r.body.pollToken, options: r.body.options, coolingHours: r.body.coolingHours, emailHint: r.body.emailHint, userId: session()?.userId, approvalCode: r.body.approvalCode, kind: r.body.kind };
       LS.set('devReq', req);
       st = { status: 'pending' };
     }
@@ -314,12 +387,13 @@
       const o = req.options || {};
       body.innerHTML = `
         <h3>Thêm thiết bị mới</h3>
+        <p>Mã ghép: <b>${escHtml(req.approvalCode || '')}</b></p>
         ${o.device === false ? '' : '<p><b>Cách nhanh nhất:</b> mở ứng dụng trên <b>máy cũ</b> → sẽ có thông báo "Thiết bị mới xin vào" → bấm <b>Cho phép</b>. Màn hình này tự tiếp tục.</p>'}
         <div class="ctl-err" style="color:var(--bad)"></div>
         ${o.recoveryCode ? `<hr><p class="muted">Không còn máy cũ? Dùng <b>mã khôi phục</b> (chờ ${req.coolingHours || 24} giờ):</p>
           <input class="ctl-rc" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off">
           <div class="row"><button class="fit ctl-rc-go">Dùng mã khôi phục</button></div>` : ''}
-        ${o.email ? `<hr><p class="muted">Hoặc nhận mã 6 số qua <b>email đã xác minh</b>${req.emailHint ? ` (<b>${escHtml(req.emailHint)}</b>)` : ''}. Nhập mã đó ở đây để chờ ${req.coolingHours || 24} giờ rồi được cấp quyền:</p>
+        ${o.email ? `<hr><p class="muted">Nhận mã qua <b>email đã xác minh</b>${req.emailHint ? ` (${escHtml(req.emailHint)})` : ''}:</p>
           <div class="row ctl-em-1"><button class="fit ctl-em-send">Gửi mã tới email</button></div>
           <div class="ctl-em-2" hidden><input class="ctl-em-otp" inputmode="numeric" maxlength="6" placeholder="Mã 6 số trong email">
             <div class="row"><button class="fit ctl-em-go">Xác nhận</button></div></div>` : ''}
@@ -360,7 +434,11 @@
         enrolling = true;
         LS.set('enroll', { ticket: b.ticket, exp: Date.now() + (b.ticketExpiresIn || 900) * 1000 });
         LS.del('devReq');
-        return enrollChoice(m, canPkPlatform, (v) => { LS.del('enroll'); done(v); }, 'Thiết bị đã được cho phép');
+        return enrollChoice(m, canPkPlatform, (v) => {
+          LS.del('enroll');
+          if (v && req.kind !== 'replace_lost') LS.set('reviewDevices', { userId: session()?.userId });
+          done(v);
+        }, 'Thiết bị đã được cho phép');
       }
       if (b.status === shown) return;
       shown = b.status;
@@ -383,6 +461,11 @@
       await new Promise((r) => setTimeout(r, 3000));
       if (gone() || enrolling) break;
       const r = await poll(req);
+      if (r.status === 401) {
+        body.innerHTML = `<h3>Phiên xác thực hết hạn</h3><p>Đăng nhập OTP lại để tiếp tục yêu cầu đã lưu.</p>${closeBtn}`;
+        wireClose();
+        break;
+      }
       if (r.ok) handle(r.body);
     }
     return null;
@@ -408,12 +491,14 @@
         <div class="ctl-err" style="color:var(--bad)"></div>
         ${list.map((q) => `<div class="pend"><b>${escHtml(q.label || 'Thiết bị')}</b><br>
           <span class="muted">${new Date(q.createdAt).toLocaleString('vi-VN')}${q.ip ? ` · IP ${escHtml(q.ip)}` : ''}${q.status === 'cooling' ? ` · sẽ tự được cấp lúc ${new Date(q.executeAt).toLocaleString('vi-VN')}` : ''}</span>
+          ${q.kind === 'replace_lost' ? '<p>Máy cũ được khai báo bị mất. Hoàn tất sẽ thu hồi yếu tố và phiên cũ.</p>' : ''}
+          <label>Mã ghép trên máy mới<input data-code="${q.id}" inputmode="numeric" maxlength="6" autocomplete="off"></label>
           <div class="row"><button class="primary" data-a="approve" data-id="${q.id}">Cho phép</button><button class="danger" data-a="deny" data-id="${q.id}">Từ chối</button></div></div>`).join('')}
         <div class="row"><button class="fit ctl-close">Đóng</button></div>`;
       m.q('.ctl-close').onclick = m.close;
       m.el.querySelectorAll('[data-a]').forEach((b) => {
         b.onclick = async () => {
-          const x = await api('POST', `/api/devices/requests/${b.dataset.id}/${b.dataset.a}`, {});
+          const x = await api('POST', `/api/devices/requests/${b.dataset.id}/${b.dataset.a}`, { approvalCode: m.q(`[data-code="${b.dataset.id}"]`)?.value || '' });
           if (!x.ok) { m.q('.ctl-err').textContent = errText(x.body.error); return; }
           list = list.filter((q) => q.id !== b.dataset.id); draw();
         };
@@ -422,35 +507,61 @@
     draw();
   }
 
+  async function reviewRegisteredDevices() {
+    let result = await api('GET', '/api/devices');
+    if (result.body.error === 'step_up_required' && await unlock(result.body)) result = await api('GET', '/api/devices');
+    if (!result.ok) return;
+    const devices = result.body.devices || [];
+    if (devices.length < 2) return;
+    await new Promise((resolve) => {
+      const m = modal(`<h3>Thiết bị đã đăng ký</h3><div class="ctl-err"></div><div class="ctl-devices"></div>
+        <div class="row"><button class="primary ctl-close">Tiếp tục</button></div>`);
+      m.q('.ctl-devices').innerHTML = devices.map((device) => `<div class="pend"><b>${escHtml(device.label || 'Thiết bị')}</b>
+        <p style="overflow-wrap:anywhere">${escHtml(device.device_id)}<br>${new Date(device.created_at).toLocaleString('vi-VN')}</p>
+        ${device.device_id === result.body.currentDevice ? '<p>Máy này</p>' : `<button class="danger" data-revoke="${escHtml(device.device_id)}">Thu hồi máy cũ</button>`}</div>`).join('');
+      m.q('.ctl-close').onclick = () => { m.close(); resolve(); };
+      m.el.querySelectorAll('[data-revoke]').forEach((button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          const revoked = await api('POST', `/api/devices/${encodeURIComponent(button.dataset.revoke)}/revoke`, {});
+          if (revoked.ok) button.closest('.pend').remove();
+          else { m.q('.ctl-err').textContent = errText(revoked.body.error); button.disabled = false; }
+        };
+      });
+    });
+  }
+
   /** Hỏi người dùng xác thực để mở khoá điều khiển. Resolve true khi đã có phiên điều khiển. */
   function unlock(info = {}) {
     const methods = info.methods || { passkey: false, totp: false, enrolled: false };
+    const extra = info.commandChallenge ? { 'X-Command-Challenge': info.commandChallenge } : undefined;
     return new Promise(async (resolve) => {
       const canPk = passkeySupported();
       const canPlatform = await platformAuthenticator();
       const m = modal(`<div class="ctl-body"></div>`);
-      const done = (v) => { m.close(); resolve(v); };
+      let finished = false;
+      const done = (v) => { if (!finished) { finished = true; m.close(); resolve(v); } };
       const body = m.q('.ctl-body');
 
       const render = () => {
         const reason = { network_changed: 'Bạn vừa đổi mạng — cần xác nhận lại.', expired: 'Phiên điều khiển đã hết hạn.' }[info.reason] || '';
-        if (!methods.enrolled) { enrollChoice(m, canPk, done); return; } // vân tay luôn là lựa chọn chính: kiểm tra 'canPlatform' hay sai trong trình duyệt nhúng
+        if (!methods.enrolled) { enrollChoice(m, canPk, done, info.title || 'Thiết lập bảo mật'); return; }
         body.innerHTML = `
-          <h3>Xác nhận để điều khiển</h3>
+          <h3>${escHtml(info.title || 'Xác nhận để điều khiển')}</h3>
           ${reason ? `<p class="muted">${reason}</p>` : ''}
           <div class="ctl-err" style="color:var(--bad)"></div>
           ${methods.passkey && canPk ? '<div class="row"><button class="primary ctl-pk">Dùng vân tay / Face ID</button></div>' : ''}
           ${methods.totp ? `<label>Mã Authenticator<input class="ctl-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
             <div class="row"><button class="${methods.passkey && canPk ? 'fit' : 'primary'} ctl-go">Xác nhận</button></div>` : ''}
           <div class="row"><button class="fit ctl-newdev">Máy mới / mất máy cũ?</button><button class="fit ctl-cancel">Huỷ</button></div>`;
-        const err = (t) => { m.q('.ctl-err').textContent = t || ''; };
+        const err = (t) => { if (!finished && m.q('.ctl-err')) m.q('.ctl-err').textContent = t || ''; };
         m.q('.ctl-cancel').onclick = () => done(false);
         m.q('.ctl-newdev').onclick = () => newDeviceFlow(m, done, canPk && canPlatform);
         const pk = m.q('.ctl-pk');
         if (pk) {
           const run = async () => {
             try {
-              const r = await passkeyUnlock();
+              const r = await passkeyUnlock(extra);
               if (r.ok) return done(true);
               err(errText(r.error));
             } catch (e) { err(e?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : errText('webauthn_failed')); }
@@ -462,8 +573,15 @@
         if (go) {
           const input = m.q('.ctl-code');
           go.onclick = async () => {
-            const r = await totpUnlock(input.value.trim());
-            if (r.ok) done(true); else err(errText(r.error));
+            if (go.disabled || finished) return;
+            const code = input.value.trim();
+            if (!/^\d{6}$/.test(code)) { err('Nhập mã Authenticator gồm 6 chữ số.'); input.focus(); return; }
+            go.disabled = true;
+            err('');
+            try {
+              const r = await totpUnlock(code, extra);
+              if (r.ok) done(true); else err(errText(r.error));
+            } finally { go.disabled = false; }
           };
           input.onkeydown = (e) => { if (e.key === 'Enter') go.click(); };
           setTimeout(() => input.focus(), 50);
@@ -482,7 +600,7 @@
     const o = await post('/api/login/passkey/options', {});
     if (!o.ok) return o.body;
     const cred = await navigator.credentials.get({
-      publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] }, // chỉ passkey trên chính máy này, không đẩy sang mã QR
+      publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] },
     });
     const r = await post('/api/login/passkey/verify', {
       cid: o.body.cid,
@@ -498,6 +616,27 @@
     });
     if (r.ok) { saveToken(r.body); LS.set('hasPasskey', true); }
     return r.body;
+  }
+
+  async function completeOtp(data) {
+    if (!data.pending || !data.token) throw new Error(errText('login_step_up_required'));
+    pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin };
+    LS.del('ctl');
+    try {
+      if (!(await unlock({ methods: data.methods, title: data.methods?.enrolled ? 'Xác nhận đăng nhập' : 'Thiết lập bảo mật đăng nhập' }))) return null;
+      const result = await api('POST', '/api/login/complete', {});
+      if (!result.ok) throw new Error(errText(result.body.error));
+      return result.body;
+    } finally {
+      pendingSession = null;
+      LS.del('ctl');
+    }
+  }
+
+  async function resumeLogin() {
+    const result = await api('POST', '/api/login/resume', {});
+    if (!result.ok) throw new Error(errText(result.body.error));
+    return completeOtp(result.body);
   }
 
   /** Sau lần đăng nhập OTP đầu tiên: mời bật vân tay / Authenticator để lần sau khỏi cần OTP. Nhắc lại sau 7 ngày nếu bỏ qua. */
@@ -541,8 +680,8 @@
   };
 
   window.Security = {
-    api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, passkeySupported, platformAvailable: platformAuthenticator,
-    reviewDevices, renderBanner, devId,
+    api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
+    reviewDevices, reviewRegisteredDevices, renderBanner, devId,
   };
 
   /* ---------- Cài đặt → "Điều khiển & xác thực" ---------- */

@@ -13,6 +13,7 @@ import { generateRecoveryCodes, recoveryCodesRemaining } from './recoveryCodes.j
 import {
   startDeviceRequest, listDeviceRequests, pendingDeviceCount, decideDeviceRequest, deviceViaRecoveryCode,
   deviceEmailStart, deviceEmailConfirm, deviceViaWait, pollDeviceRequest, peekTicket, consumeTicket, cancelDeviceByLink,
+  deviceRequestProof,
 } from './deviceApproval.js';
 import {
   generateSecret, otpauthUri, verifyTotp, sealSecret, openSecret,
@@ -25,6 +26,7 @@ import {
   createStation, listStations, deleteStation, stationOk, enrollState,
 } from './sessions.js';
 import { noteLogin, isFirstDevice } from './loginAlerts.js';
+import { canonicalDeviceKey, verifyDeviceProof, rememberAuthDevice, recoveryEnrollmentAllowed } from './deviceProof.js';
 
 const FRESH_LOGIN_MS = 10 * 60_000; // đăng ký yếu tố đầu tiên: phải vừa đăng nhập bằng OTP Telegram
 const TOTP_LOCK_FAILS = 5;
@@ -59,20 +61,71 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
 
   /** Có được thêm/đổi yếu tố không: yếu tố đầu tiên cần vừa đăng nhập; từ lần sau cần phiên điều khiển còn hạn. */
   const ticketOf = (req) => String(req.headers['x-enroll-ticket'] || '');
+  const deviceOf = (req) => ({ deviceId: String(req.headers['x-device-id'] || ''), publicKey: req.body?.publicKey, deviceProof: req.body?.deviceProof, action: req.path });
   function enrollGate(req, { allowTicket = false } = {}) {
+    const device = deviceOf(req);
+    if (allowTicket) {
+      const registered = db.prepare('SELECT * FROM auth_devices WHERE user_id = ? AND device_id = ?').get(req.user.id, device.deviceId);
+      if (registered && (registered.revoked || registered.public_key !== canonicalDeviceKey(device.publicKey))) return { error: 'device_revoked', status: 401 };
+      const ticket = ticketOf(req);
+      if (ticket) {
+        if (!peekTicket(db, req.user.id, ticket, device)) return { error: 'device_proof_required', status: 401 };
+        req.enrollTicketVerified = true;
+        return null;
+      }
+      if (req.user.recovery_required) {
+        const grant = db.prepare('SELECT * FROM recovery_enrollments WHERE user_id = ?').get(req.user.id);
+        if (!recoveryEnrollmentAllowed(db, req.tokenPayload, device.deviceId) || grant?.public_key !== canonicalDeviceKey(device.publicKey)
+          || !verifyDeviceProof(db, { subject: req.user.id, deviceId: device.deviceId, publicKey: device.publicKey, action: req.path, proof: device.deviceProof })) {
+          return { error: 'recovery_device_required', status: 401 };
+        }
+        req.recoveryEnrollment = true;
+        return null;
+      }
+      if (!verifyDeviceProof(db, { subject: req.user.id, deviceId: device.deviceId, publicKey: device.publicKey, action: req.path, proof: device.deviceProof })) {
+        return { error: 'device_proof_required', status: 401 };
+      }
+    }
     const f = factorSummary(db, req.user.id);
     if (!f.passkeys && !f.totp) {
       const iatMs = (req.tokenPayload?.iat || 0) * 1000;
       if (Date.now() - iatMs > FRESH_LOGIN_MS) return { error: 'reauth_required', status: 401 };
       // Chống chiếm Telegram tự bật yếu tố: chỉ thiết bị đầu tiên của tài khoản được bật ngay; máy khác phải qua vé (email / chờ 24 giờ)
       if (isFirstDevice(db, req.user.id, req.headers['x-device-id'])) return null;
-      if (allowTicket && peekTicket(db, req.user.id, ticketOf(req))) return null;
       return { error: 'first_device_required', status: 401 };
     }
     const c = checkControlSession(db, req.user.id, tokenOf(req), clientIp(req));
     if (c.ok) return null;
-    if (allowTicket && peekTicket(db, req.user.id, ticketOf(req))) return null;
     return { error: 'step_up_required', reason: c.reason, status: 401 };
+  }
+
+  function finishEnrollment(req, method) {
+    const device = deviceOf(req);
+    let recoveryCodes;
+    if (req.enrollTicketVerified) {
+      const request = db.prepare("SELECT * FROM device_requests WHERE user_id = ? AND ticket_hash = ? AND status = 'approved'")
+        .get(req.user.id, crypto.createHash('sha256').update(ticketOf(req)).digest('hex'));
+      if (request?.kind === 'replace_lost') {
+        if (method === 'passkey') {
+          db.prepare('DELETE FROM passkeys WHERE user_id = ? AND cred_id != ?').run(req.user.id, req.body.credential.id);
+          db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_enabled = 0, totp_last_step = 0 WHERE id = ?').run(req.user.id);
+        } else db.prepare('DELETE FROM passkeys WHERE user_id = ?').run(req.user.id);
+        revokeControlSessions(db, req.user.id);
+        db.prepare('DELETE FROM app_sessions WHERE user_id = ?').run(req.user.id);
+        db.prepare('DELETE FROM login_attempts WHERE user_id = ? AND id != ?').run(req.user.id, req.tokenPayload?.jti || '');
+        db.prepare('UPDATE auth_devices SET revoked = 1 WHERE user_id = ? AND device_id != ?').run(req.user.id, device.deviceId);
+        audit(db, 'lost_device_replaced', { userId: req.user.id, ip: clientIp(req), detail: device.deviceId });
+        db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(req.user.id);
+        recoveryCodes = generateRecoveryCodes(db, req.user.id);
+      }
+      consumeTicket(db, req.user.id, ticketOf(req), device.deviceId);
+    }
+    if (req.recoveryEnrollment) {
+      db.prepare('UPDATE recovery_enrollments SET used_at = ? WHERE user_id = ? AND used_at IS NULL').run(Date.now(), req.user.id);
+      db.prepare('UPDATE users SET recovery_required = 0 WHERE id = ?').run(req.user.id);
+    }
+    rememberAuthDevice(db, req.user.id, device.deviceId, device.publicKey, String(req.body?.name || 'Thiết bị').slice(0, 80));
+    return recoveryCodes ? { recoveryCodes } : {};
   }
 
   /** Yếu tố đầu tiên → tự tạo 10 mã khôi phục (hiện một lần) để người dùng không phải nhờ admin khi mất máy. */
@@ -93,7 +146,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   }
 
   function issue(req, res, method, extra = {}) {
-    const s = createControlSession(db, req.user.id, method, clientIp(req));
+    const commandId = /^[a-f0-9]{32}$/.test(String(req.headers['x-command-challenge'] || '')) ? req.headers['x-command-challenge'] : null;
+    const s = createControlSession(db, req.user.id, method, clientIp(req), securityConfig(), req.tokenPayload?.scope === 'login_pending' ? req.tokenPayload.jti : null, commandId, deviceOf(req).deviceId);
     audit(db, 'control_unlock', { userId: req.user.id, ip: clientIp(req), detail: method });
     res.json({ ok: true, controlToken: s.token, method, expiresAt: s.expiresAt, ...extra });
   }
@@ -130,12 +184,12 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   });
 
   /** Kiểm tra mã + chống dò: khoá 15 phút sau 5 lần sai. Trả { ok, step } hoặc { error }. */
-  function checkTotpCode(u, code, ip, sealed = u.totp_secret) {
+  function checkTotpCode(u, code, ip, sealed = u.totp_secret, lastStep = u.totp_last_step | 0) {
     if (countAudit(db, u.id, 'totp_fail', Date.now() - TOTP_LOCK_WINDOW) >= TOTP_LOCK_FAILS) {
       return { error: 'totp_locked', status: 429 };
     }
     const secret = openSecret(sealed);
-    const step = secret ? verifyTotp(secret, code, { lastStep: u.totp_last_step | 0 }) : null;
+    const step = secret ? verifyTotp(secret, code, { lastStep }) : null;
     if (!step) {
       audit(db, 'totp_fail', { userId: u.id, ip });
       return { error: 'totp_invalid', status: 401 };
@@ -149,13 +203,14 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     if (!u.totp_pending) return out(res, 400, { error: 'totp_not_pending' });
     const gate = enrollGate(req, { allowTicket: true }); // đã có yếu tố khác: cần phiên hoặc vé, kể cả khi đã gọi setup
     if (gate) return out(res, gate.status, gate);
-    const r = checkTotpCode(u, req.body?.code, clientIp(req), u.totp_pending);
+    const r = checkTotpCode(u, req.body?.code, clientIp(req), u.totp_pending, 0);
     if (r.error) return out(res, r.status, r);
     const first = !factorSummary(db, u.id).passkeys && !u.totp_enabled;
-    db.prepare('UPDATE users SET totp_secret = totp_pending, totp_pending = NULL, totp_enabled = 1, totp_last_step = ? WHERE id = ?').run(r.step, u.id);
-    consumeTicket(db, u.id, ticketOf(req));
+    db.prepare('UPDATE users SET totp_secret = totp_pending, totp_pending = NULL, totp_enabled = 1, totp_last_step = ?, totp_device_id = ? WHERE id = ?').run(r.step, deviceOf(req).deviceId, u.id);
+    revokeControlSessions(db, u.id);
+    const enrollment = finishEnrollment(req, 'totp');
     audit(db, 'totp_enabled', { userId: u.id, ip: clientIp(req) });
-    issue(req, res, 'totp', first ? firstFactorExtras(u.id, clientIp(req)) : {});
+    issue(req, res, 'totp', { ...(first ? firstFactorExtras(u.id, clientIp(req)) : {}), ...enrollment });
   });
 
   app.post('/api/control/totp/disable', requireAuth, strict, (req, res) => {
@@ -209,16 +264,16 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     }
     try {
       db.prepare(`
-        INSERT INTO passkeys (user_id, cred_id, public_key, alg, counter, name, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(req.user.id, r.credId, r.publicKey, r.alg, r.counter, String(req.body?.name || 'Thiết bị').slice(0, 40), Date.now());
+        INSERT INTO passkeys (user_id, cred_id, public_key, alg, counter, name, created_at, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(req.user.id, r.credId, r.publicKey, r.alg, r.counter, String(req.body?.name || 'Thiết bị').slice(0, 40), Date.now(), deviceOf(req).deviceId);
     } catch {
       return out(res, 409, { error: 'credential_exists' });
     }
     const first = factorSummary(db, req.user.id).passkeys === 1 && !req.user.totp_enabled;
-    consumeTicket(db, req.user.id, ticketOf(req));
+    const enrollment = finishEnrollment(req, 'passkey');
     audit(db, 'passkey_registered', { userId: req.user.id, ip: clientIp(req) });
-    issue(req, res, 'passkey', first ? firstFactorExtras(req.user.id, clientIp(req)) : {});
+    issue(req, res, 'passkey', { ...(first ? firstFactorExtras(req.user.id, clientIp(req)) : {}), ...enrollment });
   });
 
   app.post('/api/webauthn/auth/options', requireAuth, strict, (req, res) => {
@@ -256,6 +311,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   app.post('/api/account/logout-all', requireAuth, strict, reauth, (req, res) => {
     db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(req.user.id);
     revokeControlSessions(db, req.user.id);
+    db.prepare('DELETE FROM app_sessions WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM login_attempts WHERE user_id = ?').run(req.user.id);
     audit(db, 'logout_all', { userId: req.user.id, ip: clientIp(req) });
     res.json({ ok: true });
   });
@@ -269,8 +326,30 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   };
   const sendR = (res, r) => (r.error ? res.status(r.status || 400).json(r) : res.json(r));
 
+  app.get('/api/devices', requireAuth, (req, res) => {
+    if (!needSession(req, res)) return;
+    res.json({ devices: db.prepare('SELECT device_id, label, created_at FROM auth_devices WHERE user_id = ? AND revoked = 0 ORDER BY created_at DESC').all(req.user.id),
+      currentDevice: String(req.headers['x-device-id'] || '') });
+  });
+  app.post('/api/devices/:deviceId/revoke', requireAuth, strict, reauth, (req, res) => {
+    const device = db.prepare('SELECT * FROM auth_devices WHERE user_id = ? AND device_id = ? AND revoked = 0').get(req.user.id, req.params.deviceId);
+    if (!device) return out(res, 404, { error: 'not_found' });
+    db.transaction(() => {
+      db.prepare('UPDATE auth_devices SET revoked = 1 WHERE user_id = ? AND device_id = ?').run(req.user.id, device.device_id);
+      db.prepare('DELETE FROM passkeys WHERE user_id = ? AND device_id = ?').run(req.user.id, device.device_id);
+      db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_enabled = 0, totp_last_step = 0, totp_device_id = NULL WHERE id = ? AND totp_device_id = ?').run(req.user.id, device.device_id);
+      db.prepare('DELETE FROM app_sessions WHERE user_id = ? AND device_id = ?').run(req.user.id, device.device_id);
+      db.prepare('DELETE FROM login_attempts WHERE user_id = ? AND device_id = ?').run(req.user.id, device.device_id);
+      db.prepare('UPDATE control_sessions SET revoked = 1 WHERE user_id = ? AND (device_id = ? OR device_id IS NULL)').run(req.user.id, device.device_id);
+      db.prepare("UPDATE device_requests SET status = 'cancelled', ticket_hash = NULL WHERE user_id = ? AND device_id = ? AND status IN ('pending','cooling','approved')").run(req.user.id, device.device_id);
+    })();
+    audit(db, 'device_revoked', { userId: req.user.id, ip: clientIp(req), detail: device.device_id });
+    notify(db, req.user, { subject: 'Đã thu hồi thiết bị', html: '<b>Một thiết bị và các phiên liên quan đã bị thu hồi.</b>' });
+    res.json({ ok: true });
+  });
+
   app.post('/api/devices/request', requireAuth, strict, async (req, res) => {
-    sendR(res, await startDeviceRequest(db, req.user, { ip: clientIp(req), label: req.body?.label }));
+    sendR(res, await startDeviceRequest(db, req.user, { ...deviceOf(req), ip: clientIp(req), label: req.body?.label, replaceLost: req.body?.replaceLost === true }));
   });
   // Máy mới hỏi trạng thái mỗi ~3 giây: hạn mức riêng, KHÔNG dùng chung với mở khoá/duyệt (strict)
   const pollLimit = rateLimit({
@@ -279,19 +358,24 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     keyFn: (req) => `${clientIp(req)}:devpoll:${req.user?.id || 'na'}`,
   });
   app.post('/api/devices/requests/:id/poll', requireAuth, pollLimit, (req, res) => {
-    sendR(res, pollDeviceRequest(db, req.user, req.params.id, String(req.body?.pollToken || '')));
+    sendR(res, pollDeviceRequest(db, req.user, req.params.id, String(req.body?.pollToken || ''), deviceOf(req)));
   });
-  app.post('/api/devices/requests/:id/recovery', requireAuth, strict, (req, res) => {
-    sendR(res, deviceViaRecoveryCode(db, req.user, req.params.id, { code: req.body?.code, ip: clientIp(req) }));
+  const deviceRequestAuth = (req, res, next) => {
+    const row = db.prepare('SELECT * FROM device_requests WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+    if (!row || !deviceRequestProof(db, row, deviceOf(req), req.path)) return sendR(res, { error: 'device_proof_required', status: 401 });
+    next();
+  };
+  app.post('/api/devices/requests/:id/recovery', requireAuth, strict, deviceRequestAuth, async (req, res) => {
+    sendR(res, await deviceViaRecoveryCode(db, req.user, req.params.id, { code: req.body?.code, ip: clientIp(req) }));
   });
   app.post('/api/devices/requests/:id/wait', requireAuth, strict, (req, res) => {
     sendR(res, deviceViaWait(db, req.user, req.params.id, { ip: clientIp(req) }));
   });
-  app.post('/api/devices/requests/:id/email/start', requireAuth, strict, async (req, res) => {
+  app.post('/api/devices/requests/:id/email/start', requireAuth, strict, deviceRequestAuth, async (req, res) => {
     sendR(res, await deviceEmailStart(db, req.user, req.params.id, { ip: clientIp(req) }));
   });
-  app.post('/api/devices/requests/:id/email/confirm', requireAuth, strict, (req, res) => {
-    sendR(res, deviceEmailConfirm(db, req.user, req.params.id, { otp: req.body?.otp, ip: clientIp(req) }));
+  app.post('/api/devices/requests/:id/email/confirm', requireAuth, strict, deviceRequestAuth, async (req, res) => {
+    sendR(res, await deviceEmailConfirm(db, req.user, req.params.id, { otp: req.body?.otp, ip: clientIp(req) }));
   });
   // Từ máy cũ (đã mở khoá): xem / cho phép / từ chối
   app.get('/api/devices/requests', requireAuth, (req, res) => {
@@ -300,7 +384,7 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   });
   app.post('/api/devices/requests/:id/:action(approve|deny)', requireAuth, strict, (req, res) => {
     if (!needSession(req, res)) return;
-    sendR(res, decideDeviceRequest(db, req.user, req.params.id, req.params.action, { ip: clientIp(req) }));
+    sendR(res, decideDeviceRequest(db, req.user, req.params.id, req.params.action, { ip: clientIp(req), approvalCode: req.body?.approvalCode }));
   });
   // GET chỉ hiện trang xác nhận: bộ xem trước link của Telegram/trình quét mail tự mở mọi URL, nếu GET huỷ luôn
   // thì yêu cầu bị huỷ sau ~1 giây mà chủ không hề bấm (đã xảy ra thật). Huỷ chỉ xảy ra ở POST khi bấm nút.
@@ -348,11 +432,11 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     if (user.disabled) return out(res, 403, { error: 'account_disabled' });
     db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(r.counter, Date.now(), stored.id);
     audit(db, 'login_ok', { userId: user.id, ip: clientIp(req), detail: 'passkey' });
-    const payload = loginPayload(user);
+    const payload = loginPayload(user, req);
     if (payload.error) return out(res, payload.status, { error: payload.error });
     // Vân tay đã chứng minh người dùng: cấp luôn phiên điều khiển để không hỏi lại ngay.
     noteLogin(db, user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'vân tay / Face ID' });
-    const s = createControlSession(db, user.id, 'passkey', clientIp(req));
+    const s = createControlSession(db, user.id, 'passkey', clientIp(req), securityConfig(), null, null, String(req.headers['x-device-id'] || ''));
     res.json({ ...payload, controlToken: s.token, method: 'passkey', expiresAt: s.expiresAt });
   });
 

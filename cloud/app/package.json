@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "seed": "node scripts/seed-user.js",
-    "test": "node ../../packages/security/test/smoke-security.js && node scripts/smoke-control.js && node scripts/smoke-sites.js && node scripts/smoke-roles.js && node scripts/smoke-account.js && node scripts/smoke-retention.js"
+    "test": "node scripts/test.js"
   },
   "dependencies": {
     "@plciot/security": "file:../../packages/security",

@@ -10,23 +10,47 @@
  *   brand       { rpName } tên hiện trên hộp thoại vân tay
  */
 import crypto from 'crypto';
+import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 
 const defaults = {
   secret: () => process.env.APP_JWT_SECRET || '',
   publicUrl: () => (process.env.WEBAPP_PUBLIC_URL || '').replace(/\/$/, ''),
   notify: async () => {},
-  email: { available: () => false, send: async () => { throw new Error('email_disabled'); } },
+  email: {
+    available: () => false, configured: () => false,
+    validate: (address) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(address)),
+    send: async () => { throw new Error('email_disabled'); },
+    sendAddress: async () => { throw new Error('email_disabled'); },
+  },
+  identity: {
+    normalize: normalizePhone, valid: isValidVnPhone, format: formatVnLocal,
+    contact: (user) => user.primary_contact || null,
+    resolveContact: async () => null,
+    sendCode: async () => { throw new Error('contact_unavailable'); },
+    findContactOwner: (db, contact, userId) => db.prepare('SELECT id FROM users WHERE primary_contact = ? AND id != ?').get(contact, userId),
+    createAccount: async (db, { phone, contact }) => {
+      const created = db.prepare('INSERT INTO users (username, phone, primary_contact) VALUES (?, ?, ?)').run(phone, phone, contact);
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(created.lastInsertRowid);
+    },
+    applyContact: (db, user, contact) => db.prepare('UPDATE users SET primary_contact = ? WHERE id = ?').run(contact, user.id),
+    beforePhoneApplied: async () => {},
+    unavailableError: 'contact_unavailable', sendError: 'otp_send_failed',
+  },
+  presence: { enabled: false, start: () => ({ error: 'proof_unavailable', status: 409 }), check: () => ({ error: 'proof_unavailable', status: 409 }) },
+  accountExtra: () => ({}),
   canControl: (u) => u?.role === 'admin' || u?.role === 'operator',
   brand: { rpName: 'Ứng dụng' },
 };
 
-let cfg = { ...defaults, email: { ...defaults.email }, brand: { ...defaults.brand } };
+let cfg = { ...defaults, email: { ...defaults.email }, identity: { ...defaults.identity }, presence: { ...defaults.presence }, brand: { ...defaults.brand } };
 
 export function configure(patch = {}) {
   cfg = {
     ...cfg,
     ...patch,
     email: { ...cfg.email, ...(patch.email || {}) },
+    identity: { ...cfg.identity, ...(patch.identity || {}) },
+    presence: { ...cfg.presence, ...(patch.presence || {}) },
     brand: { ...cfg.brand, ...(patch.brand || {}) },
   };
   return cfg;

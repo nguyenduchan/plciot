@@ -1,7 +1,7 @@
 /**
  * Phiên điều khiển (step-up), trạng thái yếu tố và hạn bắt buộc bật yếu tố.
  *   • Passkey (vân tay / Face ID): phiên ngắn (CONTROL_PASSKEY_TTL_SEC, mặc định 300 s)
- *   • TOTP (Authenticator): phiên CONTROL_TOTP_TTL_DAYS ngày (mặc định 7), gắn với mạng; đổi mạng → hỏi lại
+ *   • TOTP (Authenticator): phiên CONTROL_TOTP_TTL_SEC (mặc định 300 s), gắn với mạng; đổi mạng → hỏi lại
  *   • PC trạm kiểu cũ: IP trong CONTROL_LAN_CIDRS + khoá do admin cấp
  * OTP qua Telegram/SMS KHÔNG phải là yếu tố điều khiển (dựa vào SIM/tài khoản chat).
  */
@@ -13,25 +13,26 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const env = process.env;
 
 export function securityConfig() {
+  const shortTtl = (value) => Math.min(300_000, Math.max(30_000, (Number(value) || 300) * 1000));
   return {
     stepUp: String(env.CONTROL_STEPUP || 'true').toLowerCase() !== 'false',
-    passkeyTtlMs: Number(env.CONTROL_PASSKEY_TTL_SEC || 300) * 1000,
-    totpTtlMs: Number(env.CONTROL_TOTP_TTL_DAYS || 7) * 86_400_000,
+    passkeyTtlMs: shortTtl(env.CONTROL_PASSKEY_TTL_SEC),
+    totpTtlMs: shortTtl(env.CONTROL_TOTP_TTL_SEC),
     bindNet: String(env.CONTROL_BIND_NET || 'true').toLowerCase() !== 'false',
     lanCidrs: String(env.CONTROL_LAN_CIDRS || '').split(',').map((s) => s.trim()).filter(Boolean),
   };
 }
 
 /* ---------------- phiên điều khiển ---------------- */
-export function createControlSession(db, userId, method, ip, cfg = securityConfig()) {
+export function createControlSession(db, userId, method, ip, cfg = securityConfig(), loginId = null, commandId = null, deviceId = null) {
   const now = Date.now();
   db.prepare('DELETE FROM control_sessions WHERE expires_at < ? OR revoked = 1').run(now - 86_400_000);
   const token = crypto.randomBytes(32).toString('base64url');
   const ttl = method === 'passkey' ? cfg.passkeyTtlMs : cfg.totpTtlMs;
   db.prepare(`
-    INSERT INTO control_sessions (user_id, token_hash, method, net, expires_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(userId, sha(token), method, netOf(ip), now + ttl, now);
+    INSERT INTO control_sessions (user_id, token_hash, method, net, expires_at, created_at, login_id, command_id, device_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(userId, sha(token), method, netOf(ip), now + ttl, now, loginId, commandId, deviceId);
   return { token, method, expiresAt: now + ttl };
 }
 
@@ -45,9 +46,10 @@ export function checkControlSession(db, userId, token, ip, cfg = securityConfig(
   if (!token) return { error: 'step_up_required', reason: 'no_token' };
   const row = db.prepare('SELECT * FROM control_sessions WHERE token_hash = ?').get(sha(token));
   if (!row || row.user_id !== userId || row.revoked) return { error: 'step_up_required', reason: 'invalid' };
-  if (row.expires_at < now) return { error: 'step_up_required', reason: 'expired' };
+  const maxAge = row.method === 'passkey' ? cfg.passkeyTtlMs : cfg.totpTtlMs;
+  if (row.expires_at <= now || now - row.created_at >= maxAge) return { error: 'step_up_required', reason: 'expired' };
   if (cfg.bindNet && row.net !== netOf(ip)) return { error: 'step_up_required', reason: 'network_changed' };
-  return { ok: true, method: row.method, expiresAt: row.expires_at };
+  return { ok: true, method: row.method, expiresAt: Math.min(row.expires_at, row.created_at + maxAge), createdAt: row.created_at, loginId: row.login_id, commandId: row.command_id };
 }
 
 export function factorSummary(db, userId) {

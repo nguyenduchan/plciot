@@ -2,11 +2,23 @@
 
 > Không còn mật khẩu: nơi nào trước đây hỏi "mật khẩu hiện tại" nay yêu cầu xác nhận lại bằng vân tay/Authenticator. **Đổi máy điện thoại (giữ nguyên số)** xem [CONTROL-SECURITY.md](CONTROL-SECURITY.md#thêm-máy-điện-thoại-mới-không-cần-admin).
 
+## Core Dùng Chung
+
+Mọi quyết định login/register, đổi máy, đổi số và khôi phục hiện nằm trong `packages/security` (`mountAuthentication`). `cloud/app/src/accountSecurity.js`, `auth.js`, `otp.js`, `phone.js` chỉ là đường import tương thích. Adapter Telegram/email/MQTT ở `cloud/app/src/securityAdapter.js`; dashboard và hiển thị PLC không nằm trong core.
+
+Sau mất máy, khôi phục số thu hồi passkey/TOTP/mã khôi phục cũ và mọi phiên app/điều khiển. Chỉ khoá của trình duyệt tạo yêu cầu được thiết lập lại yếu tố một lần, trong 7 ngày sau áp dụng; không xoá IndexedDB hoặc chuyển trình duyệt trong lúc chờ. Đăng nhập OTP sau khôi phục chưa đủ vào app: phải thiết lập yếu tố mới.
+
+Máy mới cần khoá ECDSA và chữ ký chống phát lại. Máy cũ nhập mã ghép hiện trên máy mới trước khi duyệt. Chuyển máy bình thường có bước xem/thu hồi máy cũ sau đăng nhập; chọn máy cũ bị mất sẽ thu hồi yếu tố/phiên cũ khi máy mới hoàn tất. Không có đường chỉ chờ rồi tự có quyền.
+
+Cảnh báo phải có trạng thái gửi thành công. Nếu gửi thất bại, yêu cầu chưa áp dụng; core retry và bắt đầu lại cửa sổ chờ sau khi gửi được. Adapter xoay credential lỗi cũng chặn áp dụng. Reload broker không thay thế kiểm thử thu hồi kết nối MQTT đang hoạt động trên môi trường triển khai.
+
+GET link huỷ chỉ hiện form; POST mới huỷ yêu cầu. Khi nâng cấp, yêu cầu cũ thiếu khoá thiết bị không được tự cấp quyền và cần tạo lại. Triển khai server và client cùng phiên bản, giữ nguyên DB/secret.
+
 SĐT là **danh tính** (username = SĐT, OTP qua Telegram). Vì vậy đổi SĐT được bảo vệ theo 3 mức:
 
 | Mức | Bằng chứng | Hiệu lực |
 |---|---|---|
-| Mạnh | Đăng nhập + xác nhận vân tay/Authenticator (hoặc vừa đăng nhập) + OTP kênh **cũ** (Telegram hoặc email đã xác minh) + OTP vào Telegram của **số mới** | Ngay |
+| Mạnh | Phiên đầy đủ + xác nhận passkey/TOTP + OTP kênh **cũ** + OTP vào kênh đã xác minh của **số mới** | Ngay khi cảnh báo và xoay credential thành công |
 | Yếu | Như trên nhưng thay OTP kênh cũ bằng **mã khôi phục** (dùng 1 lần) | Sau `PHONE_CHANGE_COOLING_HOURS` (24h) |
 | Mất hết | Ticket tại `recover.html` + OTP số mới (+ ghi chú, thử thách PLC) → **admin duyệt** | Sau `RECOVERY_COOLING_HOURS` (48h) |
 
@@ -26,11 +38,12 @@ khi áp dụng thì tăng `token_version` (đăng xuất mọi phiên cũ) và x
 ```bash
 docker compose exec app node scripts/recovery.js list            # ticket chờ duyệt
 docker compose exec app node scripts/recovery.js show <id>
-docker compose exec app node scripts/recovery.js approve <id> [giờ]
+docker compose exec app node scripts/recovery.js approve <id> 48 "tham-chieu-xac-minh-doc-lap"
 docker compose exec app node scripts/recovery.js reject <id> "lý do"
 docker compose exec app node scripts/recovery.js audit 0987654321
 ```
 Trước khi duyệt: xem `show` (OTP số mới, PLC, mã khôi phục, ghi chú) và đối chiếu ngoài kênh (CCCD, hóa đơn, ảnh nhãn serial).
+Core bắt buộc lưu tham chiếu bằng chứng và không cho CLI rút ngắn thời gian chờ cấu hình. Bằng chứng PLC chỉ là phụ; không tự đủ để duyệt.
 
 ## API
 Đăng nhập: `GET /api/account/security`, `POST /api/account/{email/request,email/verify,recovery-codes,phone/start,phone/confirm,phone/cancel}`.

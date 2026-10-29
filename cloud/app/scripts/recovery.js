@@ -19,7 +19,7 @@ import { formatVnLocal, normalizePhone } from '../src/phone.js';
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const db = openDb(DATA_DIR);
-const [cmd = 'list', a, b] = process.argv.slice(2);
+const [cmd = 'list', a, b, evidence] = process.argv.slice(2);
 const admin = process.env.ADMIN_NAME || process.env.USERNAME || process.env.USER || 'admin';
 const t = (ms) => (ms ? new Date(ms).toISOString() : '-');
 
@@ -47,7 +47,7 @@ if (cmd === 'list') {
     execute_at: t(r.execute_at),
   }, null, 2));
 } else if (cmd === 'approve') {
-  console.log(await approveRecovery(db, a, { hours: b, admin }));
+  console.log(await approveRecovery(db, a, { hours: b, admin, evidence }));
 } else if (cmd === 'reject') {
   console.log(await rejectChange(db, a, { reason: b || '', admin }));
 } else if (cmd === 'audit') {

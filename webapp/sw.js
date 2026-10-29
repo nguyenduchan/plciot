@@ -1,5 +1,6 @@
 ﻿/* Per-user cache-first shell. Active bundle name lives in cache "plc-meta". */
 const META = 'plc-meta';
+const AUTH_SHELL = new Set(['/login.html', '/recover.html', '/auth-app.js', '/security/login.js', '/security/recover.js', '/security/account.js', '/security/boot.js', '/security/device-proof.js', '/security/security-client.js', '/security/session.js']);
 
 async function activeCacheName() {
   try {
@@ -45,6 +46,12 @@ self.addEventListener('fetch', (e) => {
   }
 
   e.respondWith((async () => {
+    if (AUTH_SHELL.has(url.pathname)) {
+      try {
+        const fresh = await fetch(req, { cache: 'no-cache' });
+        if (fresh.ok) return fresh;
+      } catch {}
+    }
     const name = await activeCacheName();
     if (name) {
       const cache = await caches.open(name);

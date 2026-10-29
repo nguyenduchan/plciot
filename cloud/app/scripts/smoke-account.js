@@ -3,6 +3,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { signedDevice } from '../../../packages/security/test/device-fixture.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plc-acct-'));
 process.env.DATA_DIR = tmp;
@@ -24,7 +25,10 @@ const lastCode = (chatId) => {
 const { openDb, upsertUser, upsertTelegramUser, findUserById } = await import('../src/db.js');
 const { hashPassword } = await import('../src/auth.js');
 const A = await import('../src/accountSecurity.js');
-const { consumeRecoveryCode } = await import('@plciot/security');
+const { consumeRecoveryCode, configure, startSelfChange: coreStartSelfChange } = await import('@plciot/security');
+configure({ identity: { beforePhoneApplied: async (db, user) => {
+  db.prepare('UPDATE users SET mqtt_pass = ? WHERE id = ?').run('rotated-by-test-adapter', user.id);
+} } });
 const { noteTelemetry } = await import('../src/plcProof.js');
 
 const db = openDb(tmp);
@@ -32,6 +36,7 @@ let fails = 0;
 const ok = (cond, label) => {
   if (!cond) { fails++; console.error('FAIL', label); } else console.log('ok  ', label);
 };
+ok(A.startSelfChange === coreStartSelfChange, 'compatibility module uses the same account core');
 
 const mk = (phone, chat) => {
   upsertTelegramUser(db, phone, chat);
@@ -75,7 +80,7 @@ u = findUserById(db, u.id);
 ok(!consumeRecoveryCode(db, u.id, codes[0]), 'codes: single-use');
 
 // 4) lost everything: ticket -> admin review -> PLC proof -> cooling -> owner veto
-r = await A.startRecovery(db, { oldPhone: '84923456789', newPhone: '0934567890', note: 'site s84987654321' });
+r = await A.startRecovery(db, { oldPhone: '84923456789', newPhone: '0934567890', note: 'site s84987654321', ...signedDevice('84934567890', '/api/recovery/start') });
 ok(r.ok, 'recovery: start');
 const rid = r.id;
 ok((await A.confirmRecovery(db, { id: rid, newOtp: lastCode(4004) })).status === 'pending_review', 'recovery: waits for admin');
@@ -87,7 +92,8 @@ ok((await A.checkPlcChallenge(db, rid)).plcOk === false, 'plc: no edge yet');
 await new Promise((res) => setTimeout(res, 5));
 noteTelemetry(u.notify_site, u.notify_device, 1 << ch.bit);
 ok((await A.checkPlcChallenge(db, rid)).plcOk === true, 'plc: edge observed');
-ok((await A.approveRecovery(db, rid, { hours: 1, admin: 't' })).ok, 'admin: approve -> cooling');
+ok((await A.approveRecovery(db, rid, { hours: 1, admin: 't' })).error === 'cooling_period_too_short', 'admin không rút ngắn thời gian chờ');
+ok((await A.approveRecovery(db, rid, { hours: 48, admin: 't', evidence: 'independent-verification-test' })).ok, 'admin: approve -> cooling');
 ok((await A.cancelChange(db, rid, { token: A.cancelToken(rid) })).ok, 'owner: veto link cancels');
 db.prepare('UPDATE phone_changes SET execute_at = 1 WHERE id = ?').run(rid);
 await A.processDueChanges(db);

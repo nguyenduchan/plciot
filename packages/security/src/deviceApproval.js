@@ -13,6 +13,7 @@ import { audit, countAudit } from './audit.js';
 import { getConfig, notify, rawSecret } from './config.js';
 import { tryRecoveryCode, recoveryCodesRemaining } from './recoveryCodes.js';
 import { factorSummary } from './sessions.js';
+import { canonicalDeviceKey, deviceFingerprint, verifyDeviceProof } from './deviceProof.js';
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -62,10 +63,12 @@ export function emailAvailable(user) {
 export function sweepRequests(db, now = Date.now()) {
   db.prepare("UPDATE device_requests SET status = 'expired', updated_at = ? WHERE status = 'pending' AND created_at < ?").run(now, now - PENDING_TTL);
   db.prepare("UPDATE device_requests SET status = 'expired', updated_at = ? WHERE status = 'approved' AND updated_at < ?").run(now, now - APPROVED_TTL);
-  db.prepare("UPDATE device_requests SET status = 'approved', updated_at = ? WHERE status = 'cooling' AND execute_at <= ?").run(now, now);
+  db.prepare("UPDATE device_requests SET status = 'approved', updated_at = ? WHERE status = 'cooling' AND execute_at <= ? AND notification_state = 'delivered'").run(now, now);
 }
 
-export async function startDeviceRequest(db, user, { ip, label }) {
+export async function startDeviceRequest(db, user, { ip, label, deviceId, publicKey, deviceProof, replaceLost = false }) {
+  const key = canonicalDeviceKey(publicKey);
+  if (!verifyDeviceProof(db, { subject: user.id, deviceId, publicKey: key, action: '/api/devices/request', proof: deviceProof })) return { error: 'device_proof_required', status: 401 };
   const f = factorSummary(db, user.id);
   const hasFactor = f.passkeys > 0 || f.totp;
   if (countAudit(db, user.id, 'device_request', Date.now() - HOUR) >= 5) return { error: 'rate_limited', status: 429 };
@@ -79,6 +82,8 @@ export async function startDeviceRequest(db, user, { ip, label }) {
     INSERT INTO device_requests (id, user_id, status, poll_hash, label, created_ip, created_at, updated_at)
     VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
   `).run(id, user.id, sha(pollToken), String(label || 'Thiết bị mới').slice(0, 80), ip || null, now, now);
+  const approvalCode = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  setRow(db, id, { device_id: deviceId, public_key: key, approval_code: approvalCode, kind: replaceLost ? 'replace_lost' : 'add' });
   audit(db, 'device_request', { userId: user.id, ip, detail: id });
   notify(db, user, {
     subject: 'Có thiết bị mới xin quyền điều khiển',
@@ -90,19 +95,23 @@ export async function startDeviceRequest(db, user, { ip, label }) {
     ok: true,
     id,
     pollToken,
+    approvalCode,
+    fingerprint: deviceFingerprint(key),
+    kind: replaceLost ? 'replace_lost' : 'add',
     expiresIn: PENDING_TTL / 1000,
     coolingHours: coolingMs() / HOUR,
     // chưa có yếu tố nào (thiết bị không phải thiết bị đầu tiên): chỉ có email hoặc chờ, không có "máy cũ" để duyệt
-    options: { device: hasFactor, wait: !hasFactor, recoveryCode: recoveryCodesRemaining(db, user.id) > 0, email: emailAvailable(user) },
+    options: { device: hasFactor, wait: false, recoveryCode: recoveryCodesRemaining(db, user.id) > 0, email: emailAvailable(user) },
     emailHint: emailAvailable(user) ? maskEmail(user.email) : null, // cho người dùng biết mã sẽ gửi tới hộp thư nào
   };
 }
 
 export function listDeviceRequests(db, user) {
   sweepRequests(db);
-  return db.prepare("SELECT id, label, status, execute_at, created_at, created_ip FROM device_requests WHERE user_id = ? AND status IN ('pending','cooling') ORDER BY created_at DESC")
+  return db.prepare("SELECT id, label, status, execute_at, created_at, created_ip, public_key, kind FROM device_requests WHERE user_id = ? AND status IN ('pending','cooling') ORDER BY created_at DESC")
     .all(user.id).map((r) => ({
       id: r.id, label: r.label, status: r.status, executeAt: r.execute_at, createdAt: r.created_at, ip: r.created_ip,
+      fingerprint: deviceFingerprint(r.public_key), kind: r.kind,
     }));
 }
 
@@ -112,11 +121,12 @@ export function pendingDeviceCount(db, userId) {
 }
 
 /** Máy cũ (đã mở khoá bằng yếu tố) cho phép hoặc từ chối. */
-export function decideDeviceRequest(db, user, id, action, { ip }) {
+export function decideDeviceRequest(db, user, id, action, { ip, approvalCode }) {
   sweepRequests(db);
   const row = getRow(db, id, user.id);
   if (!row || !['pending', 'cooling'].includes(row.status)) return { error: 'request_not_found', status: 404 };
   if (action === 'approve') {
+    if (!safeEq(String(approvalCode || ''), row.approval_code)) return { error: 'approval_code_invalid', status: 401 };
     setRow(db, id, { status: 'approved' });
     audit(db, 'device_approved', { userId: user.id, ip, detail: id });
     notify(db, user, { subject: 'Đã cho phép thiết bị mới', html: '<b>✅ Một thiết bị mới đã được cho phép từ máy cũ.</b>' });
@@ -127,17 +137,19 @@ export function decideDeviceRequest(db, user, id, action, { ip }) {
   return { ok: true };
 }
 
-function toCooling(db, user, row, method, ip) {
+async function toCooling(db, user, row, method, ip) {
   const wait = coolingMs();
   const executeAt = Date.now() + wait;
   setRow(db, row.id, { status: wait === 0 ? 'approved' : 'cooling', method, execute_at: executeAt });
   audit(db, 'device_cooling', { userId: user.id, ip, detail: `${row.id} ${method}` });
-  notify(db, user, {
+  const delivery = await notify(db, user, {
     subject: 'Thiết bị mới sẽ được cấp quyền sau thời gian chờ',
     html: `<b>⏳ Thiết bị mới xin quyền điều khiển bằng ${method === 'email' ? 'email' : method === 'wait' ? 'thời gian chờ' : 'mã khôi phục'}.</b>\n`
       + `Quyền sẽ được cấp lúc ${new Date(executeAt).toLocaleString('vi-VN')} nếu không bị huỷ.\n`
       + `Không phải bạn? <a href="${cancelLink(row.id)}">Huỷ ngay</a> (hoặc Từ chối trên máy cũ).`,
   });
+  setRow(db, row.id, { notification_state: delivery?.delivered ? 'delivered' : 'failed' });
+  if (!delivery?.delivered) return { error: 'notification_required', status: 503 };
   return { ok: true, status: wait === 0 ? 'approved' : 'cooling', executeAt, coolingHours: wait / HOUR };
 }
 
@@ -153,12 +165,7 @@ export function deviceViaRecoveryCode(db, user, id, { code, ip }) {
 
 /** Chưa có yếu tố nào và không phải thiết bị đầu tiên: chỉ có thể chờ (kèm cảnh báo cho chủ). */
 export function deviceViaWait(db, user, id, { ip }) {
-  sweepRequests(db);
-  const row = getRow(db, id, user.id);
-  if (!row || row.status !== 'pending') return { error: 'request_not_pending', status: 409 };
-  const f = factorSummary(db, user.id);
-  if (f.passkeys || f.totp) return { error: 'use_existing_device', status: 409 };
-  return toCooling(db, user, row, 'wait', ip);
+  return { error: 'independent_proof_required', status: 403 };
 }
 
 export async function deviceEmailStart(db, user, id, { ip }) {
@@ -192,10 +199,11 @@ export function deviceEmailConfirm(db, user, id, { otp, ip }) {
 }
 
 /** Máy mới hỏi trạng thái; khi được duyệt sẽ nhận vé đăng ký (mỗi lần hỏi cấp lại vé mới trong cửa sổ cho phép). */
-export function pollDeviceRequest(db, user, id, pollToken) {
+export function pollDeviceRequest(db, user, id, pollToken, device = {}) {
   sweepRequests(db);
   const row = getRow(db, id, user.id);
   if (!row || !safeEq(sha(pollToken), row.poll_hash)) return { error: 'request_not_found', status: 404 };
+  if (!deviceRequestProof(db, row, device, `/api/devices/requests/${id}/poll`)) return { error: 'device_proof_required', status: 401 };
   if (row.status !== 'approved') return { ok: true, status: row.status, executeAt: row.execute_at || null };
   const ticket = crypto.randomBytes(24).toString('base64url');
   // giữ nguyên updated_at: hạn APPROVED_TTL tính từ lúc được duyệt, không bị kéo dài bởi mỗi lần hỏi
@@ -204,16 +212,23 @@ export function pollDeviceRequest(db, user, id, pollToken) {
 }
 
 /** Vé còn hiệu lực cho user này? (không tiêu thụ) */
-export function peekTicket(db, userId, ticket) {
+export function peekTicket(db, userId, ticket, device = {}) {
   if (!ticket) return false;
-  const row = db.prepare("SELECT 1 FROM device_requests WHERE user_id = ? AND status = 'approved' AND ticket_hash = ? AND ticket_expires > ?")
+  const row = db.prepare("SELECT * FROM device_requests WHERE user_id = ? AND status = 'approved' AND ticket_hash = ? AND ticket_expires > ?")
     .get(userId, sha(ticket), Date.now());
-  return Boolean(row);
+  return Boolean(row && deviceRequestProof(db, row, device, device.action));
+}
+
+export function deviceRequestProof(db, row, device, action) {
+  return row.device_id === device.deviceId && row.public_key === canonicalDeviceKey(device.publicKey)
+    && verifyDeviceProof(db, { subject: row.user_id, deviceId: device.deviceId, publicKey: row.public_key, proof: device.deviceProof, action });
 }
 
 /** Đăng ký xong yếu tố → huỷ vé. */
-export function consumeTicket(db, userId, ticket) {
-  if (!peekTicket(db, userId, ticket)) return false;
+export function consumeTicket(db, userId, ticket, deviceId) {
+  const row = db.prepare("SELECT * FROM device_requests WHERE user_id = ? AND status = 'approved' AND ticket_hash = ? AND ticket_expires > ? AND device_id = ?")
+    .get(userId, sha(ticket), Date.now(), deviceId);
+  if (!row) return false;
   db.prepare("UPDATE device_requests SET status = 'done', ticket_hash = NULL, updated_at = ? WHERE user_id = ? AND ticket_hash = ?")
     .run(Date.now(), userId, sha(ticket));
   return true;
@@ -229,4 +244,17 @@ export function cancelDeviceByLink(db, id, token, ip) {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
   if (user) notify(db, user, { subject: 'Đã huỷ yêu cầu thêm thiết bị', html: '<b>🛑 Yêu cầu thêm thiết bị đã bị huỷ.</b>' });
   return { ok: true };
+}
+
+export async function retryDeviceNotifications(db) {
+  const rows = db.prepare("SELECT * FROM device_requests WHERE status = 'cooling' AND notification_state != 'delivered'").all();
+  for (const row of rows) {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    if (!user) continue;
+    const executeAt = Date.now() + coolingMs();
+    const delivery = await notify(db, user, { subject: 'Thiết bị mới đang chờ cấp quyền',
+      html: `<b>Thiết bị mới sẽ được cấp quyền sau thời gian chờ.</b>\nKhông phải bạn? <a href="${cancelLink(row.id)}">Huỷ yêu cầu</a>.` });
+    if (delivery?.delivered) db.prepare("UPDATE device_requests SET notification_state = 'delivered', execute_at = ?, updated_at = ? WHERE id = ? AND status = 'cooling'")
+      .run(executeAt, Date.now(), row.id);
+  }
 }

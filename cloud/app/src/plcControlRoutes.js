@@ -3,7 +3,7 @@
  * rồi publish qua MQTT. Mọi xác thực (Passkey/TOTP, khoá điều khiển, PC ghép cặp) do @plciot/security đảm nhiệm.
  */
 import crypto from 'crypto';
-import { rateLimit, clientIp, audit, enrollState } from '@plciot/security';
+import { rateLimit, clientIp, audit, enrollState, checkControlSession, factorSummary } from '@plciot/security';
 import { canControl } from './roles.js';
 import { edgeSince } from './plcProof.js';
 import { publishCmd } from './controlPublisher.js';
@@ -13,6 +13,7 @@ import { plcControlConfig, validateCmd } from './plcCommands.js';
 export function mountPlcControl(app, { db, requireAuth, security }) {
   const { authorize, stationAuth: sAuth, stationLimit } = security;
   const pendingConfirm = new Map(); // id -> { userId, site, device, cmd, bit, since, expires }
+  const commandChallenges = new Map();
   const out = (res, status, b) => res.status(status).json(b);
   const cmdLimit = rateLimit({
     windowMs: 10_000,
@@ -39,16 +40,39 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
         return out(res, 403, { error: 'enroll_required', deadline: es.deadline });
       }
       const a = authorize(req);
-      if (a.error) {
+      if (a.error && (!v.critical || !a.methods?.enrolled)) {
         audit(db, 'control_denied', { userId: req.user.id, ip, detail: `${a.reason} a=${v.cmd.a}` });
         return out(res, a.status, a);
       }
-      via = a.via;
+      via = a.via || 'pending';
+      if (v.critical && a.via !== 'station') {
+        const now = Date.now();
+        for (const [id, challenge] of commandChallenges) if (challenge.expires <= now) commandChallenges.delete(id);
+        const challengeId = String(req.headers['x-command-challenge'] || '');
+        const challenge = commandChallenges.get(challengeId);
+        const proof = checkControlSession(db, req.user.id, String(req.headers['x-control-token'] || ''), ip);
+        const fingerprint = JSON.stringify([req.user.notify_site, req.user.notify_device, v.cmd]);
+        if (!challenge || challenge.userId !== req.user.id || challenge.sessionId !== req.tokenPayload?.sid
+          || challenge.fingerprint !== fingerprint || !proof.ok || proof.commandId !== challengeId) {
+          if (commandChallenges.size >= 1000) return out(res, 429, { error: 'rate_limited' });
+          const id = crypto.randomBytes(16).toString('hex');
+          commandChallenges.set(id, { userId: req.user.id, sessionId: req.tokenPayload?.sid, fingerprint, expires: now + 60_000 });
+          const factors = factorSummary(db, req.user.id);
+          return out(res, 401, {
+            error: 'step_up_required', reason: 'critical_command', commandChallenge: id,
+            methods: { passkey: factors.passkeys > 0, totp: factors.totp, enrolled: factors.passkeys > 0 || factors.totp },
+            command: v.cmd, target: { site: req.user.notify_site, device: req.user.notify_device },
+          });
+        }
+        commandChallenges.delete(challengeId);
+        via = proof.method;
+      }
       if (v.critical && cfg.physicalBit !== null) {
         const id = crypto.randomBytes(8).toString('hex');
         pendingConfirm.set(id, {
           userId: req.user.id, site: req.user.notify_site, device: req.user.notify_device,
-          cmd: v.cmd, via, bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
+          cmd: v.cmd, via, sessionId: req.tokenPayload?.sid, controlToken: String(req.headers['x-control-token'] || ''),
+          bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
         });
         audit(db, 'control_pending_physical', { userId: req.user.id, ip, detail: `a=${v.cmd.a}` });
         return out(res, 202, { pending: true, confirmId: id, bit: cfg.physicalBit, expiresIn: cfg.physicalWaitMs / 1000, id: v.cmd.id });
@@ -66,6 +90,15 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
   app.get('/api/control/confirm/:id', requireAuth, cmdLimit, async (req, res) => {
     const p = pendingConfirm.get(req.params.id);
     if (!p || p.userId !== req.user.id) return out(res, 404, { error: 'not_found' });
+    if (!canControl(req.user) || p.sessionId !== req.tokenPayload?.sid || p.site !== req.user.notify_site || p.device !== req.user.notify_device) {
+      pendingConfirm.delete(req.params.id);
+      return out(res, 403, { error: 'forbidden' });
+    }
+    if (p.via !== 'station' && !checkControlSession(db, req.user.id, p.controlToken, clientIp(req)).ok) {
+      pendingConfirm.delete(req.params.id);
+      return out(res, 401, { error: 'step_up_required' });
+    }
+    if (p.via === 'station' && authorize(req).error) return out(res, 401, { error: 'step_up_required' });
     if (Date.now() > p.expires) {
       pendingConfirm.delete(req.params.id);
       return out(res, 410, { error: 'confirm_expired' });

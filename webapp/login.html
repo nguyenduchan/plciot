@@ -48,8 +48,8 @@
     </div>
   </div>
   <div class="panel form">
-    <p id="error"></p>
-    <p id="ok-msg" class="ok" hidden></p>
+    <p id="error" role="alert" aria-atomic="true"></p>
+    <p id="ok-msg" class="ok" role="status" hidden></p>
     <p class="hint" id="tg-hint">Mở bot Telegram → <b>/start</b> → chia sẻ SĐT Việt Nam (cùng số sẽ dùng làm username).</p>
 
     <div id="step-creds" class="step">
@@ -58,6 +58,7 @@
         <label class="ph">Số di động VN<input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321" required></label>
       </div>
       <div class="login-actions">
+        <button type="button" id="btn-resume" class="primary" hidden>Mở khoá ứng dụng</button>
         <button type="button" id="btn-passkey" class="primary" hidden>Đăng nhập bằng vân tay / Face ID</button>
         <button type="button" id="btn-otp" class="primary">Gửi OTP qua Telegram</button>
         <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
@@ -67,7 +68,7 @@
     <div id="step-otp" class="step" hidden>
       <p class="hint" id="otp-info" style="font-weight:600"></p>
       <p class="hint">Nhập mã 6 số đã gửi vào Telegram.</p>
-      <label>Mã OTP Telegram<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+      <label>Mã OTP Telegram<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000"></label>
       <p class="hint" id="otp-timer"></p>
       <div class="login-actions">
         <button type="button" id="btn-verify" class="primary">Xác nhận</button>
@@ -84,8 +85,9 @@
     </div>
   </div>
 </div>
+<script src="security/device-proof.js"></script>
 <script src="security/security-client.js"></script>
-<script src="control.js"></script>
-<script src="login.js"></script>
+<script src="auth-app.js"></script>
+<script src="security/login.js"></script>
 </body>
 </html>

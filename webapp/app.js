@@ -439,6 +439,7 @@ async function alignSiteDevFromSession() {
   } catch {}
 }
 function connect() {
+  if (window.AppLock?.isLocked()) return;
   if (link) link.stop();
   S.status = 'offline';
   const h = { status: onStatus, regs: onRegs, ack: onAck, history: onHist };
@@ -525,7 +526,9 @@ $('#logout').onclick = async () => {
   location.replace('login.html?out=1'); // out=1: người dùng chủ động đăng xuất → không tự đăng nhập lại bằng vân tay
 };
 let hideTimer = null;   // hidden tab for 5 min -> release the broker connection; reconnect on return
+document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline'; });
 document.addEventListener('visibilitychange', () => {
+  if (window.AppLock?.isLocked()) return;
   clearTimeout(hideTimer);
   if (document.hidden) { if (!cfg.demo) hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
   else if (!cfg.demo) {

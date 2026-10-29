@@ -4,9 +4,23 @@
 
 > **Mã nguồn bảo mật cố định nằm ở một vùng riêng: [`packages/security`](../packages/security/README.md) (`@plciot/security`)** để tái sử dụng cho mọi app/khách hàng.
 > Gói chứa Passkey/TOTP, phiên điều khiển, thêm thiết bị, ghép PC, CSP/giới hạn tần suất và client trình duyệt; **không biết** app điều khiển PLC hay nhắn Telegram.
-> Phần riêng của app PLC ở lại `cloud/app/src`: `plcCommands.js` (whitelist/khoảng giá trị thanh ghi), `plcControlRoutes.js` (route lệnh, nút vật lý), `sites.js`/`siteRoutes.js`, `accountSecurity.js` (đổi số/khôi phục), OTP Telegram. Hướng dẫn cắm vào app mới: README của gói.
+> Core nay sở hữu cả OTP login/register, JWT/session, đổi số/khôi phục và controller xác thực. App PLC giữ `securityAdapter.js` (gửi tin, bundle, MQTT), `plcCommands.js`, `plcControlRoutes.js`, `sites.js`/`siteRoutes.js` và dashboard. Các module xác thực cũ trong app chỉ chuyển tiếp API. Hướng dẫn webapp mới: README của gói.
 
-**Không có mật khẩu.** Đăng nhập chính là **Passkey** (vân tay / Face ID, một chạm, không gõ SĐT): `POST /api/login/passkey/{options,verify}`. **OTP Telegram** chỉ dùng lần đầu (tạo tài khoản), thiết bị chưa có passkey, hoặc dự phòng; sau lần OTP đầu, webapp mời bật vân tay hoặc Authenticator (nhắc lại sau 7 ngày nếu bỏ qua). Passkey tạo là *discoverable credential* (`residentKey: required`) nên đồng bộ qua iCloud Keychain / Google Password Manager và dùng được trên máy mới cùng tài khoản đám mây.
+**Không có mật khẩu.** Đăng nhập chính là **Passkey** (vân tay / Face ID / mã khoá thiết bị, không gõ SĐT): `POST /api/login/passkey/{options,verify}`. **OTP Telegram không còn đủ để vào ứng dụng**: OTP chỉ cấp token `login_pending` trong 10 phút, không có bundle hay thông tin MQTT. Tài khoản đã bật bảo vệ phải xác thực passkey/TOTP; tài khoản chưa có yếu tố phải thiết lập trước khi hoàn tất. Huỷ thiết lập không cấp phiên đầy đủ. Passkey có thể đồng bộ qua iCloud Keychain / Google Password Manager; đây không phải bằng chứng phần cứng gắn với một điện thoại duy nhất, cũng không phải eKYC.
+
+## Luồng đăng nhập và khoá ứng dụng
+
+1. Máy có passkey: người dùng bấm đăng nhập bằng passkey, server xác minh rồi cấp phiên app và quyền điều khiển ngắn hạn. Không hỏi thêm OTP.
+2. Đăng nhập/đăng ký OTP: server trả token chờ, gắn với tài khoản, `X-Device-Id` và challenge trong DB. Client giữ token chờ trong bộ nhớ, không lưu thành phiên app.
+3. Client xác thực passkey/TOTP bằng các API gắn với đúng tài khoản. Chưa có yếu tố thì bắt buộc thiết lập. Máy không thể dùng yếu tố hiện có đi qua "Máy mới / mất máy cũ?" để xin phê duyệt; OTP không thay thế bước này.
+4. `POST /api/login/complete` kiểm tra bằng chứng được cấp cho chính challenge đó, dùng challenge một lần rồi mới trả JWT đầy đủ, bundle manifest và thông tin MQTT. Token chờ không gọi được API dữ liệu, quản trị, bundle, lệnh PLC hoặc duyệt máy khác; không được gia hạn trượt.
+5. Mở lại trang phải mở khoá. Ở nền từ 60 giây hoặc không hoạt động 5 phút thì khoá. Server lưu trạng thái phiên và kiểm tra thời hạn trên mỗi API; polling tự động không kéo dài thời gian hoạt động. Chạm/phím/cuộn gửi heartbeat tối đa một lần mỗi 30 giây.
+6. Khoá dừng MQTT và xoá thông tin MQTT lưu trong cấu hình trình duyệt. Mở khoá dùng `POST /api/login/resume` để nhận challenge mới rồi xác thực và hoàn tất như bước 3–4. Phiên cũ vẫn khoá; huỷ không tự vào dashboard. Khi mất mạng, không mở khoá mới được.
+7. Khoá/đăng xuất không xoá bundle cache. Cùng tài khoản và source version chỉ tải file cache bị thiếu; source mới thì tải bundle mới. Không yêu cầu nhập OTP chỉ để tải lại source.
+
+API phiên: `POST /api/login/{complete,resume,lock,activity,background}` và `POST /api/logout`. Đăng xuất thu hồi phiên app ở server. Khi triển khai bản này, JWT cũ chưa có bản ghi phiên sẽ bị từ chối, nên cần đăng nhập lại một lần; không cần xoá cache.
+
+WebAuthn yêu cầu `userVerification: required`, nhưng hệ điều hành có thể cho dùng Face ID, vân tay hoặc mã khoá thiết bị. Không cam kết "chỉ Face ID". Token app vẫn ở localStorage và dữ liệu lịch sử/cache chưa mã hoá tại chỗ: khoá ứng dụng bảo vệ truy cập UI/API, không chống người kiểm soát trình duyệt hoặc đọc trực tiếp dữ liệu trên máy.
 
 Các thao tác nhạy cảm trước đây hỏi "mật khẩu hiện tại" (đổi số, email khôi phục, mã khôi phục, xoá lịch sử) giờ yêu cầu **xác nhận lại bằng vân tay / Authenticator** (middleware `reauth`); người chưa có yếu tố nào chỉ cần vừa đăng nhập ≤ 10 phút. Đường đăng nhập bằng mật khẩu (`POST /api/login`) và mọi ô nhập/đặt mật khẩu (kể cả trang admin) đã bị gỡ. Cột `password_hash` còn trong DB chỉ vì ràng buộc NOT NULL cũ, chứa chuỗi ngẫu nhiên không ai biết.
 
@@ -17,8 +31,8 @@ Lớp mới nằm ở **điều khiển**: mọi lệnh ghi PLC phải qua app s
    (JWT + X-Control-Token)       │
                                  ├─ PC trạm trong LAN xưởng: IP + khoá trạm      → không hỏi mã
                                  ├─ Passkey (vân tay / Face ID)                  → 1 chạm, phiên 5 phút
-                                 ├─ TOTP (Authenticator)                         → nhập 1 lần, nhớ 7 ngày, gắn mạng
-                                 └─ Lệnh nguy hiểm (D4, D6)                      → thêm nút nhấn vật lý (tuỳ chọn)
+                                 ├─ TOTP (Authenticator)                         → phiên tối đa 5 phút, gắn mạng
+                                 └─ Lệnh nguy hiểm (D4, D6)                      → xác thực mới + nút vật lý (tuỳ chọn)
 ```
 
 ## Vì sao phải đi qua server
@@ -29,16 +43,18 @@ Trước đây điện thoại giữ mật khẩu MQTT có quyền `topic write 
 | Ngữ cảnh | Cơ chế | Chi tiết |
 |---|---|---|
 | Điện thoại đời cao | **Passkey / WebAuthn** | `src/webauthn.js`. Bắt buộc User Verification, attestation `none`, ES256/RS256, kiểm tra origin + rpId (khoá gắn tên miền → chống phishing), bộ đếm chống sao chép. Phiên `CONTROL_PASSKEY_TTL_SEC` (300 s). |
-| Điện thoại đời thấp | **TOTP** (RFC 6238) | `src/totp.js`. Bí mật mã hoá AES-GCM trong DB; mã chỉ dùng một lần (chống phát lại); sai 5 lần → khoá 15 phút. Phiên `CONTROL_TOTP_TTL_DAYS` (7 ngày), **gắn với mạng** (/24 IPv4, /64 IPv6): đổi mạng → hỏi lại mã. |
+| Điện thoại đời thấp | **TOTP** (RFC 6238) | `src/totp.js`. Bí mật mã hoá AES-GCM trong DB; mã chỉ dùng một lần; sai 5 lần → khoá 15 phút. Phiên `CONTROL_TOTP_TTL_SEC` (300 giây), **gắn với mạng** (/24 IPv4, /64 IPv6). Cấu hình ngày cũ không còn dùng; phiên cũ quá 5 phút cũng bị chặn. |
 | PC tại xưởng | **IP LAN + khoá trạm** | Admin cấp trạm (`POST /api/admin/stations`), PC gửi `X-Station-Id`/`X-Station-Key`; chỉ có hiệu lực khi IP nằm trong `CONTROL_LAN_CIDRS` và trạm thuộc chính user đăng nhập. Server nằm trên VPS nên đây là **IP công cộng của xưởng**. |
 | Lệnh nguy hiểm | **Nút nhấn vật lý** | Đặt `CONTROL_PHYSICAL_BIT` (0–7 = X0..X7 của D0) và `CONTROL_CRITICAL_ADDRS`. Server giữ lệnh, chỉ phát khi telemetry cho thấy **cạnh tín hiệu mới** ở ngõ vào đó trong `CONTROL_PHYSICAL_WAIT_SEC` giây (dùng lại `plcProof.js`). Áp dụng cả với PC trạm. |
 
 Thiết lập yếu tố **đầu tiên** yêu cầu vừa đăng nhập bằng OTP Telegram (≤ 10 phút); thêm/xoá yếu tố về sau yêu cầu phiên điều khiển đang mở, nên người nhặt được điện thoại đang đăng nhập không tự đăng ký vân tay của họ được. Xoá yếu tố thu hồi mọi phiên điều khiển.
 
-Tài khoản chưa thiết lập yếu tố nào vẫn xem được nhưng khi bấm điều khiển sẽ được mời thiết lập (hộp thoại trong `webapp/control.js`; quản lý ở Cài đặt → "Điều khiển: vân tay / Authenticator").
+Tài khoản chưa thiết lập yếu tố nào phải hoàn tất thiết lập ngay trong luồng đăng nhập. Không cấp chế độ chỉ xem bằng OTP trong chính sách hiện tại; vai trò viewer vẫn không có quyền điều khiển sau khi đăng nhập.
+
+Lệnh nhạy cảm từ phiên người dùng có thêm challenge ngẫu nhiên 60 giây, gắn với tài khoản, phiên app, site/device và nội dung lệnh (gồm ID). Client hiện site/device, thanh ghi và giá trị trước khi xác thực mới. Bằng chứng passkey/TOTP mang `X-Command-Challenge`; chỉ đúng challenge và nội dung mới được thực thi một lần. Sửa lệnh/phát lại không qua được. Phiên người dùng đã hết hạn/thu hồi không được tiếp tục bước chờ vật lý. PC trạm tin cậy là luồng riêng, giữ kiểm tra khoá/chữ ký và xác nhận vật lý hiện có.
 
 ## Thêm máy điện thoại mới (không cần admin)
-Đổi máy hoặc mất máy: máy mới đăng nhập OTP Telegram (chỉ xem được) rồi bấm **"Máy mới / mất máy cũ?"** trong hộp thoại xác nhận. Server cấp một **vé đăng ký** (15 phút, dùng một lần, chỉ có tác dụng đăng ký vân tay/Authenticator) theo một trong ba đường (`src/deviceApproval.js`):
+Đổi máy hoặc mất máy: sau OTP, máy mới vẫn chờ xác thực, chưa xem được dữ liệu. Bấm **"Máy mới / mất máy cũ?"** trong hộp thoại xác nhận. Server cấp một **vé đăng ký** (15 phút, dùng một lần, chỉ có tác dụng đăng ký vân tay/Authenticator) theo một trong ba đường (`src/deviceApproval.js`):
 
 | Đường | Điều kiện | Hiệu lực |
 |---|---|---|
@@ -54,11 +70,11 @@ Nếu mất cả máy cũ lẫn mã khôi phục và email thì vẫn còn luồ
 API: `POST /api/devices/request` · `POST /api/devices/requests/:id/{poll,recovery,email/start,email/confirm}` (máy mới) · `GET /api/devices/requests` · `POST /api/devices/requests/:id/{approve,deny}` (máy cũ, cần phiên điều khiển) · `GET /api/device/cancel?id=&t=` (link huỷ). Vé gửi trong header `X-Enroll-Ticket`.
 
 ## PC không có vân tay / Face ID / Windows Hello
-Webapp kiểm tra `isUserVerifyingPlatformAuthenticatorAvailable()`: **máy không có sinh trắc không thấy nút "Đăng nhập bằng vân tay"** (trừ khi từng dùng passkey), hộp thoại thiết lập chỉ còn **Authenticator**, và Cài đặt ẩn nút "Thêm vân tay" kèm ghi chú. Mở khoá điều khiển trên PC bằng mã 6 số (nhớ 7 ngày, gắn mạng). Passkey tạo trên điện thoại vẫn dùng được trên PC qua trình duyệt nếu nền tảng đồng bộ (iCloud/Google).
+Máy không có passkey có thể dùng **Authenticator** để đăng nhập và mở khoá điều khiển; phiên điều khiển tối đa 5 phút, gắn mạng. Passkey tạo trên điện thoại có thể dùng trên PC nếu nền tảng đồng bộ (iCloud/Google). Gợi ý `client-device` không bảo đảm trình duyệt chỉ dùng khoá trên chính máy đó.
 
 ## Không có bậc bảo mật thấp để điều khiển
-Điều khiển **chỉ** có hai yếu tố: vân tay/Face ID (Passkey) hoặc mã Authenticator (TOTP). **OTP Telegram/SMS không bao giờ đủ để điều khiển**: nó dựa vào SIM/Telegram, ai đổi SIM hoặc chiếm Telegram sẽ có luôn quyền điều khiển máy móc. OTP Telegram vẫn dùng để **đăng nhập, xem số liệu và đọc thanh ghi**.
-Máy không chạy được cả vân tay lẫn Authenticator thì tài khoản đó **chỉ xem**: nhờ quản trị đặt vai trò **chỉ xem** (viewer) để không bị banner "điều khiển bị khoá" nhắc mãi. Quyết định này loại bỏ một nhánh tấn công (Telegram → điều khiển) đổi lại việc vài máy rất cũ không điều khiển được.
+Điều khiển **chỉ** có hai phương thức: Passkey hoặc mã Authenticator (TOTP). **OTP Telegram/SMS không bao giờ đủ để điều khiển**, và cũng không đủ cấp phiên xem dữ liệu. OTP chỉ mở luồng chờ xác thực/thiết lập yếu tố. Không dùng OTP làm đường vòng bỏ qua yếu tố đã bật.
+Máy không hỗ trợ passkey cần dùng ứng dụng Authenticator (có thể trên thiết bị khác). Vai trò viewer chỉ hạn chế quyền thao tác, không bỏ qua bước xác thực đăng nhập.
 
 ## Bắt buộc bật yếu tố, cảnh báo và các chốt chặn
 - **Chống chiếm Telegram tự bật yếu tố đầu tiên:** chỉ **thiết bị đầu tiên** đăng nhập vào tài khoản (`known_devices`) được bật ngay. Máy khác (hoặc không gửi `X-Device-Id`) nhận `first_device_required` và phải qua vé: email đã xác minh hoặc chờ 24 giờ, trong thời gian chờ chủ được báo và huỷ được. Máy đời thấp thông thường bật ngay trên máy đầu tiên nên không bị phiền. Giới hạn: nếu kẻ tấn công đăng nhập trước chủ thật trên tài khoản cũ chưa từng ghi nhận thiết bị, nó trở thành "thiết bị đầu tiên".
