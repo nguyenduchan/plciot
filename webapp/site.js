@@ -49,7 +49,7 @@
       if (await window.Ctl.unlock(data)) return call(method, path, body, true);
       return { ok: false, data: { error: 'cancelled' } };
     }
-    if (r.status === 401 && data.error !== 'reauth_required') { LS.del('session'); location.replace('login.html?revoked=1'); }
+    if (r.status === 401 && ['session_revoked', 'unauthorized'].includes(data.error)) { LS.del('session'); location.replace('login.html?revoked=1'); }
     return { ok: r.ok, data };
   }
 

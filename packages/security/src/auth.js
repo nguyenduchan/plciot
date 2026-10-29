@@ -29,14 +29,14 @@ export function loginScopeAllowed(payload, method, requestPath, deviceId) {
   if (method === 'GET') return requestPath === '/api/control/status';
   if (method !== 'POST') return false;
   return new Set([
-    '/api/login/complete', '/api/control/unlock',
+    '/api/login/complete', '/api/login/complete-basic', '/api/account/password', '/api/account/email/request', '/api/account/email/verify', '/api/control/unlock',
     '/api/webauthn/auth/options', '/api/webauthn/auth/verify',
     '/api/webauthn/register/options', '/api/webauthn/register/verify',
     '/api/control/totp/setup', '/api/control/totp/enable', '/api/devices/request',
   ]).has(requestPath) || /^\/api\/devices\/requests\/[a-f0-9]+\/(poll|recovery|wait|email\/(start|confirm))$/.test(requestPath);
 }
 
-export function createLoginChallenge(db, user, deviceId, secret, device = {}) {
+export function createLoginChallenge(db, user, deviceId, secret, device = {}, src = 'otp') {
   if (!deviceId || deviceId.length > 128) return { error: 'device_required', status: 400 };
   const now = Date.now();
   db.prepare('DELETE FROM login_attempts WHERE expires_at < ? OR consumed = 1').run(now);
@@ -54,7 +54,7 @@ export function createLoginChallenge(db, user, deviceId, secret, device = {}) {
     .run(id, user.id, deviceId, now + 600_000);
   return {
     pending: true, userId: user.id, expiresAt: now + 600_000,
-    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
+    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, src: src === 'resume' ? 'resume' : 'otp', ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
   };
 }
 
@@ -127,7 +127,7 @@ export function mountLoginSessions(app, { db, requireAuth, sensitiveStrict, logi
   });
   app.post('/api/login/resume', requireAuth, sensitiveStrict, (req, res) => {
     db.prepare('UPDATE app_sessions SET locked = 1 WHERE id = ? AND user_id = ?').run(req.tokenPayload.sid || '', req.user.id);
-    const challenge = pendingLogin(req.user, req);
+    const challenge = pendingLogin(req.user, req, 'resume');
     res.status(challenge.status || 200).json(challenge);
   });
   app.post('/api/login/activity', requireAuth, (_req, res) => res.json({ ok: true }));

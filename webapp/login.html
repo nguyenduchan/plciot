@@ -35,7 +35,8 @@
 .phone-row .cc{flex:0 0 72px}
 .phone-row .cc input{text-align:center}
 .phone-row .ph{flex:1}
-.step[hidden]{display:none}
+.step[hidden],#pw-row[hidden],#modes[hidden],.login-actions button[hidden]{display:none!important}
+.row-btns{display:flex;gap:8px;margin:8px 0}.row-btns button{flex:1}
 </style>
 </head>
 <body>
@@ -44,10 +45,14 @@
     <img src="icon.svg" alt="">
     <div>
       <h1>Giám sát PLC</h1>
-      <p>Số điện thoại Việt Nam · mã OTP qua Telegram (không cần mật khẩu)</p>
+      <p>Số điện thoại Việt Nam · vân tay / Face ID hoặc mật khẩu; OTP Telegram cho máy mới</p>
     </div>
   </div>
   <div class="panel form">
+    <div class="modes" id="modes" role="tablist">
+      <button type="button" role="tab" data-mode="login" class="on">Đăng nhập</button>
+      <button type="button" role="tab" data-mode="register">Đăng ký</button>
+    </div>
     <p id="error" role="alert" aria-atomic="true"></p>
     <p id="ok-msg" class="ok" role="status" hidden></p>
     <p class="hint" id="tg-hint">Mở bot Telegram → <b>/start</b> → chia sẻ SĐT Việt Nam (cùng số sẽ dùng làm username).</p>
@@ -57,10 +62,12 @@
         <label class="cc">Mã vùng<input id="cc" value="84" inputmode="numeric" autocomplete="tel-country-code" readonly></label>
         <label class="ph">Số di động VN<input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321" required></label>
       </div>
+      <label id="pw-row">Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Bỏ trống nếu dùng vân tay"></label>
       <div class="login-actions">
         <button type="button" id="btn-resume" class="primary" hidden>Mở khoá ứng dụng</button>
-        <button type="button" id="btn-passkey" class="primary" hidden>Đăng nhập bằng vân tay / Face ID</button>
-        <button type="button" id="btn-otp" class="primary">Gửi OTP qua Telegram</button>
+        <button type="button" id="btn-login" class="primary">Đăng nhập</button>
+        <button type="button" id="btn-passkey" class="fit" hidden>Đăng nhập bằng vân tay / Face ID</button>
+        <button type="button" id="btn-otp" class="fit">Máy mới / quên mật khẩu: gửi OTP Telegram</button>
         <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
       </div>
     </div>
@@ -77,7 +84,29 @@
       </div>
     </div>
 
-    <p class="hint" style="margin-top:14px;text-align:center"><a href="recover.html">Mất số điện thoại / Telegram cũ? Khôi phục tài khoản</a></p>
+    <div id="step-recover" class="step" hidden>
+      <p class="hint" style="font-weight:600">Khôi phục bằng 2 yếu tố khác loại</p>
+      <p class="hint">Chọn <b>ít nhất 2</b> trong 3 nhóm: <b>OTP</b> (Telegram hoặc email, tính một), <b>mật khẩu</b>, <b>vân tay / Face ID</b>.</p>
+      <div class="phone-row">
+        <label class="cc">Mã vùng<input id="rc-cc" value="84" readonly></label>
+        <label class="ph">Số di động VN<input id="rc-phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321"></label>
+      </div>
+      <div class="row-btns">
+        <button type="button" id="rc-tg" class="fit">Gửi OTP Telegram</button>
+        <button type="button" id="rc-mail" class="fit">Gửi OTP email</button>
+      </div>
+      <label>Mã OTP<input id="rc-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+      <label>Mật khẩu<input id="rc-pw" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại"></label>
+      <button type="button" id="rc-bio" class="fit">Xác nhận bằng vân tay / Face ID</button>
+      <p class="hint" id="rc-state"></p>
+      <div class="login-actions">
+        <button type="button" id="rc-go" class="primary">Khôi phục</button>
+        <button type="button" id="rc-back" class="fit">Quay lại</button>
+      </div>
+    </div>
+
+    <p class="hint" style="margin-top:14px;text-align:center"><a href="#" id="rc-open">Quên mật khẩu / mất máy? Khôi phục bằng 2 yếu tố</a></p>
+    <p class="hint" style="margin-top:6px;text-align:center"><a href="recover.html">Mất số điện thoại / Telegram cũ? Khôi phục tài khoản</a></p>
 
     <div id="progress">
       <div class="muted" id="prog-label">Đang tải ứng dụng…</div>

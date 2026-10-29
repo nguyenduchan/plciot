@@ -18,7 +18,8 @@ export function securityConfig() {
     stepUp: String(env.CONTROL_STEPUP || 'true').toLowerCase() !== 'false',
     passkeyTtlMs: shortTtl(env.CONTROL_PASSKEY_TTL_SEC),
     totpTtlMs: shortTtl(env.CONTROL_TOTP_TTL_SEC),
-    bindNet: String(env.CONTROL_BIND_NET || 'true').toLowerCase() !== 'false',
+    // Mặc định TẮT: điện thoại dùng 4G đổi IP liên tục nên gắn phiên theo mạng gây hỏi lại xác thực vô ích. Bật bằng CONTROL_BIND_NET=true.
+    bindNet: String(env.CONTROL_BIND_NET || 'false').toLowerCase() === 'true',
     lanCidrs: String(env.CONTROL_LAN_CIDRS || '').split(',').map((s) => s.trim()).filter(Boolean),
   };
 }

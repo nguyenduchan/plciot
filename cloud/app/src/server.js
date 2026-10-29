@@ -65,7 +65,10 @@ app.use(express.json({ limit: '64kb', verify: (req, _res, buf) => { req.rawBody 
 app.use('/api/', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
 // Global soft limit (per IP)
-app.use('/api/', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_API || 120) }));
+// Tải gói webapp (≈45 tệp mỗi lần đăng nhập/cập nhật) có hạn mức riêng; nếu dùng chung 120 yêu cầu/phút thì đăng nhập lần 2 trong 1 phút sẽ bị 429.
+const apiLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_API || 120) });
+const bundleLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_BUNDLE || 600) });
+app.use('/api/', (req, res, next) => (req.path.startsWith('/bundle/') ? bundleLimit : apiLimit)(req, res, next));
 // Kill-switch đăng nhập (Console Monitor)
 app.use(loginGateMiddleware);
 mountDebugTrace(app);

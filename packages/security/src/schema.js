@@ -191,5 +191,7 @@ export function migrateSecurity(db) {
     totp_device_id: 'totp_device_id TEXT',
     // Hạn phải bật vân tay/Authenticator (đặt lười khi lần đầu cần); quá hạn mà chưa có yếu tố → khoá điều khiển
     enroll_deadline: 'enroll_deadline INTEGER',
+    // Mật khẩu ĐĂNG NHẬP (bcrypt), tách khỏi password_hash cũ; chỉ dùng trên máy đã tin cậy, không phải yếu tố điều khiển
+    login_password_hash: 'login_password_hash TEXT',
   });
 }

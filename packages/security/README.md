@@ -153,7 +153,8 @@ App PLC bọc thêm `webapp/control.js` (thêm lỗi riêng + `send()` lệnh) v
 | `CONTROL_STEPUP` | `true` | Bật yêu cầu xác nhận khi điều khiển |
 | `CONTROL_PASSKEY_TTL_SEC` | 300 | Phiên sau khi chạm vân tay |
 | `CONTROL_TOTP_TTL_SEC` | 300 | Phiên sau khi nhập mã Authenticator, tối đa 5 phút |
-| `CONTROL_BIND_NET` | `true` | Phiên gắn với mạng (/24 IPv4, /64 IPv6) |
+| `FIRST_DEVICE_ONLY` | `false` | Chỉ thiết bị đầu tiên được bật yếu tố đầu tiên ngay |
+| `CONTROL_BIND_NET` | `false` | Phiên gắn với mạng (/24 IPv4, /64 IPv6) |
 | `CONTROL_ENROLL_GRACE_DAYS` | 3 | Hạn bật yếu tố; `off` = không ép |
 | `CONTROL_LAN_CIDRS` | — | Dải IP cho PC trạm kiểu cũ / siết thêm PC ghép cặp |
 | `DEVICE_ADD_COOLING_HOURS` | 24 | Chờ khi thêm thiết bị bằng mã khôi phục/email |

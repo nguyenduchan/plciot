@@ -51,6 +51,14 @@
     contact_changed: 'Kênh nhận OTP đã thay đổi. Hãy yêu cầu mã mới.',
     account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
     session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
+    password_invalid: 'Sai mật khẩu hoặc tài khoản chưa đặt mật khẩu.',
+    password_locked: 'Nhập sai mật khẩu quá nhiều lần. Thử lại sau 15 phút hoặc dùng OTP Telegram.',
+    password_new_device: 'Máy này chưa được tin cậy. Hãy đăng nhập bằng OTP Telegram một lần.',
+    password_weak: 'Mật khẩu tối thiểu 8 ký tự và không được chứa số điện thoại.',
+    recover_need_two: 'Cần ít nhất 2 yếu tố khác loại: mã OTP (Telegram hoặc email), mật khẩu, vân tay / Face ID.',
+    recover_invalid: 'Thông tin khôi phục không đúng.',
+    recover_locked: 'Thử sai quá nhiều lần. Chờ 15 phút rồi thử lại.',
+    email_unavailable: 'Tài khoản chưa có email đã xác minh (hoặc chưa qua thời gian chờ 72 giờ), hoặc máy chủ chưa bật gửi email.',
     unauthorized: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
     forbidden: 'Bạn không có quyền thực hiện thao tác này.',
     server_error: 'Máy chủ gặp lỗi. Thử lại sau ít phút.',
@@ -61,6 +69,8 @@
     unknown_credential: 'Passkey này chưa được đăng ký cho tài khoản.',
     old_channel_unavailable: 'Chưa có email đã xác minh. Dùng máy cũ duyệt hoặc mã khôi phục.',
     email_send_failed: 'Không gửi được email. Thử lại sau hoặc dùng cách khác.',
+    email_disabled: 'Máy chủ chưa bật gửi email nên chưa thêm được email. Bạn vẫn có thể dùng mật khẩu hoặc vân tay.',
+    invalid_email: 'Email không hợp lệ.',
     email_quarantine: 'Email mới thêm đang trong thời gian chờ.',
     recovery_code_invalid: 'Mã khôi phục không đúng hoặc đã dùng.',
     recovery_locked: 'Nhập sai mã khôi phục quá nhiều lần. Thử lại sau.',
@@ -96,12 +106,15 @@
     const s = session();
     const tok = LS.get('ctl', null);
     const en = LS.get('enroll', null);
+    let proving = false;
     try {
       let device;
       if (method === 'POST' && (/^\/api\/devices\/(request|requests\/)/.test(path)
         || /^\/api\/(webauthn\/register|control\/totp\/(setup|enable))/.test(path))) {
         if (!window.SecurityDevice) throw new Error('device_proof_required');
+        proving = true;
         device = await window.SecurityDevice.proof(s?.userId, path);
+        proving = false;
         body = { ...body, publicKey: device.publicKey, deviceProof: device.deviceProof };
       }
       const r = await fetch(base() + path, {
@@ -118,7 +131,10 @@
       });
       return { status: r.status, ok: r.ok, body: await r.json().catch(() => ({})) };
     } catch (error) {
-      return { status: 0, ok: false, body: { error: ['device_proof_required', 'secure_context_required', 'device_storage_unavailable'].includes(error?.message) ? error.message : 'offline' } };
+      if (['device_proof_required', 'secure_context_required', 'device_storage_unavailable'].includes(error?.message)) return { status: 0, ok: false, body: { error: error.message } };
+      // Lỗi tạo khoá/ký trên máy (không phải mất mạng): nói rõ nguyên nhân thay vì "không kết nối được máy chủ".
+      if (proving) return { status: 0, ok: false, body: { error: `Không tạo được chứng minh thiết bị (${error?.name || 'Error'}: ${error?.message || ''})` } };
+      return { status: 0, ok: false, body: { error: 'offline' } };
     }
   }
 
@@ -346,6 +362,78 @@
       };
       m.q('.ctl-done').onclick = () => { m.close(); resolve(true); };
     });
+  }
+
+
+  /**
+   * Máy chưa có vân tay/Authenticator (đăng ký mới hoặc OTP lần đầu): chọn ÍT NHẤT MỘT cách để lần sau khỏi OTP.
+   * Vân tay / Face ID, mật khẩu, email đều tuỳ chọn riêng lẻ; email chỉ để khôi phục nên không tính là cách đăng nhập.
+   * Trả về true (đã có vân tay → hoàn tất bằng phiên điều khiển) hoặc { basic: true } (chỉ mật khẩu → /api/login/complete-basic).
+   */
+  function loginSetup(m, canPk, done, opts = {}) {
+    const body = m.q('.ctl-body');
+    if (opts.recovery) canPk = false;
+    let hasPw = Boolean(pendingSession?.methods?.password);
+    let hasPk = false;
+    body.innerHTML = `
+      <h3>${opts.recovery ? 'Đặt lại thông tin đăng nhập' : 'Thiết lập đăng nhập'}</h3>
+      <p class="muted">${opts.recovery ? 'Khôi phục thành công. Đặt mật khẩu mới và/hoặc email nếu muốn. Muốn bật lại vân tay / Face ID và điều khiển thiết bị, hãy làm trong Cài đặt (cần xác nhận thêm vì lý do an toàn).' : 'Chọn <b>ít nhất một</b> cách để lần sau không cần OTP. Mỗi mục đều tuỳ chọn, bạn có thể bổ sung sau trong Cài đặt.'}</p>
+      <div class="ctl-err" style="color:var(--bad)"></div><div class="ctl-ok" style="color:var(--ok,#16a34a)"></div>
+      ${opts.recovery ? '' : canPk ? '<div class="row"><button class="primary" data-a="pk">Bật vân tay / Face ID</button></div>' : '<p class="muted">Máy này không có vân tay / Face ID.</p>'}
+      <label>Mật khẩu (từ 8 ký tự)<input type="password" class="su-pw" autocomplete="new-password" placeholder="Mật khẩu"></label>
+      <label>Nhập lại mật khẩu<input type="password" class="su-pw2" autocomplete="new-password" placeholder="Nhập lại"></label>
+      <div class="row"><button class="fit" data-a="pw">Đặt mật khẩu</button></div>
+      <label>Email khôi phục (không bắt buộc)<input type="email" class="su-mail" autocomplete="email" placeholder="ban@example.com"></label>
+      <div class="row"><button class="fit" data-a="mail">Gửi mã xác minh email</button></div>
+      <div class="su-mailcode" hidden><label>Mã email<input class="su-code" inputmode="numeric" maxlength="6" placeholder="000000"></label>
+        <div class="row"><button class="fit" data-a="mailok">Xác nhận email</button></div></div>
+      <div class="row"><button class="primary" data-a="go" disabled>${opts.recovery ? 'Vào ứng dụng' : 'Hoàn tất'}</button>${opts.recovery ? '' : '<button class="fit" data-a="x">Huỷ đăng nhập</button>'}</div>`;
+    const err = (t) => { m.q('.ctl-err').textContent = t || ''; if (t) m.q('.ctl-ok').textContent = ''; };
+    const ok = (t) => { m.q('.ctl-ok').textContent = t || ''; if (t) m.q('.ctl-err').textContent = ''; };
+    const refresh = () => {
+      m.q('[data-a="go"]').disabled = !(opts.recovery || hasPw || hasPk);
+      m.q('[data-a="go"]').title = hasPw || hasPk ? '' : 'Chọn ít nhất một cách: vân tay / Face ID hoặc mật khẩu';
+    };
+    refresh();
+    const click = async (a, b) => {
+      err('');
+      if (a === 'x') return done(false);
+      if (a === 'go') return done(opts.recovery ? true : hasPk ? true : { basic: true });
+      b.disabled = true;
+      try {
+        if (a === 'pk') {
+          if (await passkeyEnrollFlow(m)) { hasPk = true; b.textContent = '✓ Đã bật vân tay / Face ID'; ok('Đã bật vân tay / Face ID.'); } else if (m.lastErr) err(errText(m.lastErr));
+        } else if (a === 'pw') {
+          const p1 = m.q('.su-pw').value; const p2 = m.q('.su-pw2').value;
+          if (p1.length < 8) return err(errText('password_weak'));
+          if (p1 !== p2) return err('Hai mật khẩu không khớp.');
+          const r = await api('POST', '/api/account/password', { password: p1 });
+          if (r.ok) { hasPw = true; if (pendingSession) pendingSession.methods = { ...(pendingSession.methods || {}), password: true }; b.textContent = '✓ Đã đặt mật khẩu'; ok('Đã đặt mật khẩu.'); } else err(errText(r.body.error));
+        } else if (a === 'mail') {
+          const r = await api('POST', '/api/account/email/request', { email: m.q('.su-mail').value.trim() });
+          if (r.ok) { m.q('.su-mailcode').hidden = false; ok('Đã gửi mã tới email. Nhập mã để xác minh.'); } else err(errText(r.body.error));
+        } else if (a === 'mailok') {
+          const r = await api('POST', '/api/account/email/verify', { otp: m.q('.su-code').value.trim() });
+          if (r.ok) { m.q('.su-mailcode').hidden = true; ok('Đã xác minh email (dùng để khôi phục sau 72 giờ).'); } else err(errText(r.body.error));
+        }
+      } finally { b.disabled = false; refresh(); }
+    };
+    body.querySelectorAll('button[data-a]').forEach((b) => { b.onclick = () => click(b.dataset.a, b); });
+  }
+
+  /** Mở khoá lại ứng dụng (đã khoá do nền/nhàn rỗi) cho tài khoản chỉ có mật khẩu. */
+  function passwordPrompt(m, done) {
+    const body = m.q('.ctl-body');
+    body.innerHTML = `
+      <h3>Mở khoá ứng dụng</h3>
+      <div class="ctl-err" style="color:var(--bad)"></div>
+      <label>Mật khẩu<input type="password" class="pp-pw" autocomplete="current-password" placeholder="Mật khẩu"></label>
+      <div class="row"><button class="primary pp-go">Mở khoá</button><button class="fit pp-x">Huỷ</button></div>`;
+    const go = () => { const v = m.q('.pp-pw').value; if (!v) { m.q('.ctl-err').textContent = errText('password_invalid'); return; } done({ basic: true, password: v }); };
+    m.q('.pp-go').onclick = go;
+    m.q('.pp-pw').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    m.q('.pp-x').onclick = () => done(false);
+    setTimeout(() => m.q('.pp-pw')?.focus(), 50);
   }
 
   /** Chọn cách đăng ký yếu tố điều khiển trên máy này (lần đầu, hoặc máy mới đã có vé). */
@@ -586,6 +674,10 @@
 
       const render = () => {
         const reason = { network_changed: 'Bạn vừa đổi mạng — cần xác nhận lại.', expired: 'Phiên điều khiển đã hết hạn.' }[info.reason] || '';
+        if (!methods.enrolled && pendingSession) {
+          if (pendingSession.src === 'resume' && methods.password) passwordPrompt(m, done); else loginSetup(m, canPk && canPlatform, done);
+          return;
+        }
         if (!methods.enrolled) { enrollChoice(m, canPk, done, info.title || 'Thiết lập bảo mật'); return; }
         body.innerHTML = `
           <h3>${escHtml(info.title || 'Xác nhận để điều khiển')}</h3>
@@ -677,13 +769,43 @@
     return r.body;
   }
 
+  /** Sau khôi phục 2 yếu tố: hộp đặt lại mật khẩu / email. Phiên khôi phục (token có rec) được phép đặt lại ngay. */
+  function recoverySetup() {
+    return new Promise((resolve) => {
+      const m = modal('<div class="ctl-body"></div>');
+      loginSetup(m, false, (v) => { m.close(); resolve(v); }, { recovery: true });
+    });
+  }
+
+  /** Chứng minh bằng vân tay / Face ID cho khôi phục (không đăng nhập): trả { cid, credential } để gửi kèm yếu tố khác. */
+  async function passkeyProof() {
+    const o = await fetch(location.origin + '/api/login/passkey/options', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: '{}' }).then((r) => r.json());
+    const cred = await navigator.credentials.get({ publicKey: { ...o, challenge: b64uToBuf(o.challenge), allowCredentials: [], hints: ['client-device'] } });
+    return {
+      cid: o.cid,
+      credential: {
+        id: cred.id,
+        response: {
+          clientDataJSON: bufToB64u(cred.response.clientDataJSON),
+          authenticatorData: bufToB64u(cred.response.authenticatorData),
+          signature: bufToB64u(cred.response.signature),
+          userHandle: cred.response.userHandle ? bufToB64u(cred.response.userHandle) : undefined,
+        },
+      },
+    };
+  }
+
   async function completeOtp(data) {
     if (!data.pending || !data.token) throw new Error(errText('login_step_up_required'));
-    pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin };
+    pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin, src: data.src, methods: data.methods };
+    if (data.methods?.passkey) LS.set('hasPasskey', true); // khôi phục cờ sau khi người dùng xoá dữ liệu trình duyệt
     LS.del('ctl');
     try {
-      if (!(await unlock({ methods: data.methods, title: data.methods?.enrolled ? 'Xác nhận đăng nhập' : 'Thiết lập bảo mật đăng nhập' }))) return null;
-      const result = await api('POST', '/api/login/complete', {});
+      // OTP vừa xác minh + tài khoản chưa có vân tay nhưng đã có mật khẩu: vào luôn, không bắt thiết lập lại
+      const direct = !data.methods?.enrolled && data.methods?.password && data.src !== 'resume';
+      const proof = direct ? { basic: true } : await unlock({ methods: data.methods, title: data.methods?.enrolled ? 'Xác nhận đăng nhập' : 'Thiết lập bảo mật đăng nhập' });
+      if (!proof) return null;
+      const result = proof.basic ? await api('POST', '/api/login/complete-basic', proof.password ? { password: proof.password } : {}) : await api('POST', '/api/login/complete', {});
       if (!result.ok) throw new Error(errText(result.body.error));
       return result.body;
     } finally {
@@ -739,7 +861,7 @@
   };
 
   window.Security = {
-    api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
+    recoverySetup, passkeyProof, api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
     reviewDevices, reviewRegisteredDevices, renderBanner, devId,
   };
 

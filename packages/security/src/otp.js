@@ -115,10 +115,31 @@ export async function requestLoginOtp(db, { phone }) {
   return { ok: true, phone: p, expiresIn: 300 };
 }
 
-export function verifyLoginOtp(db, { phone, otp }) {
+/** OTP qua email cho khôi phục 2 yếu tố: chỉ email đã xác minh và qua thời gian chờ; cùng ngân sách gửi/đoán theo số điện thoại. */
+export async function requestEmailRecoveryOtp(db, { phone }) {
+  const p = normalizePhone(phone);
+  if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
+  const user = findUserByPhone(db, p);
+  if (!user) return { error: 'user_not_found', status: 404 };
+  if (user.disabled) return { error: 'account_disabled', status: 403 };
+  const waited = Date.now() >= (user.email_verified_at || 0) + Number(process.env.EMAIL_QUARANTINE_HOURS || 72) * HOUR;
+  if (!user.email || !user.email_verified || !waited || !getConfig().email.available(user)) return { error: 'email_unavailable', status: 400 };
+  if (!takeRequestBudget(p)) return { error: 'rate_limited', status: 429 };
+  const code = genCode();
+  const challenge = createOtpChallenge(db, { phone: p, purpose: 'recover_email', codeHash: hashCode(code), contact: user.email });
+  try {
+    await getConfig().email.send(user, 'Mã khôi phục tài khoản — Giám sát PLC', `Mã khôi phục tài khoản: ${code}\nHiệu lực 5 phút. Nếu không phải bạn, hãy bỏ qua email này.`);
+  } catch {
+    deleteOtpChallenge(db, challenge.id);
+    return { error: 'email_send_failed', status: 502 };
+  }
+  return { ok: true, phone: p, expiresIn: 300 };
+}
+
+export function verifyLoginOtp(db, { phone, otp, purpose = 'login' }) {
   const p = normalizePhone(phone);
   if (failLocked(p)) return { error: 'otp_locked', status: 429 };
-  const ch = getOtpChallenge(db, p, 'login');
+  const ch = getOtpChallenge(db, p, purpose);
   if (!ch) return { error: 'otp_missing', status: 400 };
   if (Date.now() > ch.expires_at) {
     deleteOtpChallenge(db, ch.id);

@@ -91,7 +91,9 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
       const iatMs = (req.tokenPayload?.iat || 0) * 1000;
       if (Date.now() - iatMs > FRESH_LOGIN_MS) return { error: 'reauth_required', status: 401 };
       // Chống chiếm Telegram tự bật yếu tố: chỉ thiết bị đầu tiên của tài khoản được bật ngay; máy khác phải qua vé (email / chờ 24 giờ)
-      if (isFirstDevice(db, req.user.id, req.headers['x-device-id'])) return null;
+      // Mặc định TẮT (FIRST_DEVICE_ONLY=true để bật): xoá dữ liệu trình duyệt làm mất mã thiết bị, người dùng không được bị kẹt khi chưa bật yếu tố nào.
+      // Khi tắt, đăng nhập OTP mới (trong FRESH_LOGIN_MS) là đủ để bật yếu tố; máy lạ vẫn bị cảnh báo qua noteLogin.
+      if (String(process.env.FIRST_DEVICE_ONLY || 'false').toLowerCase() !== 'true' || isFirstDevice(db, req.user.id, req.headers['x-device-id'])) return null;
       return { error: 'first_device_required', status: 401 };
     }
     const c = checkControlSession(db, req.user.id, tokenOf(req), clientIp(req));
@@ -138,7 +140,11 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   }
 
   /** Thay cho "nhập mật khẩu hiện tại": có phiên điều khiển còn hạn, hoặc (chưa có yếu tố) vừa đăng nhập ≤ 10 phút. */
+  // Vừa khôi phục bằng 2 yếu tố khác nhóm (token có rec): được đặt lại mật khẩu / email ngay. Không áp cho vân tay, Authenticator,
+  // đổi số điện thoại hay đăng xuất: bật lại điều khiển vẫn phải qua máy cũ / mã khôi phục / chờ như luồng thêm thiết bị.
+  const RECOVERED_OK = new Set(['/api/account/password', '/api/account/email/request', '/api/account/email/verify']);
   function reauth(req, res, next) {
+    if (req.tokenPayload?.rec && Date.now() - req.tokenPayload.rec < FRESH_LOGIN_MS && RECOVERED_OK.has(req.path)) { req.reauthed = true; return next(); }
     const gate = enrollGate(req);
     if (gate) return out(res, gate.status, { ...gate, methods: methodsFor(req.user) });
     req.reauthed = true;

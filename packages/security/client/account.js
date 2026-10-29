@@ -61,7 +61,7 @@
       return { ok: false, data: { error: 'cancelled' } };
     }
     if (r.status === 401 && data.error === 'reauth_required') return { ok: false, data };
-    if (r.status === 401 && ['unauthorized', 'session_revoked', 'app_locked'].includes(data.error)) {
+    if (r.status === 401 && ['unauthorized', 'session_revoked'].includes(data.error)) {
       LS.del('session');
       location.replace('login.html?revoked=1');
     }

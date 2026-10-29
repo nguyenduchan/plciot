@@ -123,6 +123,7 @@ export function accountSecuritySummary(db, user) {
     emailVerified: Boolean(user.email_verified),
     emailUsableAt: user.email_verified && quarantineEnds && quarantineEnds > Date.now() ? quarantineEnds : null,
     emailEnabled: emailConfigured(),
+    hasPassword: Boolean(user.login_password_hash),
     recoveryCodesRemaining: recoveryCodesRemaining(db, user.id),
     coolingHours: coolingMs() / HOUR,
     ...getConfig().accountExtra(user),
