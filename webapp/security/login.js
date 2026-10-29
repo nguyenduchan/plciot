@@ -233,13 +233,15 @@ function stopOtpTimer() { if (otpTimer) clearInterval(otpTimer); otpTimer = null
 function startOtpTimer() {
   stopOtpTimer();
   const expiresAt = Date.now() + 300_000;
-  otpResendAt = Date.now() + 60_000;
+  otpResendAt = expiresAt; // chỉ cho gửi lại sau khi mã cũ hết hạn (5 phút); trong lúc chờ ẩn nút để khỏi bấm nhầm
   const tick = () => {
     const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
     const m = String(Math.floor(left / 60)).padStart(2, '0');
     const s = String(left % 60).padStart(2, '0');
     $('#otp-timer').textContent = left > 0 ? `Mã hết hạn sau ${m}:${s}` : 'Mã đã hết hạn. Hãy gửi lại.';
-    $('#btn-resend').disabled = loginBusy || Date.now() < otpResendAt;
+    const waiting = Date.now() < otpResendAt;
+    $('#btn-resend').hidden = waiting;
+    $('#btn-resend').disabled = loginBusy || waiting;
     if (left <= 0) stopOtpTimer();
   };
   tick();

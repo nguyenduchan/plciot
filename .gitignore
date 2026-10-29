@@ -13,3 +13,5 @@ edge/data/node_modules/
 edge/data/context/
 edge/demo-data/
 edge/.env
+
+tools/git-autosync.log

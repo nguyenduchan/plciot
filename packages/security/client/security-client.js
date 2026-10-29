@@ -51,6 +51,7 @@
     account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
     session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
     password_invalid: 'Sai mật khẩu hoặc tài khoản chưa đặt mật khẩu.',
+    missing_credentials: 'Nhập mật khẩu hoặc mã OTP.',
     password_locked: 'Nhập sai mật khẩu quá nhiều lần. Thử lại sau 15 phút hoặc dùng OTP Telegram.',
     password_new_device: 'Máy này chưa được tin cậy. Hãy đăng nhập bằng OTP Telegram một lần.',
     password_weak: 'Mật khẩu tối thiểu 8 ký tự và không được chứa số điện thoại.',
@@ -145,6 +146,22 @@
     try { return passkeySupported() && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { return false; }
   }
 
+  /**
+   * Safari/iOS chỉ mở hộp Face ID khi còn "cử chỉ chạm"; sau khi chờ mạng (lấy challenge) cử chỉ hết hạn nên lệnh bị bỏ qua
+   * và người dùng thấy "bấm không có gì xảy ra". Hết cử chỉ thì hiện nút để chạm lại ngay trước khi gọi WebAuthn.
+   */
+  function webauthn(kind, args) {
+    const call = () => navigator.credentials[kind](args);
+    if (!navigator.userActivation || navigator.userActivation.isActive) return call();
+    return new Promise((resolve, reject) => {
+      const m = modal(`<div class="ctl-body"><h3>Xác nhận vân tay / Face ID</h3><p class="muted">Bấm nút bên dưới rồi xác nhận trên điện thoại.</p>
+        <div class="row"><button class="primary" data-a="go">Xác nhận bằng vân tay / Face ID</button><button class="fit" data-a="x">Huỷ</button></div></div>`);
+      const end = (fn, v) => { m.close(); fn(v); };
+      m.q('[data-a="go"]').onclick = () => { call().then((c) => end(resolve, c), (e) => end(reject, e)); };
+      m.q('[data-a="x"]').onclick = () => end(reject, new DOMException('cancelled', 'NotAllowedError'));
+    });
+  }
+
   async function passkeyRegister(name) {
     dbg('register.start', 'Bắt đầu đăng ký Passkey/Face ID', { name });
     const o = await api('POST', '/api/webauthn/register/options', {});
@@ -156,7 +173,7 @@
     let cred;
     try {
       const opts = o.body;
-      cred = await navigator.credentials.create({
+      cred = await webauthn('create', {
         publicKey: {
           ...opts,
           challenge: b64uToBuf(opts.challenge),
@@ -204,7 +221,7 @@
     let cred;
     try {
       const opts = o.body;
-      cred = await navigator.credentials.get({
+      cred = await webauthn('get', {
         publicKey: {
           ...opts,
           challenge: b64uToBuf(opts.challenge),
@@ -433,6 +450,46 @@
     m.q('.pp-pw').onkeydown = (e) => { if (e.key === 'Enter') go(); };
     m.q('.pp-x').onclick = () => done(false);
     setTimeout(() => m.q('.pp-pw')?.focus(), 50);
+  }
+
+  /** Phiên quá 10 phút mà chưa có yếu tố nào: xác nhận lại bằng mật khẩu hoặc OTP Telegram ngay tại chỗ, không phải đăng xuất. */
+  async function reauthModal() {
+    const sec = await api('GET', '/api/account/security');
+    const hasPw = Boolean(sec.body?.hasPassword);
+    return new Promise((resolve) => {
+      const m = modal(`<div class="ctl-body">
+        <h3>Xác nhận lại để tiếp tục</h3>
+        <p class="muted">Để bảo mật, việc bật vân tay / Face ID cần bạn vừa xác nhận gần đây.</p>
+        <div class="ctl-err" style="color:var(--bad)"></div>
+        ${hasPw ? '<label>Mật khẩu<input type="password" class="ra-pw" autocomplete="current-password"></label><div class="row"><button class="primary" data-a="pw">Xác nhận bằng mật khẩu</button></div>' : ''}
+        <div class="row"><button class="fit" data-a="send">Gửi OTP Telegram</button></div>
+        <label class="ra-otp-row" hidden>Mã OTP<input class="ra-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+        <div class="row"><button class="primary ra-otp-go" data-a="otp" hidden>Xác nhận OTP</button><button class="fit" data-a="x">Huỷ</button></div></div>`);
+      const err = (t) => { m.q('.ctl-err').textContent = t || ''; };
+      const finish = (token) => {
+        const s = LS.get('session', null);
+        if (token && s) LS.set('session', { ...s, token });
+        m.close(); resolve(Boolean(token));
+      };
+      m.q('.ctl-body').querySelectorAll('button[data-a]').forEach((b) => {
+        b.onclick = async () => {
+          const a = b.dataset.a;
+          err('');
+          if (a === 'x') return finish(null);
+          if (a === 'send') {
+            const phone = String(session()?.username || '');
+            const r = await fetch(location.origin + '/api/login/request-otp', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: JSON.stringify({ phone }) }).then((x) => x.json()).catch(() => ({ error: 'offline' }));
+            if (r.error) return err(errText(r.error));
+            m.q('.ra-otp-row').hidden = false; m.q('.ra-otp-go').hidden = false; m.q('.ra-otp').focus();
+            return;
+          }
+          const body = a === 'pw' ? { password: m.q('.ra-pw').value } : { otp: m.q('.ra-otp').value.trim() };
+          const r = await api('POST', '/api/account/reauth', body);
+          if (r.ok && r.body.token) return finish(r.body.token);
+          err(errText(r.body.error));
+        };
+      });
+    });
   }
 
   /** Chọn cách đăng ký yếu tố điều khiển trên máy này (lần đầu, hoặc máy mới đã có vé). */
@@ -738,7 +795,7 @@
     dbg('login.options_ok', 'Challenge login — chờ Face ID', { cid: o.body?.cid });
     let cred;
     try {
-      cred = await navigator.credentials.get({
+      cred = await webauthn('get', {
         publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] },
       });
     } catch (e) {
@@ -779,7 +836,7 @@
   /** Chứng minh bằng vân tay / Face ID cho khôi phục (không đăng nhập): trả { cid, credential } để gửi kèm yếu tố khác. */
   async function passkeyProof() {
     const o = await fetch(location.origin + '/api/login/passkey/options', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: '{}' }).then((r) => r.json());
-    const cred = await navigator.credentials.get({ publicKey: { ...o, challenge: b64uToBuf(o.challenge), allowCredentials: [], hints: ['client-device'] } });
+    const cred = await webauthn('get', { publicKey: { ...o, challenge: b64uToBuf(o.challenge), allowCredentials: [], hints: ['client-device'] } });
     return {
       cid: o.cid,
       credential: {
@@ -873,7 +930,8 @@
     const msg = (t, bad) => { const e = $('#ctl-msg'); e.textContent = t || ''; e.classList.toggle('err', Boolean(bad)); };
 
     const hasBiometric = await platformAuthenticator();
-    $('#ctl-pk-add').hidden = !hasBiometric; // máy không có vân tay/Face ID/Windows Hello: chỉ còn Authenticator
+    // Chỉ ẩn khi trình duyệt không có WebAuthn (không HTTPS / WebView cũ). Có WebAuthn mà chưa nhận ra cảm biến vẫn cho bấm thử.
+    $('#ctl-pk-add').hidden = !passkeySupported();
     async function refresh() {
       const st = await api('GET', '/api/control/status');
       if (!st.ok) { $('#ctl-state').textContent = errText(st.body.error); return; }
@@ -901,13 +959,15 @@
     }
 
     $('#ctl-pk-add').onclick = async () => {
-      msg('');
+      msg('Đang chuẩn bị… (xác nhận vân tay / Face ID khi máy hỏi)');
+      $('#ctl-msg')?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
       if (!passkeySupported()) return msg('Trình duyệt này không hỗ trợ vân tay / Face ID (cần HTTPS). Hãy dùng Authenticator.', true);
       try {
         let r = await passkeyRegister('Thiết bị');
+        if (r.error === 'reauth_required' && await reauthModal()) r = await passkeyRegister('Thiết bị');
         if (r.error === 'step_up_required' && await unlock({ ...r, methods: (await api('GET', '/api/control/status')).body.methods })) r = await passkeyRegister('Thiết bị');
         msg(r.ok ? 'Đã thêm vân tay / Face ID.' : errText(r.error), !r.ok);
-      } catch (e) { msg(e?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : errText('webauthn_failed'), true); }
+      } catch (e) { msg(e?.name === 'NotAllowedError' ? 'Đã huỷ hoặc máy từ chối. Bấm lại và xác nhận vân tay / Face ID khi máy hỏi.' : `${errText('webauthn_failed')} (${e?.name || 'lỗi'}${e?.message ? `: ${e.message}` : ''})`, true); }
       refresh();
     };
     $('#ctl-totp-add').onclick = async () => {

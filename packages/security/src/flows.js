@@ -158,6 +158,25 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     });
     send(res, { ...payload, token: signToken({ uid: user.id, tv: user.token_version | 0, sid, rec: Date.now() }, secret), recovered: true });
   }));
+  // Xác nhận lại ngay trong app (không phải đăng xuất): mật khẩu hoặc OTP Telegram → token mới có iat mới,
+  // đủ "vừa đăng nhập" để bật vân tay / Authenticator khi phiên đã quá 10 phút.
+  app.post('/api/account/reauth', requireAuth, sensitiveStrict, asyncRoute(async (req, res) => {
+    if (req.tokenPayload.scope !== 'full') return send(res, { error: 'unauthorized', status: 401 });
+    const { password, otp } = req.body || {};
+    if (password) {
+      if (!req.user.login_password_hash) return send(res, { error: 'password_invalid', status: 401 });
+      if (passwordLocked(req.user)) return send(res, { error: 'password_locked', status: 429 });
+      if (!verifyPassword(String(password), req.user.login_password_hash)) {
+        audit(db, 'pw_fail', { userId: req.user.id, ip: clientIp(req) });
+        return send(res, { error: 'password_invalid', status: 401 });
+      }
+    } else if (otp) {
+      const r = verifyLoginOtp(db, { phone: req.user.phone || req.user.username, otp: String(otp) });
+      if (r.error) return send(res, r);
+    } else return send(res, { error: 'missing_credentials', status: 400 });
+    audit(db, 'reauth_ok', { userId: req.user.id, ip: clientIp(req), detail: password ? 'password' : 'otp' });
+    send(res, { ok: true, token: signToken({ uid: req.user.id, tv: req.user.token_version | 0, sid: req.tokenPayload.sid }, secret) });
+  }));
   // Tài khoản CHƯA có vân tay/Authenticator: không có yếu tố để chứng minh, nên OTP vừa xác minh (hoặc mật khẩu khi mở khoá lại) là đủ để vào.
   // Có yếu tố thì vẫn phải qua /api/login/complete như cũ. Điều khiển thiết bị vẫn cần step-up ở phía server.
   app.post('/api/login/complete-basic', requireAuth, sensitiveStrict, asyncRoute(async (req, res) => {

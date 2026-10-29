@@ -1,4 +1,4 @@
-# Cấu hình gửi email qua Gmail cho cloud (OTP email, khôi phục tài khoản).
+﻿# Cấu hình gửi email qua Gmail cho cloud (OTP email, khôi phục tài khoản).
 # Chạy trong PowerShell tại thư mục cloud:   powershell -ExecutionPolicy Bypass -File scripts\set-smtp.ps1
 # Mật khẩu ứng dụng chỉ nhập tại đây (ẩn khi gõ), được ghi vào cloud/.env (đã .gitignore) và không in ra màn hình.
 param(
