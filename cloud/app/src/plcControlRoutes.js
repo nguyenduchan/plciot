@@ -7,7 +7,12 @@ import { rateLimit, clientIp, audit, enrollState, checkControlSession, factorSum
 import { canControl } from './roles.js';
 import { edgeSince } from './plcProof.js';
 import { publishCmd } from './controlPublisher.js';
+import { isOpsOpen } from './opsFlags.js';
 import { plcControlConfig, validateCmd } from './plcCommands.js';
+import { controlConfigFor } from './profiles.js';
+import { resolveDeviceForUser } from './tenants.js';
+import { DEFAULT_TENANT, preferredNamespace, LEGACY_NS } from './contract.js';
+import { mayRemoteControl } from './entitlements.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
 export function mountPlcControl(app, { db, requireAuth, security }) {
@@ -21,19 +26,40 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     keyFn: (req) => `${clientIp(req)}:ctlcmd:${req.user?.id || 'na'}`,
   });
 
+  function configForUser(user) {
+    const dev = resolveDeviceForUser(db, user);
+    return controlConfigFor(dev?.profile) || plcControlConfig();
+  }
+
+  function publishOpts(user) {
+    const dev = resolveDeviceForUser(db, user);
+    return {
+      tenant: user.tenant_id || dev?.tenant_id || DEFAULT_TENANT,
+      ns: dev?.topic_ns || preferredNamespace() || LEGACY_NS,
+    };
+  }
+
   async function dispatch(user, cmd, via, ip) {
-    await publishCmd(user.notify_site, user.notify_device, cmd);
+    await publishCmd(user.notify_site, user.notify_device, cmd, publishOpts(user));
     audit(db, 'control_cmd', { userId: user.id, ip, detail: `${via} ${cmd.op || 'w'} a=${cmd.a} ${cmd.v ?? cmd.n ?? ''}` });
   }
 
   app.post('/api/control/cmd', requireAuth, cmdLimit, async (req, res) => {
-    const cfg = plcControlConfig();
+    if (!isOpsOpen('remote_control_open')) {
+      return out(res, 503, { error: 'remote_control_paused' });
+    }
+    const cfg = configForUser(req.user);
     if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
     const v = validateCmd(req.body, cfg);
     if (v.error) return out(res, 400, v);
     const ip = clientIp(req);
     let via = 'read';
     if (v.write) {
+      const ent = mayRemoteControl(req.user, { ip });
+      if (!ent.ok) {
+        audit(db, 'control_denied', { userId: req.user.id, ip, detail: `entitlement ${ent.reason}` });
+        return out(res, 403, { error: 'subscription_denied', reason: ent.reason });
+      }
       const es = enrollState(db, req.user);
       if (es.locked) {
         audit(db, 'control_denied', { userId: req.user.id, ip, detail: `enroll_required a=${v.cmd.a}` });
@@ -88,6 +114,9 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
 
   /** Client hỏi lại sau khi bấm nút vật lý; lệnh chỉ phát khi PLC báo cạnh tín hiệu mới ở ngõ vào đó. */
   app.get('/api/control/confirm/:id', requireAuth, cmdLimit, async (req, res) => {
+    if (!isOpsOpen('remote_control_open')) {
+      return out(res, 503, { error: 'remote_control_paused' });
+    }
     const p = pendingConfirm.get(req.params.id);
     if (!p || p.userId !== req.user.id) return out(res, 404, { error: 'not_found' });
     if (!canControl(req.user) || p.sessionId !== req.tokenPayload?.sid || p.site !== req.user.notify_site || p.device !== req.user.notify_device) {
@@ -115,12 +144,20 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
 
 
   app.post('/api/station/cmd', sAuth, stationLimit, async (req, res) => {
-    const cfg = plcControlConfig();
+    if (!isOpsOpen('remote_control_open')) {
+      return out(res, 503, { error: 'remote_control_paused' });
+    }
     const owner = req.stationOwner;
+    const target = {
+      id: owner.id,
+      notify_site: req.station.site,
+      notify_device: req.station.device,
+      tenant_id: owner.tenant_id,
+    };
+    const cfg = configForUser(target);
     if (!canControl(owner)) return out(res, 403, { error: 'forbidden' });
     const v = validateCmd(req.body, cfg);
     if (v.error) return out(res, 400, v);
-    const target = { id: owner.id, notify_site: req.station.site, notify_device: req.station.device };
     const ip = clientIp(req);
     if (v.write && v.critical && cfg.physicalBit !== null) {
       const id = crypto.randomBytes(8).toString('hex');

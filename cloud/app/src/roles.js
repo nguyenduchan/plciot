@@ -4,6 +4,8 @@
  *   operator — xem + điều khiển (gửi lệnh) thiết bị của mình
  *   viewer   — chỉ xem; broker không cấp quyền ghi …/cmd
  */
+import { normalizePhone } from '@plciot/security';
+
 export const ROLES = ['admin', 'operator', 'viewer'];
 export const DEFAULT_ROLE = 'operator';
 
@@ -27,3 +29,31 @@ export function parseScopes(input) {
 export const isRole = (r) => ROLES.includes(r);
 export const isAdmin = (u) => u?.role === 'admin';
 export const canControl = (u) => u?.role === 'admin' || u?.role === 'operator';
+
+/**
+ * SĐT được phép vào Console / API admin (chỉ tài khoản của bạn).
+ * ADMIN_DASHBOARD_PHONES ưu tiên; không set thì dùng ADMIN_PHONES.
+ * Cả hai trống → mọi user role=admin (legacy, không khuyến nghị production).
+ */
+export function dashboardAdminPhones() {
+  const raw = process.env.ADMIN_DASHBOARD_PHONES || process.env.ADMIN_PHONES || '';
+  return [...new Set(String(raw).split(',').map((s) => normalizePhone(s.trim())).filter(Boolean))];
+}
+
+export function userPhone(u) {
+  return normalizePhone(u?.phone || u?.username || '');
+}
+
+/** Admin + (nếu có allow-list) đúng SĐT của bạn. */
+export function isDashboardAdmin(u) {
+  if (!isAdmin(u)) return false;
+  const list = dashboardAdminPhones();
+  if (!list.length) return true;
+  return list.includes(userPhone(u));
+}
+
+export function canPromoteToAdmin(phone) {
+  const list = dashboardAdminPhones();
+  if (!list.length) return true;
+  return list.includes(normalizePhone(phone));
+}

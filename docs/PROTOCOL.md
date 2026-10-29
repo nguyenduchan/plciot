@@ -40,19 +40,22 @@ Cùng bản đồ D như trên; giao diện PC, web nhiều màn hình và đi�
 
 ## 2. MQTT (Gateway ⇄ Cloud ⇄ App)
 
-Base topic: `plc/<site>/<device>`
+Base topic (legacy): `plc/<site>/<device>`  
+Base topic (đa tenant / partner): `iot/<tenant>/<site>/<device>`  
+
+Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PARTNER-INTEGRATION.md](PARTNER-INTEGRATION.md). Contract runtime: `GET /api/v1/contract`.
 
 | Topic | Chiều | Nội dung | Retain |
 |---|---|---|---|
-| `<base>/telemetry` | gw → app | `{"r":[D0..D39]}` mỗi 1 s | có |
+| `<base>/telemetry` | gw → app | `{"schema":1,"r":[D0..D39]}` mỗi 1 s (`schema` khuyến nghị) | có |
 | `<base>/history` | gw → app | `{"c":[49],"s":giây,"n":số giờ,"r":giây chạy,"m":[49]}` mỗi 60 s (lịch sử theo giờ do PLC giữ) | có |
 | `<base>/status` | gw → app | `online` / `plc_fault` / `offline` (LWT) | có |
-| `<base>/cmd` | app → gw | `{"id":"x","a":4,"v":5}` ghi D4 = 5 | không |
+| `<base>/cmd` | app → gw | `{"schema":1,"id":"x","a":4,"v":5}` ghi D4 = 5 (chỉ user `ctl`) | không |
 | `<base>/ack` | gw → app | `{"id":"x","ok":true}` | không |
 | `<base>/cmd` (đọc) | app → gw | `{"id":"x","op":"read","a":100,"n":4}` → ack `{"id":"x","ok":true,"a":100,"v":[..4 số..]}` | không |
 
-Tài khoản `gw` và `app` được phân quyền riêng trong `cloud/config/acl`:
-app không thể giả mạo telemetry, gateway không thể gửi lệnh.
+Tài khoản `gw` / `edge` (thiết bị) và user app được phân quyền riêng trong `cloud/config/acl`:
+app không thể giả mạo telemetry; chỉ `ctl` (app server) được ghi lệnh.
 
 ## Lịch sử theo giờ
 PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thực: app tính mốc của giờ hiện tại từ `s` (giây đã trôi qua) và đồng hồ của máy người dùng. Khi PLC mất điện, thời gian tắt máy không được đếm, nên một khung giờ có thể dài hơn 60 phút thực.

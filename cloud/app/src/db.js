@@ -3,6 +3,9 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { normalizePhone, phoneVariants } from './phone.js';
 import { initHistoryTables } from './historyStore.js';
+import { initPolicyTables } from './policy.js';
+import { initHomePcTable } from './homePc.js';
+import { initOpsFlagsTable, loadOpsFlags } from './opsFlags.js';
 import { migrateSecurity } from '@plciot/security';
 
 function migrate(db) {
@@ -35,6 +38,56 @@ function migrate(db) {
   if (!hadOwner) {
     db.exec("UPDATE users SET site_owner = 1 WHERE disabled = 0 AND role IN ('admin','operator') AND id IN (SELECT MIN(id) FROM users WHERE disabled = 0 AND role IN ('admin','operator') GROUP BY notify_site, notify_device)");
   }
+  // Multi-tenant platform (docs/PARTNER-INTEGRATION.md)
+  add('tenant_id', "tenant_id TEXT NOT NULL DEFAULT 'default'");
+  // Gói đăng ký tay (không thanh toán online) — docs/SUBSCRIPTION-OPS.md
+  add('sub_plan', 'sub_plan TEXT');
+  add('sub_expires_at', 'sub_expires_at INTEGER');
+  add('remote_control', 'remote_control INTEGER NOT NULL DEFAULT 1');
+}
+
+function migratePlatform(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      profile TEXT NOT NULL DEFAULT 'conveyor-v1',
+      api_key_hash TEXT,
+      sub_plan TEXT,
+      sub_expires_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      mqtt_user TEXT,
+      mqtt_pass TEXT,
+      topic_ns TEXT NOT NULL DEFAULT 'iot',
+      profile TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(tenant_id, site, device)
+    );
+    CREATE INDEX IF NOT EXISTS idx_devices_mqtt ON devices(mqtt_user);
+    CREATE INDEX IF NOT EXISTS idx_devices_tenant ON devices(tenant_id, status);
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      events TEXT NOT NULL DEFAULT 'status,alarm',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id, enabled);
+  `);
+  // tenants tạo trước khi có cột gói → ALTER an toàn
+  const tcols = db.prepare('PRAGMA table_info(tenants)').all().map((c) => c.name);
+  if (!tcols.includes('sub_plan')) db.exec('ALTER TABLE tenants ADD COLUMN sub_plan TEXT');
+  if (!tcols.includes('sub_expires_at')) db.exec('ALTER TABLE tenants ADD COLUMN sub_expires_at INTEGER');
 }
 
 export function openDb(dataDir) {
@@ -77,8 +130,19 @@ export function openDb(dataDir) {
     CREATE INDEX IF NOT EXISTS idx_site_invites_phone ON site_invites(phone, status);
   `);
   migrate(db);
+  migratePlatform(db);
   migrateSecurity(db); // bảng/cột của lõi bảo mật (passkey, phiên điều khiển, thiết bị, trạm…)
   initHistoryTables(db);
+  initPolicyTables(db);
+  initHomePcTable(db);
+  initOpsFlagsTable(db);
+  loadOpsFlags(db);
+  // Tránh import vòng: seed tenant mặc định bằng SQL thuần
+  const def = db.prepare("SELECT id FROM tenants WHERE id = 'default'").get();
+  if (!def) {
+    db.prepare("INSERT INTO tenants (id, name, profile, created_at) VALUES ('default', 'Default', 'conveyor-v1', ?)")
+      .run(Date.now());
+  }
   return db;
 }
 

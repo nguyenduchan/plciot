@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { configure, emailChannelAvailable, htmlToText, hashPassword } from '@plciot/security';
-import { upsertUser, upsertTelegramUser } from './db.js';
+import { upsertUser, upsertTelegramUser, findUserById } from './db.js';
 import { copyDir, resolveBundleRoot } from './bundle.js';
 import { shellVersion } from './bundleSync.js';
 import { resolveTelegramUser } from './sharedTg.js';
@@ -10,6 +10,7 @@ import { sendTelegramMessage, telegramConfigured } from './telegram.js';
 import { sendEmail, emailConfigured, isValidEmail } from './mailer.js';
 import { provisionUserMqtt } from './mqttProvision.js';
 import { retentionInfo } from './retention.js';
+import { applyDefaultSubscription, subscriptionInfo } from './entitlements.js';
 import { plcSnapshot, edgeSince, pickProofBit } from './plcProof.js';
 
 export async function notifyOwner(db, user, { subject, html, text }) {
@@ -40,7 +41,10 @@ configure({
         username: phone, phone, chatId: Number(contact), folderPath: folder, version: shellVersion(webappSrc),
         passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')), notifySite: `s${phone}`, notifyDevice: 'plc01',
       });
-      return provisionUserMqtt(db, user).user;
+      const provisioned = provisionUserMqtt(db, user).user;
+      // Thống nhất với thiết bị/partner: gói mặc định (monitor), admin kích hoạt pro trên Console
+      applyDefaultSubscription(db, provisioned.id);
+      return findUserById(db, provisioned.id);
     },
     applyContact: (db, user, contact, phone) => {
       db.prepare('UPDATE users SET chat_id = ? WHERE id = ?').run(Number(contact), user.id);
@@ -64,7 +68,7 @@ configure({
       }
     },
   },
-  accountExtra: retentionInfo,
+  accountExtra: (user) => ({ ...retentionInfo(user), subscription: subscriptionInfo(user) }),
   presence: {
     enabled: true,
     start: (_db, user) => plcSnapshot(user.notify_site, user.notify_device).fresh ? { bit: pickProofBit() } : { error: 'plc_offline', status: 409 },

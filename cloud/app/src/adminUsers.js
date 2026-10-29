@@ -8,8 +8,9 @@ import {
   provisionUserMqtt, rebuildAclFromUsers, reloadMosquitto,
   setMosquittoPassword, randomMqttPassword,
 } from './mqttProvision.js';
-import { ROLES, MONITOR_SCOPES, isRole, userScopes, parseScopes } from './roles.js';
+import { ROLES, MONITOR_SCOPES, isRole, userScopes, parseScopes, canPromoteToAdmin } from './roles.js';
 import { audit } from '@plciot/security';
+import { applyDefaultSubscription } from './entitlements.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
@@ -46,6 +47,7 @@ export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
   const p = normalizePhone(phone);
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
   if (!isRole(role)) return { error: 'invalid_role', status: 400 };
+  if (role === 'admin' && !canPromoteToAdmin(p)) return { error: 'admin_not_allowlisted', status: 403 };
   const siteName = String(site || `s${p}`);
   const dev = String(device || 'plc01');
   if (!SAFE.test(siteName) || !SAFE.test(dev)) return { error: 'invalid_site_or_device', status: 400 };
@@ -60,8 +62,10 @@ export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
   `).run(p, hashPassword(crypto.randomBytes(24).toString('hex')), folder, p, siteName, dev, role, admin.id);
   if (scopes) db.prepare('UPDATE users SET monitor_scopes = ? WHERE id = ?').run(scopes.join(','), info.lastInsertRowid);
   const { user, provision } = provisionUserMqtt(db, findUserById(db, info.lastInsertRowid), { site: siteName, device: dev });
+  applyDefaultSubscription(db, user.id);
+  const fresh = findUserById(db, user.id);
   audit(db, 'admin_user_create', { userId: admin.id, ip, detail: `${user.id} ${role} ${siteName}/${dev}` });
-  return { ok: true, user: publicUser(user), provision };
+  return { ok: true, user: publicUser(fresh), provision };
 }
 
 export function updateUser(db, admin, id, patch, { ip }) {
@@ -77,6 +81,9 @@ export function updateUser(db, admin, id, patch, { ip }) {
     if (!isRole(patch.role)) return { error: 'invalid_role', status: 400 };
     if (u.role === 'admin' && patch.role !== 'admin' && (self || activeAdmins(db) <= 1)) {
       return { error: 'last_admin', status: 409 };
+    }
+    if (patch.role === 'admin' && !canPromoteToAdmin(u.phone || u.username)) {
+      return { error: 'admin_not_allowlisted', status: 403 };
     }
     sets.push('role = ?'); vals.push(patch.role);
   }

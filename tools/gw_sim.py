@@ -77,10 +77,24 @@ def main():
     ap.add_argument('--host', default='127.0.0.1'); ap.add_argument('--port', type=int, default=1883)
     ap.add_argument('--user', default='gw'); ap.add_argument('--password', default='')
     ap.add_argument('--site', default='factory1'); ap.add_argument('--dev', default='plc01')
+    ap.add_argument('--ns', choices=('plc', 'iot'), default='plc',
+                    help='topic namespace: plc/<site>/<dev> (legacy) hoặc iot/<tenant>/<site>/<dev>')
+    ap.add_argument('--tenant', default='default', help='tenant id khi --ns=iot (partner contract)')
+    ap.add_argument('--schema', type=int, default=1, help='payload schema version (0 = omit field)')
     ap.add_argument('--hour', type=int, default=3600, help='seconds per history slot (use 60 to see rollovers)')
     ap.add_argument('--hist-every', type=int, default=10, help='seconds between history publishes')
     a = ap.parse_args()
-    base = f'plc/{a.site}/{a.dev}'
+    if a.ns == 'iot':
+        base = f'iot/{a.tenant}/{a.site}/{a.dev}'
+    else:
+        base = f'plc/{a.site}/{a.dev}'
+    print('topic base', base)
+
+    def body(obj):
+        if a.schema:
+            return json.dumps({'schema': a.schema, **obj})
+        return json.dumps(obj)
+
     sk = socket.create_connection((a.host, a.port))
     flags = 0x02 | 0x04 | 0x08 | 0x20 | 0x80 | 0x40   # clean, will(qos1, retain), user, pass
     sk.sendall(pkt(0x10, s('MQTT') + bytes([4, flags]) + struct.pack('>H', 30) +
@@ -124,17 +138,24 @@ def main():
         with lock: todo, cmds[:] = cmds[:], []
         for raw in todo:
             try:
-                c = json.loads(raw); ok = c['a'] in WRITABLE
+                c = json.loads(raw)
+                if c.get('op') == 'read':
+                    n = int(c.get('n') or 1); addr = int(c['a'])
+                    vals = plc.d[addr:addr + n]
+                    print('CMD read', raw, '->', vals)
+                    pub(base + '/ack', body({'id': c.get('id'), 'ok': True, 'a': addr, 'v': vals}))
+                    continue
+                ok = c['a'] in WRITABLE
                 if ok: plc.d[c['a']] = int(c['v']) & 0xFFFF
                 print('CMD', raw, '->', 'ok' if ok else 'REFUSED')
-                pub(base + '/ack', json.dumps({'id': c.get('id'), 'ok': ok}))
+                pub(base + '/ack', body({'id': c.get('id'), 'ok': ok}))
             except Exception as e:
                 print('bad cmd', raw, e)
         plc.scan()
-        pub(base + '/telemetry', json.dumps({'r': plc.d[:40]}), True)
+        pub(base + '/telemetry', body({'r': plc.d[:40], 'ts': int(time.time())}), True)
         if tick % a.hist_every == 0:
             d = plc.d
-            pub(base + '/history', json.dumps({'c': d[100:149], 's': d[149], 'n': d[150], 'r': d[199], 'm': d[200:249]}), True)
+            pub(base + '/history', body({'c': d[100:149], 's': d[149], 'n': d[150], 'r': d[199], 'm': d[200:249]}), True)
         tick += 1
         time.sleep(1)
 

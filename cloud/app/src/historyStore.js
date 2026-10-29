@@ -42,6 +42,27 @@ export function queryTelemetry(db, { site, device, since, until, limit = 5000 })
   return rows;
 }
 
+/** Mẫu telemetry mới nhất (hoặc null). */
+export function queryLastTelemetry(db, { site, device }) {
+  return db.prepare(`
+    SELECT id, ts AS t, o, i, a, c, s, payload
+    FROM mqtt_events
+    WHERE site = ? AND device = ? AND kind = 'telemetry' AND o IS NOT NULL
+    ORDER BY ts DESC
+    LIMIT 1
+  `).get(site, device) || null;
+}
+
+export function queryLastEvent(db, { site, device, kind }) {
+  return db.prepare(`
+    SELECT id, ts, kind, payload
+    FROM mqtt_events
+    WHERE site = ? AND device = ? AND kind = ?
+    ORDER BY ts DESC
+    LIMIT 1
+  `).get(site, device, kind) || null;
+}
+
 export function queryEvents(db, { site, device, since, until, kinds, limit = 2000 }) {
   const lim = Math.min(Math.max(1, limit | 0), 5000);
   let sql = `

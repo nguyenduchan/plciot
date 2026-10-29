@@ -26,18 +26,25 @@ const hms = (s) => `${Math.floor(s / 3600)} giờ ${String(Math.floor(s / 60) % 
 class MqttLink {
   constructor(h) {
     this.h = h;
-    this.base = `plc/${cfg.site}/${cfg.dev}`;
+    // topicBase từ server (mqtt.topicBase); fallback plc/<site>/<dev> cho bản cũ / demo
+    this.bases = (Array.isArray(cfg.topicBases) && cfg.topicBases.length)
+      ? cfg.topicBases
+      : [cfg.topicBase || `plc/${cfg.site}/${cfg.dev}`];
+    this.base = this.bases[0];
     this.c = new MqttLite({ url: cfg.url, user: cfg.user, pass: cfg.pass })
       .on('connect', () => { h.status('connecting'); })
       .on('close', () => h.status('offline'))
       .on('error', () => h.status('offline'))
       .on('message', (t, p) => this.msg(t, p));
-    ['telemetry', 'status', 'ack', 'history'].forEach((k) => this.c.subscribe(`${this.base}/${k}`));
+    this.bases.forEach((b) => {
+      ['telemetry', 'status', 'ack', 'history'].forEach((k) => this.c.subscribe(`${b}/${k}`));
+    });
   }
   start() { this.h.status('offline'); this.c.connect(); }
   stop() { this.c.close(); }
   msg(t, p) {
-    const k = t.slice(this.base.length + 1);
+    const base = this.bases.find((b) => t === b || t.startsWith(b + '/')) || this.base;
+    const k = t.slice(base.length + 1);
     try {
       if (k === 'status') this.h.status(p);
       else if (k === 'telemetry') this.h.regs(JSON.parse(p).r);
@@ -117,7 +124,23 @@ function toast(msg) {
 function applyRole(role) {
   S.role = role || 'operator';
   document.body.classList.toggle('viewer', S.role === 'viewer');
-  const l = $('#admin-link'); if (l) l.hidden = S.role !== 'admin';
+  // Link Console chỉ hiện khi server báo là dashboard admin (SĐT allow-list)
+  const l = $('#admin-link');
+  if (l) l.hidden = !(S.dashboardAdmin || S.role === 'admin');
+}
+function applySubscription(sub) {
+  const panel = $('#sub-panel');
+  const info = $('#sub-info');
+  if (!panel || !info) return;
+  if (!sub) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const exp = sub.expiresAt ? new Date(sub.expiresAt).toLocaleDateString() : 'không hết hạn';
+  if (sub.pendingActivation) {
+    info.textContent = 'Chờ admin kích hoạt gói trên cloud. Hiện chỉ xem (nếu có dữ liệu).';
+  } else {
+    info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có điều khiển' : 'chỉ giám sát'} · hết hạn: ${exp}`
+      + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));
+  }
 }
 /* Đã đăng nhập (không demo): lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
 const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
@@ -420,8 +443,10 @@ async function alignSiteDevFromSession() {
     });
     if (!r.ok) return;
     const me = await r.json();
+    S.dashboardAdmin = Boolean(me.dashboardAdmin);
     applyRole(me.role);
-    LS.set('session', { ...session, role: me.role });
+    applySubscription(me.subscription);
+    LS.set('session', { ...session, role: me.role, dashboardAdmin: S.dashboardAdmin });
     let changed = false;
     if (me.mqtt) {
       const cv = me.mqtt.controlVia || 'mqtt'; if (cfg.controlVia !== cv) { cfg.controlVia = cv; changed = true; }
@@ -429,6 +454,11 @@ async function alignSiteDevFromSession() {
       if (cfg.pass !== me.mqtt.pass) { cfg.pass = me.mqtt.pass; changed = true; }
       if (cfg.site !== me.mqtt.site) { cfg.site = me.mqtt.site; changed = true; }
       if (cfg.dev !== me.mqtt.device) { cfg.dev = me.mqtt.device; changed = true; }
+      if (me.mqtt.topicBase && cfg.topicBase !== me.mqtt.topicBase) { cfg.topicBase = me.mqtt.topicBase; changed = true; }
+      const bases = me.mqtt.topicBases;
+      if (Array.isArray(bases) && JSON.stringify(cfg.topicBases) !== JSON.stringify(bases)) {
+        cfg.topicBases = bases; changed = true;
+      }
     } else if (me.notifySite) {
       if (cfg.site !== me.notifySite) { cfg.site = me.notifySite; changed = true; }
       if (cfg.dev !== me.notifyDevice) { cfg.dev = me.notifyDevice; changed = true; }

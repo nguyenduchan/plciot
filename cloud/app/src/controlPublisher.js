@@ -1,7 +1,8 @@
 import mqtt from 'mqtt';
+import { topicOf, withSchema, DEFAULT_TENANT, preferredNamespace, LEGACY_NS } from './contract.js';
 
 /**
- * Kênh duy nhất được phép ghi plc/<site>/<device>/cmd (user MQTT `ctl`, xem mqttProvision.js).
+ * Kênh duy nhất được phép ghi …/cmd (user MQTT `ctl`, xem mqttProvision.js).
  * Điện thoại không còn quyền ghi cmd: lệnh phải đi qua /api/control/cmd để bị kiểm tra step-up.
  */
 let client = null;
@@ -38,11 +39,27 @@ function whenConnected(c) {
   });
 }
 
-export async function publishCmd(site, device, cmd) {
-  if (override) return override(site, device, cmd);
+/**
+ * @param {string} site
+ * @param {string} device
+ * @param {object} cmd
+ * @param {{ tenant?: string, ns?: string }} [opts]
+ */
+export async function publishCmd(site, device, cmd, opts = {}) {
+  const payload = withSchema(cmd);
+  if (override) return override(site, device, payload, opts);
   const c = ensure();
   await whenConnected(c);
+  const ns = opts.ns || preferredNamespace();
+  const tenant = opts.tenant || DEFAULT_TENANT;
+  // Thiết bị legacy (ns=plc) không có tenant trong topic
+  const topic = topicOf({
+    ns: ns === LEGACY_NS ? LEGACY_NS : ns,
+    tenant,
+    site,
+    device,
+  }, 'cmd');
   return new Promise((resolve, reject) => {
-    c.publish(`plc/${site}/${device}/cmd`, JSON.stringify(cmd), { qos: 1 }, (err) => (err ? reject(err) : resolve()));
+    c.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => (err ? reject(err) : resolve({ topic })));
   });
 }

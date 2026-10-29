@@ -21,6 +21,7 @@
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
     step_up_required: 'Cần xác nhận bằng vân tay / Authenticator.',
     reauth_required: 'Hãy đăng xuất rồi đăng nhập lại trước khi thao tác quản trị.',
+    admin_not_allowlisted: 'Chỉ SĐT trong ADMIN_DASHBOARD_PHONES mới được làm admin dashboard.',
   };
 
   function msg(text, cls) { const m = $('#msg'); m.textContent = text || ''; m.className = cls || ''; }

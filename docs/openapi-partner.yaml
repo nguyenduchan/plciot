@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: plciot Partner API
+  version: "1.0"
+  description: |
+    API tích hợp cho công ty solution / thiết bị IoT.
+    Auth: `Authorization: Bearer <apiKey>` (cấp lúc tạo tenant).
+    Contract sống: GET /api/v1/contract
+servers:
+  - url: https://plc.example.com
+paths:
+  /api/v1/contract:
+    get:
+      summary: Hợp đồng MQTT + profiles (public)
+      responses:
+        "200":
+          description: schema, namespaces, endpoints
+  /api/v1/me:
+    get:
+      security: [{ ApiKey: [] }]
+      summary: Thông tin tenant
+      responses:
+        "200":
+          description: tenant + profile
+  /api/v1/devices:
+    get:
+      security: [{ ApiKey: [] }]
+      summary: Liệt kê thiết bị
+      responses:
+        "200":
+          description: devices[]
+    post:
+      security: [{ ApiKey: [] }]
+      summary: Provision thiết bị MQTTS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [site, device]
+              properties:
+                site: { type: string }
+                device: { type: string }
+                ns: { type: string, enum: [iot, plc], default: iot }
+                profile: { type: string }
+                rotate: { type: boolean }
+      responses:
+        "200":
+          description: mqtt credentials + topicBase + endpoints
+  /api/v1/devices/{site}/{device}/rotate:
+    post:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - $ref: "#/components/parameters/device"
+      summary: Xoay mật khẩu MQTT
+      responses:
+        "200":
+          description: credentials mới
+  /api/v1/devices/{site}/{device}:
+    delete:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - $ref: "#/components/parameters/device"
+      summary: Thu hồi thiết bị
+      responses:
+        "200":
+          description: ok
+  /api/v1/devices/{site}/{device}/telemetry/last:
+    get:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - $ref: "#/components/parameters/device"
+      summary: Telemetry + status mới nhất
+      responses:
+        "200":
+          description: telemetry, status
+  /api/v1/devices/{site}/{device}/history:
+    get:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - $ref: "#/components/parameters/device"
+        - { name: since, in: query, schema: { type: integer } }
+        - { name: until, in: query, schema: { type: integer } }
+        - { name: kind, in: query, schema: { type: string, default: telemetry } }
+        - { name: limit, in: query, schema: { type: integer, default: 2000 } }
+      summary: Lịch sử telemetry hoặc events
+      responses:
+        "200":
+          description: samples hoặc events
+  /api/v1/devices/{site}/{device}/cmd:
+    post:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - $ref: "#/components/parameters/device"
+      summary: Gửi lệnh (policy theo profile thiết bị)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [a, v]
+                  properties:
+                    id: { type: string }
+                    a: { type: integer }
+                    v: { type: integer }
+                - type: object
+                  required: [op, a]
+                  properties:
+                    id: { type: string }
+                    op: { const: read }
+                    a: { type: integer }
+                    n: { type: integer }
+      responses:
+        "200":
+          description: { ok, id, via }
+  /api/v1/webhooks:
+    get:
+      security: [{ ApiKey: [] }]
+      summary: Danh sách webhook
+      responses:
+        "200":
+          description: webhooks[]
+    post:
+      security: [{ ApiKey: [] }]
+      summary: Đăng ký webhook (HTTPS)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items: { type: string, enum: [status, alarm, count_done, telemetry] }
+      responses:
+        "200":
+          description: webhook + secret (một lần)
+  /api/v1/webhooks/{id}:
+    delete:
+      security: [{ ApiKey: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      summary: Xoá webhook
+      responses:
+        "200":
+          description: ok
+components:
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+  parameters:
+    site:
+      name: site
+      in: path
+      required: true
+      schema: { type: string }
+    device:
+      name: device
+      in: path
+      required: true
+      schema: { type: string }

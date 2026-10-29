@@ -18,13 +18,18 @@ import {
 } from '@plciot/security';
 import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
-import { isAdmin, userScopes, canControl } from './roles.js';
+import { isDashboardAdmin, userScopes, canControl } from './roles.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
 import { plcControlConfig } from './plcCommands.js';
 import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
+import { mountPartnerRoutes } from './partnerRoutes.js';
+import { mountAdminOps } from './adminOps.js';
+import { contractInfo } from './contract.js';
+import { subscriptionInfo } from './entitlements.js';
+import { loginGateMiddleware } from './opsFlags.js';
 
 const PORT = Number(process.env.PORT || 3080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -49,6 +54,7 @@ configure({
 const db = openDb(DATA_DIR);
 applyBootstrapAdmins(db);
 const app = express();
+app.locals.db = db;
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
@@ -59,9 +65,12 @@ app.use('/api/', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store
 
 // Global soft limit (per IP)
 app.use('/api/', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_API || 120) }));
+// Kill-switch đăng nhập (Console Monitor)
+app.use(loginGateMiddleware);
 
 function requireAdmin(req, res, next) {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
+  // Chỉ SĐT trong ADMIN_DASHBOARD_PHONES / ADMIN_PHONES (docs/ADMIN-REMOTE.md)
+  if (!isDashboardAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
   next();
 }
 
@@ -92,6 +101,7 @@ function appPayload(user) {
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
     role: u.role,
+    dashboardAdmin: isDashboardAdmin(u),
   };
 }
 
@@ -108,7 +118,7 @@ const send = (res, result) => res.status(result.error ? result.status || 400 : 2
 const ipOf = clientIp;
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, contract: contractInfo() });
 });
 
 app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, reauth, (req, res) => {
@@ -130,7 +140,9 @@ app.get('/api/me', requireAuth, (req, res) => {
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
     role: u.role,
+    dashboardAdmin: isDashboardAdmin(u),
     ...retentionInfo(u),
+    subscription: subscriptionInfo(u),
     mqtt: mqttClientConfig(u),
   });
 });
@@ -163,6 +175,19 @@ app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) 
 mountPlcControl(app, { db, requireAuth, security: controlApi });
 /* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
 mountSite(app, { db, requireAuth, reauth });
+/* ---------- Nền tảng đa tenant: admin tenants + partner API (MQTTS provision) ---------- */
+mountPartnerRoutes(app, { db, requireAuth, reauth });
+/* ---------- Console vận hành: gói / thiết bị / DB ---------- */
+mountAdminOps(app, {
+  db, requireAuth, requireAdmin, reauth,
+  dataDir: DATA_DIR,
+  shellDir: SHELL_DIR,
+  adminWrite: rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_ADMIN || 30),
+    keyFn: (req) => `${clientIp(req)}:admin-ops:${req.user?.id || 'na'}`,
+  }),
+});
 
 app.get('/api/history/telemetry', requireAuth, (req, res) => {
   // Always bind to the authenticated user's site/device (client query cannot pivot to another tenant)
@@ -252,8 +277,11 @@ if (fs.existsSync(SHELL_DIR)) {
     index: false,
     etag: true,
     setHeaders(res, filePath) {
-      if (filePath.endsWith('sw.js')) {
+      // HTML/JS: luôn kiểm tra bản mới sau deploy (refresh = phiên bản mới nhất)
+      if (/\.(html?|js|css|json|svg)$/i.test(filePath) || filePath.endsWith('sw.js')) {
         res.setHeader('Cache-Control', 'no-cache');
+      }
+      if (filePath.endsWith('sw.js')) {
         res.setHeader('Service-Worker-Allowed', '/');
       }
     },

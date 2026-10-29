@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Console IoT — Quản lý dịch vụ</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:16px;max-width:960px;margin:auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.top h1{font-size:20px;margin:0}
+.top a{color:var(--acc);text-decoration:none;font-weight:600}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;background:var(--bg);padding:4px;border-radius:12px}
+.tabs button{flex:1;min-width:64px;padding:10px 6px;font-size:12.5px;font-weight:600;border-radius:10px;background:transparent;color:var(--mut)}
+.tabs button.on{background:var(--card);color:var(--acc);box-shadow:0 1px 3px #0002}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.sw:last-child{border:0}
+.sw .meta{flex:1;min-width:0}
+.sw .meta b{display:block;font-size:14px}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
+.pulse.bad{background:var(--bad)}.pulse.warn{background:var(--warn)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 0 0 1px var(--line)}
+.stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.row-card{padding:12px 0;border-bottom:1px solid var(--line);display:grid;gap:6px}
+.row-card:last-child{border:0}
+.row-card .acts{display:flex;flex-wrap:wrap;gap:6px}
+.row-card .acts button,.row-card .acts select,.row-card .acts input{padding:8px 10px;font-size:13px;border-radius:10px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accbg);color:var(--acc)}
+.tag.warn{background:#d9770622;color:var(--warn)}.tag.bad{background:#dc262622;color:var(--bad)}.tag.ok{background:#16a34a22;color:var(--ok)}
+.tag.mut{background:#6b788522;color:var(--mut)}
+#msg{min-height:1.3em;font-size:14px;margin:0 0 10px}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
+.help{font-size:13px;color:var(--mut);line-height:1.5}
+.panel{max-width:none;margin-bottom:12px}
+code{font-size:12px;background:var(--bg);padding:1px 6px;border-radius:6px}
+.cred{font-size:12px;background:var(--bg);padding:10px;border-radius:10px;word-break:break-all;white-space:pre-wrap;display:none}
+.cred.show{display:block}
+.hidden{display:none!important}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Console dịch vụ IoT</h1>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <a href="admin.html">Người dùng</a>
+    <a href="index.html">← App</a>
+  </div>
+</div>
+<p id="msg"></p>
+<div class="tabs" id="tabs">
+  <button type="button" data-tab="overview" class="on">Tổng quan</button>
+  <button type="button" data-tab="monitor">Monitor</button>
+  <button type="button" data-tab="subs">Gói / Subscribe</button>
+  <button type="button" data-tab="devices">Thiết bị</button>
+  <button type="button" data-tab="tenants">Tenant</button>
+  <button type="button" data-tab="policy">Chặn / Policy</button>
+  <button type="button" data-tab="db">Database</button>
+</div>
+
+<section id="tab-overview">
+  <div class="stats" id="stats">Đang tải…</div>
+  <div class="panel">
+    <h2>PC nhà (máy tin cậy)</h2>
+    <p class="help" id="home-pc-status">Đang kiểm tra…</p>
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="home-pc-trust" class="primary">Đánh dấu PC này là máy nhà</button>
+    </div>
+    <div id="home-pc-list" class="help" style="margin-top:10px"></div>
+    <p class="help">Phân biệt bằng mã thiết bị trình duyệt (không phải tên máy Windows). Chỉ đánh dấu trên PC thật sự của bạn; cần Passkey. Sau đó Console nhận «mở từ PC nhà».</p>
+  </div>
+  <div class="panel">
+    <h2>Nhận diện gói tin MQTT</h2>
+    <p class="help" id="ingest-help">Broker ACL + ingest chỉ nhận topic của thiết bị/user đã đăng ký và gói còn hạn.</p>
+    <p class="help">Chi tiết setup thiết bị: xem tài liệu <code>docs/DEVICE-BINDING.md</code> trên server.</p>
+  </div>
+</section>
+
+<section id="tab-monitor" class="hidden">
+  <div class="stats" id="mon-stats">Đang tải…</div>
+  <div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">Trạng thái server</h2>
+      <button type="button" id="mon-refresh" class="fit">Làm mới</button>
+    </div>
+    <p class="help" id="mon-server">…</p>
+    <p class="help" id="mon-cfg">…</p>
+  </div>
+  <div class="panel">
+    <h2>Đồng bộ GitHub / cập nhật server</h2>
+    <p class="help" id="deploy-status">Đang kiểm tra…</p>
+    <div class="row acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+      <button type="button" id="deploy-webapp" class="primary">Đồng bộ webapp (git pull)</button>
+      <button type="button" id="deploy-full" class="danger">Cập nhật server (pull + rebuild)</button>
+      <button type="button" id="deploy-refresh" class="fit">Kiểm tra</button>
+    </div>
+    <pre class="cred" id="deploy-log" style="margin-top:10px;max-height:180px;overflow:auto"></pre>
+    <p class="help">Sau đồng bộ: user <b>refresh</b> trang / mở lại app → tự tải bundle mới (version đổi). Cần <code>DEPLOY_ENABLED=true</code> trên VPS. Rebuild cần docker.sock + vài phút.</p>
+  </div>
+  <div class="panel">
+    <h2>Kill switch (bật / tắt thủ công)</h2>
+    <p class="help">Giống pause của SaaS: tắt ngay khi nghi tấn công. Cần Passkey. Tắt <b>Đăng nhập</b> sẽ khoá cả bạn — bật lại bằng SSH/DB nếu cần.</p>
+    <div id="mon-flags">…</div>
+  </div>
+  <div class="panel">
+    <h2>Tín hiệu tấn công (24h)</h2>
+    <div class="stats" id="mon-attack-stats" style="margin-bottom:10px"></div>
+    <div style="overflow:auto" id="mon-top-ips"></div>
+    <div style="overflow:auto;margin-top:10px" id="mon-deny-reasons"></div>
+  </div>
+  <div class="panel">
+    <h2>Nhật ký gần đây</h2>
+    <div style="overflow:auto" id="mon-audit"></div>
+  </div>
+  <div class="panel">
+    <h2>MQTT deny gần đây</h2>
+    <div style="overflow:auto" id="mon-denies"></div>
+  </div>
+</section>
+
+<section id="tab-subs" class="hidden">
+  <div class="panel form">
+    <h2>Gói sẵn có</h2>
+    <div id="plan-catalog" class="help">…</div>
+  </div>
+  <div class="panel">
+    <h2>Người dùng &amp; gói (<span id="sub-count">0</span>)</h2>
+    <div id="sub-list">Đang tải…</div>
+  </div>
+</section>
+
+<section id="tab-devices" class="hidden">
+  <div class="panel form">
+    <h2>Cấp thiết bị MQTTS (tương thích IoT chuẩn)</h2>
+    <label>Tenant id<input id="d-tenant" placeholder="acme hoặc default" value="default"></label>
+    <label>Site<input id="d-site" placeholder="plant1"></label>
+    <label>Device id<input id="d-dev" placeholder="gw01"></label>
+    <label>Profile
+      <select id="d-profile" style="display:block;width:100%;margin-top:6px;padding:12px;border-radius:12px">
+        <option value="conveyor-v1">conveyor-v1</option>
+        <option value="monitor-only">monitor-only</option>
+        <option value="generic-holding-v1">generic-holding-v1</option>
+      </select>
+    </label>
+    <label>Namespace
+      <select id="d-ns" style="display:block;width:100%;margin-top:6px;padding:12px;border-radius:12px">
+        <option value="iot">iot (chuẩn partner)</option>
+        <option value="plc">plc (gateway cũ)</option>
+      </select>
+    </label>
+    <div class="row"><button type="button" id="d-add" class="primary">Provision + lấy credential</button></div>
+    <div class="cred" id="d-cred"></div>
+    <p class="help">Thiết bị chỉ cần: MQTTS host, user/pass, topic base. Phù hợp ESP32, module LTE, gateway công nghiệp hỗ trợ MQTT.</p>
+  </div>
+  <div class="panel">
+    <h2>Danh sách thiết bị</h2>
+    <div id="dev-list">Đang tải…</div>
+  </div>
+</section>
+
+<section id="tab-tenants" class="hidden">
+  <div class="panel form">
+    <h2>Tạo tenant (công ty solution)</h2>
+    <label>Id<input id="t-id" placeholder="acme"></label>
+    <label>Tên<input id="t-name" placeholder="ACME Solutions"></label>
+    <div class="row"><button type="button" id="t-add" class="primary">Tạo + API key</button></div>
+    <div class="cred" id="t-cred"></div>
+  </div>
+  <div class="panel">
+    <h2>Tenants</h2>
+    <div id="ten-list">Đang tải…</div>
+  </div>
+</section>
+
+<section id="tab-policy" class="hidden">
+  <div class="panel">
+    <h2>Chặn tự động (đang bật)</h2>
+    <div id="pol-cfg" class="help">…</div>
+  </div>
+  <div class="panel form">
+    <h2>Chặn thủ công</h2>
+    <label>Phạm vi
+      <select id="p-scope" style="display:block;width:100%;margin-top:6px;padding:12px;border-radius:12px">
+        <option value="device">device (site+device)</option>
+        <option value="site">site</option>
+        <option value="tenant">tenant</option>
+        <option value="topic">topic prefix</option>
+      </select>
+    </label>
+    <label>Tenant<input id="p-tenant" placeholder="acme (nếu cần)"></label>
+    <label>Site<input id="p-site" placeholder="plant1"></label>
+    <label>Device<input id="p-dev" placeholder="gw01"></label>
+    <label>Topic prefix<input id="p-topic" placeholder="iot/acme/bad/"></label>
+    <label>Lý do<input id="p-reason" placeholder="spam / nghi ngờ giả mạo"></label>
+    <label class="check"><input type="checkbox" id="p-hard"> Hard block thiết bị (thu hồi MQTT + status blocked)</label>
+    <div class="row"><button type="button" id="p-add" class="danger">Thêm chặn</button></div>
+    <p class="help">Tự động: thiết bị lạ, hết hạn gói, JSON/payload sai, flood, schema lạ; quá nhiều vi phạm → auto-block tạm.</p>
+  </div>
+  <div class="panel">
+    <h2>Blocklist đang hiệu lực</h2>
+    <div id="pol-blocks">…</div>
+  </div>
+  <div class="panel">
+    <h2>Deny gần đây</h2>
+    <div id="pol-events" style="overflow:auto">…</div>
+  </div>
+</section>
+
+<section id="tab-db" class="hidden">
+  <div class="panel">
+    <h2>Bảng SQLite</h2>
+    <div id="db-tables"></div>
+  </div>
+  <div class="panel">
+    <h2>Sự kiện MQTT theo loại</h2>
+    <div id="db-kinds"></div>
+  </div>
+  <div class="panel">
+    <h2>Site/device gần đây</h2>
+    <div id="db-top" style="overflow:auto"></div>
+  </div>
+</section>
+
+<script src="security/session.js"></script>
+<script src="security/device-proof.js"></script>
+<script src="security/security-client.js"></script>
+<script src="control.js"></script>
+<script src="console.js"></script>
+<!-- device-proof tạo mã thiết bị (IndexedDB) để phân biệt PC nhà -->
+</body>
+</html>

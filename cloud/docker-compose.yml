@@ -85,11 +85,22 @@ services:
       RATE_LIMIT_OTP: ${RATE_LIMIT_OTP:-5}
       MQTT_CONFIG_DIR: /mosquitto/config
       MQTT_DOCKER_CONTAINER: plciot-mqtt
+      # Đồng bộ GitHub từ Console (Monitor) — xem docs/ADMIN-REMOTE.md
+      DEPLOY_ENABLED: ${DEPLOY_ENABLED:-false}
+      DEPLOY_REPO_DIR: ${DEPLOY_REPO_DIR:-/repo}
+      DEPLOY_GIT_REMOTE: ${DEPLOY_GIT_REMOTE:-origin}
+      DEPLOY_GIT_BRANCH: ${DEPLOY_GIT_BRANCH:-main}
+      DEPLOY_COMPOSE_FILE: ${DEPLOY_COMPOSE_FILE:-/repo/cloud/docker-compose.yml}
+      DEPLOY_COMPOSE_PROJECT: ${DEPLOY_COMPOSE_PROJECT:-plciot}
+      DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app/data:/app/data
       - ../webapp:/app/shell:ro
+      # Repo Git (đọc/ghi). Nên đặt DEPLOY_REPO_HOST=đường_dẫn_tuyệt_đối trên VPS
+      # (vd /opt/plciot) và DEPLOY_REPO_DIR giống vậy để `docker compose` rebuild đúng path host.
+      - ${DEPLOY_REPO_HOST:-..}:${DEPLOY_REPO_DIR:-/repo}
       - ./config:/mosquitto/config
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on: [mqtt, telegram-db]

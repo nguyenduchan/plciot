@@ -20,6 +20,12 @@
 | `packages/security/` | **Lõi bảo mật dùng chung** (`@plciot/security`): Passkey/TOTP, step-up điều khiển, thêm thiết bị, ghép PC, CSP. Dùng lại cho app khác — xem [README](packages/security/README.md) và [docs/CONTROL-SECURITY.md](docs/CONTROL-SECURITY.md). |
 | `docs/SECURITY-DESIGN.md` | **Thiết kế bảo mật** đăng ký/đăng nhập/điều khiển: mô hình đe doạ, nguyên lý, giới hạn đã biết. |
 | `docs/PROTOCOL.md` | Bản đồ thanh ghi và topic MQTT. |
+| `docs/PARTNER-INTEGRATION.md` | **Hợp đồng tích hợp** đa tenant / MQTTS cho công ty solution khác. |
+| `docs/openapi-partner.yaml` | OpenAPI 3 Partner API (provision, REST, webhook). |
+| `docs/SUBSCRIPTION-OPS.md` | **Gói đăng ký tay trên VPS** (không thanh toán online) + siết control Internet. |
+| `docs/ADMIN-REMOTE.md` | Kích hoạt subscribe từ xa an toàn (SSH / CF Access / IP allow). |
+| `docs/DEVICE-BINDING.md` | Liên kết MQTT ↔ thuê bao; setup thiết bị IoT chuẩn. |
+| `webapp/console.html` | **Console admin**: gói, thiết bị MQTTS, tenant, DB. |
 
 ## Chạy thử
 

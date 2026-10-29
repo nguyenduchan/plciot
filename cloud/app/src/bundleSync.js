@@ -14,9 +14,11 @@ export function shellVersion(shellDir) {
   return h.digest('hex').slice(0, 12);
 }
 
-export function syncBundles(db, { dataDir, shellDir }) {
+export function syncBundles(db, { dataDir, shellDir }, { force = false } = {}) {
   const version = shellVersion(shellDir);
-  const stale = db.prepare("SELECT username, folder_path FROM users WHERE folder_path IS NOT NULL AND folder_path != '' AND version != ?").all(version);
+  const stale = force
+    ? db.prepare("SELECT username, folder_path FROM users WHERE folder_path IS NOT NULL AND folder_path != ''").all()
+    : db.prepare("SELECT username, folder_path FROM users WHERE folder_path IS NOT NULL AND folder_path != '' AND version != ?").all(version);
   for (const u of stale) {
     const root = resolveBundleRoot(dataDir, u.folder_path);
     copyDir(shellDir, root);
