@@ -93,6 +93,10 @@ services:
       DEPLOY_COMPOSE_FILE: ${DEPLOY_COMPOSE_FILE:-/repo/cloud/docker-compose.yml}
       DEPLOY_COMPOSE_PROJECT: ${DEPLOY_COMPOSE_PROJECT:-plciot}
       DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
+      DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
+      DEBUG_TRACE_PHONES: ${DEBUG_TRACE_PHONES:-}
+      DEBUG_TRACE_TOKEN: ${DEBUG_TRACE_TOKEN:-}
+      ADMIN_DASHBOARD_PHONES: ${ADMIN_DASHBOARD_PHONES:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

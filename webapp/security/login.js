@@ -328,15 +328,22 @@ async function passkeyLogin() {
   let authenticated = false;
   setBusy(true);
   try {
+    window.PlcDebug?.log?.('ui.passkey_click', 'User bấm Đăng nhập Face ID / vân tay');
     const data = await window.Security.loginWithPasskey();
-    if (data.error) { setError(data.error); return; }
+    if (data.error) {
+      window.PlcDebug?.log?.('ui.passkey_error', data.error, data, 'error');
+      setError(data.error);
+      return;
+    }
     authenticated = true;
     $('#step-creds').hidden = true;
     $('#ok-msg').textContent = '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
+    window.PlcDebug?.log?.('ui.passkey_ok', 'UI nhận session — đang tải bundle', { userId: data.userId }, 'ok');
     await finishLogin(data);
   } catch (ex) {
     restoreLogin();
+    window.PlcDebug?.log?.('ui.passkey_exception', ex?.name || 'error', { name: ex?.name, message: ex?.message }, 'error');
     setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : ex?.name === 'TypeError' ? 'offline' : authenticated ? ex.message : 'webauthn_failed');
   } finally {
     setBusy(false);

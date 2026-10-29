@@ -75,6 +75,9 @@
   const errText = (e) => ERR[e] || e || 'Lỗi';
   /** App thêm thông báo lỗi riêng (vd. lệnh PLC) mà không sửa lõi. */
   const addErrors = (m) => Object.assign(ERR, m);
+  const dbg = (action, message, detail, level) => {
+    try { window.PlcDebug?.log?.(action, message, detail, level); } catch {}
+  };
 
   /* ---------- helpers ---------- */
   const b64uToBuf = (s) => {
@@ -127,18 +130,30 @@
   }
 
   async function passkeyRegister(name) {
+    dbg('register.start', 'Bắt đầu đăng ký Passkey/Face ID', { name });
     const o = await api('POST', '/api/webauthn/register/options', {});
-    if (!o.ok) return o.body;
-    const opts = o.body;
-    const cred = await navigator.credentials.create({
-      publicKey: {
-        ...opts,
-        challenge: b64uToBuf(opts.challenge),
-        user: { ...opts.user, id: b64uToBuf(opts.user.id) },
-        hints: ['client-device'],
-        excludeCredentials: (opts.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
-      },
-    });
+    if (!o.ok) {
+      dbg('register.options_fail', o.body?.error || 'options failed', o.body, 'error');
+      return o.body;
+    }
+    dbg('register.options_ok', 'Đã nhận challenge — chờ Face ID / vân tay', { rpId: o.body?.rp?.id || o.body?.rpId });
+    let cred;
+    try {
+      const opts = o.body;
+      cred = await navigator.credentials.create({
+        publicKey: {
+          ...opts,
+          challenge: b64uToBuf(opts.challenge),
+          user: { ...opts.user, id: b64uToBuf(opts.user.id) },
+          hints: ['client-device'],
+          excludeCredentials: (opts.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
+        },
+      });
+    } catch (e) {
+      dbg('register.gesture_fail', e?.name || 'create failed', { name: e?.name, message: e?.message }, 'error');
+      throw e;
+    }
+    dbg('register.gesture_ok', 'Thiết bị đã tạo credential', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
     const r = await api('POST', '/api/webauthn/register/verify', {
       name,
       credential: {
@@ -149,21 +164,42 @@
         },
       },
     });
-    if (r.ok) { saveToken(r.body); LS.set('hasPasskey', true); if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes); }
+    if (r.ok) {
+      saveToken(r.body);
+      LS.set('hasPasskey', true);
+      dbg('register.verify_ok', 'Server đã lưu Passkey', { method: r.body?.method }, 'ok');
+      if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes);
+    } else {
+      dbg('register.verify_fail', r.body?.error || 'verify failed', r.body, 'error');
+    }
     return r.body;
   }
 
   async function passkeyUnlock(extra) {
+    dbg('unlock.start', 'Mở khoá bằng Passkey/Face ID');
     const o = await api('POST', '/api/webauthn/auth/options', {}, extra);
-    if (!o.ok) return o.body;
-    const opts = o.body;
-    const cred = await navigator.credentials.get({
-      publicKey: {
-        ...opts,
-        challenge: b64uToBuf(opts.challenge),
-        allowCredentials: (opts.allowCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
-      },
+    if (!o.ok) {
+      dbg('unlock.options_fail', o.body?.error || 'options failed', o.body, 'error');
+      return o.body;
+    }
+    dbg('unlock.options_ok', 'Đã nhận challenge — chờ Face ID / vân tay', {
+      allow: (o.body?.allowCredentials || []).length,
     });
+    let cred;
+    try {
+      const opts = o.body;
+      cred = await navigator.credentials.get({
+        publicKey: {
+          ...opts,
+          challenge: b64uToBuf(opts.challenge),
+          allowCredentials: (opts.allowCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
+        },
+      });
+    } catch (e) {
+      dbg('unlock.gesture_fail', e?.name || 'get failed', { name: e?.name, message: e?.message }, 'error');
+      throw e;
+    }
+    dbg('unlock.gesture_ok', 'Đã xác thực sinh trắc', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
     const r = await api('POST', '/api/webauthn/auth/verify', {
       credential: {
         id: cred.id,
@@ -174,7 +210,12 @@
         },
       },
     }, extra);
-    if (r.ok) saveToken(r.body);
+    if (r.ok) {
+      saveToken(r.body);
+      dbg('unlock.verify_ok', 'Server chấp nhận Passkey', { method: r.body?.method }, 'ok');
+    } else {
+      dbg('unlock.verify_fail', r.body?.error || 'verify failed', r.body, 'error');
+    }
     return r.body;
   }
 
@@ -592,15 +633,27 @@
 
   /* ---------- đăng nhập bằng passkey (không cần SĐT, không OTP) ---------- */
   async function loginWithPasskey() {
+    dbg('login.start', 'Đăng nhập Passkey/Face ID (không OTP)');
     const post = async (path, body) => {
       const r = await fetch(location.origin + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: JSON.stringify(body) });
       return { ok: r.ok, body: await r.json().catch(() => ({})) };
     };
     const o = await post('/api/login/passkey/options', {});
-    if (!o.ok) return o.body;
-    const cred = await navigator.credentials.get({
-      publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] },
-    });
+    if (!o.ok) {
+      dbg('login.options_fail', o.body?.error || 'options failed', o.body, 'error');
+      return o.body;
+    }
+    dbg('login.options_ok', 'Challenge login — chờ Face ID', { cid: o.body?.cid });
+    let cred;
+    try {
+      cred = await navigator.credentials.get({
+        publicKey: { ...o.body, challenge: b64uToBuf(o.body.challenge), allowCredentials: [], hints: ['client-device'] },
+      });
+    } catch (e) {
+      dbg('login.gesture_fail', e?.name || 'get failed', { name: e?.name, message: e?.message }, 'error');
+      throw e;
+    }
+    dbg('login.gesture_ok', 'Face ID / vân tay OK', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
     const r = await post('/api/login/passkey/verify', {
       cid: o.body.cid,
       credential: {
@@ -613,7 +666,13 @@
         },
       },
     });
-    if (r.ok) { saveToken(r.body); LS.set('hasPasskey', true); }
+    if (r.ok) {
+      saveToken(r.body);
+      LS.set('hasPasskey', true);
+      dbg('login.verify_ok', 'Đăng nhập Passkey thành công', { userId: r.body?.userId }, 'ok');
+    } else {
+      dbg('login.verify_fail', r.body?.error || 'verify failed', r.body, 'error');
+    }
     return r.body;
   }
 

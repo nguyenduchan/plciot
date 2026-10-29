@@ -30,6 +30,7 @@ import { mountAdminOps } from './adminOps.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
 import { loginGateMiddleware } from './opsFlags.js';
+import { mountDebugTrace, debugTraceEnabled } from './debugTrace.js';
 
 const PORT = Number(process.env.PORT || 3080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -67,6 +68,7 @@ app.use('/api/', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store
 app.use('/api/', rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_API || 120) }));
 // Kill-switch đăng nhập (Console Monitor)
 app.use(loginGateMiddleware);
+mountDebugTrace(app);
 
 function requireAdmin(req, res, next) {
   // Chỉ SĐT trong ADMIN_DASHBOARD_PHONES / ADMIN_PHONES (docs/ADMIN-REMOTE.md)
@@ -118,7 +120,7 @@ const send = (res, result) => res.status(result.error ? result.status || 400 : 2
 const ipOf = clientIp;
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, contract: contractInfo() });
+  res.json({ ok: true, contract: contractInfo(), debugTrace: debugTraceEnabled() });
 });
 
 app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, reauth, (req, res) => {
