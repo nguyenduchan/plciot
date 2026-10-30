@@ -148,6 +148,46 @@
   }
 
   /**
+   * Hộp xác nhận sinh trắc kiểu app phổ biến: biểu tượng Face ID / vân tay, trạng thái, nút Tiếp tục.
+   * Lệnh WebAuthn chỉ chạy khi người dùng chạm nút trong hộp này (cử chỉ mới), nên iOS không chặn dù lấy challenge mất thời gian.
+   */
+  const FACE_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8"/><path d="M23 25v5M41 25v5M32 26v9h-3M23 43c5 5 13 5 18 0"/></svg>';
+  const FINGER_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 26a16 16 0 0 1 32 0M12 34a20 20 0 0 1 40 0v4M22 52c3-5 4-9 4-14a6 6 0 0 1 12 0c0 6 2 10 6 14M32 38c0 6-1 11-5 16M44 48c1 2 2 4 4 6M20 32a12 12 0 0 1 24 0"/></svg>';
+  const CHECK_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="24"/><path d="M21 33l8 8 15-17"/></svg>';
+  const isApple = () => /iPhone|iPad|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+  const bioName = () => (isApple() ? 'Face ID' : 'vân tay');
+
+  function bioSheet({ title, hint, goLabel = 'Tiếp tục' }) {
+    const m = modal(`<div class="ctl-body bio-sheet">
+      <div class="bio-icon bio-wait">${isApple() ? FACE_SVG : FINGER_SVG}</div>
+      <h3>${escHtml(title)}</h3>
+      <p class="muted bio-msg">Đang chuẩn bị…</p>
+      <div class="row"><button class="primary bio-go" disabled>${escHtml(goLabel)}</button><button class="fit bio-x">Huỷ</button></div></div>`);
+    const icon = m.q('.bio-icon'); const msg = m.q('.bio-msg'); const go = m.q('.bio-go'); const x = m.q('.bio-x');
+    const state = (cls, svg) => { icon.className = `bio-icon ${cls}`; if (svg) icon.innerHTML = svg; };
+    let cancel = () => {};
+    x.onclick = () => { cancel(); m.close(); };
+    return {
+      /** Báo đã sẵn sàng; chờ người dùng chạm rồi chạy fn() ngay trong cử chỉ đó. Trả về kết quả của fn. */
+      waitTap(fn) {
+        return new Promise((resolve, reject) => {
+          cancel = () => reject(new DOMException('cancelled', 'NotAllowedError'));
+          msg.textContent = hint; go.disabled = false; go.focus();
+          go.onclick = () => {
+            go.disabled = true; msg.textContent = `Hãy xác nhận ${bioName()} trên máy…`; state('bio-scan');
+            let p; try { p = fn(); } catch (e) { return reject(e); }
+            Promise.resolve(p).then(resolve, reject);
+          };
+        });
+      },
+      status(t) { msg.textContent = t; },
+      ok(t) { state('bio-ok', CHECK_SVG); msg.textContent = t; go.hidden = true; x.hidden = true; },
+      fail(t) { state('bio-fail'); msg.textContent = t; go.hidden = true; x.hidden = false; x.textContent = 'Đóng'; x.onclick = () => m.close(); },
+      close() { m.close(); },
+    };
+  }
+
+  /**
    * Safari/iOS chỉ mở hộp Face ID khi còn "cử chỉ chạm"; sau khi chờ mạng (lấy challenge) cử chỉ hết hạn nên lệnh bị bỏ qua
    * và người dùng thấy "bấm không có gì xảy ra". Hết cử chỉ thì hiện nút để chạm lại ngay trước khi gọi WebAuthn.
    */
@@ -165,16 +205,18 @@
 
   async function passkeyRegister(name) {
     dbg('register.start', 'Bắt đầu đăng ký Passkey/Face ID', { name });
+    const sheet = bioSheet({ title: `Bật đăng nhập bằng ${bioName()}`, hint: `Chạm Tiếp tục, rồi xác nhận ${bioName()} khi máy hỏi.` });
     const o = await api('POST', '/api/webauthn/register/options', {});
     if (!o.ok) {
       dbg('register.options_fail', o.body?.error || 'options failed', o.body, 'error');
+      sheet.close();
       return o.body;
     }
     dbg('register.options_ok', 'Đã nhận challenge — chờ Face ID / vân tay', { rpId: o.body?.rp?.id || o.body?.rpId });
     let cred;
     try {
       const opts = o.body;
-      cred = await webauthn('create', {
+      const args = {
         publicKey: {
           ...opts,
           challenge: b64uToBuf(opts.challenge),
@@ -182,12 +224,16 @@
           hints: ['client-device'],
           excludeCredentials: (opts.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
         },
-      });
+      };
+      cred = await sheet.waitTap(() => navigator.credentials.create(args));
     } catch (e) {
       dbg('register.gesture_fail', e?.name || 'create failed', { name: e?.name, message: e?.message }, 'error');
+      if (e?.message === 'cancelled') { sheet.close(); throw e; }
+      sheet.fail(e?.name === 'NotAllowedError' ? `Chưa xác nhận được ${bioName()}. Hãy thử lại.` : `Không bật được (${e?.name || 'lỗi'}).`);
       throw e;
     }
     dbg('register.gesture_ok', 'Thiết bị đã tạo credential', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
+    sheet.status('Đang lưu…');
     const r = await api('POST', '/api/webauthn/register/verify', {
       name,
       credential: {
@@ -202,9 +248,13 @@
       saveToken(r.body);
       LS.set('hasPasskey', true);
       dbg('register.verify_ok', 'Server đã lưu Passkey', { method: r.body?.method }, 'ok');
+      sheet.ok(`Đã bật đăng nhập bằng ${bioName()}`);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      sheet.close();
       if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes);
     } else {
       dbg('register.verify_fail', r.body?.error || 'verify failed', r.body, 'error');
+      sheet.fail(errText(r.body?.error));
     }
     return r.body;
   }
