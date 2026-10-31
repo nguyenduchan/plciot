@@ -1,7 +1,8 @@
 'use strict';
 /* Register map (Modbus address == Xinje D number), see docs/PROTOCOL.md */
 const R = { DI: 0, DO: 1, ALARM: 2, MODE: 3, MAN: 4, RUN_REQ: 6, TARGET: 7, CSTATE: 8, RESET: 9, UPTIME: 10, STARTS: 12, COUNT: 14, TOTAL: 16, RUN: 20, NREG: 40 };
-const ALARMS = [[1, 'Dừng khẩn cấp (E-stop)'], [2, 'Lỗi cảm biến mức']];
+// [bit, nội dung, mức]: crit = khẩn cấp (đỏ), warn = cảnh báo (hổ phách)
+const ALARMS = [[1, 'Dừng khẩn cấp (E-stop)', 'crit', 'Nhả nút dừng khẩn cấp trên máy, rồi bấm Chạy lại.'], [2, 'Lỗi cảm biến mức', 'warn', 'Kiểm tra cảm biến mức và dây nối của nó.']];
 
 const $ = (s) => document.querySelector(s);
 const LS = {
@@ -10,11 +11,22 @@ const LS = {
 };
 const cfg = Object.assign({ url: 'wss://plc-mqtt.dieukhientudong.net', user: 'app', pass: '', site: 'factory1', dev: 'plc01',
   demo: true, inNames: '', outNames: '', maxRate: '60', pitchCm: '0',
-  keepMinDays: '30', keepHourDays: '730', maxMB: '0' }, LS.get('cfg', {}));
+  keepMinDays: '30', keepHourDays: '730', maxMB: '0', uiMode: 'simple' }, LS.get('cfg', {}));
 const applyDbLimits = () => DB.setLimits({ minDays: cfg.keepMinDays, hourDays: cfg.keepHourDays, maxMB: cfg.maxMB });
-const names = (str, p) => Array.from({ length: 8 }, (_, i) => (str.split(',')[i] || '').trim() || p + i);
+const simpleUi = () => cfg.uiMode !== 'pro';
+const names = (str, p) => Array.from({ length: 8 }, (_, i) => (str.split(',')[i] || '').trim() || (simpleUi() ? `${p === 'Y' ? 'Thiết bị' : 'Cảm biến'} ${i + 1}` : p + i));
 
 const S = { regs: new Array(R.NREG).fill(0), status: 'offline', ts: 0 };
+
+/* ------------------------------------------------------------- sự kiện gần nhất + độ mới của dữ liệu */
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+let evlog = LS.get('evlog', []);       // [ts, nội dung, loại] lệnh của người dùng + kết nối + kết quả
+function logEvent(text, kind = 'info') { evlog.push([Date.now(), text, kind]); evlog = evlog.slice(-60); LS.set('evlog', evlog); }
+const STALE_MS = 15000;                // quá ngần này không có dữ liệu mới thì coi là cũ
+const ageText = (ms) => (ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} giây` : ms < 3600000 ? `${Math.round(ms / 60000)} phút` : `${Math.round(ms / 3600000)} giờ`);
+const dataAge = () => (S.ts ? Date.now() - S.ts : null);
+const isStale = () => S.status !== 'online' || dataAge() == null || dataAge() > STALE_MS;
+const clock = (ts) => new Date(ts).toLocaleTimeString('vi-VN');
 let hist = [];                        // [ts, DO, DI, alarm, total] last hour, in memory (the full history lives in DB)
 let alog = LS.get('alog', []);        // [ts, alarmMask]
 let rangeH = 1, link = null, lastAlarm = 0, ackMask = 0;
@@ -117,6 +129,7 @@ class DemoLink {
 
 /* ------------------------------------------------------------- commands */
 const pending = {};
+const pendDesc = {};
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2000);
@@ -145,22 +158,57 @@ function applySubscription(sub) {
 /* Đã đăng nhập (không demo): lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
 const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
 const CTL_ERR = (e) => (e === 'cancelled' ? '' : window.Ctl.errText(e));
-function sendReg(a, v) {
+function sendReg(a, v, desc) {
   if (S.role === 'viewer') return toast('Tài khoản chỉ xem — không được điều khiển');
   if (viaServer()) {
     if (S.status !== 'online') return toast('Không có kết nối tới PLC');
     const id = Date.now().toString(36);
     Ctl.send({ id, a, v }).then((r) => {
       if (r.error) return CTL_ERR(r.error) && toast(CTL_ERR(r.error));
-      pending[id] = setTimeout(() => { delete pending[id]; toast('PLC không phản hồi'); }, 4000);
+      armPending(id, desc);
     });
     return;
   }
   if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kênh không mã hoá (ws://) chỉ xem được. Dùng wss:// để điều khiển');
   const id = Date.now().toString(36);
   if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Không có kết nối tới PLC');
-  pending[id] = setTimeout(() => { delete pending[id]; toast('PLC không phản hồi'); }, 4000);
+  armPending(id, desc);
 }
+/** Sau khi gửi: "Đã gửi, chờ PLC xác nhận…" → "PLC đã xác nhận" / "PLC từ chối" / "PLC không phản hồi"; mọi kết quả đều vào sự kiện gần nhất. */
+function armPending(id, desc) {
+  pendDesc[id] = desc || '';
+  if (desc) toast('Đã gửi lệnh, chờ PLC xác nhận…');
+  pending[id] = setTimeout(() => {
+    delete pending[id];
+    toast('PLC không phản hồi');
+    if (pendDesc[id]) logEvent(`PLC không phản hồi: ${pendDesc[id]}`, 'warn');
+    delete pendDesc[id];
+  }, 4000);
+}
+/** Hộp xác nhận trước hành động tác động vật lý (chạy/dừng máy, đổi chế độ, bật/tắt đầu ra). Nút xác nhận là nút đậm. */
+function confirmAction(title, text, okLabel) {
+  return new Promise((resolve) => {
+    const back = document.createElement('div'); back.className = 'cf-back';
+    const box = document.createElement('div'); box.className = 'cf-box'; box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-modal', 'true');
+    const h = document.createElement('h3'); h.textContent = title;
+    const p = document.createElement('p'); p.textContent = text;
+    const row = document.createElement('div'); row.className = 'row';
+    const no = document.createElement('button'); no.type = 'button'; no.className = 'ctl-btn idle'; no.textContent = 'Huỷ';
+    const yes = document.createElement('button'); yes.type = 'button'; yes.className = 'ctl-btn act'; yes.textContent = okLabel;
+    const done = (v) => { back.remove(); resolve(v); };
+    no.onclick = () => done(false); yes.onclick = () => done(true);
+    back.onclick = (e) => { if (e.target === back) done(false); };
+    row.append(no, yes); box.append(h, p, row); back.append(box); document.body.append(back); no.focus();
+  });
+}
+/** Gửi lệnh điều khiển có xác nhận. cf = [tiêu đề, nội dung, chữ nút]; desc = mô tả ghi vào sự kiện. */
+async function command(desc, a, v, cf) {
+  if (S.role === 'viewer') return sendReg(a, v, desc);
+  if (cf && !(await confirmAction(cf[0], cf[1], cf[2]))) return;
+  sendReg(a, v, desc);
+}
+const RUN_CF = ['Chạy băng tải?', 'Máy sẽ chạy ngay. Hãy chắc chắn khu vực quanh máy an toàn.', 'Chạy'];
+const STOP_CF = ['Dừng băng tải?', 'Máy sẽ dừng ngay. Sản phẩm đang trên băng tải có thể bị ảnh hưởng.', 'Dừng máy'];
 const queries = {};
 function queryRead() {
   const a = parseInt($('#q-a').value, 10), n = parseInt($('#q-n').value || '1', 10), out = $('#q-out');
@@ -189,7 +237,9 @@ function onAck(a) {
   if (queries[a.id]) return onQueryAck(a);
   if (!pending[a.id]) return;
   clearTimeout(pending[a.id]); delete pending[a.id];
-  toast(a.ok ? 'Đã gửi lệnh' : 'PLC từ chối lệnh');
+  const d = pendDesc[a.id]; delete pendDesc[a.id];
+  toast(a.ok ? 'PLC đã xác nhận' + (d ? ': ' + d : '') : 'PLC từ chối lệnh');
+  if (d) logEvent(a.ok ? d : `PLC từ chối: ${d}`, a.ok ? 'info' : 'warn');
 }
 
 /* ------------------------------------------------------------- data */
@@ -215,12 +265,18 @@ function fillSpeed() {
     a.textContent = txt; $('#' + p + '-spdbar').style.width = Math.min(100, (r || 0) / mx * 100) + '%'; $('#' + p + '-spdd').textContent = det;
   });
 }
+/** Nút khả dụng = đậm, đảo màu, to; nút không khả dụng = viền mờ. Khi máy đang chạy thì "Dừng máy" là nút nổi bật nhất. */
+function ctlLook(start, stop, on, run) {
+  start.className = 'ctl-btn ' + (on && !run ? 'act' : 'idle');
+  stop.className = 'ctl-btn stop ' + (on && run ? 'act' : 'idle');
+}
 function fillCtl() {
   const on = S.status === 'online', run = S.regs[R.RUN_REQ] === 1, st = S.regs[R.CSTATE];
   const hint = !on ? 'Chưa kết nối PLC' : st === 2 ? 'Đủ số lượng: xoá đếm để chạy tiếp' : st === 3 ? 'Dừng khẩn cấp: nhả E-stop rồi chạy lại' : run ? 'Đang chạy' : 'Đã dừng';
   ['w', 'dc'].forEach((p) => {
     const a = $('#' + p + '-start'); if (!a) return;
     a.disabled = !on || run; $('#' + p + '-stop').disabled = !on || !run; $('#' + p + '-d').textContent = hint;
+    ctlLook(a, $('#' + p + '-stop'), on, run);
   });
 }
 let prevCState = 0;
@@ -240,11 +296,25 @@ function onRegs(r) {
   }
   render();
 }
-function onStatus(s) { S.status = s; render(); }
+function onStatus(s) {
+  if (s !== S.status && S.statusSeen) {
+    if (s === 'online') logEvent('Đã kết nối lại', 'ok');
+    else if (S.status === 'online') logEvent(s === 'plc_fault' ? 'PLC mất liên lạc' : 'Mất kết nối', 'warn');
+  }
+  S.statusSeen = true; S.status = s; render();
+}
 function onHist(o) { S.hist = o; S.histTs = Date.now(); render(); }
 
 /* ------------------------------------------------------------- UI */
 const tabs = ['dash', 'conv', 'ctrl', 'rep', 'set'];
+/** Kiểu giao diện: Đơn giản (chủ xưởng: màu trạng thái, thẻ trạng thái, ít chỉ số, tên đời thường) hoặc Vận hành (gần như không màu). */
+function applyUi() {
+  document.body.classList.toggle('ui-simple', simpleUi());
+  const h = $('#switches')?.previousElementSibling;
+  if (h) h.textContent = simpleUi() ? 'Thiết bị' : 'Điều khiển đầu ra';
+  // Kiểu Đơn giản không có tab Điều khiển (đầu ra thủ công) và Báo cáo (bảng tuỳ biến): nếu đang ở đó thì về Tổng quan
+  if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-rep').hidden)) showTab('dash');
+}
 function showTab(t) {
   tabs.forEach((x) => { $('#tab-' + x).hidden = x !== t; });
   document.querySelectorAll('nav button').forEach((b) => {
@@ -259,16 +329,21 @@ function renderAlarmBar() {
   if (!bar) return;
   document.documentElement.style.setProperty('--hdr-h', `${($('header') || {}).offsetHeight || 58}px`); // thanh cảnh báo dính ngay dưới tiêu đề
   const st = S.status, mask = (S.regs && S.regs[R.ALARM]) || 0;
-  const active = ALARMS.filter(([m]) => mask & m).map(([, t]) => t);
+  const act = ALARMS.filter(([m]) => mask & m);
+  const active = act.map(([, t]) => t);
   if (!(mask & ackMask)) ackMask = 0;           // cảnh báo đã hết thì lần sau xuất hiện lại phải báo lại
   const unacked = (mask & ~ackMask) !== 0;
+  const last = S.ts ? ` Lần cuối nhận dữ liệu: ${clock(S.ts)}.` : '';
   let cls = 'ok', icon = '✔', text = 'Bình thường';
   if (st !== 'online') {
     cls = 'comm'; icon = '■';
-    text = { plc_fault: 'PLC mất liên lạc: số liệu không còn đáng tin', connecting: 'Đang kết nối…', offline: 'Mất kết nối máy chủ: số liệu không còn đáng tin' }[st] || st;
+    text = { plc_fault: 'PLC mất liên lạc: số liệu không còn đáng tin.' + last, connecting: 'Đang kết nối…', offline: 'Mất kết nối máy chủ: số liệu không còn đáng tin.' + last }[st] || st;
+  } else if (isStale()) {
+    cls = 'comm'; icon = '■'; text = `Dữ liệu không cập nhật ${ageText(dataAge() ?? 0)}: số liệu không còn đáng tin.` + last;
   }
-  if (active.length) { cls = 'alarm'; icon = '▲'; text = `${active.length} cảnh báo: ${active.join(' · ')}`; }
-  bar.className = `alarm-bar ${cls}${active.length && unacked ? ' blink' : ''}`;
+  const crit = act.some((a) => a[2] === 'crit');
+  if (act.length) { cls = crit ? 'alarm' : 'alarm warnonly'; icon = '▲'; text = `${act.length} cảnh báo${crit ? ' KHẨN CẤP' : ''}: ${active.join(' · ')}`; }
+  bar.className = `alarm-bar ${cls}${act.length && unacked ? ' blink' : ''}`;
   bar.replaceChildren();
   const i = document.createElement('span'); i.className = 'ab-i'; i.setAttribute('aria-hidden', 'true'); i.textContent = icon;
   const t = document.createElement('span'); t.className = 'ab-t'; t.textContent = text;
@@ -279,11 +354,75 @@ function renderAlarmBar() {
     bar.append(b);
   }
 }
-function render() {
-  const pill = $('#pill'), st = S.status;
-  pill.className = 'pill ' + (st === 'online' ? 'on' : st === 'plc_fault' ? 'warn' : 'off');
-  pill.textContent = { online: cfg.demo ? '● Chạy thử' : '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
+/** Thẻ trạng thái lớn (kiểu Đơn giản): một câu trả lời cho "máy có ổn không?" kèm việc cần làm. */
+function renderStatusCard() {
+  const c = $('#status-card');
+  if (!c || !simpleUi()) return;
+  const mask = (S.regs && S.regs[R.ALARM]) || 0, act = ALARMS.filter(([m]) => mask & m), st = S.regs[R.CSTATE];
+  let cls = 'idle', icon = '■', title = 'Máy đã dừng', hint = 'Bấm Chạy để khởi động máy.';
+  if (S.status !== 'online' || isStale()) {
+    cls = 'comm'; icon = '■';
+    title = S.status === 'connecting' ? 'Đang kết nối…' : S.status === 'plc_fault' ? 'PLC mất liên lạc' : S.status !== 'online' ? 'Mất kết nối' : 'Dữ liệu không cập nhật';
+    hint = 'Số liệu bên dưới có thể đã cũ.' + (S.ts ? ` Lần cuối nhận dữ liệu: ${clock(S.ts)}.` : '');
+  } else if (act.length) {
+    const crit = act.some((a) => a[2] === 'crit');
+    cls = crit ? 'alarm' : 'warn'; icon = '▲';
+    title = `${act.length} cảnh báo: ${act.map((a) => a[1]).join(', ')}`;
+    hint = act.map((a) => a[3]).filter(Boolean).join(' ') + ' Sau đó bấm "Đã nhận" ở thanh phía trên.';
+  } else if (st === 3) {
+    cls = 'alarm'; icon = '▲'; title = 'Dừng khẩn cấp'; hint = 'Nhả nút dừng khẩn cấp trên máy, rồi bấm Chạy lại.';
+  } else if (st === 2) {
+    cls = 'warn'; icon = '✔'; title = 'Đủ số lượng, máy đã dừng'; hint = 'Xoá số đếm (tab Băng tải) để chạy tiếp.';
+  } else if (st === 1) {
+    cls = 'ok'; icon = '●'; title = 'Máy đang chạy, mọi thứ bình thường'; hint = `Đã đếm ${u32(R.COUNT)} sản phẩm.`;
+  }
+  c.className = `status-card st-${cls} span`;
+  c.querySelector('.sc-i').textContent = icon;
+  c.querySelector('.sc-t').textContent = title;
+  c.querySelector('.sc-h').textContent = hint;
+}
+/** Chỉ báo kết nối + độ mới của dữ liệu. Gọi mỗi giây để "cập nhật N giây trước" luôn đúng, số liệu cũ bị làm mờ. */
+function renderStatus() {
+  const pill = $('#pill'), st = S.status, stale = isStale(), age = dataAge();
+  document.body.classList.toggle('stale', stale);
+  pill.className = 'pill ' + (st === 'online' && !stale ? 'on' : st === 'plc_fault' || st === 'online' ? 'warn' : 'off');
+  const base = { online: cfg.demo ? '● Chạy thử' : '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
+  pill.textContent = st === 'online' && stale ? `▲ Dữ liệu cũ${age != null ? ' · ' + ageText(age) : ''}` : st === 'online' && age != null ? `${base} · ${ageText(age)} trước` : base;
   renderAlarmBar();
+  renderStatusCard();
+}
+/** Danh sách sự kiện gần nhất: cảnh báo xuất hiện/hết, lệnh của bạn và kết quả, mất/khôi phục kết nối. */
+function recentEvents(n = 8) {
+  const out = [];
+  let prev = 0;
+  for (const [ts, mask] of alog) {
+    for (const [m, t, sev] of ALARMS) {
+      if ((mask & m) && !(prev & m)) out.push([ts, `${t} xuất hiện`, sev === 'crit' ? 'crit' : 'warn']);
+      else if (!(mask & m) && (prev & m)) out.push([ts, `${t} đã hết`, 'ok']);
+    }
+    prev = mask;
+  }
+  for (const [ts, text, kind] of evlog) out.push([ts, text, kind]);
+  return out.sort((a, b) => b[0] - a[0]).slice(0, n);
+}
+function renderEvents() {
+  const box = $('#events');
+  if (!box) return;
+  const today = new Date().toDateString();
+  const icon = { crit: '▲', warn: '▲', ok: '✔', info: '●' };
+  box.replaceChildren(...(recentEvents().map(([ts, text, kind]) => {
+    const row = document.createElement('div'); row.className = `ev ${kind}`;
+    const t = document.createElement('span'); t.className = 'ev-t';
+    t.textContent = new Date(ts).toDateString() === today ? clock(ts) : new Date(ts).toLocaleString('vi-VN');
+    const i = document.createElement('span'); i.className = 'ev-i'; i.setAttribute('aria-hidden', 'true'); i.textContent = icon[kind] || '●';
+    const x = document.createElement('span'); x.textContent = text;
+    row.append(t, i, x);
+    return row;
+  })));
+  if (!box.childElementCount) { const m = document.createElement('div'); m.className = 'muted'; m.textContent = 'Chưa có sự kiện.'; box.append(m); }
+}
+function render() {
+  renderStatus();
   const visible = (t) => !$('#tab-' + t).hidden;
   const { regs } = S, di = regs[R.DI], dout = regs[R.DO], manual = regs[R.MODE] === 1;
   const inN = names(cfg.inNames, 'X'), outN = names(cfg.outNames, 'Y');
@@ -293,9 +432,10 @@ function render() {
     const chip = (n, on) => `<div class="chip ${on ? 'on' : ''}"><i></i>${n}</div>`;
     $('#ins').innerHTML = inN.map((n, i) => chip(n, di >> i & 1)).join('');
     $('#outs').innerHTML = outN.map((n, i) => chip(n, dout >> i & 1)).join('');
-    const al = ALARMS.filter(([m]) => regs[R.ALARM] & m).map(([, t]) => `<div class="al"><span aria-hidden="true">▲</span> ${t}</div>`);
+    const al = ALARMS.filter(([m]) => regs[R.ALARM] & m).map(([, t, sev]) => `<div class="al ${sev === 'warn' ? 'warn' : ''}"><span aria-hidden="true">▲</span> ${t}</div>`);
     $('#alarms').innerHTML = al.join('') || '<span class="muted">Không có cảnh báo</span>';
     $('#stamp').textContent = S.ts ? 'Cập nhật: ' + new Date(S.ts).toLocaleTimeString('vi-VN') : 'Chưa có dữ liệu';
+    renderEvents();
   }
   if (visible('conv')) renderConv();
   if (visible('ctrl')) {
@@ -303,8 +443,11 @@ function render() {
     $('#m-man').classList.toggle('sel', manual);
     $('#ctrl-hint').textContent = manual ? 'Thủ công: chạm để bật/tắt. Khoá liên động của PLC vẫn luôn có hiệu lực.'
       : 'Đang chạy tự động theo chương trình PLC. Chuyển sang thủ công để điều khiển.';
-    $('#switches').innerHTML = outN.slice(0, 7).map((n, i) =>
-      `<button class="sw ${regs[R.MAN] >> i & 1 ? 'on' : ''}" data-i="${i}" ${manual && S.status === 'online' ? '' : 'disabled'}>${n}<b></b></button>`).join('');
+    $('#switches').innerHTML = outN.slice(0, 7).map((n, i) => {
+      const on = regs[R.MAN] >> i & 1;
+      return `<button class="sw ${on ? 'on' : ''}" data-i="${i}" aria-pressed="${on ? 'true' : 'false'}" ${manual && S.status === 'online' ? '' : 'disabled'}><span class="sw-l"><span class="sw-n">${esc(n)}</span>${n === `Y${i}` ? '' : `<small class="addr">Y${i}</small>`}</span><span class="sw-s">${on ? 'BẬT' : 'TẮT'}</span><b></b></button>`;
+    }).join('');
+    $('#name-hint').hidden = Boolean((cfg.outNames || '').trim());
   }
   if (visible('rep')) Dash.tick();
 }
@@ -316,6 +459,7 @@ function renderConv() {
   $('#cstate').textContent = st[0]; $('#cstate').className = 'state ' + st[1];
   const ok = S.status === 'online';
   $('#c-start').disabled = !ok || regs[R.RUN_REQ] === 1; $('#c-stop').disabled = !ok || regs[R.RUN_REQ] === 0;
+  ctlLook($('#c-start'), $('#c-stop'), ok, regs[R.RUN_REQ] === 1);
   $('#ctarget').textContent = (tgt ? `Mục tiêu: ${tgt} (còn ${Math.max(0, tgt - u32(R.COUNT))})` : 'Không giới hạn') + ` · Tổng từ đầu: ${u32(R.TOTAL)}`;
   document.querySelectorAll('.conv-range button').forEach((b) => b.classList.toggle('sel', +b.dataset.h === rangeH));
 
@@ -335,7 +479,7 @@ function renderConv() {
   }
   drawBars($('#bars'), bars, times, '--acc', true);
   fillSpeed(); fillCtl();
-  cumDraw('cumc', rangeH === 1 ? 1 : rangeH);
+  if (!simpleUi()) cumDraw('cumc', rangeH === 1 ? 1 : rangeH);
   const sum = bars.reduce((x, y) => x + y, 0), cnt = Math.max(1, bars.length);
   $('#cstats').innerHTML = `<tr><td>Tổng ${rangeH} giờ qua (${src})</td><td>${sum}</td></tr>` +
     `<tr><td>Trung bình / ${per}</td><td>${(sum / cnt).toFixed(1)}</td></tr><tr><td>Cao nhất / ${per}</td><td>${Math.max(0, ...bars)}</td></tr>`;
@@ -379,7 +523,7 @@ function renderWidgets() {
   const { regs } = S, st = CSTATES[regs[R.CSTATE]] || CSTATES[0];
   fillSpeed(); fillCtl();
   document.querySelectorAll('#cum-range button').forEach((b) => b.classList.toggle('sel', +b.dataset.h === cumH));
-  cumDraw('wcum', cumH);
+  if (!simpleUi()) cumDraw('wcum', cumH);
   $('#w-cnt').textContent = u32(R.COUNT); $('#w-state').textContent = st[0];
   const pb = plcBuckets(), put = (id, t, cls) => { const e = $(id); e.textContent = t; e.className = 'd ' + cls; };
   if (!pb) {
@@ -521,22 +665,27 @@ async function showStorage() {
 }
 
 document.querySelectorAll('nav button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
-$('#m-auto').onclick = () => sendReg(R.MODE, 0);
-$('#m-man').onclick = () => sendReg(R.MODE, 1);
+$('#uiMode').value = cfg.uiMode;
+$('#uiMode').onchange = () => { cfg.uiMode = $('#uiMode').value; LS.set('cfg', cfg); location.reload(); }; // tải lại để dựng đúng bố cục và biểu đồ của kiểu mới
+applyUi();
+$('#m-auto').onclick = () => command('Chuyển chế độ Tự động', R.MODE, 0, ['Chuyển sang Tự động?', 'PLC sẽ tự chạy theo chương trình; các đầu ra bật tay sẽ không còn tác dụng.', 'Tự động']);
+$('#m-man').onclick = () => command('Chuyển chế độ Thủ công', R.MODE, 1, ['Chuyển sang Thủ công?', 'Bạn sẽ bật/tắt từng đầu ra bằng tay. Khoá liên động của PLC vẫn có hiệu lực.', 'Thủ công']);
 $('#switches').onclick = (e) => {
   const b = e.target.closest('.sw'); if (!b || b.disabled) return;
-  sendReg(R.MAN, S.regs[R.MAN] ^ (1 << +b.dataset.i));
+  const i = +b.dataset.i, n = names(cfg.outNames, 'Y')[i], turnOn = !(S.regs[R.MAN] >> i & 1);
+  command(`${turnOn ? 'Bật' : 'Tắt'} ${n}`, R.MAN, S.regs[R.MAN] ^ (1 << i), [`${turnOn ? 'Bật' : 'Tắt'} ${n}?`, `Đầu ra Y${i} sẽ ${turnOn ? 'bật' : 'tắt'} ngay.`, turnOn ? 'Bật' : 'Tắt']);
 };
+$('#name-link').onclick = () => { showTab('set'); setTimeout(() => $('#outNames')?.focus(), 50); return false; };
 document.querySelectorAll('.conv-range').forEach((el) => el.onclick = (e) => { if (e.target.dataset.h) { rangeH = +e.target.dataset.h; render(); } });
 $('#q-go').onclick = queryRead;
 document.addEventListener('click', (e) => {   // machine control: same buttons on Tổng quan and in the dashboard panel
   const id = e.target.id;
-  if (id === 'w-start' || id === 'dc-start') sendReg(R.RUN_REQ, 1);
-  else if (id === 'w-stop' || id === 'dc-stop') sendReg(R.RUN_REQ, 0);
+  if (id === 'w-start' || id === 'dc-start') command('Chạy máy', R.RUN_REQ, 1, RUN_CF);
+  else if (id === 'w-stop' || id === 'dc-stop') command('Dừng máy', R.RUN_REQ, 0, STOP_CF);
 });
 $('#cum-range').onclick = (e) => { if (e.target.dataset.h) { cumH = +e.target.dataset.h; LS.set('cumH', cumH); render(); } };
-$('#c-start').onclick = () => sendReg(R.RUN_REQ, 1);
-$('#c-stop').onclick = () => sendReg(R.RUN_REQ, 0);
+$('#c-start').onclick = () => command('Chạy máy', R.RUN_REQ, 1, RUN_CF);
+$('#c-stop').onclick = () => command('Dừng máy', R.RUN_REQ, 0, STOP_CF);
 $('#c-set').onclick = () => { const v = parseInt($('#target').value || '0', 10); if (v >= 0 && v <= 65535) sendReg(R.TARGET, v); else toast('Giá trị 0–65535'); };
 $('#c-reset').onclick = () => { if (confirm('Xoá số đếm hiện tại về 0?')) sendReg(R.RESET, 1); };
 $('#save').onclick = () => {
@@ -603,5 +752,6 @@ applyRole(LS.get('session', null)?.role);
 alignSiteDevFromSession()
   .then(() => openDb())
   .then(() => { connect(); showTab('dash'); DB.compact(); });
+setInterval(() => { if (!document.hidden) renderStatus(); }, 1000);
 setInterval(() => { DB.compact().then(() => { if (!$('#tab-rep').hidden) Dash.refresh(true); }); }, 60000);
 setInterval(() => { if (!document.hidden && !$('#tab-rep').hidden) Dash.refresh(false); }, 10000);

@@ -223,3 +223,97 @@ button.primary{border-color:transparent}
 .w .d.up,.w .d.down{color:var(--mut)}.gs-body .v.bad,.state.bad{color:var(--bad)}
 .ctl-banner.warn{border-radius:6px}.ctl-banner.bad{border-radius:6px}
 #toast{border-radius:6px;background:var(--card);color:var(--fg);border:1px solid var(--line)}
+
+/* ---------- Phông chữ cho giám sát từ xa ----------
+   Phông hệ thống: không cần tải, chạy offline, đồng nhất với hệ điều hành (Segoe UI Variable trên Windows, SF trên iPhone, Roboto trên Android).
+   Số dùng chữ số đều bề rộng (tabular) và số 0 gạch chéo để không nhầm 0/O, 1/l khi đọc nhanh. Địa chỉ/giờ dùng phông đơn cách (mono). */
+:root{--font-ui:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"SF Pro Text",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,"Liberation Mono",Menlo,monospace}
+body{font-family:var(--font-ui);font-variant-numeric:tabular-nums slashed-zero}
+.mono,.addr,.ev-t,#stamp,td:last-child,code,pre{font-family:var(--font-mono);font-variant-numeric:tabular-nums slashed-zero}
+.num,.w .v,.state{font-variant-numeric:tabular-nums slashed-zero}
+
+/* ---------- Dữ liệu cũ / mất kết nối: số bị làm mờ để không bị tin nhầm ---------- */
+body.stale .num,body.stale .w .v,body.stale .ring,body.stale .w .bar,body.stale .state,body.stale .chip{opacity:.38;filter:grayscale(1)}
+body.stale .chip.on i{box-shadow:none}
+
+/* ---------- Nút điều khiển máy ---------- */
+.ctl-btn{min-height:56px;font-size:17px;font-weight:700;letter-spacing:.02em;border-radius:8px;border:3px solid var(--fg);padding:10px 12px}
+.ctl-btn.act{background:var(--fg);color:var(--bg)}
+.ctl-btn.act.stop{outline:3px solid var(--fg);outline-offset:2px}
+.ctl-btn.idle{background:transparent;color:var(--mut);border:2px dashed var(--line);font-weight:600}
+.ctl-btn:disabled{opacity:1;pointer-events:none}
+.ctl-btn.idle:disabled{opacity:.7}
+.ctlw .row button.ctl-btn{padding:10px 6px;font-size:16px}
+
+/* ---------- Hộp xác nhận hành động ---------- */
+.cf-back{position:fixed;inset:0;z-index:50;background:#000a;display:flex;align-items:flex-end;justify-content:center;padding:16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
+.cf-box{width:100%;max-width:420px;background:var(--card);color:var(--fg);border:2px solid var(--fg);border-radius:10px;padding:18px}
+.cf-box h3{margin:0 0 6px;font-size:20px}
+.cf-box p{margin:0 0 16px;color:var(--mut);font-size:15px;line-height:1.45}
+.cf-box .row{margin-top:0}
+@media (min-width:900px){.cf-back{align-items:center}}
+
+/* ---------- Công tắc đầu ra: tên + địa chỉ + trạng thái bằng chữ ---------- */
+.sw{gap:10px;min-height:64px}
+.sw .sw-l{display:flex;flex-direction:column;flex:1;min-width:0}
+.sw .sw-n{font-weight:600;overflow-wrap:anywhere}
+.sw .addr{color:var(--mut);font-size:12px}
+.sw .sw-s{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--mut);min-width:34px;text-align:right}
+.sw.on .sw-s{color:var(--fg)}
+
+/* ---------- Sự kiện gần nhất ---------- */
+.events{display:flex;flex-direction:column}
+.ev{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ev:last-child{border:0}
+.ev .ev-t{flex:none;color:var(--mut);font-size:12px;min-width:70px}
+.ev .ev-i{flex:none;width:16px;text-align:center}
+.ev.crit{color:var(--al-crit);font-weight:600}
+.ev.warn{color:var(--al-warn);font-weight:600}
+.ev.ok .ev-i{color:var(--fg)}
+
+/* ---------- Mức độ cảnh báo ---------- */
+.al.warn{color:var(--al-warn)}
+.alarm-bar.alarm.warnonly{background:linear-gradient(var(--al-warn-bg),var(--al-warn-bg)),var(--card);border-bottom-color:var(--al-warn)}
+.alarm-bar.alarm.warnonly .ab-i{color:var(--al-warn)}
+
+/* ---------- Biểu đồ chưa có dữ liệu: thu gọn thay vì chiếm cả khung ---------- */
+.chart:has(>.muted.c){height:auto}
+.chart .c{padding:14px 0}
+
+/* ---------- Kiểu giao diện "Đơn giản" (chủ xưởng, điện thoại) ----------
+   Nền trung tính + MỘT màu nhấn; màu trạng thái chỉ dùng cho trạng thái (xanh = ổn, hổ phách = cảnh báo, đỏ = lỗi) và luôn kèm biểu tượng + chữ. */
+body.ui-simple{--bg:#f1f3f7;--card:#fff;--fg:#14181f;--mut:#566074;--line:#d3d9e3;--acc:#1d4ed8;--accbg:#1d4ed81a;--ok:#15803d;--on:#15803d;--warn:#9a5b00;--bad:#c4262e;
+  --al-crit:#c4262e;--al-crit-bg:#c4262e1a;--al-warn:#9a5b00;--al-warn-bg:#d9980026}
+@media (prefers-color-scheme:dark){body.ui-simple{--bg:#12161c;--card:#1b2129;--fg:#eef1f5;--mut:#9aa5b5;--line:#2e3744;--acc:#7aa7ff;--accbg:#7aa7ff26;--ok:#4ade80;--on:#4ade80;--warn:#f0b429;--bad:#ff6b63;
+  --al-crit:#ff6b63;--al-crit-bg:#ff6b6326;--al-warn:#f0b429;--al-warn-bg:#f0b42926}}
+body.ui-simple .pro-only,body.ui-simple .addr{display:none}
+body:not(.ui-simple) #status-card{display:none}
+body.ui-simple button.primary{color:#fff}
+@media (prefers-color-scheme:dark){body.ui-simple button.primary{color:#0b1220}}
+body.ui-simple .ctl-btn.act{background:var(--acc);border-color:var(--acc);color:#fff}
+body.ui-simple .ctl-btn.act.stop{background:var(--bad);border-color:var(--bad);outline-color:var(--bad);color:#fff}
+@media (prefers-color-scheme:dark){body.ui-simple .ctl-btn.act,body.ui-simple .ctl-btn.act.stop{color:#0b1220}}
+body.ui-simple .ctl-btn.idle{border-color:var(--line);color:var(--mut)}
+body.ui-simple nav button.on{color:var(--acc)}
+body.ui-simple .sw.on b{background:var(--on)}
+body.ui-simple .sw.on .sw-s{color:var(--on)}
+body.ui-simple .state.run{color:var(--ok)}
+
+/* Thẻ trạng thái lớn ở đầu tab Tổng quan */
+.status-card{display:flex;gap:14px;align-items:center;padding:16px;border-radius:12px;border:2px solid var(--line);background:var(--card)}
+.status-card .sc-i{flex:none;width:44px;text-align:center;font-size:34px;line-height:1}
+.status-card .sc-t{font-size:20px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.status-card .sc-h{margin-top:4px;color:var(--mut);font-size:15px;line-height:1.4}
+.status-card.st-ok{border-color:var(--ok);background:linear-gradient(color-mix(in srgb,var(--ok) 12%,transparent),color-mix(in srgb,var(--ok) 12%,transparent)),var(--card)}
+.status-card.st-ok .sc-i{color:var(--ok)}
+.status-card.st-warn,.status-card.st-comm{border-color:var(--al-warn);background:linear-gradient(var(--al-warn-bg),var(--al-warn-bg)),var(--card)}
+.status-card.st-warn .sc-i,.status-card.st-comm .sc-i{color:var(--al-warn)}
+.status-card.st-alarm{border-color:var(--al-crit);background:linear-gradient(var(--al-crit-bg),var(--al-crit-bg)),var(--card)}
+.status-card.st-alarm .sc-i{color:var(--al-crit)}
+.status-card.st-idle .sc-i{color:var(--mut)}
+
+/* Kiểu Đơn giản: không có tab Điều khiển (đầu ra thủ công) và Báo cáo (bảng tuỳ biến); chỉ còn Tổng quan, Băng tải, Cài đặt */
+body.ui-simple nav button[data-tab="ctrl"],body.ui-simple nav button[data-tab="rep"]{display:none}
+body.ui-simple .widgets .ctlw{grid-column:1/-1}
+body.ui-simple .widgets .ctlw .row{gap:10px}

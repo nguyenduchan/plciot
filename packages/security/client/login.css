@@ -1,0 +1,29 @@
+/* Giao diện trang đăng nhập dùng chung. Màu/phông lấy từ biến CSS của app (--bg --card --fg --mut --line --acc --bad --ok --r), nên mỗi app chỉ cần đổi theme. */
+.login-wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom));max-width:420px;margin:auto}
+.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.login-brand img{width:48px;height:48px}
+.login-brand h1{font-size:24px;margin:0;letter-spacing:-.02em}
+.login-brand p{margin:4px 0 0;color:var(--mut);font-size:14px}
+#progress{display:none;margin-top:16px}
+#progress.on{display:block}
+.bar-track{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar-track i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#ok-msg{color:var(--ok,#16a34a);font-weight:600;font-size:15px;margin:0 0 12px}
+#ok-msg[hidden]{display:none}
+#error{color:var(--bad);font-size:14px;margin:0 0 12px;min-height:1.2em}
+.login-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.login-actions button{width:100%}
+.modes{display:flex;gap:4px;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:14px}
+.modes button{flex:1;border:0;background:none;padding:10px;border-radius:10px;font-weight:500;color:var(--mut)}
+.modes button.on{background:var(--card);color:var(--acc);font-weight:600;box-shadow:0 1px 3px #0002}
+.hint{font-size:13px;color:var(--mut);margin:0 0 12px;line-height:1.45}
+.hint a{color:var(--acc);font-weight:600}
+.phone-row{display:flex;gap:8px;align-items:flex-end}
+.phone-row .cc{flex:0 0 72px}
+.phone-row .cc input{text-align:center}
+.phone-row .ph{flex:1}
+.flow-title{margin:0 0 12px;font-size:20px}
+.step[hidden],#pw-row[hidden],#switch-row[hidden],.login-actions button[hidden]{display:none!important}
+/* Máy đã xác nhận OTP (vd. sau đăng xuất): chỉ Face ID / mật khẩu, không nhập lại số điện thoại */
+.returning .phone-row,.returning #demo,.returning #btn-next,.returning #btn-otp,.returning #lnk-use-pw,.returning #btn-setup-passkey,.returning #tg-hint,.returning #try-passkey-row{display:none!important}
+.row-btns{display:flex;gap:8px;margin:8px 0}.row-btns button{flex:1}

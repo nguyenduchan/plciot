@@ -91,7 +91,7 @@ export function startMqttIngest(db) {
         const key = `${tenantId}/${site}/${device}`;
         const cstate = r[8] | 0;
         onCountDone(db, { tenantId, site, device, cstate, r, appUrl, prevC });
-        maybeWebhookAlarm(db, tenantId, site, device, r[2] | 0, prevAlarm);
+        maybeWebhookAlarm(db, tenantId, site, device, r[2] | 0, prevAlarm, appUrl);
 
         if (minInterval > 0) {
           const prev = lastTeleStore.get(key) || 0;
@@ -156,13 +156,39 @@ function onCountDone(db, { tenantId, site, device, cstate, r, appUrl, prevC }) {
   }
 }
 
-function maybeWebhookAlarm(db, tenantId, site, device, alarmMask, prevAlarm) {
-  if (!tenantId) return;
+/** Nội dung cảnh báo gửi Telegram: [bit, tên, gợi ý xử lý]. Khớp ALARMS trong webapp/app.js. */
+const ALARM_TEXT = [
+  [1, 'Dừng khẩn cấp (E-stop)', 'Nhả nút dừng khẩn cấp trên máy rồi chạy lại.'],
+  [2, 'Lỗi cảm biến mức', 'Kiểm tra cảm biến mức và dây nối của nó.'],
+];
+const lastAlarmPush = new Map();
+/** Cảnh báo mới xuất hiện (hoặc đã hết) thì báo ngay qua Telegram cho người dùng của thiết bị; cùng thiết bị tối đa 1 tin cảnh báo mới mỗi 60 giây. */
+function pushAlarm(db, { site, device, mask, was, appUrl }) {
+  if (!telegramConfigured()) return;
+  const added = ALARM_TEXT.filter(([m]) => (mask & m) && !(was & m));
+  const cleared = mask === 0 && was !== 0;
+  if (!added.length && !cleared) return;
+  const key = `${site}/${device}`;
+  if (added.length) {
+    if (Date.now() - (lastAlarmPush.get(key) || 0) < 60_000) return;
+    lastAlarmPush.set(key, Date.now());
+  }
+  const link = String(appUrl || '').replace(/\/$/, '') + '/';
+  const where = `Nhà máy <code>${site}</code> / thiết bị <code>${device}</code>`;
+  const text = added.length
+    ? `<b>⚠️ Cảnh báo: ${added.map((a) => a[1]).join(', ')}</b>\n\n${where}\n${added.map((a) => `• ${a[2]}`).join('\n')}\n\n👉 <a href="${link}">Mở Giám sát PLC</a>`
+    : `<b>✅ Hết cảnh báo</b>\n\n${where}`;
+  const chatIds = new Set(findNotifyUsers(db, site, device).map((u) => u.chat_id).filter(Boolean));
+  for (const chatId of chatIds) sendTelegramMessage(chatId, text).catch((e) => console.error('Telegram alarm', e.message));
+}
+
+function maybeWebhookAlarm(db, tenantId, site, device, alarmMask, prevAlarm, appUrl) {
   const key = `${site}/${device}`;
   const was = prevAlarm.get(key);
   prevAlarm.set(key, alarmMask);
   if (was === undefined || was === alarmMask) return;
-  if (alarmMask === 0 && was === 0) return;
+  pushAlarm(db, { site, device, mask: alarmMask, was, appUrl });
+  if (!tenantId) return;
   emitWebhook(db, {
     tenantId, site, device, event: 'alarm',
     data: { alarm: alarmMask, previous: was ?? 0 },

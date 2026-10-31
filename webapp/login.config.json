@@ -1,0 +1,13 @@
+{
+  "title": "Giám sát PLC",
+  "subtitle": "Đăng nhập bằng số điện thoại Việt Nam",
+  "themeColor": "#1a1a1a",
+  "manifest": "manifest.json",
+  "icon": "icon.svg",
+  "appleIcon": "icon-180.png",
+  "stylesheet": "style.css",
+  "appScripts": [
+    "auth-app.js"
+  ],
+  "demoButton": "Chạy thử không đăng nhập"
+}

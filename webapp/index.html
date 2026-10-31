@@ -39,27 +39,29 @@
 
     <main>
       <section id="tab-dash" class="tab cols">
+        <div id="status-card" class="status-card st-comm span" role="status" aria-live="polite"><span class="sc-i" aria-hidden="true">■</span><div class="sc-b"><div class="sc-t">Đang kết nối…</div><div class="sc-h"></div></div></div>
         <div class="panel span">
           <div class="widgets">
             <div class="w"><div class="k">Số lượng hiện tại</div><div class="v" id="w-cnt">0</div><div class="d" id="w-state">—</div></div>
             <div class="w"><div class="k">Giờ này</div><div class="v" id="w-hour">—</div><div class="d" id="w-hourd"></div></div>
             <div class="w"><div class="k">24 giờ qua</div><div class="v" id="w-24">—</div><div class="d" id="w-24d"></div></div>
             <div class="w ringw"><div class="ring" id="w-ring"><span id="w-runp">—</span></div><div><div class="k">Thời gian chạy</div><div class="d" id="w-rund">24 giờ qua</div></div></div>
-            <div class="w"><div class="k">Tốc độ băng tải</div><div class="v"><span id="w-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="w-spdbar"></i></div><div class="d" id="w-spdd"></div></div>
+            <div class="w pro-only"><div class="k">Tốc độ băng tải</div><div class="v"><span id="w-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="w-spdbar"></i></div><div class="d" id="w-spdd"></div></div>
             <div class="w ctlw"><div class="k">Điều khiển máy</div><div class="row"><button id="w-start" class="primary">▶ Chạy</button><button id="w-stop" class="danger">■ Dừng máy</button></div><div class="d" id="w-d"></div></div>
           </div>
         </div>
-        <div class="panel span">
+        <div class="panel span"><h2>Sự kiện gần nhất</h2><div id="events" class="events"></div></div>
+        <div class="panel span pro-only">
           <h2>Số lượng đếm được theo thời gian</h2>
           <div class="seg" id="cum-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
           <div id="wcum" class="chart"></div>
           <p class="muted">Tổng số sản phẩm đếm được cộng dồn từ đầu khoảng chọn (dữ liệu ghi trên thiết bị khi app mở).</p>
         </div>
         <div class="panel"><h2>Sản lượng mỗi giờ (24 giờ qua)</h2><canvas id="wbars" data-h="170"></canvas><p class="muted" id="w-note"></p></div>
-        <div class="panel"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
-        <div class="panel"><h2>Đầu vào</h2><div id="ins" class="grid"></div></div>
-        <div class="panel"><h2>Đầu ra</h2><div id="outs" class="grid"></div></div>
-        <div class="panel span"><h2>Cảnh báo</h2><div id="alarms"></div><p class="muted" id="stamp"></p></div>
+        <div class="panel pro-only"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
+        <div class="panel pro-only"><h2>Đầu vào</h2><div id="ins" class="grid"></div></div>
+        <div class="panel pro-only"><h2>Đầu ra</h2><div id="outs" class="grid"></div></div>
+        <div class="panel span pro-only"><h2>Cảnh báo</h2><div id="alarms"></div><p class="muted" id="stamp"></p></div>
       </section>
 
       <section id="tab-conv" class="tab cols" hidden>
@@ -69,7 +71,7 @@
             <div class="right"><span class="muted">Trạng thái</span><div id="cstate" class="state">—</div></div>
           </div>
           <div class="row"><button id="c-start" class="primary">▶ Chạy</button><button id="c-stop" class="danger">■ Dừng máy</button></div>
-          <div class="w" style="margin-top:12px"><div class="k">Tốc độ băng tải</div><div class="v"><span id="c-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="c-spdbar"></i></div><div class="d" id="c-spdd"></div></div>
+          <div class="w pro-only" style="margin-top:12px"><div class="k">Tốc độ băng tải</div><div class="v"><span id="c-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="c-spdbar"></i></div><div class="d" id="c-spdd"></div></div>
           <h2>Dừng khi đạt số lượng</h2>
           <div class="row"><input id="target" type="number" min="0" max="65535" inputmode="numeric" placeholder="0 = không giới hạn"><button id="c-set" class="fit">Đặt</button><button id="c-reset" class="fit">Xoá đếm</button></div>
           <p class="muted" id="ctarget"></p>
@@ -78,9 +80,9 @@
           <h2>Sản lượng</h2>
           <div class="seg conv-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
           <canvas id="bars" data-h="200"></canvas>
-          <h2>Số lượng đếm theo thời gian</h2>
-          <div id="cumc" class="chart"></div>
-          <table id="cstats"></table>
+          <h2 class="pro-only">Số lượng đếm theo thời gian</h2>
+          <div id="cumc" class="chart pro-only"></div>
+          <table id="cstats" class="pro-only"></table>
         </div>
       </section>
 
@@ -91,7 +93,8 @@
           <div class="seg"><button id="m-auto">Tự động</button><button id="m-man">Thủ công</button></div>
           <p class="muted" id="ctrl-hint"></p>
         </div>
-        <div class="panel"><h2>Điều khiển đầu ra</h2><div id="switches" class="switches"></div></div>
+        <div class="panel"><h2>Điều khiển đầu ra</h2><div id="switches" class="switches"></div>
+          <p class="muted" id="name-hint" hidden>Đầu ra đang hiện theo địa chỉ (Y0, Y1…). <a href="#" id="name-link" onclick="return false">Đặt tên thiết bị</a> (ví dụ "Băng tải 1", "Van nước") để dễ nhận biết.</p></div>
       </section>
 
       <section id="tab-rep" class="tab" hidden>
@@ -107,6 +110,8 @@
 
       <section id="tab-set" class="tab" hidden>
         <div class="panel form">
+          <label>Kiểu giao diện<select id="uiMode"><option value="simple">Đơn giản (chủ xưởng)</option><option value="pro">Vận hành (kỹ thuật)</option></select></label>
+          <div class="pro-only">
           <label class="check"><input type="checkbox" id="demo"> Chạy thử (dữ liệu giả, không cần máy chủ)</label>
           <label>Địa chỉ máy chủ MQTT (WebSocket bảo mật)<input id="url" placeholder="wss://plc-mqtt.dieukhientudong.net" autocapitalize="off" autocorrect="off"></label>
           <label>Tên đăng nhập<input id="user" autocapitalize="off" autocorrect="off"></label>
@@ -125,6 +130,7 @@
           <div class="row"><button id="storage-clear" type="button" class="danger">Xoá dữ liệu trên thiết bị</button></div>
           <p class="muted">Đây là bộ nhớ trên thiết bị này. Thời gian lưu trên máy chủ phụ thuộc gói tài khoản (mặc định 3 ngày).</p>
           <div class="row"><button id="save" class="primary">Lưu &amp; kết nối</button></div>
+          </div>
           <div class="row"><button id="logout" type="button">Đăng xuất</button></div>
         </div>
         <div class="panel" id="sub-panel" style="margin-top:12px" hidden>
@@ -132,7 +138,7 @@
           <p class="muted" id="sub-info">Đang tải…</p>
           <p class="muted">Webapp dùng cùng mô hình subscribe trên cloud như thiết bị IoT / đối tác. Admin kích hoạt gói trên Console (không thanh toán trong app).</p>
         </div>
-        <div class="panel form" id="admin-link" style="margin-top:12px" hidden>
+        <div class="panel form pro-only" id="admin-link" style="margin-top:12px" hidden>
           <h2>Quản trị</h2>
           <div class="row"><a href="console.html"><button type="button" class="primary" style="width:100%">Console dịch vụ IoT (gói, thiết bị, DB)</button></a></div>
           <div class="row"><a href="admin.html"><button type="button" style="width:100%">Người dùng &amp; phân quyền</button></a></div>
@@ -169,7 +175,7 @@
             <p class="muted" id="ctl-msg"></p>
           </details>
 
-          <details class="sec" id="site-sec" hidden>
+          <details class="sec pro-only" id="site-sec" hidden>
             <summary>Nhà máy &amp; thành viên</summary>
             <div id="site-body" class="muted">Đang tải…</div>
             <p class="muted" id="site-msg"></p>
@@ -195,7 +201,7 @@
             <pre id="rc-out" class="codes" hidden></pre>
             <div class="row" id="rc-actions" hidden><button id="rc-copy" class="fit">Sao chép</button><button id="rc-dl" class="fit">Tải .txt</button></div>
           </details>
-          <details class="sec">
+          <details class="sec pro-only">
             <summary>Dữ liệu lịch sử</summary>
             <p class="muted" id="ret-info"></p>
             <p class="muted">Xoá toàn bộ lịch sử đã lưu trên máy chủ cho thiết bị này (ví dụ trước khi bán/chuyển nhượng). Không thể hoàn tác.</p>
@@ -203,7 +209,7 @@
           </details>
           <p class="muted" id="acct-msg"></p>
         </div>
-        <div class="panel form" style="margin-top:12px">
+        <div class="panel form pro-only" style="margin-top:12px">
           <h2>Truy vấn dữ liệu PLC</h2>
           <p class="muted" style="margin-top:0">Đọc trực tiếp thanh ghi từ PLC qua gateway hoặc Node-RED (chỉ đọc). Địa chỉ 0–299.</p>
           <div class="row"><input id="q-a" type="number" min="0" max="299" inputmode="numeric" placeholder="Địa chỉ, ví dụ 100"><input id="q-n" type="number" min="1" max="20" value="4" inputmode="numeric" style="max-width:84px" aria-label="Số lượng"><button id="q-go" class="fit primary">Đọc</button></div>

@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- GENERATED từ packages/security/client/login.template.html + login.config.json bằng "npm run sync-client". KHÔNG sửa ở đây. -->
 <html lang="vi">
 <head>
 <meta charset="utf-8">
@@ -11,34 +12,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
-<style>
-.login-wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom));max-width:420px;margin:auto}
-.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
-.login-brand img{width:48px;height:48px}
-.login-brand h1{font-size:24px;margin:0;letter-spacing:-.02em}
-.login-brand p{margin:4px 0 0;color:var(--mut);font-size:14px}
-#progress{display:none;margin-top:16px}
-#progress.on{display:block}
-.bar-track{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
-.bar-track i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
-#ok-msg{color:var(--ok,#16a34a);font-weight:600;font-size:15px;margin:0 0 12px}
-#ok-msg[hidden]{display:none}
-#error{color:var(--bad);font-size:14px;margin:0 0 12px;min-height:1.2em}
-.login-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
-.login-actions button{width:100%}
-.modes{display:flex;gap:4px;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:14px}
-.modes button{flex:1;border:0;background:none;padding:10px;border-radius:10px;font-weight:500;color:var(--mut)}
-.modes button.on{background:var(--card);color:var(--acc);font-weight:600;box-shadow:0 1px 3px #0002}
-.hint{font-size:13px;color:var(--mut);margin:0 0 12px;line-height:1.45}
-.hint a{color:var(--acc);font-weight:600}
-.phone-row{display:flex;gap:8px;align-items:flex-end}
-.phone-row .cc{flex:0 0 72px}
-.phone-row .cc input{text-align:center}
-.phone-row .ph{flex:1}
-.flow-title{margin:0 0 12px;font-size:20px}
-.step[hidden],#pw-row[hidden],.login-actions button[hidden]{display:none!important}
-.row-btns{display:flex;gap:8px;margin:8px 0}.row-btns button{flex:1}
-</style>
+<link rel="stylesheet" href="security/login.css">
 </head>
 <body>
 <div class="login-wrap">
@@ -46,7 +20,7 @@
     <img src="icon.svg" alt="">
     <div>
       <h1>Giám sát PLC</h1>
-      <p>Số điện thoại Việt Nam · OTP Telegram (máy mới) → Face ID / vân tay → mật khẩu</p>
+      <p>Đăng nhập bằng số điện thoại Việt Nam</p>
     </div>
   </div>
   <div class="panel form">
@@ -63,9 +37,8 @@
       <p class="hint" id="flow-hint">Nhập số điện thoại để tiếp tục.</p>
       <label id="pw-row" hidden>Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu"></label>
       <div class="login-actions">
-        <button type="button" id="btn-resume" class="primary" hidden>Mở khoá ứng dụng</button>
         <button type="button" id="btn-next" class="primary">Tiếp tục</button>
-        <button type="button" id="btn-login" class="primary" hidden>Đăng nhập</button>
+        <button type="button" id="btn-login" class="primary" hidden>Đăng nhập bằng mật khẩu</button>
         <button type="button" id="btn-passkey" class="primary" hidden>Đăng nhập bằng vân tay / Face ID</button>
         <button type="button" id="lnk-use-pw" class="fit" hidden>Dùng mật khẩu thay thế</button>
         <button type="button" id="btn-setup-passkey" class="fit" hidden>Thiết lập Face ID trên máy này</button>
@@ -73,6 +46,8 @@
         <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
       </div>
     </div>
+
+    <p class="hint" id="switch-row" style="text-align:center" hidden><a href="#" id="lnk-switch">Không phải bạn? Dùng số khác / nhận OTP Telegram</a></p>
 
     <div id="step-otp" class="step" hidden>
       <p class="hint" id="otp-info" style="font-weight:600"></p>

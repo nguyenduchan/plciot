@@ -85,7 +85,7 @@ function setError(codeOrMsg) {
 
 function setBusy(on) {
   loginBusy = on;
-  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey', 'btn-resume', 'btn-resend', 'btn-login', 'btn-next', 'rc-tg', 'rc-mail', 'rc-bio', 'rc-go', 'rc-back'].forEach((id) => {
+  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey', 'btn-resend', 'btn-login', 'btn-next', 'rc-tg', 'rc-mail', 'rc-bio', 'rc-go', 'rc-back'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on || (id === 'btn-resend' && Date.now() < otpResendAt);
   });
@@ -260,30 +260,14 @@ async function loadAuthConfig() {
   } catch {}
 }
 
+/** Không còn nút "Mở khoá ứng dụng": đăng nhập lại bằng Face ID / vân tay / mật khẩu. Chỉ giữ thông báo khi có bản mới. */
 async function tryResume() {
   const session = LS.get('session', null);
   if (!session || session.demo) return false;
   if (!session.online && !(await hasBundle(session))) return false;
   if (session.online && !session.token) return false;
   // ?update=1 = boot.js đã thử tự cập nhật mà lỗi (hết hạn phiên, mất mạng…): ở lại để đăng nhập tải lại bản mới.
-  if (new URLSearchParams(location.search).get('update') === '1') {
-    setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
-    return false;
-  }
-  if (!session.token || session.pending) return false;
-  const resume = $('#btn-resume');
-  resume.hidden = false;
-  resume.onclick = async () => {
-    if (loginBusy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const data = await window.Security.resumeLogin();
-      if (data) await finishLogin(data);
-      else setError('Chưa xác nhận đăng nhập. Hãy thử lại hoặc dùng OTP.');
-    } catch (ex) { restoreLogin(); setError(errCode(ex, 'unauthorized')); }
-    finally { setBusy(false); }
-  };
+  if (new URLSearchParams(location.search).get('update') === '1') setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
   return false;
 }
 
@@ -533,6 +517,45 @@ syncPasskeyButton();
   await new Promise((r) => setTimeout(r, 400));
   if (!loginBusy && mode === 'login' && !LS.get('session', null)?.token) passkeyLogin();
 })();
+/**
+ * Máy đã xác nhận OTP ở phiên trước (vd. vừa đăng xuất): chỉ hiện Face ID / mật khẩu cho số đã đăng nhập, không bắt nhập lại số điện thoại hay OTP.
+ * Server vẫn là bên quyết định (hết hạn tin cậy hoặc máy lạ thì về màn hình nhập số + OTP như thường).
+ */
+async function returningView() {
+  const phone = LS.get('lastPhone', '');
+  if (!localTrusted() || !isValidVnPhoneClient(phone)) return false;
+  let plan;
+  try {
+    const r = await api('/api/login/start', { phone });
+    if (!r.ok) return false;
+    plan = r.data;
+  } catch { return false; }
+  if (plan.otpRequired) { LS.del('otpAt'); return false; }
+  const bio = await window.Security.bioInfo();
+  const canBio = bio.supported && plan.hasPasskey;
+  if (!canBio && !plan.hasPassword) return false;
+  flowPlan = { ...plan, bio, mustEnroll: bio.supported && !plan.hasPasskey };
+  $('#phone').value = phone.replace(/^84/, '');
+  document.body.classList.add('returning');
+  const how = canBio && plan.hasPassword ? `${bio.label} hoặc mật khẩu` : canBio ? bio.label : 'mật khẩu';
+  $('#flow-hint').textContent = `Đăng nhập số 0${phone.slice(2, 5)} *** ${phone.slice(-3)} bằng ${how}`;
+  $('#btn-passkey').hidden = !canBio;
+  if (canBio) { $('#btn-passkey').textContent = `Đăng nhập bằng ${bio.label}`; $('#btn-passkey').onclick = () => passkeyLogin(); }
+  $('#pw-row').hidden = !plan.hasPassword;
+  $('#btn-login').hidden = !plan.hasPassword;
+  $('#switch-row').hidden = false;
+  $('#lnk-switch').onclick = (event) => {
+    event.preventDefault();
+    LS.del('otpAt'); LS.del('lastPhone');
+    document.body.classList.remove('returning');
+    $('#switch-row').hidden = true;
+    $('#phone').value = '';
+    applyMode();
+    $('#phone').focus();
+  };
+  return true;
+}
+returningView();
 $('#btn-next').onclick = runFlow;
 $('#btn-login').onclick = () => passwordLogin();
 $('#password').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); passwordLogin(); } };

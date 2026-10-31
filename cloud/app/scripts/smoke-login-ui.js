@@ -23,7 +23,7 @@ async function browser({ offlineBundle = false, session = null } = {}) {
     if (!elements.has(selector)) {
       const classes = new Set();
       elements.set(selector, {
-        value: '', textContent: '', hidden: ['#step-otp', '#ok-msg', '#btn-resume', '#btn-passkey'].includes(selector), disabled: false,
+        value: '', textContent: '', hidden: ['#step-otp', '#ok-msg', '#btn-passkey'].includes(selector), disabled: false,
         classList: { add: (value) => classes.add(value), remove: (value) => classes.delete(value), contains: (value) => classes.has(value), toggle() {} },
         style: {}, focus() {},
       });
@@ -195,14 +195,10 @@ await scenario('Passkey cancellation, rejection and download failure preserve re
   }
 });
 
-await scenario('Existing session never auto-enters; cancelled resume stays on login', async () => {
+await scenario('Existing session never auto-enters and no resume button is offered', async () => {
   const ui = await browser({ session: { token: 'old-token', userId: 7, online: true } });
   assert.equal(ui.redirects.length, 0);
-  assert.equal(ui.element('#btn-resume').hidden, false);
-  ui.ctl.resumeLogin = async () => null;
-  await ui.element('#btn-resume').onclick();
-  assert.equal(ui.redirects.length, 0);
-  assert.equal(ui.element('#btn-resume').disabled, false);
+  assert.equal(ui.element('#step-creds').hidden, false);
 });
 
 await scenario('OTP countdown and resend follow elapsed time after tab suspension', async () => {
@@ -244,19 +240,11 @@ await scenario('Double submit cannot start another login while step two is pendi
   assert.equal(ui.element('#btn-otp').disabled, false);
 });
 
-await scenario('Passkey and resumed login succeed without OTP; failed resume remains retryable', async () => {
+await scenario('Passkey login succeeds without OTP', async () => {
   const passkey = await browser();
   await vm.runInContext('passkeyLogin()', passkey.context);
   assert.equal(passkey.redirects[0], 'index.html');
   assert.equal(passkey.requests.filter((request) => request.path.includes('otp')).length, 0);
-  const resume = await browser({ session: { token: 'old-token', userId: 7, online: true } });
-  resume.ctl.resumeLogin = async () => { throw new Error('Phiên đăng nhập hết hạn.'); };
-  await resume.element('#btn-resume').onclick();
-  assert.equal(resume.redirects.length, 0);
-  assert.equal(resume.element('#step-creds').hidden, false);
-  resume.ctl.resumeLogin = async () => resume.full;
-  await resume.element('#btn-resume').onclick();
-  assert.equal(resume.redirects[0], 'index.html');
 });
 
 console.log(`Login UI: ${checks} scenario groups passed`);

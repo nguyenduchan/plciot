@@ -76,6 +76,26 @@ Admin phải lưu tham chiếu bằng chứng xác minh ngoài kênh và không 
 
 ### Client dùng chung và giao diện riêng
 
+### Trang đăng nhập dùng chung (app mới chỉ cần khai báo thương hiệu)
+
+Giao diện đăng nhập và mọi bước (số điện thoại → OTP → Face ID / vân tay → email tuỳ chọn → mật khẩu, màn hình sau đăng xuất chỉ Face ID / mật khẩu, khôi phục 2 yếu tố) nằm trong gói, không viết lại ở từng app:
+
+| File trong gói | Vai trò |
+|---|---|
+| `client/login.template.html` | Khung trang đăng nhập (mẫu) |
+| `client/login.css` | Giao diện trang, chỉ dùng biến CSS của app (`--bg --card --fg --mut --line --acc --bad --ok --r`) |
+| `client/login.js`, `security-client.js`, ... | Luồng các bước (đã có sẵn) |
+
+App mới tạo `<webapp>/login.config.json` rồi chạy `node packages/security/scripts/sync-client.js <webapp>/security`:
+
+```json
+{ "title": "Tên app", "subtitle": "Mô tả ngắn", "themeColor": "#1a1a1a", "manifest": "manifest.json",
+  "icon": "icon.svg", "appleIcon": "icon-180.png", "stylesheet": "style.css",
+  "appScripts": ["auth-app.js"], "demoButton": "Chạy thử không đăng nhập" }
+```
+
+Lệnh sinh `<webapp>/login.html` và `<webapp>/security/*` (kể cả `login.css`). `demoButton` bỏ trống thì không có nút chạy thử. Muốn đổi màu/phông chỉ cần đổi biến CSS trong `stylesheet` của app. `npm run check-client` (hoặc `--check`) báo lệch nếu ai sửa tay bản sinh ra. Thêm `/login.html` và `/security/login.css` vào danh sách shell của service worker để chạy offline.
+
 Chạy `node packages/security/scripts/sync-client.js <webapp>/security`; không sửa bản sinh ra. Trang login nạp `device-proof.js`, `security-client.js`, adapter UI của host (tuỳ chọn), rồi `login.js` từ thư mục security. Trang app nạp `session.js` và `boot.js` ở head; các controller hồ sơ/khôi phục chỉ nạp trên trang tương ứng.
 
 `window.AuthApp` là hook hiển thị/nghiệp vụ: `onAuthenticated`, `onDemo`, `onAuthConfig`, `onSecuritySummary`, `contactLabel`. Không hook nào được bỏ qua quyết định xác thực của server. Menu riêng có thể phát sự kiện `security-profile-refresh` để tải lại hồ sơ. Client không cần `control.js` hoặc `window.Ctl` để đăng nhập.

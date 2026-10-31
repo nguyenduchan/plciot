@@ -1,6 +1,6 @@
 ﻿/* Per-user cache-first shell. Active bundle name lives in cache "plc-meta". */
 const META = 'plc-meta';
-const AUTH_SHELL = new Set(['/login.html', '/recover.html', '/auth-app.js', '/security/login.js', '/security/recover.js', '/security/account.js', '/security/boot.js', '/security/device-proof.js', '/security/security-client.js', '/security/session.js']);
+const AUTH_SHELL = new Set(['/login.html', '/recover.html', '/auth-app.js', '/security/login.js', '/security/login.css', '/security/recover.js', '/security/account.js', '/security/boot.js', '/security/device-proof.js', '/security/security-client.js', '/security/session.js']);
 
 async function activeCacheName() {
   try {
