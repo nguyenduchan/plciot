@@ -120,8 +120,7 @@
       $('#acct-pending').appendChild(d);
     });
     window.AuthApp?.onSecuritySummary?.(sec);
-    $('#em-addr').placeholder = sec.emailEnabled ? 'ban@example.com' : 'Máy chủ chưa bật email';
-    $('#em-send').disabled = !sec.emailEnabled;
+    $('#em-addr').placeholder = 'ban@example.com';
     renderChannels();
   }
 
@@ -196,6 +195,7 @@
     });
     busy(['em-send'], false);
     if (!ok) { msg(errText(data), true); return; }
+    if (data.saved) { msg('Đã lưu email. Sẽ xác minh khi hệ thống hỗ trợ gửi email.'); load(); return; }
     $('#em-1').hidden = true;
     $('#em-2').hidden = false;
     msg('Đã gửi mã tới email.');

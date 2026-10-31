@@ -33,7 +33,7 @@ const ERR = {
   no_passkey: 'Tài khoản này chưa đăng ký vân tay / Face ID. Dùng OTP Telegram.',
   webauthn_failed: 'Vân tay / Face ID không thành công. Thử lại hoặc dùng OTP Telegram.',
   unknown_credential: 'Thiết bị này chưa có vân tay đăng ký. Dùng OTP Telegram.',
-  password_required: 'Nhập mật khẩu hoặc dùng vân tay / Face ID.',
+  password_required: 'Nhập mật khẩu.',
 };
 
 /** Client-side VN mobile check (canonical 84 + 9 digits). */
@@ -44,7 +44,7 @@ function isValidVnPhoneClient(digits84) {
   return ok.test(p2);
 }
 
-let mode = 'login'; // login | register
+const mode = 'login'; // Một luồng duy nhất: số chưa có tài khoản tự đi đường đăng ký (server quyết định)
 let pendingPhone = '';
 let otpPurpose = 'login'; // login | register
 let otpResendAt = 0;
@@ -85,7 +85,7 @@ function setError(codeOrMsg) {
 
 function setBusy(on) {
   loginBusy = on;
-  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey', 'btn-resume', 'btn-resend', 'btn-login', 'rc-tg', 'rc-mail', 'rc-bio', 'rc-go', 'rc-back'].forEach((id) => {
+  ['btn-otp', 'btn-verify', 'btn-back', 'demo', 'btn-passkey', 'btn-resume', 'btn-resend', 'btn-login', 'btn-next', 'rc-tg', 'rc-mail', 'rc-bio', 'rc-go', 'rc-back'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on || (id === 'btn-resend' && Date.now() < otpResendAt);
   });
@@ -168,6 +168,13 @@ async function finishLogin(data) {
   await window.AuthApp?.onAuthenticated?.(data);
   await registerSw();
   if (data.recovered) await window.Security.recoverySetup();
+  if (LS.get('wantPasskey', false) && !LS.get('hasPasskey', false) && window.Security?.passkeySupported()) {
+    LS.del('wantPasskey');
+    try { await window.Security.enrollPasskeyNow(); } catch (ex) {
+      // Huỷ trên thiết bị (NotAllowedError) thì im lặng; lỗi khác nói rõ. Dù sao vẫn vào app (đã đăng nhập bằng mật khẩu/OTP), bật lại trong Cài đặt.
+      if (ex?.name !== 'NotAllowedError' && ex?.message !== 'cancelled') await window.Security.notice('Chưa bật được vân tay / Face ID', `${ex?.name || 'Lỗi'}: ${ex?.message || 'không rõ'}. Bạn có thể thử lại trong Cài đặt.`);
+    }
+  }
   if (data.controlToken) LS.set('ctl', { token: data.controlToken, method: data.method, expiresAt: data.expiresAt });
   if (LS.get('reviewDevices', null)?.userId === data.userId) {
     await window.Security.reviewRegisteredDevices();
@@ -212,16 +219,9 @@ function restoreLogin() {
 }
 
 function applyMode() {
-  document.querySelectorAll('#modes button').forEach((b) => {
-    b.classList.toggle('on', b.dataset.mode === mode);
-    b.setAttribute('aria-selected', String(b.dataset.mode === mode));
-  });
-  const reg = mode === 'register';
-  for (const id of ['pw-row', 'btn-login', 'demo']) { const el = $('#' + id); if (el) el.hidden = reg; }
-  if (reg) $('#btn-passkey').hidden = true; else syncPasskeyButton();
-  $('#btn-otp').textContent = reg ? 'Đăng ký: gửi OTP qua Telegram' : 'Máy mới / quên mật khẩu: gửi OTP Telegram';
-  $('#btn-otp').classList.toggle('primary', reg);
-  $('#btn-otp').classList.toggle('fit', !reg);
+  $('#btn-next').textContent = 'Tiếp tục';
+  resetFlowUi();
+  syncPasskeyButton();
   stopOtpTimer();
   showStep(false);
   setError('');
@@ -229,9 +229,9 @@ function applyMode() {
 
 let otpTimer = null;
 function stopOtpTimer() { if (otpTimer) clearInterval(otpTimer); otpTimer = null; }
-function startOtpTimer() {
+function startOtpTimer(ttlSec = 180) {
   stopOtpTimer();
-  const expiresAt = Date.now() + 300_000;
+  const expiresAt = Date.now() + Math.max(30, Number(ttlSec) || 180) * 1000;
   otpResendAt = expiresAt; // chỉ cho gửi lại sau khi mã cũ hết hạn (5 phút); trong lúc chờ ẩn nút để khỏi bấm nhầm
   const tick = () => {
     const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
@@ -247,10 +247,15 @@ function startOtpTimer() {
   otpTimer = setInterval(tick, 1000);
 }
 
+let trustDays = 30;
+/** Máy chưa xác nhận OTP (hoặc đã quá hạn tin cậy) thì chỉ hiện nhập số điện thoại + OTP, không gợi ý bước sau. */
+const localTrusted = () => { const t = LS.get('otpAt', 0); return Boolean(t) && Date.now() - t < trustDays * 86_400_000; };
+
 async function loadAuthConfig() {
   try {
     const r = await fetch(location.origin + '/api/auth/config');
     const j = await r.json();
+    if (Number(j.otpTrustDays) > 0) trustDays = Number(j.otpTrustDays);
     window.AuthApp?.onAuthConfig?.(j);
   } catch {}
 }
@@ -289,23 +294,17 @@ $('#btn-otp').onclick = async () => {
   if (!phone) return;
   setBusy(true);
   try {
-    const { ok, data } = await api(mode === 'register' ? '/api/register/request-otp' : '/api/login/request-otp', { phone });
-    if (!ok && data.error === 'user_exists' && mode === 'register') {
-      // Số đã có tài khoản: không cho đăng ký / nhập thêm ở đây. Chuyển sang Đăng nhập; thêm email, mật khẩu ở Cài đặt sau khi đăng nhập.
-      mode = 'login';
-      applyMode();
-      setError('Số này đã đăng ký. Hãy đăng nhập, rồi vào Cài đặt để thêm email hoặc mật khẩu.');
-      return;
-    }
+    const { ok, data } = await api('/api/login/request-otp', { phone });
     if (!ok) { setError(data.error || data.detail); return; }
     pendingPhone = data.phone || phone;
+    LS.set('lastPhone', pendingPhone);
     $('#otp').value = '';
-    otpPurpose = mode === 'register' || data.purpose === 'register' ? 'register' : 'login';
+    otpPurpose = data.purpose === 'register' ? 'register' : 'login';
     $('#otp-info').textContent = otpPurpose === 'register'
       ? 'Xác minh số điện thoại để tạo tài khoản.'
       : 'Xác minh số điện thoại để tiếp tục đăng nhập.';
     showStep(true);
-    startOtpTimer();
+    startOtpTimer(data.expiresIn);
     $('#otp').focus();
   } catch (ex) {
     setError(errCode(ex, 'Không kết nối được máy chủ.'));
@@ -333,6 +332,7 @@ $('#btn-verify').onclick = async () => {
       restoreLogin();
       return;
     }
+    LS.set('otpAt', Date.now());
     $('#step-otp').hidden = true;
     $('#ok-msg').textContent = otpPurpose === 'register' ? '✓ Tạo tài khoản thành công. Đang vào ứng dụng…' : '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
@@ -346,25 +346,60 @@ $('#btn-verify').onclick = async () => {
 };
 
 /* Đăng nhập bằng passkey: ưu tiên hàng đầu khi thiết bị hỗ trợ; OTP Telegram là lần đầu / dự phòng. */
-async function passkeyLogin() {
+/**
+ * Hỏi server TRƯỚC khi mở Face ID: máy chưa xác nhận OTP (hoặc quá hạn tin cậy) thì phải OTP trước, không được bắt quét Face ID rồi mới báo cần OTP.
+ * Trả 'nophone' (chưa biết số), true (cần OTP trước) hoặc false (máy đã tin cậy, dùng sinh trắc được).
+ */
+async function needOtpFirst() {
+  const typed = fullPhone();
+  const phone = isValidVnPhoneClient(typed) ? typed : LS.get('lastPhone', '');
+  if (!isValidVnPhoneClient(phone)) return 'nophone';
+  try {
+    const r = await api('/api/login/start', { phone });
+    if (r.ok && r.data.otpRequired) {
+      LS.del('otpAt');
+      if (!isValidVnPhoneClient(typed)) $('#phone').value = String(phone).replace(/^84/, '');
+      return true;
+    }
+  } catch { /* mất mạng: để bước đăng nhập báo lỗi như thường */ }
+  return false;
+}
+
+async function passkeyLogin(opts) {
   if (loginBusy) return false;
   setError('');
+  if (!opts?.checked) {
+    const need = await needOtpFirst();
+    if (need === 'nophone') { setError('invalid_phone'); $('#phone').focus(); return false; }
+    if (need) { resetFlowUi(); return $('#btn-otp').onclick(); }
+  }
   let authenticated = false;
   setBusy(true);
   try {
     window.PlcDebug?.log?.('ui.passkey_click', 'User bấm Đăng nhập Face ID / vân tay');
-    const data = await window.Security.loginWithPasskey();
+    const data = await window.Security.loginWithPasskey($('#password').value);
+    if (data.error === 'second_factor_required') {
+      setError('second_factor_required');
+      $('#password').focus();
+      return false;
+    }
     if (data.error) {
       window.PlcDebug?.log?.('ui.passkey_error', data.error, data, 'error');
       setError(data.error);
       return false;
     }
+    let session = data;
+    if (data.pending && data.needPassword) {
+      // Bước 3: tài khoản chưa có mật khẩu -> phải tạo (nhập + nhập lại) rồi mới vào trang chính
+      session = await window.Security.completeNeedPassword(data);
+      if (!session) { restoreLogin(); setError('Chưa tạo mật khẩu nên chưa vào được. Hãy thử lại.'); return false; }
+    }
     authenticated = true;
     $('#step-creds').hidden = true;
     $('#ok-msg').textContent = '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
-    window.PlcDebug?.log?.('ui.passkey_ok', 'UI nhận session — đang tải bundle', { userId: data.userId }, 'ok');
-    await finishLogin(data);
+    window.PlcDebug?.log?.('ui.passkey_ok', 'UI nhận session — đang tải bundle', { userId: session.userId }, 'ok');
+    await finishLogin(session);
     return true;
   } catch (ex) {
     restoreLogin();
@@ -385,8 +420,22 @@ async function passwordLogin() {
   if (!password) { setError('password_required'); $('#password').focus(); return false; }
   setBusy(true);
   try {
-    const { ok, data } = await api('/api/login/password', { phone, password });
+    let { ok, data } = await api('/api/login/password', { phone, password });
+    if (!ok && data.error === 'password_new_device' && window.Security?.passkeySupported() && LS.get('hasPasskey', false)) {
+      // Máy chưa xác nhận OTP: mật khẩu đúng nhưng cần thêm sinh trắc (mật khẩu + Face ID)
+      setError('');
+      try {
+        const proof = await window.Security.passkeyProof();
+        ({ ok, data } = await api('/api/login/password', { phone, password, cid: proof.cid, credential: proof.credential }));
+      } catch (ex) { setError(ex?.name === 'NotAllowedError' ? 'Đã huỷ Face ID. Máy mới cần mật khẩu + Face ID, hoặc dùng OTP Telegram.' : 'webauthn_failed'); return false; }
+    }
     if (!ok) { setError(data.error || 'password_invalid'); return false; }
+    if (flowPlan?.mustEnroll) {
+      // Bước 2 (đăng ký): máy hỗ trợ sinh trắc nhưng tài khoản chưa có khoá -> bắt buộc bật rồi mới vào trang chính
+      LS.set('session', { token: data.token, userId: data.userId, apiBase: location.origin, online: true, gate: 'bio' });
+      const r = await window.Security.enrollMandatory();
+      if (r === 'cancel') { LS.del('session'); setError('Chưa bật ' + flowPlan.bio.label + ' nên chưa vào được. Hãy thử lại.'); return false; }
+    }
     $('#step-creds').hidden = true;
     $('#ok-msg').textContent = '✓ Đăng nhập thành công. Đang vào ứng dụng…';
     $('#ok-msg').hidden = false;
@@ -402,46 +451,95 @@ async function passwordLogin() {
 }
 
 /** Bấm Đăng nhập: máy có vân tay → nhận Face ID ngay (bỏ qua mật khẩu); không có / huỷ → dùng mật khẩu đã nhập. */
-async function loginPrimary() {
-  if (loginBusy) return;
-  setError('');
-  // Đã bật vân tay (cờ hasPasskey) → Face ID ngay. Sau khi xoá dữ liệu trang cờ mất nhưng passkey còn ở hệ điều hành:
-  // bấm Đăng nhập khi để trống mật khẩu cũng thử Face ID trước, để đã đăng ký một lần thì lần sau không cần OTP.
-  const tryBio = window.Security?.passkeySupported()
-    && (LS.get('hasPasskey', false) || (!$('#password').value && await window.Security.platformAvailable?.()));
-  if (tryBio) {
-    if (await passkeyLogin()) return;
-    if (!$('#password').value) { setError('Dùng mật khẩu bên dưới hoặc gửi OTP Telegram.'); $('#password').focus(); return; }
-    setError('');
-  }
-  await passwordLogin();
+let flowPlan = null;
+
+function resetFlowUi() {
+  flowPlan = null;
+  for (const id of ['pw-row', 'btn-login', 'btn-passkey', 'lnk-use-pw', 'btn-setup-passkey', 'btn-otp']) { const el = $('#' + id); if (el) el.hidden = true; }
+  if ($('#try-passkey-row')) $('#try-passkey-row').hidden = true;
+  if ($('#btn-next')) $('#btn-next').hidden = false;
 }
 
-// Máy đã biết có passkey (cờ hasPasskey): vân tay là lối chính, OTP là dự phòng.
-// Cờ nằm trong localStorage nên mất khi người dùng xoá dữ liệu trình duyệt, còn passkey thì nằm ở hệ điều hành và vẫn dùng được:
-// vì vậy máy có sinh trắc vẫn hiện nút vân tay (phụ, OTP vẫn là nút chính) để xoá cache không làm gián đoạn đăng nhập.
+function showPasswordStep() {
+  $('#pw-row').hidden = false;
+  $('#btn-login').hidden = false;
+  $('#btn-next').hidden = true;
+  $('#password').focus();
+}
+
+/** Máy đã xác nhận OTP: ẩn bước OTP. Bước 2: sinh trắc (nếu hỗ trợ). Bước 3: mật khẩu. */
+async function trustedFlow(plan) {
+  const bio = await window.Security.bioInfo();
+  flowPlan = { ...plan, bio, mustEnroll: bio.supported && !plan.hasPasskey };
+  $('#btn-next').hidden = true;
+  // Tài khoản đã đăng ký: hiện TẤT CẢ cách đăng nhập để người dùng chọn (sinh trắc / mật khẩu / OTP Telegram).
+  const canBio = bio.supported && plan.hasPasskey;
+  $('#flow-hint').textContent = 'Chọn cách đăng nhập:';
+  $('#btn-passkey').hidden = !canBio;
+  if (canBio) {
+    $('#btn-passkey').textContent = `Đăng nhập bằng ${bio.label}`;
+    $('#btn-passkey').onclick = () => passkeyLogin();
+  }
+  $('#lnk-use-pw').hidden = !plan.hasPassword;
+  $('#lnk-use-pw').textContent = bio.supported && !plan.hasPasskey ? `Đăng nhập bằng mật khẩu (sau đó bật ${bio.label})` : 'Đăng nhập bằng mật khẩu';
+  $('#lnk-use-pw').onclick = () => {
+    $('#btn-passkey').hidden = true; $('#lnk-use-pw').hidden = true; $('#btn-otp').hidden = true;
+    $('#flow-hint').textContent = bio.supported && !plan.hasPasskey
+      ? `Nhập mật khẩu. Sau đó bắt buộc bật ${bio.label} cho máy này.`
+      : 'Nhập mật khẩu.';
+    showPasswordStep();
+  };
+  $('#btn-otp').hidden = false;
+  $('#btn-otp').textContent = 'Dùng OTP Telegram';
+  if (!canBio && !plan.hasPassword) { resetFlowUi(); $('#btn-otp').onclick(); return; } // chưa có khoá lẫn mật khẩu: bắt buộc OTP
+  if (canBio) await passkeyLogin({ checked: true }); // vừa bấm Tiếp tục nên mở luôn hộp sinh trắc; vẫn còn đủ lựa chọn nếu huỷ
+}
+
+/** Nhập số điện thoại → server cho biết có cần OTP không (không lộ số có tồn tại hay không). */
+async function runFlow() {
+  if (loginBusy) return;
+  setError('');
+  const phone = requireVnPhone();
+  if (!phone) return;
+  LS.set('lastPhone', phone);
+  setBusy(true);
+  let plan;
+  try {
+    const r = await api('/api/login/start', { phone });
+    if (!r.ok) { setError(r.data.error || 'server_error'); return; }
+    plan = r.data;
+  } catch (ex) { setError(errCode(ex, 'Không kết nối được máy chủ.')); return; } finally { setBusy(false); }
+  if (plan.otpRequired) { LS.del('otpAt'); $('#btn-otp').onclick(); return; }
+  if (!LS.get('otpAt', 0)) LS.set('otpAt', Date.now());
+  await trustedFlow(plan);
+}
+
 async function syncPasskeyButton() {
-  if (!window.Security?.passkeySupported()) return;
-  const known = LS.get('hasPasskey', false);
-  if (!known && !(await window.Security.platformAvailable?.())) return;
-  if (mode === 'login') $('#btn-passkey').hidden = false;
+  // Lối tắt: máy đã bật sinh trắc thì hiện sẵn nút đăng nhập (không cần gõ số). Máy chưa có thì không hiện (iOS sẽ ra mã QR).
+  if ($('#btn-setup-passkey')) $('#btn-setup-passkey').hidden = true;
+  if ($('#try-passkey-row')) $('#try-passkey-row').hidden = true;
+  if (!window.Security?.passkeySupported() || mode !== 'login' || !LS.get('hasPasskey', false) || !localTrusted() || !LS.get('lastPhone', '')) return;
+  const bio = await window.Security.bioInfo();
+  if (!bio.supported) return;
+  $('#btn-passkey').textContent = `Đăng nhập bằng ${bio.label}`;
+  $('#btn-passkey').hidden = false;
   $('#btn-passkey').onclick = () => passkeyLogin();
 }
 syncPasskeyButton();
 // Máy đã bật vân tay: tự mở Face ID ngay khi vào trang (Android/Chrome); iOS có thể yêu cầu bấm nút. ?out=1 (đăng xuất) thì không tự mở.
 (async () => {
   const q = new URLSearchParams(location.search);
-  if (q.get('out') || q.get('revoked') || q.get('update') || !LS.get('hasPasskey', false) || !window.Security?.passkeySupported()) return;
+  if (q.get('out') || q.get('revoked') || q.get('update') || !LS.get('hasPasskey', false) || !localTrusted() || !LS.get('lastPhone', '') || !window.Security?.passkeySupported()) return;
   await new Promise((r) => setTimeout(r, 400));
   if (!loginBusy && mode === 'login' && !LS.get('session', null)?.token) passkeyLogin();
 })();
-$('#btn-login').onclick = loginPrimary;
-$('#password').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); loginPrimary(); } };
-document.querySelectorAll('#modes button').forEach((b) => { b.onclick = () => { if (loginBusy) return; mode = b.dataset.mode; applyMode(); }; });
+$('#btn-next').onclick = runFlow;
+$('#btn-login').onclick = () => passwordLogin();
+$('#password').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); passwordLogin(); } };
 
 $('#btn-back').onclick = () => { stopOtpTimer(); showStep(false); setError(''); };
 $('#btn-resend').onclick = () => $('#btn-otp').onclick();
-$('#phone').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); if (mode === 'register') $('#btn-otp').onclick(); else $('#password').focus(); } };
+$('#phone').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); runFlow(); } };
 $('#otp').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); $('#btn-verify').onclick(); } };
 
 if ($('#demo')) $('#demo').onclick = async () => {
@@ -474,11 +572,10 @@ $('#rc-open').onclick = (event) => {
   $('#rc-phone').value = $('#phone').value;
   $('#step-creds').hidden = true;
   $('#step-recover').hidden = false;
-  $('#modes').hidden = true;
   recover.bio = null;
   recoverState();
 };
-$('#rc-back').onclick = () => { $('#step-recover').hidden = true; $('#step-creds').hidden = false; $('#modes').hidden = false; setError(''); };
+$('#rc-back').onclick = () => { $('#step-recover').hidden = true; $('#step-creds').hidden = false; setError(''); };
 for (const id of ['rc-otp', 'rc-pw']) $('#' + id).oninput = recoverState;
 async function recoverSendOtp(channel) {
   if (loginBusy) return;

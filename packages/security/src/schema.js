@@ -175,6 +175,18 @@ export function migrateSecurity(db) {
   if (changeColumns.some((column) => column.name === 'new_chat_id')) {
     db.exec('UPDATE phone_changes SET new_contact = CAST(new_chat_id AS TEXT) WHERE new_contact IS NULL AND new_chat_id IS NOT NULL');
   }
+  // Thiết bị đã từng được xác nhận bằng OTP Telegram (máy tin cậy): chỉ máy này mới đăng nhập được bằng MỘT yếu tố (mật khẩu hoặc sinh trắc).
+  // Cột mới: các thiết bị đã có từ trước coi như đã tin cậy để không bắt mọi người xác nhận lại.
+  const kdCols = db.prepare('PRAGMA table_info(known_devices)').all().map((c) => c.name);
+  if (!kdCols.includes('otp_verified')) {
+    db.exec('ALTER TABLE known_devices ADD COLUMN otp_verified INTEGER NOT NULL DEFAULT 0');
+    db.exec('UPDATE known_devices SET otp_verified = 1');
+  }
+  // Thời điểm xác nhận OTP gần nhất của thiết bị: quá OTP_TRUST_DAYS thì máy phải OTP lại. Máy đã tin cậy từ trước tính từ lúc nâng cấp.
+  if (!kdCols.includes('otp_verified_at')) {
+    db.exec('ALTER TABLE known_devices ADD COLUMN otp_verified_at INTEGER');
+    db.prepare('UPDATE known_devices SET otp_verified_at = ? WHERE otp_verified = 1').run(Date.now());
+  }
   addColumns(db, 'users', {
     phone: 'phone TEXT',
     primary_contact: 'primary_contact TEXT',
@@ -193,5 +205,7 @@ export function migrateSecurity(db) {
     enroll_deadline: 'enroll_deadline INTEGER',
     // Mật khẩu ĐĂNG NHẬP (bcrypt), tách khỏi password_hash cũ; chỉ dùng trên máy đã tin cậy, không phải yếu tố điều khiển
     login_password_hash: 'login_password_hash TEXT',
+    // 0 = vừa tạo sau OTP, chưa đăng ký được sinh trắc / mật khẩu; chỉ thành 1 khi đặt mật khẩu hoặc đăng ký sinh trắc. Tài khoản cũ = 1.
+    setup_complete: 'setup_complete INTEGER NOT NULL DEFAULT 1',
   });
 }

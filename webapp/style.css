@@ -1,10 +1,17 @@
 /* Mobile-first, native-app look. >=900px switches to a desktop layout (sidebar + 2 columns). */
-:root{--bg:#f2f4f7;--card:#fff;--fg:#14202b;--mut:#6b7885;--line:#e3e8ee;--acc:#0f766e;--accbg:#0f766e18;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--on:#16a34a;--r:16px}
-@media (prefers-color-scheme:dark){:root{--bg:#0b1015;--card:#161e26;--fg:#e6edf3;--mut:#8b98a5;--line:#243038;--acc:#2dd4bf;--accbg:#2dd4bf1c}}
+/* Giao diện SCADA đơn sắc (ISA-101): BÌNH THƯỜNG chỉ dùng trắng / xám / đen; màu CHỈ xuất hiện khi cảnh báo hoặc lỗi.
+   Đỏ = lỗi/khẩn cấp, hổ phách = cảnh báo / mất liên lạc. Trạng thái luôn có biểu tượng đi kèm (■ ▲ ● ✔) để không phụ thuộc màu. */
+:root{--bg:#d4d4d4;--card:#e6e6e6;--fg:#1a1a1a;--mut:#555;--line:#aeaeae;--acc:#2b2b2b;--accbg:#0000001a;
+  --ok:#1a1a1a;--on:#1a1a1a;--warn:#9a6100;--bad:#c4262e;--r:8px;
+  --al-crit:#c4262e;--al-crit-bg:#c4262e1f;--al-warn:#9a6100;--al-warn-bg:#d9980024}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--fg:#e2e2e2;--mut:#9a9a9a;--line:#3b3b3b;--acc:#e2e2e2;--accbg:#ffffff1a;
+  --ok:#e2e2e2;--on:#e2e2e2;--warn:#f0b429;--bad:#ff5b52;
+  --al-crit:#ff5b52;--al-crit-bg:#ff5b5226;--al-warn:#f0b429;--al-warn-bg:#f0b42926}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
 input{-webkit-user-select:text;user-select:text}
+a{color:var(--acc);text-decoration:underline}a:visited{color:var(--acc)}
 
 /* ---------- layout: phone ---------- */
 .content{min-height:100vh;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
@@ -40,9 +47,9 @@ nav button.on{color:var(--acc)}
 .seg button.sel{background:var(--card);box-shadow:0 1px 3px #0003;color:var(--acc);font-weight:600}
 button{font:inherit;padding:13px;border-radius:12px;border:0;background:var(--bg);color:var(--fg);cursor:pointer}
 button:active{transform:scale(.98)}
-button.primary{background:var(--acc);color:#fff;font-weight:600}
-@media (prefers-color-scheme:dark){button.primary{color:#04201c}}
-button.danger{color:var(--bad);background:#dc262614;font-weight:600}
+button.primary{background:var(--acc);color:#f2f2f2;font-weight:600}
+@media (prefers-color-scheme:dark){button.primary{color:#111}}
+button.danger{color:var(--fg);background:var(--card);border:2px solid var(--fg);font-weight:600}
 button:disabled{opacity:.4;pointer-events:none}
 .row{display:flex;gap:8px;margin-top:12px}.row:first-child{margin-top:0}.row>button{flex:1}.row>.fit{flex:none}
 .row input{margin-top:0}
@@ -161,3 +168,58 @@ select{display:block;width:100%;margin-top:6px;padding:13px;font:inherit;font-si
 @keyframes bio-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:.6}}
 @keyframes bio-pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 @media (prefers-reduced-motion:reduce){.bio-icon.bio-scan,.bio-icon.bio-ok{animation:none}}
+
+/* ======================= SCADA: mặt phẳng, ít chói, cảnh báo nổi bật ======================= */
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;letter-spacing:0}
+header{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--card);border-bottom:1px solid var(--line)}
+h1{font-size:22px;letter-spacing:0;font-weight:650}
+nav{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--card)}
+.panel{border-radius:var(--r);box-shadow:none;border:1px solid var(--line)}
+.panel>h2,.panel h2{letter-spacing:.04em;color:var(--mut)}
+.w,.chip,.sw,.seg,input:not([type=checkbox]){border-radius:6px}
+.chip{border:1px solid var(--line);background:var(--card)}
+button{border-radius:6px;border:1px solid var(--line);background:var(--card)}
+button.primary{border-color:transparent}
+.num,.w .v,.gs-body .v{letter-spacing:0;font-variant-numeric:tabular-nums}
+.num{font-weight:650}
+
+/* Đèn báo I/O: hình vuông, không phát sáng; BẬT = đặc + chữ BẬT, TẮT = rỗng */
+.chip i{width:14px;height:14px;border-radius:2px;background:transparent;border:2px solid var(--mut);margin:auto}
+.chip.on{background:var(--accbg);border-color:var(--on)}
+.chip.on i{background:var(--on);border-color:var(--on);box-shadow:none}
+.chip::after{content:"TẮT";font-size:10px;letter-spacing:.06em;color:var(--mut)}
+.chip.on::after{content:"BẬT";color:var(--on);font-weight:700}
+
+/* Trạng thái máy: chữ + biểu tượng */
+.state{font-size:18px;font-weight:700}
+.state.run::before{content:"● "}.state.stop::before{content:"■ "}.state.bad::before{content:"▲ "}.state.done::before{content:"✔ "}
+
+/* Chỉ báo kết nối (góc phải tiêu đề) */
+.pill{border-radius:4px;font-weight:700;letter-spacing:.04em;padding:5px 10px;border:1px solid transparent;color:var(--fg);background:var(--bg)}
+.pill.on{background:transparent;border-color:var(--line);color:var(--fg)}
+.pill.warn{background:var(--al-warn-bg);border-color:var(--al-warn);color:var(--al-warn)}
+.pill.off{background:var(--al-warn-bg);border-color:var(--al-warn);color:var(--al-warn)}
+
+/* Thanh cảnh báo cố định dưới tiêu đề: luôn thấy ở mọi tab */
+.alarm-bar{position:sticky;top:var(--hdr-h,58px);z-index:4;display:flex;align-items:center;gap:10px;padding:10px 16px;font-weight:700;font-size:15px;
+  border-bottom:2px solid var(--line);background:var(--card);color:var(--fg);min-height:44px}
+.alarm-bar .ab-i{flex:none;width:22px;text-align:center;font-size:18px;line-height:1}
+.alarm-bar .ab-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.alarm-bar.ok{color:var(--mut)}
+.alarm-bar.comm{background:linear-gradient(var(--al-warn-bg),var(--al-warn-bg)),var(--card);color:var(--fg);border-bottom-color:var(--al-warn)}
+.alarm-bar.comm .ab-i{color:var(--al-warn)}
+.alarm-bar.alarm{background:linear-gradient(var(--al-crit-bg),var(--al-crit-bg)),var(--card);color:var(--fg);border-bottom-color:var(--al-crit);font-size:16px}
+.alarm-bar.alarm .ab-i{color:var(--al-crit);font-size:22px}
+.alarm-bar button{flex:none;padding:8px 14px;font-weight:700;color:var(--fg);border:2px solid var(--fg);background:var(--card)} /* luôn rõ, kể cả pha đỏ của nhấp nháy */
+.alarm-bar.blink{animation:al-blink 1.2s steps(2,start) infinite}
+@keyframes al-blink{50%{background:color-mix(in srgb,var(--al-crit) 42%,var(--card))}}
+@media (prefers-reduced-motion:reduce){.alarm-bar.blink{animation:none;outline:3px solid var(--al-crit);outline-offset:-3px}}
+
+/* Danh sách cảnh báo trong tab Tổng quan: khối đỏ, vạch trái dày, chữ đậm */
+.al{display:flex;gap:8px;align-items:center;margin:0 0 6px;padding:10px 12px;border-left:6px solid var(--al-crit);background:var(--al-crit-bg);
+  color:var(--al-crit);font-weight:700;border-radius:4px}
+#alarms .muted{display:flex;gap:8px;align-items:center;color:var(--mut);font-weight:600}
+#alarms .muted::before{content:"✔"}
+.w .d.up,.w .d.down{color:var(--mut)}.gs-body .v.bad,.state.bad{color:var(--bad)}
+.ctl-banner.warn{border-radius:6px}.ctl-banner.bad{border-radius:6px}
+#toast{border-radius:6px;background:var(--card);color:var(--fg);border:1px solid var(--line)}

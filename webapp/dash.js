@@ -143,7 +143,7 @@ const Dash = (() => {
     else {
       uplot('bars', [b.xs, b.sum], [{ label: 'Sản lượng', stroke: th.acc, fill: th.acc, width: 1, points: { show: false },
         paths: uPlot.paths.bars({ size: [0.8, 64], align: 0 }) }], { range: (u, mn, mx) => [0, Math.max(5, mx)] }, th, span);
-      uplot('line', [b.xs, b.run], [{ label: 'Chạy %', stroke: th.warn, width: 2, spanGaps: false, points: { show: false }, fill: th.warn + '22' }],
+      uplot('line', [b.xs, b.run], [{ label: 'Chạy %', stroke: th.acc, width: 2, spanGaps: false, points: { show: false }, fill: th.acc + '22' }],
         { range: [0, 100] }, th, span);
     }
     if (d.rows.length > 1) {

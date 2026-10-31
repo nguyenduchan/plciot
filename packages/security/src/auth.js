@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { checkControlSession, revokeControlSessions } from './sessions.js';
-import { noteLogin } from './loginAlerts.js';
+import { noteLogin, markOtpTrusted } from './loginAlerts.js';
 import { getConfig } from './config.js';
 import { canonicalDeviceKey, verifyDeviceProof } from './deviceProof.js';
 
@@ -54,7 +54,7 @@ export function createLoginChallenge(db, user, deviceId, secret, device = {}, sr
     .run(id, user.id, deviceId, now + 600_000);
   return {
     pending: true, userId: user.id, expiresAt: now + 600_000,
-    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, src: src === 'resume' ? 'resume' : 'otp', ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
+    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, src: ['resume', 'bio'].includes(src) ? src : 'otp', nw: user.setup_complete === 0 ? 1 : 0, ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
   };
 }
 
@@ -110,14 +110,21 @@ export function createSessionAuth(db, secret) {
   };
 }
 
-export function mountLoginSessions(app, { db, requireAuth, sensitiveStrict, loginPayload, pendingLogin, clientIp }) {
-  app.post('/api/login/complete', requireAuth, sensitiveStrict, (req, res) => {
+export function mountLoginSessions(app, { db, requireAuth, sensitiveStrict, loginPayload, pendingLogin, clientIp, finalizeSetup = async (user) => ({ user }) }) {
+  app.post('/api/login/complete', requireAuth, sensitiveStrict, async (req, res) => {
+    try {
     const proof = checkControlSession(db, req.user.id, String(req.headers['x-control-token'] || ''), clientIp(req));
+    // Tài khoản mới phải đăng ký ĐỦ sinh trắc (bước này) lẫn mật khẩu rồi mới được vào trang chính
+    if (req.tokenPayload.nw && !req.user.login_password_hash) return res.status(401).json({ error: 'setup_incomplete' });
     if (!consumeLoginChallenge(db, req.tokenPayload, proof)) return res.status(401).json({ error: 'login_step_up_required' });
-    const payload = loginPayload(req.user, req);
+    const fin = await finalizeSetup(req.user, req.tokenPayload);
+    if (fin.error) return res.status(fin.status || 500).json({ error: fin.error });
+    const payload = loginPayload(fin.user, req);
     if (payload.error) return res.status(payload.status).json({ error: payload.error });
-    noteLogin(db, req.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: `OTP + ${proof.method}` });
+    noteLogin(db, fin.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: `OTP + ${proof.method}` });
+    if (req.tokenPayload.src === 'otp') markOtpTrusted(db, req.user.id, req.headers['x-device-id']);
     res.json({ ...payload, controlToken: req.headers['x-control-token'], method: proof.method, expiresAt: proof.expiresAt });
+    } catch { res.status(500).json({ error: 'server_error' }); }
   });
   app.post('/api/login/lock', requireAuth, (req, res) => {
     db.prepare('UPDATE app_sessions SET locked = 1 WHERE id = ? AND user_id = ?').run(req.tokenPayload.sid || '', req.user.id);

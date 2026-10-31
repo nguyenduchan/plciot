@@ -65,6 +65,12 @@
       toLogin();
       return;
     }
+    // Phiên tạm của bước 2 (đăng ký sinh trắc bắt buộc) chưa hoàn tất: không được vào trang chính bằng cách mở thẳng index.html.
+    if (session.gate) {
+      try { localStorage.removeItem('session'); } catch {}
+      toLogin();
+      return;
+    }
 
     // HTTP (không có Cache API): phiên chỉ dựa vào token, không cần gói offline.
     if (!session.online) {

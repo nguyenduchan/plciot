@@ -137,10 +137,16 @@ function requireReauth(reauthed) {
 }
 
 export async function requestEmailVerify(db, user, { email, reauthed, ip }) {
-  if (!emailConfigured()) return { error: 'email_disabled', status: 501 };
   if (!requireReauth(reauthed)) return { error: 'invalid_credentials', status: 401 };
   const addr = String(email || '').trim().toLowerCase();
   if (!isValidEmail(addr)) return { error: 'invalid_email', status: 400 };
+  if (!emailConfigured()) {
+    // Máy chủ chưa gửi được email: chỉ ghi nhận địa chỉ (CHƯA xác minh nên không dùng để khôi phục); xác minh sau khi bật SMTP.
+    if (user.email_verified) return { error: 'email_disabled', status: 501 };
+    db.prepare('UPDATE users SET email = ?, email_verified = 0, email_verified_at = NULL WHERE id = ?').run(addr, user.id);
+    audit(db, 'email_saved_unverified', { userId: user.id, ip, detail: addr });
+    return { ok: true, saved: true };
+  }
   if (countAudit(db, user.id, 'email_verify_request', Date.now() - HOUR) >= 5) {
     return { error: 'rate_limited', status: 429 };
   }

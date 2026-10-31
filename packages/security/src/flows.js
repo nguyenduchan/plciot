@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken';
 import { audit, countAudit } from './audit.js';
 import { authenticationOptions, verifyAuthentication } from './webauthn.js';
 import { factorSummary } from './sessions.js';
-import { noteLogin } from './loginAlerts.js';
+import { noteLogin, markOtpTrusted, isOtpTrusted } from './loginAlerts.js';
 import { mountSecurityRoutes } from './routes.js';
 import { requestLoginOtp, requestRegisterOtp, verifyLoginOtp, verifyRegisterOtp, requestEmailRecoveryOtp } from './otp.js';
 import * as Account from './accountSecurity.js';
@@ -29,7 +29,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   const pendingLogin = (user, req, src = 'otp') => {
     const challenge = createLoginChallenge(db, user, String(req.headers['x-device-id'] || ''), secret, req.body || {}, src);
     const factors = factorSummary(db, user.id);
-    return { ...challenge, src, methods: { passkey: factors.passkeys > 0, totp: factors.totp, password: Boolean(user.login_password_hash), enrolled: factors.passkeys > 0 || factors.totp } };
+    return { ...challenge, src, isNew: user.setup_complete === 0, methods: { passkey: factors.passkeys > 0, totp: factors.totp, password: Boolean(user.login_password_hash), enrolled: factors.passkeys > 0 || factors.totp } };
   };
   const loginPayload = (user, req) => {
     const data = appPayload(user, req);
@@ -38,9 +38,23 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     return { ...data, userId: user.id, username: user.username, role: user.role,
       token: signToken({ uid: user.id, tv: user.token_version | 0, sid }, secret) };
   };
-  const security = mountSecurityRoutes(app, { db, requireAuth, adminOnly: [requireAuth, ...adminOnly], loginPayload, authStrict, extraStatus });
-  mountLoginSessions(app, { db, requireAuth, sensitiveStrict, loginPayload, pendingLogin, clientIp });
-  app.get('/api/auth/config', (_req, res) => res.json({ channel: 'otp', registrationOpen: registrationOpen(), presence: Boolean(getConfig().presence.enabled), ...authConfig() }));
+  /**
+   * Tài khoản mới chỉ được kích hoạt (tạo gói dữ liệu, tài khoản MQTT, gói mặc định) khi đã hoàn tất MỌI bước thiết lập;
+   * trước đó chỉ có dòng tạm (setup_complete = 0), không dùng được và bị xoá nếu bỏ dở.
+   */
+  const finalizeSetup = async (user, tokenPayload) => {
+    if (!tokenPayload?.nw || user.setup_complete !== 0) return { user };
+    try {
+      const ready = await getConfig().identity.activateAccount?.(db, user, registrationContext);
+      if (ready?.error) return ready;
+    } catch { return { error: 'provision_failed', status: 500 }; }
+    db.prepare('UPDATE users SET setup_complete = 1 WHERE id = ?').run(user.id);
+    audit(db, 'account_activated', { userId: user.id });
+    return { user: db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) };
+  };
+  const security = mountSecurityRoutes(app, { db, requireAuth, adminOnly: [requireAuth, ...adminOnly], loginPayload, pendingLogin, authStrict, extraStatus });
+  mountLoginSessions(app, { db, requireAuth, sensitiveStrict, loginPayload, pendingLogin, clientIp, finalizeSetup });
+  app.get('/api/auth/config', (_req, res) => res.json({ channel: 'otp', registrationOpen: registrationOpen(), otpTrustDays: Number(process.env.OTP_TRUST_DAYS) > 0 ? Number(process.env.OTP_TRUST_DAYS) : 30, presence: Boolean(getConfig().presence.enabled), ...authConfig() }));
   app.post('/api/register/request-otp', authStrict, otpStrict, asyncRoute(async (req, res) => {
     if (!registrationOpen()) return send(res, { error: 'registration_closed', status: 403 });
     send(res, await requestRegisterOtp(db, { phone: req.body?.phone }));
@@ -79,6 +93,17 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     audit(db, 'password_set', { userId: req.user.id, ip: clientIp(req) });
     send(res, { ok: true });
   }));
+  /* Kế hoạch đăng nhập: máy đã xác nhận OTP thì ẩn bước OTP. Số khác / máy lạ đều trả cùng một kết quả (không lộ tài khoản có tồn tại). */
+  app.post('/api/login/start', authStrict, asyncRoute(async (req, res) => {
+    const phone = getConfig().identity.normalize(req.body?.phone);
+    if (!getConfig().identity.valid(phone)) return send(res, { error: 'invalid_phone', status: 400 });
+    const user = findUserByPhone(db, phone);
+    if (user && !user.disabled && user.setup_complete !== 0 && isOtpTrusted(db, user.id, req.headers['x-device-id'])) {
+      const f = factorSummary(db, user.id);
+      return send(res, { otpRequired: false, hasPasskey: f.passkeys > 0, hasPassword: Boolean(user.login_password_hash) });
+    }
+    send(res, { otpRequired: true });
+  }));
   app.post('/api/login/password', authStrict, pwStrict, asyncRoute(async (req, res) => {
     const phone = getConfig().identity.normalize(req.body?.phone);
     const user = findUserByPhone(db, phone);
@@ -94,11 +119,23 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     if (!verifyDeviceProof(db, { subject: phone, deviceId, action: 'password-login', publicKey: req.body?.publicKey, proof: req.body?.deviceProof })) {
       return send(res, { error: 'device_proof_required', status: 401 });
     }
-    const known = deviceId && db.prepare('SELECT 1 FROM known_devices WHERE user_id = ? AND dev_hash = ?')
-      .get(user.id, crypto.createHash('sha256').update(`${user.id}:${deviceId}`).digest('hex'));
-    if (!known) {
-      audit(db, 'pw_new_device', { userId: user.id, ip: clientIp(req) });
-      return send(res, { error: 'password_new_device', status: 401 });
+    // Máy đã từng xác nhận OTP Telegram: mật khẩu là đủ. Máy chưa xác nhận: mật khẩu + sinh trắc (hoặc dùng OTP).
+    if (!isOtpTrusted(db, user.id, deviceId)) {
+      const { cid, credential } = req.body || {};
+      if (!credential) {
+        audit(db, 'pw_new_device', { userId: user.id, ip: clientIp(req) });
+        return send(res, { error: 'password_new_device', status: 401 });
+      }
+      const stored = db.prepare('SELECT * FROM passkeys WHERE cred_id = ? AND user_id = ?').get(String(credential?.id || ''), user.id);
+      let okBio = false;
+      if (stored) {
+        try {
+          const rr = verifyAuthentication(`login:${String(cid || '')}`, credential, stored, recoverWebauthnEnv());
+          db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(rr.counter, Date.now(), stored.id);
+          okBio = true;
+        } catch { okBio = false; }
+      }
+      if (!okBio) return send(res, { error: 'webauthn_failed', status: 401 });
     }
     try { rememberAuthDevice(db, user.id, deviceId, req.body?.publicKey, 'Thiết bị'); } catch { return send(res, { error: 'device_revoked', status: 401 }); }
     const payload = loginPayload(user, req);
@@ -151,6 +188,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     const sid = jwt.decode(payload.token)?.sid;
     const methods = [...groups].map((g) => ({ channel: channel === 'email' ? 'email' : 'Telegram', knowledge: 'mật khẩu', device: 'vân tay / Face ID' }[g])).join(' + ');
     noteLogin(db, user, { deviceId, ip: clientIp(req), method: `khôi phục: ${methods}` });
+    if (otp) markOtpTrusted(db, user.id, deviceId);
     audit(db, 'recover_ok', { userId: user.id, ip: clientIp(req), detail: methods });
     notify(db, user, {
       subject: 'Tài khoản vừa được khôi phục trên một máy mới',
@@ -182,19 +220,28 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   app.post('/api/login/complete-basic', requireAuth, sensitiveStrict, asyncRoute(async (req, res) => {
     const payload = req.tokenPayload;
     const f = factorSummary(db, req.user.id);
-    if (payload.scope !== 'login_pending' || f.passkeys > 0 || f.totp) return send(res, { error: 'login_step_up_required', status: 401 });
-    if (payload.src === 'resume') {
-      if (!req.user.login_password_hash) return send(res, { error: 'login_step_up_required', status: 401 });
-      if (passwordLocked(req.user)) return send(res, { error: 'password_locked', status: 429 });
-      if (!verifyPassword(String(req.body?.password || ''), req.user.login_password_hash)) {
-        audit(db, 'pw_fail', { userId: req.user.id, ip: clientIp(req) });
-        return send(res, { error: 'password_invalid', status: 401 });
-      }
+    if (payload.scope !== 'login_pending') return send(res, { error: 'login_step_up_required', status: 401 });
+    // OTP một mình KHÔNG đủ để vào app: cần OTP + mật khẩu (đường này) hoặc OTP + sinh trắc/Authenticator (/api/login/complete).
+    if (!req.body?.password) return send(res, { error: 'login_step_up_required', status: 401 });
+    if (!req.user.login_password_hash) return send(res, { error: 'password_invalid', status: 401 });
+    // Máy khai báo hỗ trợ sinh trắc thì phải bật vân tay / Face ID (đi đường /api/login/complete); chỉ được bỏ qua khi người dùng
+    // chủ động chọn "dùng mật khẩu thay thế" (bioOptOut) và việc đó được ghi lại để rà soát.
+    if (req.body?.bioCapable && !req.body?.bioOptOut) return send(res, { error: 'biometric_required', status: 400 });
+    // Tài khoản MỚI: không có lối thoát. Máy hỗ trợ sinh trắc thì phải đã đăng ký khoá (nếu không thì dùng /api/login/complete).
+    if (payload.nw && req.body?.bioCapable) return send(res, { error: 'biometric_required', status: 400 });
+    if (req.body?.bioCapable && req.body?.bioOptOut) audit(db, 'bio_optout', { userId: req.user.id, ip: clientIp(req) });
+    if (passwordLocked(req.user)) return send(res, { error: 'password_locked', status: 429 });
+    if (!verifyPassword(String(req.body.password), req.user.login_password_hash)) {
+      audit(db, 'pw_fail', { userId: req.user.id, ip: clientIp(req) });
+      return send(res, { error: 'password_invalid', status: 401 });
     }
     if (!consumeLoginChallenge(db, payload, { ok: true, loginId: payload.jti })) return send(res, { error: 'login_step_up_required', status: 401 });
-    const result = loginPayload(req.user, req);
+    const fin = await finalizeSetup(req.user, payload);
+    if (fin.error) return send(res, fin);
+    const result = loginPayload(fin.user, req);
     if (result.error) return send(res, { error: result.error, status: result.status });
-    noteLogin(db, req.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: payload.src === 'resume' ? 'mở khoá mật khẩu' : 'OTP' });
+    noteLogin(db, fin.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: payload.src === 'resume' ? 'mở khoá mật khẩu' : 'OTP + mật khẩu' });
+    if (payload.src === 'otp') markOtpTrusted(db, req.user.id, req.headers['x-device-id']);
     send(res, result);
   }));
   app.get('/api/account/security', requireAuth, (req, res) => res.json(Account.accountSecuritySummary(db, req.user)));

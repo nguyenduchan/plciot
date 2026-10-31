@@ -1,8 +1,9 @@
 ﻿# Cấu hình gửi email qua Gmail cho cloud (OTP email, khôi phục tài khoản).
 # Chạy trong PowerShell tại thư mục cloud:   powershell -ExecutionPolicy Bypass -File scripts\set-smtp.ps1
 # Mật khẩu ứng dụng chỉ nhập tại đây (ẩn khi gõ), được ghi vào cloud/.env (đã .gitignore) và không in ra màn hình.
+# Hoặc tự sửa cloud/.env: SMTP_USER=... và SMTP_PASSWORD=... (rồi docker compose up -d --build app).
 param(
-  [string]$Email = 'nguyen.duc.han.1704@gmail.com'
+  [string]$Email = 'dieukhientudong.thongbao@gmail.com'
 )
 $ErrorActionPreference = 'Stop'
 $cloud = Split-Path -Parent $PSScriptRoot
@@ -14,19 +15,18 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringBigEndianUni([Runtime.Int
 $plain = $plain -replace '\s', ''
 if ($plain.Length -ne 16) { throw 'Mật khẩu ứng dụng Gmail gồm 16 ký tự (bỏ khoảng trắng).' }
 
-$user = [Uri]::EscapeDataString($Email)
-$pass = [Uri]::EscapeDataString($plain)
 $lines = @(
-  "SMTP_URL=smtps://${user}:${pass}@smtp.gmail.com:465",
-  "MAIL_FROM=`"PLC <$Email>`""
+  "SMTP_USER=$Email",
+  "SMTP_PASSWORD=$plain",
+  "MAIL_FROM=`"Giám sát PLC <$Email>`""
 )
 
-# Bỏ dòng SMTP_URL / MAIL_FROM cũ rồi thêm mới, giữ nguyên phần còn lại của .env
-$kept = Get-Content $envFile | Where-Object { $_ -notmatch '^\s*(SMTP_URL|MAIL_FROM)\s*=' }
+# Bỏ dòng cũ rồi thêm mới, giữ nguyên phần còn lại của .env
+$kept = Get-Content $envFile | Where-Object { $_ -notmatch '^\s*(SMTP_URL|SMTP_USER|SMTP_PASSWORD|MAIL_FROM)\s*=' }
 Set-Content -Path $envFile -Value ($kept + $lines) -Encoding utf8
-Write-Host "Đã ghi SMTP_URL và MAIL_FROM vào $envFile (không hiện mật khẩu)."
+Write-Host "Đã ghi SMTP_USER, SMTP_PASSWORD, MAIL_FROM vào $envFile (không hiện mật khẩu)."
 
 Push-Location $cloud
 docker compose up -d --build app
 Pop-Location
-Write-Host 'Xong. Đăng nhập app → Cài đặt → nhập email để nhận mã xác minh.'
+Write-Host 'Xong. Từ giờ OTP gửi cả Telegram lẫn email cho tài khoản có email đã xác minh. Đăng nhập app → Cài đặt → nhập email → nhập mã xác minh.'

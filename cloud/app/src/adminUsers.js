@@ -30,7 +30,7 @@ export function publicUser(u) {
 }
 
 export function listUsers(db) {
-  return db.prepare('SELECT * FROM users ORDER BY id').all().map(publicUser);
+  return db.prepare('SELECT * FROM users WHERE setup_complete != 0 ORDER BY id').all().map(publicUser);
 }
 
 const activeAdmins = (db) => db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'admin' AND disabled = 0").get().n;
@@ -134,6 +134,19 @@ export function deleteUser(db, admin, id, { ip }) {
   const reload = syncBroker(db);
   audit(db, 'admin_user_delete', { userId: admin.id, ip, detail: `${u.id} ${u.phone || u.username}` });
   return { ok: true, reload };
+}
+
+/** Tài khoản mới tạo sau OTP mà chưa đăng ký được sinh trắc / mật khẩu (setup_complete = 0) quá hạn thì xoá và đổi mật khẩu MQTT. */
+export function purgeIncompleteUsers(db, maxAgeHours = 24) {
+  const rows = db.prepare("SELECT * FROM users WHERE setup_complete = 0 AND created_at < datetime('now', ?)").all(`-${maxAgeHours} hours`);
+  for (const u of rows) {
+    db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+    db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(u.id);
+    if (u.mqtt_user) setMosquittoPassword(u.mqtt_user, randomMqttPassword());
+    audit(db, 'setup_incomplete_purged', { userId: null, detail: `${u.id} ${u.phone || u.username}` });
+  }
+  if (rows.length) syncBroker(db);
+  return rows.length;
 }
 
 /** ADMIN_PHONES="0912345678,0987654321": các số này luôn là admin (bootstrap). */

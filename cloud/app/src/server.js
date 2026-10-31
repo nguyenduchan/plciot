@@ -19,7 +19,7 @@ import {
 import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
-import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, ROLES, MONITOR_SCOPES } from './adminUsers.js';
+import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
 import { plcControlConfig } from './plcCommands.js';
@@ -54,6 +54,7 @@ configure({
 
 const db = openDb(DATA_DIR);
 applyBootstrapAdmins(db);
+setInterval(() => { try { purgeIncompleteUsers(db); } catch (e) { console.error('purgeIncompleteUsers', e.message); } }, 3600_000).unref?.();
 const app = express();
 app.locals.db = db;
 

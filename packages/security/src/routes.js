@@ -25,7 +25,8 @@ import {
   securityConfig, createControlSession, revokeControlSessions, checkControlSession, factorSummary,
   createStation, listStations, deleteStation, stationOk, enrollState,
 } from './sessions.js';
-import { noteLogin, isFirstDevice } from './loginAlerts.js';
+import { noteLogin, isFirstDevice, isOtpTrusted } from './loginAlerts.js';
+import { verifyPassword } from './auth.js';
 import { canonicalDeviceKey, verifyDeviceProof, rememberAuthDevice, recoveryEnrollmentAllowed } from './deviceProof.js';
 
 const FRESH_LOGIN_MS = 10 * 60_000; // đăng ký yếu tố đầu tiên: phải vừa đăng nhập bằng OTP Telegram
@@ -48,7 +49,7 @@ function webauthnEnv() {
  * @param ctx.authStrict middleware giới hạn tần suất cho route chưa đăng nhập
  * @param ctx.extraStatus (req) => object trộn vào GET /api/control/status
  */
-export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], loginPayload, authStrict, extraStatus }) {
+export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], loginPayload, pendingLogin, authStrict, extraStatus }) {
   const strict = rateLimit({
     windowMs: 60_000,
     max: Number(process.env.RATE_LIMIT_CONTROL_AUTH || 8),
@@ -437,12 +438,29 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     }
     if (user.disabled) return out(res, 403, { error: 'account_disabled' });
     db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(r.counter, Date.now(), stored.id);
+    // Chính sách: sinh trắc MỘT MÌNH chỉ đủ trên máy đã từng xác nhận OTP Telegram. Máy chưa xác nhận phải có thêm mật khẩu.
+    if (!isOtpTrusted(db, user.id, req.headers['x-device-id'])) {
+      const pw = String(req.body?.password || '');
+      if (!user.login_password_hash || !pw) {
+        return out(res, 401, { error: 'second_factor_required', methods: { password: Boolean(user.login_password_hash) } });
+      }
+      if (countAudit(db, user.id, 'pw_fail', Date.now() - 15 * 60_000) >= 5) return out(res, 429, { error: 'password_locked' });
+      if (!verifyPassword(pw, user.login_password_hash)) {
+        audit(db, 'pw_fail', { userId: user.id, ip: clientIp(req) });
+        return out(res, 401, { error: 'password_invalid' });
+      }
+    }
     audit(db, 'login_ok', { userId: user.id, ip: clientIp(req), detail: 'passkey' });
-    const payload = loginPayload(user, req);
-    if (payload.error) return out(res, payload.status, { error: payload.error });
-    // Vân tay đã chứng minh người dùng: cấp luôn phiên điều khiển để không hỏi lại ngay.
     noteLogin(db, user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'vân tay / Face ID' });
     const s = createControlSession(db, user.id, 'passkey', clientIp(req), securityConfig(), null, null, String(req.headers['x-device-id'] || ''));
+    // Bước 3: chưa có mật khẩu thì CHƯA cấp phiên đầy đủ. Trả phiên chờ (chỉ dùng để đặt mật khẩu và hoàn tất).
+    if (!user.login_password_hash && pendingLogin) {
+      const pending = pendingLogin(user, req, 'bio');
+      if (pending.error) return out(res, pending.status || 400, { error: pending.error });
+      return res.json({ ...pending, needPassword: true, controlToken: s.token, method: 'passkey', expiresAt: s.expiresAt });
+    }
+    const payload = loginPayload(user, req);
+    if (payload.error) return out(res, payload.status, { error: payload.error });
     res.json({ ...payload, controlToken: s.token, method: 'passkey', expiresAt: s.expiresAt });
   });
 

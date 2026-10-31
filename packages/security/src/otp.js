@@ -24,6 +24,10 @@ function takeRequestBudget(phone) {
 const failLocked = (phone) => recent(failLog, phone, 15 * 60_000).length >= OTP_FAIL_PER_15MIN();
 const noteFail = (phone) => recent(failLog, phone, 15 * 60_000).push(Date.now());
 
+/** Hạn của mã OTP (giây). Mặc định 180: Telegram gửi gần như tức thì, 3 phút đủ để chuyển app mà cửa sổ bị đoán còn ngắn. */
+const otpTtlSec = () => Math.max(60, Math.min(600, Number(process.env.OTP_CODE_TTL_SEC || 180)));
+const isCompleteUser = (user) => Boolean(user) && user.setup_complete !== 0;
+
 function hashCode(code) {
   return crypto.createHash('sha256').update(String(code)).digest('hex');
 }
@@ -36,8 +40,8 @@ export async function requestRegisterOtp(db, { phone }) {
   const p = normalizePhone(phone);
   if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
 
-  // username === canonical VN phone (84…)
-  if (findUserByPhone(db, p)) return { error: 'user_exists', status: 409 };
+  // username === canonical VN phone (84…). Tài khoản chưa hoàn tất (setup_complete = 0) được phép đăng ký lại để làm tiếp.
+  if (isCompleteUser(findUserByPhone(db, p))) return { error: 'user_exists', status: 409 };
   if (!takeRequestBudget(p)) return { error: 'rate_limited', status: 429 };
 
   // Must already have shared phone with Telegram bot (mqtt_server / local)
@@ -46,6 +50,7 @@ export async function requestRegisterOtp(db, { phone }) {
 
   const code = genCode();
   const challenge = createOtpChallenge(db, {
+    ttlSec: otpTtlSec(),
     phone: p,
     purpose: 'register',
     codeHash: hashCode(code),
@@ -58,7 +63,7 @@ export async function requestRegisterOtp(db, { phone }) {
     deleteOtpChallenge(db, challenge.id);
     return { error: getConfig().identity.sendError, status: 502 };
   }
-  return { ok: true, phone: p, expiresIn: 300 };
+  return { ok: true, phone: p, expiresIn: otpTtlSec() };
 }
 
 export async function verifyRegisterOtp(db, { phone, otp, ...context }) {
@@ -77,14 +82,16 @@ export async function verifyRegisterOtp(db, { phone, otp, ...context }) {
     return { error: 'otp_invalid', status: 401 };
   }
 
-  if (findUserByPhone(db, p)) return { error: 'user_exists', status: 409 };
+  if (isCompleteUser(findUserByPhone(db, p))) return { error: 'user_exists', status: 409 };
   if (deleteOtpChallenge(db, ch.id).changes !== 1) return { error: 'otp_missing', status: 400 };
   const contact = await getConfig().identity.resolveContact(db, p);
   if (!contact) return { error: getConfig().identity.unavailableError, status: 400 };
   if (ch.contact_id && String(contact) !== ch.contact_id) return { error: 'contact_changed', status: 409 };
   const user = await getConfig().identity.createAccount(db, { phone: p, contact, ...context });
   if (user.error) return user;
-  return { ok: true, user };
+  // Chỉ hoàn tất khi đặt mật khẩu hoặc đăng ký sinh trắc thành công (quá 24 giờ chưa hoàn tất thì bị xoá).
+  db.prepare('UPDATE users SET setup_complete = 0 WHERE id = ? AND login_password_hash IS NULL').run(user.id);
+  return { ok: true, user: db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) };
 }
 
 export async function requestLoginOtp(db, { phone }) {
@@ -101,18 +108,19 @@ export async function requestLoginOtp(db, { phone }) {
 
   const code = genCode();
   const challenge = createOtpChallenge(db, {
+    ttlSec: otpTtlSec(),
     phone: p,
     purpose: 'login',
     codeHash: hashCode(code),
     contact,
   });
   try {
-    await getConfig().identity.sendCode(contact, code, 'Đăng nhập');
+    await getConfig().identity.sendCode(contact, code, 'Đăng nhập', { user }); // user: để app gửi thêm qua email nếu có
   } catch (e) {
     deleteOtpChallenge(db, challenge.id);
     return { error: getConfig().identity.sendError, status: 502 };
   }
-  return { ok: true, phone: p, expiresIn: 300 };
+  return { ok: true, phone: p, expiresIn: otpTtlSec() };
 }
 
 /** OTP qua email cho khôi phục 2 yếu tố: chỉ email đã xác minh và qua thời gian chờ; cùng ngân sách gửi/đoán theo số điện thoại. */
@@ -126,14 +134,14 @@ export async function requestEmailRecoveryOtp(db, { phone }) {
   if (!user.email || !user.email_verified || !waited || !getConfig().email.available(user)) return { error: 'email_unavailable', status: 400 };
   if (!takeRequestBudget(p)) return { error: 'rate_limited', status: 429 };
   const code = genCode();
-  const challenge = createOtpChallenge(db, { phone: p, purpose: 'recover_email', codeHash: hashCode(code), contact: user.email });
+  const challenge = createOtpChallenge(db, { ttlSec: otpTtlSec(), phone: p, purpose: 'recover_email', codeHash: hashCode(code), contact: user.email });
   try {
     await getConfig().email.send(user, 'Mã khôi phục tài khoản — Giám sát PLC', `Mã khôi phục tài khoản: ${code}\nHiệu lực 5 phút. Nếu không phải bạn, hãy bỏ qua email này.`);
   } catch {
     deleteOtpChallenge(db, challenge.id);
     return { error: 'email_send_failed', status: 502 };
   }
-  return { ok: true, phone: p, expiresIn: 300 };
+  return { ok: true, phone: p, expiresIn: otpTtlSec() };
 }
 
 export function verifyLoginOtp(db, { phone, otp, purpose = 'login' }) {

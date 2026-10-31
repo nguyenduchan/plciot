@@ -19,6 +19,24 @@ export function isFirstDevice(db, userId, deviceId) {
   return crypto.createHash('sha256').update(`${userId}:${id}`).digest('hex') === first.dev_hash;
 }
 
+const devHash = (userId, deviceId) => crypto.createHash('sha256').update(`${userId}:${deviceId}`).digest('hex');
+
+/** Đánh dấu thiết bị đã được xác nhận bằng OTP Telegram (gọi SAU noteLogin khi đăng nhập hoàn tất bằng OTP + yếu tố thứ hai). */
+export function markOtpTrusted(db, userId, deviceId) {
+  const id = String(deviceId || '');
+  if (!ID_RE.test(id)) return false;
+  return db.prepare('UPDATE known_devices SET otp_verified = 1, otp_verified_at = ? WHERE user_id = ? AND dev_hash = ?').run(Date.now(), userId, devHash(userId, id)).changes === 1;
+}
+
+/** Thiết bị này đã từng xác nhận OTP Telegram? Có thì lần sau chỉ cần một yếu tố (mật khẩu hoặc sinh trắc). */
+export function isOtpTrusted(db, userId, deviceId) {
+  const id = String(deviceId || '');
+  if (!ID_RE.test(id)) return false;
+  const ttlMs = Math.max(1, Number(process.env.OTP_TRUST_DAYS || 30)) * 86_400_000;
+  const row = db.prepare('SELECT otp_verified_at FROM known_devices WHERE user_id = ? AND dev_hash = ? AND otp_verified = 1').get(userId, devHash(userId, id));
+  return Boolean(row) && Date.now() - (row.otp_verified_at || 0) < ttlMs;
+}
+
 export function noteLogin(db, user, { deviceId, ip, method }) {
   const id = String(deviceId || '');
   if (!ID_RE.test(id)) return { known: null };

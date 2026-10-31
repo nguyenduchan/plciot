@@ -17,7 +17,7 @@ const names = (str, p) => Array.from({ length: 8 }, (_, i) => (str.split(',')[i]
 const S = { regs: new Array(R.NREG).fill(0), status: 'offline', ts: 0 };
 let hist = [];                        // [ts, DO, DI, alarm, total] last hour, in memory (the full history lives in DB)
 let alog = LS.get('alog', []);        // [ts, alarmMask]
-let rangeH = 1, link = null, lastAlarm = 0;
+let rangeH = 1, link = null, lastAlarm = 0, ackMask = 0;
 S.hist = null; S.histTs = 0;   // hourly history block published by the PLC via the gateway
 const u32 = (i) => S.regs[i] + S.regs[i + 1] * 65536;
 const hms = (s) => `${Math.floor(s / 3600)} giờ ${String(Math.floor(s / 60) % 60).padStart(2, '0')} phút ${String(s % 60).padStart(2, '0')} giây`;
@@ -253,10 +253,37 @@ function showTab(t) {
   });
   render();
 }
+/* Thanh cảnh báo cố định (mọi tab): cảnh báo đang hoạt động > mất liên lạc > bình thường. Chưa "Đã nhận" thì nhấp nháy. */
+function renderAlarmBar() {
+  const bar = $('#alarm-bar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--hdr-h', `${($('header') || {}).offsetHeight || 58}px`); // thanh cảnh báo dính ngay dưới tiêu đề
+  const st = S.status, mask = (S.regs && S.regs[R.ALARM]) || 0;
+  const active = ALARMS.filter(([m]) => mask & m).map(([, t]) => t);
+  if (!(mask & ackMask)) ackMask = 0;           // cảnh báo đã hết thì lần sau xuất hiện lại phải báo lại
+  const unacked = (mask & ~ackMask) !== 0;
+  let cls = 'ok', icon = '✔', text = 'Bình thường';
+  if (st !== 'online') {
+    cls = 'comm'; icon = '■';
+    text = { plc_fault: 'PLC mất liên lạc: số liệu không còn đáng tin', connecting: 'Đang kết nối…', offline: 'Mất kết nối máy chủ: số liệu không còn đáng tin' }[st] || st;
+  }
+  if (active.length) { cls = 'alarm'; icon = '▲'; text = `${active.length} cảnh báo: ${active.join(' · ')}`; }
+  bar.className = `alarm-bar ${cls}${active.length && unacked ? ' blink' : ''}`;
+  bar.replaceChildren();
+  const i = document.createElement('span'); i.className = 'ab-i'; i.setAttribute('aria-hidden', 'true'); i.textContent = icon;
+  const t = document.createElement('span'); t.className = 'ab-t'; t.textContent = text;
+  bar.append(i, t);
+  if (active.length && unacked) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Đã nhận';
+    b.onclick = () => { ackMask = mask; renderAlarmBar(); };
+    bar.append(b);
+  }
+}
 function render() {
   const pill = $('#pill'), st = S.status;
   pill.className = 'pill ' + (st === 'online' ? 'on' : st === 'plc_fault' ? 'warn' : 'off');
-  pill.textContent = { online: cfg.demo ? 'Chạy thử' : 'Trực tuyến', plc_fault: 'PLC mất liên lạc', connecting: 'Đang kết nối', offline: 'Mất kết nối' }[st] || st;
+  pill.textContent = { online: cfg.demo ? '● Chạy thử' : '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
+  renderAlarmBar();
   const visible = (t) => !$('#tab-' + t).hidden;
   const { regs } = S, di = regs[R.DI], dout = regs[R.DO], manual = regs[R.MODE] === 1;
   const inN = names(cfg.inNames, 'X'), outN = names(cfg.outNames, 'Y');
@@ -266,7 +293,7 @@ function render() {
     const chip = (n, on) => `<div class="chip ${on ? 'on' : ''}"><i></i>${n}</div>`;
     $('#ins').innerHTML = inN.map((n, i) => chip(n, di >> i & 1)).join('');
     $('#outs').innerHTML = outN.map((n, i) => chip(n, dout >> i & 1)).join('');
-    const al = ALARMS.filter(([m]) => regs[R.ALARM] & m).map(([, t]) => `<div class="al">⚠ ${t}</div>`);
+    const al = ALARMS.filter(([m]) => regs[R.ALARM] & m).map(([, t]) => `<div class="al"><span aria-hidden="true">▲</span> ${t}</div>`);
     $('#alarms').innerHTML = al.join('') || '<span class="muted">Không có cảnh báo</span>';
     $('#stamp').textContent = S.ts ? 'Cập nhật: ' + new Date(S.ts).toLocaleTimeString('vi-VN') : 'Chưa có dữ liệu';
   }

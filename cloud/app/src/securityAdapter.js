@@ -30,21 +30,36 @@ configure({
   identity: {
     contact: (user) => user.chat_id ? String(user.chat_id) : null,
     resolveContact: async (db, phone) => { const found = await resolveTelegramUser(db, phone); return found?.chat_id ? String(found.chat_id) : null; },
-    sendCode: (contact, code, purpose) => sendTelegramMessage(Number(contact), `<b>${purpose}</b>\n\n<code>${code}</code>\n\nMã có hiệu lực 5 phút. Không chia sẻ mã này.`),
+    // Mã nằm ngay dòng đầu để xem được cả trong bản xem trước thông báo; hạn theo OTP_CODE_TTL_SEC.
+    // Gửi đồng thời Telegram và (nếu tài khoản có email đã xác minh, qua thời gian chờ, và máy chủ bật SMTP) email: cùng một mã, dùng kênh nào cũng được.
+    // Chỉ coi là lỗi khi không kênh nào gửi được.
+    sendCode: async (contact, code, purpose, { user } = {}) => {
+      const ttl = Math.min(600, Math.max(60, Number(process.env.OTP_CODE_TTL_SEC) || 180));
+      const hh = ttl % 60 === 0 ? `${ttl / 60} phút` : `${ttl} giây`;
+      const jobs = [sendTelegramMessage(Number(contact), `🔐 Mã OTP: <code>${code}</code>\n<b>${purpose}</b>\n\nMã có hiệu lực ${hh}. Không chia sẻ mã này.`)];
+      if (user && emailChannelAvailable(user)) {
+        jobs.push(sendEmail(user.email, `Mã OTP ${code} — Giám sát PLC`, `Mã OTP của bạn: ${code}\n${purpose}. Mã có hiệu lực ${hh}.\nKhông chia sẻ mã này. Nếu không phải bạn yêu cầu, hãy bỏ qua email này.`));
+      }
+      const results = await Promise.allSettled(jobs);
+      if (!results.some((r) => r.status === 'fulfilled')) throw results[0].reason;
+    },
     findContactOwner: (db, contact, userId) => db.prepare('SELECT id FROM users WHERE chat_id = ? AND id != ?').get(contact, userId),
     unavailableError: 'telegram_not_linked', sendError: 'telegram_send_failed',
-    createAccount: async (db, { phone, contact, dataDir, webappSrc }) => {
+    // Sau OTP chỉ tạo dòng tạm (chưa có gói dữ liệu, chưa có tài khoản MQTT); activateAccount làm phần còn lại khi hoàn tất mọi bước.
+    createAccount: async (db, { phone, contact, webappSrc }) => {
       if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
-      const folder = `u${phone}`;
-      copyDir(webappSrc, resolveBundleRoot(dataDir, folder));
-      const user = upsertUser(db, {
-        username: phone, phone, chatId: Number(contact), folderPath: folder, version: shellVersion(webappSrc),
+      return upsertUser(db, {
+        username: phone, phone, chatId: Number(contact), folderPath: `u${phone}`, version: shellVersion(webappSrc),
         passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')), notifySite: `s${phone}`, notifyDevice: 'plc01',
       });
+    },
+    activateAccount: async (db, user, { dataDir, webappSrc }) => {
+      if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
+      copyDir(webappSrc, resolveBundleRoot(dataDir, user.folder_path || `u${user.phone}`));
       const provisioned = provisionUserMqtt(db, user).user;
       // Thống nhất với thiết bị/partner: gói mặc định (monitor), admin kích hoạt pro trên Console
       applyDefaultSubscription(db, provisioned.id);
-      return findUserById(db, provisioned.id);
+      return { ok: true };
     },
     applyContact: (db, user, contact, phone) => {
       db.prepare('UPDATE users SET chat_id = ? WHERE id = ?').run(Number(contact), user.id);

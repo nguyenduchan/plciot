@@ -52,9 +52,13 @@
     account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
     session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
     password_invalid: 'Sai mật khẩu hoặc tài khoản chưa đặt mật khẩu.',
+    setup_incomplete: 'Tài khoản mới phải đăng ký đủ Face ID / vân tay (nếu máy hỗ trợ) và mật khẩu trước khi vào.',
+    biometric_required: 'Máy này hỗ trợ Face ID / vân tay nên phải bật trước khi hoàn tất đăng ký.',
+    platform_unavailable: 'Máy này không có Face ID / vân tay / Windows Hello (hoặc trình duyệt không hỗ trợ) nên không bật được. Dùng mật khẩu hoặc Authenticator.',
     missing_credentials: 'Nhập mật khẩu hoặc mã OTP.',
     password_locked: 'Nhập sai mật khẩu quá nhiều lần. Thử lại sau 15 phút hoặc dùng OTP Telegram.',
-    password_new_device: 'Máy này chưa được tin cậy. Hãy đăng nhập bằng OTP Telegram một lần.',
+    password_new_device: 'Máy này chưa xác nhận OTP Telegram: cần thêm Face ID / vân tay (đã bật trước đó) hoặc dùng OTP Telegram.',
+    second_factor_required: 'Máy này chưa xác nhận OTP Telegram: nhập thêm mật khẩu rồi bấm Đăng nhập, hoặc dùng OTP Telegram.',
     password_weak: 'Mật khẩu tối thiểu 8 ký tự và không được chứa số điện thoại.',
     recover_need_two: 'Cần ít nhất 2 yếu tố khác loại: mã OTP (Telegram hoặc email), mật khẩu, vân tay / Face ID.',
     recover_invalid: 'Thông tin khôi phục không đúng.',
@@ -155,11 +159,18 @@
   const FINGER_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 26a16 16 0 0 1 32 0M12 34a20 20 0 0 1 40 0v4M22 52c3-5 4-9 4-14a6 6 0 0 1 12 0c0 6 2 10 6 14M32 38c0 6-1 11-5 16M44 48c1 2 2 4 4 6M20 32a12 12 0 0 1 24 0"/></svg>';
   const CHECK_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="24"/><path d="M21 33l8 8 15-17"/></svg>';
   const isApple = () => /iPhone|iPad|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
-  const bioName = () => (isApple() ? 'Face ID' : 'vân tay');
+  // Web không cho biết loại cảm biến, nên đoán nhãn theo thiết bị: iPhone màn hình dài (cạnh >= 812) = Face ID, iPhone khác / iPad = Touch ID.
+  const bioName = () => {
+    const ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return Math.max(screen.width, screen.height) >= 812 ? 'Face ID' : 'Touch ID';
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document)) return 'Touch ID';
+    if (/Windows/.test(ua)) return 'Windows Hello';
+    return 'vân tay';
+  };
 
   function bioSheet({ title, hint, goLabel = 'Tiếp tục' }) {
     const m = modal(`<div class="ctl-body bio-sheet">
-      <div class="bio-icon bio-wait">${isApple() ? FACE_SVG : FINGER_SVG}</div>
+      <div class="bio-icon bio-wait">${bioName() === 'Face ID' ? FACE_SVG : FINGER_SVG}</div>
       <h3>${escHtml(title)}</h3>
       <p class="muted bio-msg">Đang chuẩn bị…</p>
       <div class="row"><button class="primary bio-go" disabled>${escHtml(goLabel)}</button><button class="fit bio-x">Huỷ</button></div></div>`);
@@ -205,6 +216,8 @@
 
   async function passkeyRegister(name) {
     dbg('register.start', 'Bắt đầu đăng ký Passkey/Face ID', { name });
+    // Thiết bị không có sinh trắc: không gọi WebAuthn (Windows/Chrome sẽ mở cửa sổ "không hỗ trợ" rồi quay về vô nghĩa).
+    if (!passkeySupported() || !(await platformAuthenticator())) return { ok: false, error: 'platform_unavailable' };
     const sheet = bioSheet({ title: `Bật đăng nhập bằng ${bioName()}`, hint: `Chạm Tiếp tục, rồi xác nhận ${bioName()} khi máy hỏi.` });
     const o = await api('POST', '/api/webauthn/register/options', {});
     if (!o.ok) {
@@ -229,7 +242,8 @@
     } catch (e) {
       dbg('register.gesture_fail', e?.name || 'create failed', { name: e?.name, message: e?.message }, 'error');
       if (e?.message === 'cancelled') { sheet.close(); throw e; }
-      sheet.fail(e?.name === 'NotAllowedError' ? `Chưa xác nhận được ${bioName()}. Hãy thử lại.` : `Không bật được (${e?.name || 'lỗi'}).`);
+      const iosHint = isApple() ? ' Nếu iPhone báo không hỗ trợ passkey: vào Cài đặt > tên của bạn > iCloud > Mật khẩu và Khoá, bật đồng bộ.' : '';
+      sheet.fail((e?.name === 'NotAllowedError' ? `Chưa xác nhận được ${bioName()}. Hãy thử lại.` : `Không bật được (${e?.name || 'lỗi'}).`) + iosHint);
       throw e;
     }
     dbg('register.gesture_ok', 'Thiết bị đã tạo credential', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
@@ -442,11 +456,16 @@
     if (opts.recovery) canPk = false;
     let hasPw = Boolean(pendingSession?.methods?.password);
     let hasPk = false;
+    // Máy hỗ trợ sinh trắc (canPk đã gồm kiểm tra cảm biến) thì BẮT BUỘC bật Face ID / vân tay; mật khẩu, email chỉ là thêm.
+    // Lối thoát duy nhất: bật không được (iCloud Keychain tắt, trình duyệt lỗi…) thì chọn "dùng mật khẩu thay thế" (ghi nhận).
+    const bioRequired = Boolean(canPk) && !opts.recovery;
+    let optOut = false;
+    let setPw = '';
     body.innerHTML = `
       <h3>${opts.recovery ? 'Đặt lại thông tin đăng nhập' : 'Thiết lập đăng nhập'}</h3>
-      <p class="muted">${opts.recovery ? 'Khôi phục thành công. Đặt mật khẩu mới và/hoặc email nếu muốn. Muốn bật lại vân tay / Face ID và điều khiển thiết bị, hãy làm trong Cài đặt (cần xác nhận thêm vì lý do an toàn).' : 'Chọn <b>ít nhất một</b> cách để lần sau không cần OTP. Mỗi mục đều tuỳ chọn, bạn có thể bổ sung sau trong Cài đặt.'}</p>
+      <p class="muted">${opts.recovery ? 'Khôi phục thành công. Đặt mật khẩu mới và/hoặc email nếu muốn. Muốn bật lại vân tay / Face ID và điều khiển thiết bị, hãy làm trong Cài đặt (cần xác nhận thêm vì lý do an toàn).' : bioRequired ? `Máy của bạn hỗ trợ <b>${bioName()}</b> nên bước này là <b>bắt buộc</b>. Mật khẩu và email là tuỳ chọn thêm.` : 'Máy này không có Face ID / vân tay nên hãy chọn <b>mật khẩu</b> (bắt buộc). Email là tuỳ chọn.'}</p>
       <div class="ctl-err" style="color:var(--bad)"></div><div class="ctl-ok" style="color:var(--ok,#16a34a)"></div>
-      ${opts.recovery ? '' : canPk ? '<div class="row"><button class="primary" data-a="pk">Bật vân tay / Face ID</button></div>' : '<p class="muted">Máy này không có vân tay / Face ID.</p>'}
+      ${opts.recovery ? '' : canPk ? `<div class="row"><button class="primary" data-a="pk">${bioRequired ? `Bắt buộc: bật ${bioName()}` : 'Bật vân tay / Face ID'}</button></div><div class="row su-nobio" hidden><button class="fit" data-a="nobio">Không bật được ${bioName()}? Dùng mật khẩu thay thế</button></div>` : '<p class="muted">Máy này không có vân tay / Face ID.</p>'}
       <label>Mật khẩu (từ 8 ký tự)<input type="password" class="su-pw" autocomplete="new-password" placeholder="Mật khẩu"></label>
       <label>Nhập lại mật khẩu<input type="password" class="su-pw2" autocomplete="new-password" placeholder="Nhập lại"></label>
       <div class="row"><button class="fit" data-a="pw">Đặt mật khẩu</button></div>
@@ -458,27 +477,36 @@
     const err = (t) => { m.q('.ctl-err').textContent = t || ''; if (t) m.q('.ctl-ok').textContent = ''; };
     const ok = (t) => { m.q('.ctl-ok').textContent = t || ''; if (t) m.q('.ctl-err').textContent = ''; };
     const refresh = () => {
-      m.q('[data-a="go"]').disabled = !(opts.recovery || hasPw || hasPk);
-      m.q('[data-a="go"]').title = hasPw || hasPk ? '' : 'Chọn ít nhất một cách: vân tay / Face ID hoặc mật khẩu';
+      const ready = opts.recovery || (bioRequired && !optOut ? hasPk : (hasPw || hasPk));
+      m.q('[data-a="go"]').disabled = !ready;
+      m.q('[data-a="go"]').title = ready ? '' : (bioRequired && !optOut ? `Cần bật ${bioName()} trước` : 'Chọn ít nhất một cách: vân tay / Face ID hoặc mật khẩu');
     };
     refresh();
     const click = async (a, b) => {
       err('');
       if (a === 'x') return done(false);
-      if (a === 'go') return done(opts.recovery ? true : hasPk ? true : { basic: true });
+      if (a === 'go') return done(opts.recovery ? true : hasPk ? true : { basic: true, password: setPw, bioCapable: bioRequired, bioOptOut: optOut });
+      if (a === 'nobio') {
+        optOut = true; m.q('.su-nobio').hidden = true; m.q('[data-a="pk"]').textContent = `Thử lại bật ${bioName()}`;
+        return ok('Đã chuyển sang dùng mật khẩu thay thế: hãy đặt mật khẩu rồi bấm Hoàn tất.'), refresh();
+      }
       b.disabled = true;
       try {
         if (a === 'pk') {
-          if (await passkeyEnrollFlow(m)) { hasPk = true; b.textContent = '✓ Đã bật vân tay / Face ID'; ok('Đã bật vân tay / Face ID.'); } else if (m.lastErr) err(errText(m.lastErr));
+          if (await passkeyEnrollFlow(m)) { hasPk = true; b.textContent = '✓ Đã bật vân tay / Face ID'; ok('Đã bật vân tay / Face ID.'); } else {
+            if (m.lastErr) err(errText(m.lastErr));
+            if (bioRequired && !optOut) m.q('.su-nobio').hidden = false;
+          }
         } else if (a === 'pw') {
           const p1 = m.q('.su-pw').value; const p2 = m.q('.su-pw2').value;
           if (p1.length < 8) return err(errText('password_weak'));
           if (p1 !== p2) return err('Hai mật khẩu không khớp.');
           const r = await api('POST', '/api/account/password', { password: p1 });
-          if (r.ok) { hasPw = true; if (pendingSession) pendingSession.methods = { ...(pendingSession.methods || {}), password: true }; b.textContent = '✓ Đã đặt mật khẩu'; ok('Đã đặt mật khẩu.'); } else err(errText(r.body.error));
+          if (r.ok) { hasPw = true; setPw = p1; if (pendingSession) pendingSession.methods = { ...(pendingSession.methods || {}), password: true }; b.textContent = '✓ Đã đặt mật khẩu'; ok('Đã đặt mật khẩu.'); } else err(errText(r.body.error));
         } else if (a === 'mail') {
           const r = await api('POST', '/api/account/email/request', { email: m.q('.su-mail').value.trim() });
-          if (r.ok) { m.q('.su-mailcode').hidden = false; ok('Đã gửi mã tới email. Nhập mã để xác minh.'); } else err(errText(r.body.error));
+          if (r.ok && r.body.saved) ok('Đã lưu email. Sẽ xác minh khi hệ thống hỗ trợ gửi email.');
+          else if (r.ok) { m.q('.su-mailcode').hidden = false; ok('Đã gửi mã tới email. Nhập mã để xác minh.'); } else err(errText(r.body.error));
         } else if (a === 'mailok') {
           const r = await api('POST', '/api/account/email/verify', { otp: m.q('.su-code').value.trim() });
           if (r.ok) { m.q('.su-mailcode').hidden = true; ok('Đã xác minh email (dùng để khôi phục sau 72 giờ).'); } else err(errText(r.body.error));
@@ -489,10 +517,11 @@
   }
 
   /** Mở khoá lại ứng dụng (đã khoá do nền/nhàn rỗi) cho tài khoản chỉ có mật khẩu. */
-  function passwordPrompt(m, done) {
+  function passwordPrompt(m, done, title = 'Mở khoá ứng dụng') {
     const body = m.q('.ctl-body');
     body.innerHTML = `
-      <h3>Mở khoá ứng dụng</h3>
+      <h3>${escHtml(title)}</h3>
+      <p class="muted">Bước 2/2: nhập mật khẩu của bạn (OTP đã xác nhận).</p>
       <div class="ctl-err" style="color:var(--bad)"></div>
       <label>Mật khẩu<input type="password" class="pp-pw" autocomplete="current-password" placeholder="Mật khẩu"></label>
       <div class="row"><button class="primary pp-go">Mở khoá</button><button class="fit pp-x">Huỷ</button></div>`;
@@ -782,7 +811,7 @@
       const render = () => {
         const reason = { network_changed: 'Bạn vừa đổi mạng — cần xác nhận lại.', expired: 'Phiên điều khiển đã hết hạn.' }[info.reason] || '';
         if (!methods.enrolled && pendingSession) {
-          if (pendingSession.src === 'resume' && methods.password) passwordPrompt(m, done); else loginSetup(m, canPk && canPlatform, done);
+          if (methods.password) passwordPrompt(m, done, pendingSession.src === 'resume' ? 'Mở khoá ứng dụng' : 'Nhập mật khẩu để hoàn tất đăng nhập'); else loginSetup(m, canPk && canPlatform, done);
           return;
         }
         if (!methods.enrolled) { enrollChoice(m, canPk, done, info.title || 'Thiết lập bảo mật'); return; }
@@ -793,7 +822,10 @@
           ${methods.passkey && canPk ? '<div class="row"><button class="primary ctl-pk">Dùng vân tay / Face ID</button></div>' : ''}
           ${methods.totp ? `<label>Mã Authenticator<input class="ctl-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
             <div class="row"><button class="${methods.passkey && canPk ? 'fit' : 'primary'} ctl-go">Xác nhận</button></div>` : ''}
+          ${pendingSession && methods.password ? '<label>Hoặc nhập mật khẩu<input type="password" class="ctl-pw" autocomplete="current-password" placeholder="Mật khẩu"></label><div class="row"><button class="fit ctl-pwgo">Xác nhận bằng mật khẩu</button></div>' : ''}
           <div class="row"><button class="fit ctl-newdev">Máy mới / mất máy cũ?</button><button class="fit ctl-cancel">Huỷ</button></div>`;
+        const pwgo = m.q('.ctl-pwgo');
+        if (pwgo) pwgo.onclick = () => { const v = m.q('.ctl-pw').value; if (!v) { err('Nhập mật khẩu.'); return; } done({ basic: true, password: v }); };
         const err = (t) => { if (!finished && m.q('.ctl-err')) m.q('.ctl-err').textContent = t || ''; };
         m.q('.ctl-cancel').onclick = () => done(false);
         m.q('.ctl-newdev').onclick = () => newDeviceFlow(m, done, canPk && canPlatform);
@@ -807,7 +839,10 @@
             } catch (e) { err(e?.name === 'NotAllowedError' ? 'Đã huỷ trên thiết bị.' : errText('webauthn_failed')); }
           };
           pk.onclick = run;
-          if (!methods.totp) run(); // chỉ có passkey: bật luôn hộp xác thực sinh trắc
+          // Chỉ có passkey: bật luôn hộp sinh trắc. Máy không có Face ID/vân tay/Windows Hello thì KHÔNG tự bật (sẽ ra cửa sổ
+          // hệ thống "không hỗ trợ"); người dùng vẫn bấm nút nếu muốn dùng điện thoại khác qua mã QR.
+          if (!methods.totp && canPlatform) run();
+          else if (!methods.totp) err('Máy này không có Face ID / vân tay / Windows Hello. Bấm nút để dùng điện thoại khác (mã QR), hoặc "Máy mới / mất máy cũ?".');
         }
         const go = m.q('.ctl-go');
         if (go) {
@@ -832,7 +867,7 @@
   }
 
   /* ---------- đăng nhập bằng passkey (không cần SĐT, không OTP) ---------- */
-  async function loginWithPasskey() {
+  async function loginWithPasskey(password) {
     dbg('login.start', 'Đăng nhập Passkey/Face ID (không OTP)');
     const post = async (path, body) => {
       const r = await fetch(location.origin + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: JSON.stringify(body) });
@@ -856,6 +891,7 @@
     dbg('login.gesture_ok', 'Face ID / vân tay OK', { credId: String(cred?.id || '').slice(0, 16) }, 'ok');
     const r = await post('/api/login/passkey/verify', {
       cid: o.body.cid,
+      ...(password ? { password } : {}),
       credential: {
         id: cred.id,
         response: {
@@ -902,19 +938,317 @@
     };
   }
 
+  /** Bật vân tay / Face ID ngay trên máy này (dùng sau khi vừa đăng nhập): hộp sinh trắc của chính thiết bị, không phải mã QR. */
+  /** Đường dẫn mở thẳng Cài đặt (chỉ Android / Windows cho phép trang web làm việc này; iPhone thì không). */
+  function settingsLink() {
+    const ua = navigator.userAgent;
+    if (/Android/.test(ua)) return { href: 'intent:#Intent;action=android.settings.SECURITY_SETTINGS;end', text: 'Mở Cài đặt bảo mật' };
+    if (/Windows/.test(ua)) return { href: 'ms-settings:signinoptions', text: 'Mở Cài đặt Windows Hello' };
+    return null;
+  }
+
+  /** Hướng dẫn từng bước bật Face ID / vân tay trong Cài đặt của máy. Trả khi người dùng bấm "Đã bật, thử lại" (true) hoặc "Đóng" (false). */
+  function bioGuide() {
+    const ua = navigator.userAgent;
+    const bio = bioName();
+    let steps;
+    if (/iPhone|iPad/.test(ua)) {
+      steps = [
+        `Mở <b>Cài đặt</b>, chọn <b>${bio === 'Touch ID' ? 'Touch ID & Mật mã' : 'Face ID & Mật mã'}</b>, nhập mật mã. Bảo đảm đã thiết lập ${bio} và bật <b>Mật khẩu tự động điền</b>.`,
+        'Mở <b>Cài đặt, [tên bạn], iCloud, Mật khẩu và Chuỗi khoá</b>, bật <b>Đồng bộ máy này</b>.',
+        'Mở <b>Cài đặt, Mật khẩu, Tuỳ chọn mật khẩu</b> (Password Options). Bật <b>Tự động điền mật khẩu và passkey</b>, chỉ chọn <b>Mật khẩu</b>; <b>tắt Authenticator</b> và các app khác nếu có.',
+        'Dùng <b>Safari</b> hoặc <b>Chrome</b> (không dùng trình duyệt trong Telegram / Zalo), đóng hẳn rồi mở lại trang này.',
+      ];
+    } else if (/Android/.test(ua)) {
+      steps = [
+        'Mở <b>Cài đặt, Bảo mật (hoặc Sinh trắc học)</b>, thiết lập <b>khoá màn hình</b> và đăng ký <b>vân tay / khuôn mặt</b> nếu chưa có.',
+        'Mở <b>Cài đặt, Mật khẩu, passkey và tài khoản</b>, đặt <b>Dịch vụ ưu tiên</b> là <b>Trình quản lý mật khẩu của Google</b>; tắt Authenticator và các dịch vụ khác.',
+        'Dùng <b>Chrome</b>, đóng hẳn rồi mở lại trang này.',
+      ];
+    } else if (/Windows/.test(ua)) {
+      steps = [
+        'Mở <b>Cài đặt, Tài khoản, Tuỳ chọn đăng nhập</b>.',
+        'Thiết lập <b>Windows Hello</b> (khuôn mặt, vân tay hoặc mã PIN) rồi quay lại trang này.',
+      ];
+    } else {
+      steps = ['Bật khoá màn hình và vân tay / khuôn mặt trong Cài đặt bảo mật của thiết bị, rồi quay lại thử lại.'];
+    }
+    const link = settingsLink();
+    return new Promise((resolve) => {
+      const m = modal(`<div class="ctl-body"><h3>Cách bật ${escHtml(bio)}</h3>
+        <ol class="muted" style="padding-left:20px;line-height:1.5">${steps.map((t) => `<li style="margin-bottom:8px">${t}</li>`).join('')}</ol>
+        ${link ? '' : '<p class="muted">Trang web không mở được Cài đặt của iPhone; hãy làm theo các bước trên rồi quay lại đây.</p>'}
+        <div class="row" style="flex-direction:column">
+          ${link ? `<button class="fit" data-a="open">${escHtml(link.text)}</button>` : ''}
+          <button class="primary" data-a="retry">Đã bật, thử lại</button><button class="fit" data-a="x">Đóng</button></div></div>`);
+      m.q('[data-a="open"]')?.addEventListener('click', () => { location.href = link.href; });
+      m.q('[data-a="retry"]').onclick = () => { m.close(); resolve(true); };
+      m.q('[data-a="x"]').onclick = () => { m.close(); resolve(false); };
+    });
+  }
+
+  /** Hộp thông báo ngắn có nút "Đã hiểu". */
+  function notice(title, text) {
+    return new Promise((resolve) => {
+      const m = modal(`<div class="ctl-body"><h3>${escHtml(title)}</h3><p class="muted">${escHtml(text)}</p>
+        <div class="row"><button class="primary" data-a="ok">Đã hiểu</button></div></div>`);
+      m.q('[data-a="ok"]').onclick = () => { m.close(); resolve(); };
+    });
+  }
+
+  async function enrollPasskeyNow() {
+    if (!passkeySupported() || !(await platformAuthenticator())) {
+      if (await bioGuide()) return enrollPasskeyNow();
+      return false;
+    }
+    const name = `${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Máy tính'} ${new Date().toLocaleDateString('vi-VN')}`;
+    let r = await passkeyRegister(name);
+    if (r.error === 'reauth_required' && await reauthModal()) r = await passkeyRegister(name);
+    if (!r.ok && r.error && r.error !== 'reauth_required') {
+      await notice('Chưa bật được vân tay / Face ID', errText(r.error));
+      if (await bioGuide()) return enrollPasskeyNow();
+    }
+    return Boolean(r.ok);
+  }
+
+  /* =================== Quy trình 3 bước (docs/LOGIN_FLOW.md) =================== */
+  const pwWeak = (pw) => pw.length < 8;
+
+  /** Bước 2 (đăng nhập): xác thực khoá đã đăng ký bằng hộp Face ID / vân tay. Trả { ok } hoặc { error }. */
+  async function bioLoginStep() {
+    const sheet = bioSheet({ title: `Đăng nhập bằng ${bioName()}`, hint: `Chạm Tiếp tục, rồi xác nhận ${bioName()} khi máy hỏi.` });
+    try {
+      const o = await api('POST', '/api/webauthn/auth/options', {});
+      if (!o.ok) { sheet.close(); return { error: o.body.error }; }
+      const opts = o.body;
+      const cred = await sheet.waitTap(() => navigator.credentials.get({
+        publicKey: { ...opts, challenge: b64uToBuf(opts.challenge), allowCredentials: (opts.allowCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })) },
+      }));
+      sheet.status('Đang xác nhận…');
+      const r = await api('POST', '/api/webauthn/auth/verify', {
+        credential: { id: cred.id, response: { clientDataJSON: bufToB64u(cred.response.clientDataJSON), authenticatorData: bufToB64u(cred.response.authenticatorData), signature: bufToB64u(cred.response.signature) } },
+      });
+      if (!r.ok) { sheet.fail(errText(r.body.error)); return { error: r.body.error }; }
+      saveToken(r.body);
+      sheet.ok(`Đã xác nhận ${bioName()}`);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      sheet.close();
+      return { ok: true };
+    } catch (e) {
+      if (e?.message === 'cancelled') { sheet.close(); return { error: 'cancelled' }; }
+      sheet.fail(e?.name === 'NotAllowedError' ? `Chưa xác nhận được ${bioName()}. Hãy thử lại.` : `Không xác nhận được (${e?.name || 'lỗi'}).`);
+      return { error: 'webauthn_failed' };
+    }
+  }
+
+  /** Khung hộp thoại cho các bước có nhập liệu. Trả { m, body, err, done }. */
+  function stepBox(title, sub) {
+    const m = modal(`<div class="ctl-body"><h3>${escHtml(title)}</h3><p class="muted">${escHtml(sub)}</p><div class="ctl-err" style="color:var(--bad)"></div><div class="su-body"></div></div>`);
+    return { m, body: m.q('.su-body'), err: (t) => { m.q('.ctl-err').textContent = t || ''; } };
+  }
+
+  /** Bước 3: tạo mật khẩu (nhập + nhập lại), gửi lên server. Trả mật khẩu đã đặt hoặc null nếu huỷ. */
+  function passwordSetStep(stepLabel) {
+    return new Promise((resolve) => {
+      const box = stepBox(`${stepLabel}: tạo mật khẩu`, 'Tài khoản chưa có mật khẩu. Nhập mật khẩu (từ 8 ký tự, không chứa số điện thoại) và nhập lại.');
+      box.body.innerHTML = `<label>Mật khẩu<input type="password" class="sp-1" autocomplete="new-password"></label>
+        <label>Nhập lại mật khẩu<input type="password" class="sp-2" autocomplete="new-password"></label>
+        <div class="row"><button class="primary sp-go">Lưu mật khẩu</button><button class="fit sp-x">Huỷ</button></div>`;
+      const go = box.body.querySelector('.sp-go');
+      const submit = async () => {
+        const p1 = box.body.querySelector('.sp-1').value; const p2 = box.body.querySelector('.sp-2').value;
+        if (pwWeak(p1)) return box.err(errText('password_weak'));
+        if (p1 !== p2) return box.err('Hai mật khẩu không khớp.');
+        go.disabled = true; box.err('');
+        const r = await api('POST', '/api/account/password', { password: p1 });
+        go.disabled = false;
+        if (!r.ok) return box.err(errText(r.body.error));
+        box.m.close(); resolve(p1);
+      };
+      go.onclick = submit;
+      box.body.querySelector('.sp-2').onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+      box.body.querySelector('.sp-x').onclick = () => { box.m.close(); resolve(null); };
+      setTimeout(() => box.body.querySelector('.sp-1')?.focus(), 50);
+    });
+  }
+
+  /** Bước 3: nhập mật khẩu đã đăng ký và hoàn tất (thử lại được khi sai, không mất OTP). Trả payload đăng nhập hoặc null. */
+  function passwordEnterStep(stepLabel, extra = {}) {
+    return new Promise((resolve) => {
+      const box = stepBox(`${stepLabel}: nhập mật khẩu`, pendingSession?.src === 'resume' ? 'Nhập mật khẩu để mở khoá ứng dụng.' : 'Nhập mật khẩu của tài khoản để vào ứng dụng.');
+      box.body.innerHTML = `<label>Mật khẩu<input type="password" class="sp-1" autocomplete="current-password"></label>
+        <div class="row"><button class="primary sp-go">Vào ứng dụng</button><button class="fit sp-x">Huỷ</button></div>`;
+      const go = box.body.querySelector('.sp-go');
+      const submit = async () => {
+        const pw = box.body.querySelector('.sp-1').value;
+        if (!pw) return box.err('Nhập mật khẩu.');
+        go.disabled = true; box.err('');
+        const r = await api('POST', '/api/login/complete-basic', { password: pw, ...extra });
+        go.disabled = false;
+        if (!r.ok) return box.err(errText(r.body.error));
+        box.m.close(); resolve(r.body);
+      };
+      go.onclick = submit;
+      box.body.querySelector('.sp-1').onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+      box.body.querySelector('.sp-x').onclick = () => { box.m.close(); resolve(null); };
+      setTimeout(() => box.body.querySelector('.sp-1')?.focus(), 50);
+    });
+  }
+
+  /** Bước 2 (đăng ký): bắt buộc bật sinh trắc. Lối thoát duy nhất khi thất bại: dùng mật khẩu thay thế. Trả 'ok' | 'optout' | 'cancel'. */
+  async function bioRegisterStep(strict = false) {
+    for (;;) {
+      let r;
+      try { r = await passkeyRegister(`${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Máy tính'} ${new Date().toLocaleDateString('vi-VN')}`); } catch (e) { r = { ok: false, error: e?.message === 'cancelled' ? 'cancelled' : 'webauthn_failed' }; }
+      if (r.ok) return 'ok';
+      if (r.error === 'reauth_required' && await reauthModal()) continue;
+      // Hộp Face ID còn mở ở trạng thái lỗi: lấy lý do rồi đóng để chỉ còn một hộp lựa chọn
+      const why = document.querySelector('.bio-sheet .bio-msg')?.textContent || '';
+      document.querySelectorAll('.bio-sheet').forEach((el) => el.closest('.ctl-modal')?.remove());
+      const choice = await new Promise((resolve) => {
+        const box = stepBox(`Chưa bật được ${bioName()}`, `Máy của bạn hỗ trợ ${bioName()} nên bước này là bắt buộc${strict ? ' để hoàn tất tài khoản mới' : ''}.`);
+        box.err(why || (r.error && r.error !== 'cancelled' ? errText(r.error) : ''));
+        // Tài khoản mới: phải đăng ký đủ, không có lối thoát (chỉ thử lại hoặc huỷ). Tài khoản cũ vẫn có "dùng mật khẩu thay thế".
+        box.body.innerHTML = `<div class="row" style="flex-direction:column"><button class="primary sp-retry">Thử lại bật ${escHtml(bioName())}</button>
+          <button class="fit sp-guide">Hướng dẫn bật ${escHtml(bioName())} trong Cài đặt</button>
+          ${strict ? '' : '<button class="fit sp-alt">Không bật được? Dùng mật khẩu thay thế</button>'}<button class="fit sp-x">Huỷ đăng nhập</button></div>`;
+        box.body.querySelector('.sp-retry').onclick = () => { box.m.close(); resolve('retry'); };
+        box.body.querySelector('.sp-guide').onclick = async () => { box.m.close(); resolve(await bioGuide() ? 'retry' : 'again'); };
+        box.body.querySelector('.sp-alt')?.addEventListener('click', () => { box.m.close(); resolve('optout'); });
+        box.body.querySelector('.sp-x').onclick = () => { box.m.close(); resolve('cancel'); };
+      });
+      if (choice === 'retry') continue;
+      if (choice === 'again') { r = null; continue; }
+      return choice;
+    }
+  }
+
+  /**
+   * Sau khi xác nhận OTP (hoặc mở khoá lại): bước 2 sinh trắc, bước 3 mật khẩu. Trả payload đăng nhập hoặc null (huỷ).
+   *   bước 2: máy hỗ trợ sinh trắc: đã đăng ký thì đăng nhập, chưa thì bắt buộc đăng ký (public key lên server);
+   *   bước 3: server chưa có mật khẩu thì tạo mới; đã có mà chưa dùng sinh trắc thì nhập mật khẩu.
+   */
+  async function loginStepper(data) {
+    const bio = await bioInfo();
+    const resume = data.src === 'resume';
+    const methods = data.methods || {};
+    let usedBio = false;
+    let optOut = false;
+    if (bio.supported && (methods.passkey || !resume)) {
+      if (methods.passkey) {
+        for (;;) {
+          const r = await bioLoginStep();
+          if (r.ok) { usedBio = true; break; }
+          if (r.error === 'cancelled') return null;
+          if (!(await confirmStep(`Chưa xác nhận được ${bioName()}`, 'Thử lại, hoặc huỷ đăng nhập.', 'Thử lại'))) return null;
+        }
+      } else {
+        const r = await bioRegisterStep(Boolean(data.isNew));
+        if (r === 'cancel') return null;
+        usedBio = r === 'ok';
+        optOut = r === 'optout';
+      }
+    }
+    // Tài khoản mới: ngay trước bước mật khẩu có bước email khôi phục (tuỳ chọn, bấm Tiếp tục để bỏ qua không cần nhập)
+    if (data.isNew) await emailOptionalStep();
+    const stepNo = bio.supported && !optOut ? 'Bước 3/3' : 'Bước 2/2';
+    let password = null;
+    if (!methods.password) {
+      password = await passwordSetStep(stepNo);
+      if (!password) return null;
+    } else if (!usedBio) {
+      return passwordEnterStep(stepNo, bio.supported && !resume ? { bioCapable: true, bioOptOut: true } : {});
+    }
+    if (usedBio) {
+      const done = await api('POST', '/api/login/complete', {});
+      if (!done.ok) throw new Error(errText(done.body.error));
+      return done.body;
+    }
+    // Vừa đặt mật khẩu mới (không dùng sinh trắc): hoàn tất bằng chính mật khẩu đó
+    const done = await api('POST', '/api/login/complete-basic', { password, ...(bio.supported && !resume ? { bioCapable: true, bioOptOut: true } : {}) });
+    if (!done.ok) throw new Error(errText(done.body.error));
+    return done.body;
+  }
+
+  /** Tuỳ chọn cho tài khoản mới: nhập email khôi phục (gửi mã xác minh). Bỏ qua được; lỗi gửi (vd. server chưa bật email) cũng không chặn đăng ký. */
+  function emailOptionalStep() {
+    return new Promise((resolve) => {
+      const box = stepBox('Email khôi phục (tuỳ chọn)', 'Thêm email để nhận mã khôi phục khi mất Telegram. Không bắt buộc, có thể bỏ qua và thêm sau trong Cài đặt.');
+      box.body.innerHTML = `<label>Email<input type="email" class="se-mail" autocomplete="email" placeholder="ban@example.com"></label>
+        <div class="se-codebox" hidden><p class="muted">Đã gửi mã tới email. Nhập mã rồi bấm Xác nhận mã, hoặc Bỏ qua.</p><label>Mã gửi tới email<input class="se-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label></div>
+        <div class="row"><button class="primary se-send">Tiếp tục</button><button class="fit se-skip">Bỏ qua</button></div>`;
+      const send = box.body.querySelector('.se-send');
+      let sent = false;
+      send.onclick = async () => {
+        box.err('');
+        if (!sent) {
+          const email = box.body.querySelector('.se-mail').value.trim();
+          if (!email) { box.m.close(); resolve(false); return; } // để trống: sang bước tiếp theo
+          send.disabled = true;
+          const r = await api('POST', '/api/account/email/request', { email });
+          send.disabled = false;
+          if (!r.ok) return box.err(errText(r.body.error));
+          if (r.body.saved) { // máy chủ chưa bật gửi email: đã ghi nhận, xác minh sau
+            box.body.innerHTML = '<p class="muted">Đã lưu email. Hệ thống sẽ xác minh khi hỗ trợ gửi email; bạn không cần làm gì thêm.</p><div class="row"><button class="primary se-ok">Tiếp tục</button></div>';
+            box.body.querySelector('.se-ok').onclick = () => { box.m.close(); resolve(true); };
+            return;
+          }
+          sent = true; box.body.querySelector('.se-codebox').hidden = false; send.textContent = 'Xác nhận mã';
+          box.body.querySelector('.se-code').focus();
+          return;
+        }
+        send.disabled = true;
+        const r = await api('POST', '/api/account/email/verify', { otp: box.body.querySelector('.se-code').value.trim() });
+        send.disabled = false;
+        if (!r.ok) return box.err(errText(r.body.error));
+        box.m.close(); resolve(true);
+      };
+      box.body.querySelector('.se-skip').onclick = () => { box.m.close(); resolve(false); };
+      setTimeout(() => box.body.querySelector('.se-mail')?.focus(), 50);
+    });
+  }
+
+  /** Hộp xác nhận có/không. */
+  function confirmStep(title, text, yes) {
+    return new Promise((resolve) => {
+      const box = stepBox(title, text);
+      box.body.innerHTML = `<div class="row"><button class="primary sp-y">${escHtml(yes)}</button><button class="fit sp-n">Huỷ</button></div>`;
+      box.body.querySelector('.sp-y').onclick = () => { box.m.close(); resolve(true); };
+      box.body.querySelector('.sp-n').onclick = () => { box.m.close(); resolve(false); };
+    });
+  }
+
+  /** Đăng nhập sinh trắc trên máy tin cậy xong mà tài khoản chưa có mật khẩu: tạo mật khẩu rồi hoàn tất. */
+  async function completeNeedPassword(data) {
+    pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin, src: data.src, methods: data.methods };
+    try {
+      const password = await passwordSetStep('Bước 3/3');
+      if (!password) return null;
+      const done = await api('POST', '/api/login/complete-basic', { password });
+      if (!done.ok) throw new Error(errText(done.body.error));
+      return done.body;
+    } finally { pendingSession = null; }
+  }
+
+  /** Máy tin cậy hỗ trợ sinh trắc nhưng tài khoản chưa có khoá: sau khi nhập mật khẩu, bắt buộc đăng ký sinh trắc rồi mới vào. */
+  async function enrollMandatory() {
+    const r = await bioRegisterStep();
+    return r; // 'ok' | 'optout' | 'cancel'
+  }
+
+  /** Phát hiện sinh trắc: hỗ trợ không + nhãn hiển thị (Face ID / Touch ID / vân tay / Windows Hello). */
+  async function bioInfo() {
+    const supported = passkeySupported() && await platformAuthenticator();
+    return { supported, label: bioName() };
+  }
+
   async function completeOtp(data) {
     if (!data.pending || !data.token) throw new Error(errText('login_step_up_required'));
     pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin, src: data.src, methods: data.methods };
     if (data.methods?.passkey) LS.set('hasPasskey', true); // khôi phục cờ sau khi người dùng xoá dữ liệu trình duyệt
     LS.del('ctl');
     try {
-      // OTP vừa xác minh + tài khoản chưa có vân tay nhưng đã có mật khẩu: vào luôn, không bắt thiết lập lại
-      const direct = !data.methods?.enrolled && data.methods?.password && data.src !== 'resume';
-      const proof = direct ? { basic: true } : await unlock({ methods: data.methods, title: data.methods?.enrolled ? 'Xác nhận đăng nhập' : 'Thiết lập bảo mật đăng nhập' });
-      if (!proof) return null;
-      const result = proof.basic ? await api('POST', '/api/login/complete-basic', proof.password ? { password: proof.password } : {}) : await api('POST', '/api/login/complete', {});
-      if (!result.ok) throw new Error(errText(result.body.error));
-      return result.body;
+      return await loginStepper(data);
     } finally {
       pendingSession = null;
       LS.del('ctl');
@@ -968,7 +1302,7 @@
   };
 
   window.Security = {
-    recoverySetup, passkeyProof, api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
+    recoverySetup, passkeyProof, enrollPasskeyNow, enrollMandatory, completeNeedPassword, bioInfo, notice, api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
     reviewDevices, reviewRegisteredDevices, renderBanner, devId,
   };
 
