@@ -12,7 +12,7 @@ import { stationAuth, pairStation } from './stationAuth.js';
 import { generateRecoveryCodes, recoveryCodesRemaining } from './recoveryCodes.js';
 import {
   startDeviceRequest, listDeviceRequests, pendingDeviceCount, decideDeviceRequest, deviceViaRecoveryCode,
-  deviceEmailStart, deviceEmailConfirm, deviceViaWait, pollDeviceRequest, peekTicket, consumeTicket, cancelDeviceByLink,
+  deviceViaWait, pollDeviceRequest, peekTicket, consumeTicket, cancelDeviceByLink,
   deviceRequestProof,
 } from './deviceApproval.js';
 import {
@@ -25,11 +25,11 @@ import {
   securityConfig, createControlSession, revokeControlSessions, checkControlSession, factorSummary,
   createStation, listStations, deleteStation, stationOk, enrollState,
 } from './sessions.js';
-import { noteLogin, isFirstDevice, isOtpTrusted } from './loginAlerts.js';
+import { noteLogin, isFirstDevice, isDeviceTrusted, markDeviceTrusted } from './loginAlerts.js';
 import { verifyPassword } from './auth.js';
 import { canonicalDeviceKey, verifyDeviceProof, rememberAuthDevice, recoveryEnrollmentAllowed } from './deviceProof.js';
 
-const FRESH_LOGIN_MS = 10 * 60_000; // đăng ký yếu tố đầu tiên: phải vừa đăng nhập bằng OTP Telegram
+const FRESH_LOGIN_MS = 10 * 60_000; // đăng ký yếu tố đầu tiên: phải vừa đăng nhập
 const TOTP_LOCK_FAILS = 5;
 const TOTP_LOCK_WINDOW = 15 * 60_000;
 
@@ -49,7 +49,7 @@ function webauthnEnv() {
  * @param ctx.authStrict middleware giới hạn tần suất cho route chưa đăng nhập
  * @param ctx.extraStatus (req) => object trộn vào GET /api/control/status
  */
-export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], loginPayload, pendingLogin, authStrict, extraStatus }) {
+export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], loginPayload, pendingLogin, authStrict = (_req, _res, next) => next(), extraStatus }) {
   const strict = rateLimit({
     windowMs: 60_000,
     max: Number(process.env.RATE_LIMIT_CONTROL_AUTH || 8),
@@ -91,7 +91,7 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     if (!f.passkeys && !f.totp) {
       const iatMs = (req.tokenPayload?.iat || 0) * 1000;
       if (Date.now() - iatMs > FRESH_LOGIN_MS) return { error: 'reauth_required', status: 401 };
-      // Chống chiếm Telegram tự bật yếu tố: chỉ thiết bị đầu tiên của tài khoản được bật ngay; máy khác phải qua vé (email / chờ 24 giờ)
+      // Chỉ thiết bị đầu tiên được bật yếu tố ngay; máy khác phải qua vé (máy cũ / mã khôi phục)
       // Mặc định TẮT (FIRST_DEVICE_ONLY=true để bật): xoá dữ liệu trình duyệt làm mất mã thiết bị, người dùng không được bị kẹt khi chưa bật yếu tố nào.
       // Khi tắt, đăng nhập OTP mới (trong FRESH_LOGIN_MS) là đủ để bật yếu tố; máy lạ vẫn bị cảnh báo qua noteLogin.
       if (String(process.env.FIRST_DEVICE_ONLY || 'false').toLowerCase() !== 'true' || isFirstDevice(db, req.user.id, req.headers['x-device-id'])) return null;
@@ -128,6 +128,9 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
       db.prepare('UPDATE users SET recovery_required = 0 WHERE id = ?').run(req.user.id);
     }
     rememberAuthDevice(db, req.user.id, device.deviceId, device.publicKey, String(req.body?.name || 'Thiết bị').slice(0, 80));
+    // Enroll trên máy này → tin cậy để lần sau đăng nhập passkey/mật khẩu một yếu tố.
+    noteLogin(db, req.user, { deviceId: device.deviceId, ip: clientIp(req), method: method });
+    markDeviceTrusted(db, req.user.id, device.deviceId);
     return recoveryCodes ? { recoveryCodes } : {};
   }
 
@@ -141,9 +144,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   }
 
   /** Thay cho "nhập mật khẩu hiện tại": có phiên điều khiển còn hạn, hoặc (chưa có yếu tố) vừa đăng nhập ≤ 10 phút. */
-  // Vừa khôi phục bằng 2 yếu tố khác nhóm (token có rec): được đặt lại mật khẩu / email ngay. Không áp cho vân tay, Authenticator,
-  // đổi số điện thoại hay đăng xuất: bật lại điều khiển vẫn phải qua máy cũ / mã khôi phục / chờ như luồng thêm thiết bị.
-  const RECOVERED_OK = new Set(['/api/account/password', '/api/account/email/request', '/api/account/email/verify']);
+  // Vừa khôi phục bằng 2 yếu tố khác nhóm (token có rec): được đặt lại mật khẩu ngay.
+  const RECOVERED_OK = new Set(['/api/account/password']);
   function reauth(req, res, next) {
     if (req.tokenPayload?.rec && Date.now() - req.tokenPayload.rec < FRESH_LOGIN_MS && RECOVERED_OK.has(req.path)) { req.reauthed = true; return next(); }
     const gate = enrollGate(req);
@@ -378,12 +380,6 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   app.post('/api/devices/requests/:id/wait', requireAuth, strict, (req, res) => {
     sendR(res, deviceViaWait(db, req.user, req.params.id, { ip: clientIp(req) }));
   });
-  app.post('/api/devices/requests/:id/email/start', requireAuth, strict, deviceRequestAuth, async (req, res) => {
-    sendR(res, await deviceEmailStart(db, req.user, req.params.id, { ip: clientIp(req) }));
-  });
-  app.post('/api/devices/requests/:id/email/confirm', requireAuth, strict, deviceRequestAuth, async (req, res) => {
-    sendR(res, await deviceEmailConfirm(db, req.user, req.params.id, { otp: req.body?.otp, ip: clientIp(req) }));
-  });
   // Từ máy cũ (đã mở khoá): xem / cho phép / từ chối
   app.get('/api/devices/requests', requireAuth, (req, res) => {
     if (!needSession(req, res)) return;
@@ -393,8 +389,7 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     if (!needSession(req, res)) return;
     sendR(res, decideDeviceRequest(db, req.user, req.params.id, req.params.action, { ip: clientIp(req), approvalCode: req.body?.approvalCode }));
   });
-  // GET chỉ hiện trang xác nhận: bộ xem trước link của Telegram/trình quét mail tự mở mọi URL, nếu GET huỷ luôn
-  // thì yêu cầu bị huỷ sau ~1 giây mà chủ không hề bấm (đã xảy ra thật). Huỷ chỉ xảy ra ở POST khi bấm nút.
+  // GET chỉ hiện trang xác nhận (tránh preview bot tự GET rồi huỷ). Huỷ chỉ ở POST khi bấm nút.
   app.get('/api/device/cancel', authStrict, (req, res) => {
     const q = `id=${encodeURIComponent(String(req.query.id || ''))}&t=${encodeURIComponent(String(req.query.t || ''))}`;
     res.type('html').send(
@@ -438,8 +433,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     }
     if (user.disabled) return out(res, 403, { error: 'account_disabled' });
     db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(r.counter, Date.now(), stored.id);
-    // Chính sách: sinh trắc MỘT MÌNH chỉ đủ trên máy đã từng xác nhận OTP Telegram. Máy chưa xác nhận phải có thêm mật khẩu.
-    if (!isOtpTrusted(db, user.id, req.headers['x-device-id'])) {
+    // Sinh trắc một mình chỉ đủ trên trình duyệt đã tin cậy (đã claim/đăng nhập đầy đủ trước đó).
+    if (!isDeviceTrusted(db, user.id, req.headers['x-device-id'])) {
       const pw = String(req.body?.password || '');
       if (!user.login_password_hash || !pw) {
         return out(res, 401, { error: 'second_factor_required', methods: { password: Boolean(user.login_password_hash) } });

@@ -25,9 +25,8 @@ const child = spawn(process.execPath, ['--input-type=module', '-e', bootstrap], 
     PORT: String(port), DATA_DIR: path.join(tmp, 'data'), MQTT_CONFIG_DIR: path.join(tmp, 'mqtt'),
     SHELL_DIR: shell, WEBAPP_SRC: shell, WEBAPP_PUBLIC_URL: base,
     APP_JWT_SECRET: crypto.randomBytes(32).toString('hex'),
-    MQTT_INGEST: 'false', TELEGRAM_BOT_TOKEN: '', TELEGRAM_BOT_POLLING: 'false',
-    TELEGRAM_SHARED_PG_HOST: '', TELEGRAM_SHARED_DATABASE_URL: '', SMTP_URL: '',
-    ADMIN_PHONES: '', BUNDLE_AUTOSYNC: 'true', REGISTRATION_OPEN: 'true',
+    MQTT_INGEST: 'false',
+    ADMIN_USERNAMES: '', BUNDLE_AUTOSYNC: 'true', REGISTRATION_OPEN: 'true',
   },
   stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
@@ -52,26 +51,24 @@ try {
   assert.equal((await get('/api/health')).status, 200);
   const config = await get('/api/auth/config');
   assert.equal(config.status, 200);
-  assert.equal((await config.json()).presence, true);
+  const cfg = await config.json();
+  assert.equal(cfg.channel, 'device');
   assert.match(config.headers.get('Cache-Control'), /no-store/);
   const root = await get('/', { redirect: 'manual' });
   assert.equal(root.status, 302);
   assert.equal(root.headers.get('Location'), '/login.html');
-  for (const route of ['/login.html', '/recover.html', '/auth-app.js', '/security/login.js', '/security/recover.js', '/security/account.js', '/security/device-proof.js']) {
+  for (const route of ['/login.html', '/auth-app.js', '/security/login.js', '/security/account.js', '/security/device-proof.js']) {
     assert.equal((await get(route)).status, 200, route);
   }
+  assert.equal((await get('/recover.html')).status, 404);
   assert.equal((await get('/api/me')).status, 401);
   assert.equal((await get('/api/bundle/index.html')).status, 401);
-  const invalid = await get('/api/login/request-otp', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '123' }),
-  });
-  assert.equal(invalid.status, 400);
-  assert.equal((await invalid.json()).error, 'invalid_phone');
-  const cancel = await get('/api/phone/cancel?id=missing&t=missing');
-  assert.equal(cancel.status, 200);
-  assert.match(await cancel.text(), /<form method="post"/);
+  assert.equal((await get('/api/login/request-otp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+  })).status, 404);
+  assert.equal((await get('/api/phone/cancel?id=missing&t=missing')).status, 404);
   assert.ok(fs.existsSync(path.join(tmp, 'data', 'app.db')));
-  console.log('Production server: startup, core routes, generated clients, auth gate and safe cancel passed');
+  console.log('smoke-server: startup, core routes, auth gate passed');
 } finally {
   if (child.exitCode === null && child.signalCode === null) {
     const closed = once(child, 'exit');

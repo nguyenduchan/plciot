@@ -20,63 +20,51 @@
     <img src="icon.svg" alt="">
     <div>
       <h1>Giám sát PLC</h1>
-      <p>Đăng nhập bằng số điện thoại Việt Nam</p>
+      <p>Danh tính theo thiết bị — lưu username, mật khẩu và mã khôi phục</p>
     </div>
   </div>
   <div class="panel form">
-    <h2 class="flow-title">Đăng nhập / đăng ký</h2>
+    <h2 class="flow-title">Thiết bị &amp; đăng nhập</h2>
     <p id="error" role="alert" aria-atomic="true"></p>
     <p id="ok-msg" class="ok" role="status" hidden></p>
-    <p class="hint" id="tg-hint">Mở bot Telegram → <b>/start</b> → chia sẻ SĐT Việt Nam (cùng số sẽ dùng làm username).</p>
+    <p class="hint" id="tg-hint">Không còn SĐT/email. Hãy lưu <b>tên tài khoản + mật khẩu + mã khôi phục</b>. Face ID / vân tay chỉ dùng trên máy đã tin cậy (không mang sang máy mới).</p>
 
     <div id="step-creds" class="step">
-      <div class="phone-row">
-        <label class="cc">Mã vùng<input id="cc" value="84" inputmode="numeric" autocomplete="tel-country-code" readonly></label>
-        <label class="ph">Số di động VN<input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321" required></label>
-      </div>
-      <p class="hint" id="flow-hint">Nhập số điện thoại để tiếp tục.</p>
-      <label id="pw-row" hidden>Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu"></label>
+      <p class="hint" id="flow-hint">Đăng nhập bằng mật khẩu, hoặc nhận máy mới bằng QR tem (chỉ lần đầu).</p>
+      <label id="username-row">Tên tài khoản<input id="username" autocomplete="username" placeholder="u_…"></label>
+      <label id="pw-row">Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu"></label>
+      <label id="claim-row">Mã QR thiết bị — chỉ lần nhận máy đầu<textarea id="claim-qr" rows="3" placeholder="Dán chuỗi QR từ tem thiết bị (không dùng khi đổi điện thoại)"></textarea></label>
+      <label id="invite-row" hidden>Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
+      <label id="privacy-row" class="privacy-consent" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0">
+        <input id="privacy-consent" type="checkbox" style="margin-top:4px">
+        <span>Tôi đã đọc <a id="privacy-link" href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để tạo tài khoản / nhận thiết bị.</span>
+      </label>
       <div class="login-actions">
-        <button type="button" id="btn-next" class="primary">Tiếp tục</button>
-        <button type="button" id="btn-login" class="primary" hidden>Đăng nhập bằng mật khẩu</button>
-        <button type="button" id="btn-passkey" class="primary" hidden>Đăng nhập bằng vân tay / Face ID</button>
-        <button type="button" id="lnk-use-pw" class="fit" hidden>Dùng mật khẩu thay thế</button>
+        <button type="button" id="btn-login" class="primary">Đăng nhập bằng mật khẩu</button>
+        <button type="button" id="btn-passkey" class="fit" hidden>Đăng nhập bằng vân tay / Face ID</button>
+        <button type="button" id="btn-claim" class="fit">Nhận máy mới (QR tem)</button>
+        <button type="button" id="btn-invite" class="fit">Dùng mã mời</button>
+        <button type="button" id="btn-next" class="fit" hidden>Tiếp tục</button>
+        <button type="button" id="btn-otp" class="fit" hidden></button>
+        <button type="button" id="lnk-use-pw" class="fit" hidden>Hiện ô mật khẩu</button>
         <button type="button" id="btn-setup-passkey" class="fit" hidden>Thiết lập Face ID trên máy này</button>
-        <button type="button" id="btn-otp" class="fit" hidden>Gửi OTP Telegram</button>
         <button type="button" id="demo" class="fit">Chạy thử không đăng nhập</button>
       </div>
     </div>
 
-    <p class="hint" id="switch-row" style="text-align:center" hidden><a href="#" id="lnk-switch">Không phải bạn? Dùng số khác / nhận OTP Telegram</a></p>
-
-    <div id="step-otp" class="step" hidden>
-      <p class="hint" id="otp-info" style="font-weight:600"></p>
-      <p class="hint">Nhập mã 6 số đã gửi vào Telegram.</p>
-      <label>Mã OTP Telegram<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000"></label>
-      <p class="hint" id="otp-timer"></p>
-      <div class="login-actions">
-        <button type="button" id="btn-verify" class="primary">Xác nhận</button>
-        <button type="button" id="btn-resend" class="fit" disabled>Gửi lại mã</button>
-        <button type="button" id="btn-back" class="fit">Quay lại</button>
-      </div>
-    </div>
-
-    <p class="hint" id="try-passkey-row" style="text-align:center" hidden><a href="#" id="lnk-passkey-try">Đã bật Face ID trước đây? Đăng nhập bằng Face ID</a></p>
+    <p class="hint" id="switch-row" style="text-align:center" hidden><a href="#" id="lnk-switch">Dùng tài khoản khác</a></p>
+    <div id="step-otp" class="step" hidden></div>
+    <p class="hint" id="try-passkey-row" style="text-align:center" hidden><a href="#" id="lnk-passkey-try">Đăng nhập bằng Face ID</a></p>
 
     <div id="step-recover" class="step" hidden>
-      <p class="hint" style="font-weight:600">Khôi phục bằng 2 yếu tố khác loại</p>
-      <p class="hint">Chọn <b>ít nhất 2</b> trong 3 nhóm: <b>OTP</b> (Telegram hoặc email, tính một), <b>mật khẩu</b>, <b>vân tay / Face ID</b>.</p>
-      <div class="phone-row">
-        <label class="cc">Mã vùng<input id="rc-cc" value="84" readonly></label>
-        <label class="ph">Số di động VN<input id="rc-phone" inputmode="tel" autocomplete="tel-national" placeholder="987654321"></label>
-      </div>
-      <div class="row-btns">
-        <button type="button" id="rc-tg" class="fit">Gửi OTP Telegram</button>
-        <button type="button" id="rc-mail" class="fit">Gửi OTP email</button>
-      </div>
-      <label>Mã OTP<input id="rc-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+      <p class="hint" style="font-weight:600">Khôi phục khi mất máy / quên mật khẩu</p>
+      <p class="hint">Cần <b>ít nhất 2</b> trong: <b>mã khôi phục</b>, <b>mật khẩu</b>, <b>vân tay / Face ID trên máy này</b>. <b>Không</b> quét lại QR tem thiết bị (tem chỉ dùng lần nhận máy đầu). Face ID máy cũ không mang sang máy mới.</p>
+      <label>Tên tài khoản<input id="rc-phone" autocomplete="username" placeholder="u_…"></label>
+      <label>Mã khôi phục<input id="rc-otp" autocomplete="one-time-code" placeholder="XXXX-XXXX"></label>
       <label>Mật khẩu<input id="rc-pw" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại"></label>
-      <button type="button" id="rc-bio" class="fit">Xác nhận bằng vân tay / Face ID</button>
+      <button type="button" id="rc-bio" class="fit">Xác nhận bằng vân tay / Face ID (máy này)</button>
+      <button type="button" id="rc-tg" class="fit" hidden></button>
+      <button type="button" id="rc-mail" class="fit" hidden></button>
       <p class="hint" id="rc-state"></p>
       <div class="login-actions">
         <button type="button" id="rc-go" class="primary">Khôi phục</button>
@@ -84,8 +72,7 @@
       </div>
     </div>
 
-    <p class="hint" style="margin-top:14px;text-align:center"><a href="#" id="rc-open">Quên mật khẩu / mất máy? Khôi phục bằng 2 yếu tố</a></p>
-    <p class="hint" style="margin-top:6px;text-align:center"><a href="recover.html">Mất số điện thoại / Telegram cũ? Khôi phục tài khoản</a></p>
+    <p class="hint" style="margin-top:14px;text-align:center"><a href="#" id="rc-open">Quên mật khẩu / mất máy? Khôi phục</a></p>
 
     <div id="progress">
       <div class="muted" id="prog-label">Đang tải ứng dụng…</div>

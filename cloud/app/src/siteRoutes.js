@@ -25,9 +25,9 @@ export function mountSite(app, { db, requireAuth, reauth }) {
   });
   app.post('/api/site/claim/check', requireAuth, limit, (req, res) => send(res, checkClaim(db, req.user, { ip: ip(req) })));
 
-  /* lời mời */
+  /* lời mời bằng mã/QR (không SĐT) */
   app.post('/api/site/invites', requireAuth, limit, needOwner, reauth, async (req, res) => {
-    send(res, await createInvite(db, req.user, { phone: req.body?.phone, role: req.body?.role, ip: ip(req) }));
+    send(res, await createInvite(db, req.user, { role: req.body?.role, ip: ip(req) }));
   });
   app.delete('/api/site/invites/:id', requireAuth, limit, needOwner, (req, res) => send(res, cancelInvite(db, req.user, req.params.id, { ip: ip(req) })));
   app.post('/api/invites/:id/accept', requireAuth, limit, (req, res) => send(res, answerInvite(db, req.user, req.params.id, true, { ip: ip(req) })));

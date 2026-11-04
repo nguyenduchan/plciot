@@ -1,9 +1,8 @@
 import fs from 'fs';
 import crypto from 'crypto';
-import { findUserById, findUserByPhone } from './db.js';
+import { findUserById, findUserByUsername } from './db.js';
 import { hashPassword } from './auth.js';
 import { copyDir, resolveBundleRoot } from './bundle.js';
-import { normalizePhone, isValidVnPhone, formatVnLocal } from './phone.js';
 import {
   provisionUserMqtt, rebuildAclFromUsers, reloadMosquitto,
   setMosquittoPassword, randomMqttPassword,
@@ -11,21 +10,22 @@ import {
 import { ROLES, MONITOR_SCOPES, isRole, userScopes, parseScopes, canPromoteToAdmin } from './roles.js';
 import { audit } from '@plciot/security';
 import { applyDefaultSubscription } from './entitlements.js';
+import { purgeUserAccount } from './accountData.js';
+import { sealMqttPass } from './mqttProvision.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
+const USER_RE = /^[a-zA-Z0-9_]{3,48}$/;
 
 export function publicUser(u) {
   return {
     id: u.id,
-    phone: u.phone || u.username,
-    phoneLocal: formatVnLocal(u.phone || u.username),
+    username: u.username,
     role: u.role,
     scopes: userScopes(u),
     site: u.notify_site,
     device: u.notify_device,
     disabled: !!u.disabled,
     createdAt: u.created_at,
-    telegramLinked: !!u.chat_id,
   };
 }
 
@@ -41,31 +41,32 @@ function syncBroker(db) {
 }
 
 export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
-  const { phone, role = 'operator', site, device = 'plc01' } = body;
+  const { role = 'operator', site, device = 'plc01' } = body;
   const scopes = body.scopes === undefined ? null : parseScopes(body.scopes);
   if (body.scopes !== undefined && !scopes) return { error: 'invalid_scopes', status: 400 };
-  const p = normalizePhone(phone);
-  if (!isValidVnPhone(p)) return { error: 'invalid_phone', status: 400 };
+  let username = String(body.username || '').trim();
+  if (!username) username = `u_${crypto.randomBytes(6).toString('hex')}`;
+  if (!USER_RE.test(username)) return { error: 'invalid_username', status: 400 };
   if (!isRole(role)) return { error: 'invalid_role', status: 400 };
-  if (role === 'admin' && !canPromoteToAdmin(p)) return { error: 'admin_not_allowlisted', status: 403 };
-  const siteName = String(site || `s${p}`);
+  if (role === 'admin' && !canPromoteToAdmin(username)) return { error: 'admin_not_allowlisted', status: 403 };
+  const siteName = String(site || `d_${username}`);
   const dev = String(device || 'plc01');
   if (!SAFE.test(siteName) || !SAFE.test(dev)) return { error: 'invalid_site_or_device', status: 400 };
-  if (findUserByPhone(db, p)) return { error: 'phone_in_use', status: 409 };
+  if (findUserByUsername(db, username)) return { error: 'username_in_use', status: 409 };
   if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
 
-  const folder = `u${p}`;
+  const folder = `u_${username}`;
   copyDir(webappSrc, resolveBundleRoot(dataDir, folder));
   const info = db.prepare(`
-    INSERT INTO users (username, password_hash, folder_path, version, phone, notify_site, notify_device, role, created_by)
-    VALUES (?, ?, ?, '1', ?, ?, ?, ?, ?)
-  `).run(p, hashPassword(crypto.randomBytes(24).toString('hex')), folder, p, siteName, dev, role, admin.id);
+    INSERT INTO users (username, password_hash, folder_path, version, notify_site, notify_device, role, created_by, setup_complete)
+    VALUES (?, ?, ?, '1', ?, ?, ?, ?, 1)
+  `).run(username, hashPassword(crypto.randomBytes(24).toString('hex')), folder, siteName, dev, role, admin.id);
   if (scopes) db.prepare('UPDATE users SET monitor_scopes = ? WHERE id = ?').run(scopes.join(','), info.lastInsertRowid);
-  const { user, provision } = provisionUserMqtt(db, findUserById(db, info.lastInsertRowid), { site: siteName, device: dev });
+  const { user } = provisionUserMqtt(db, findUserById(db, info.lastInsertRowid), { site: siteName, device: dev });
   applyDefaultSubscription(db, user.id);
   const fresh = findUserById(db, user.id);
   audit(db, 'admin_user_create', { userId: admin.id, ip, detail: `${user.id} ${role} ${siteName}/${dev}` });
-  return { ok: true, user: publicUser(fresh), provision };
+  return { ok: true, user: publicUser(fresh) };
 }
 
 export function updateUser(db, admin, id, patch, { ip }) {
@@ -82,7 +83,7 @@ export function updateUser(db, admin, id, patch, { ip }) {
     if (u.role === 'admin' && patch.role !== 'admin' && (self || activeAdmins(db) <= 1)) {
       return { error: 'last_admin', status: 409 };
     }
-    if (patch.role === 'admin' && !canPromoteToAdmin(u.phone || u.username)) {
+    if (patch.role === 'admin' && !canPromoteToAdmin(u.username)) {
       return { error: 'admin_not_allowlisted', status: 403 };
     }
     sets.push('role = ?'); vals.push(patch.role);
@@ -98,21 +99,21 @@ export function updateUser(db, admin, id, patch, { ip }) {
     const dev = String(patch.device ?? u.notify_device);
     if (!SAFE.test(site) || !SAFE.test(dev)) return { error: 'invalid_site_or_device', status: 400 };
     sets.push('notify_site = ?', 'notify_device = ?'); vals.push(site, dev);
-    rotateMqtt = true; // thu hồi mật khẩu MQTT đang giữ quyền trên site cũ
+    rotateMqtt = true;
   }
   if (patch.scopes !== undefined) {
     const sc = parseScopes(patch.scopes);
     if (!sc) return { error: 'invalid_scopes', status: 400 };
     sets.push('monitor_scopes = ?'); vals.push(sc.join(','));
   }
-  if (patch.revokeSessions) revoke = true; // đăng xuất mọi máy (token_version + 1)
+  if (patch.revokeSessions) revoke = true;
   if (!sets.length) return { error: 'nothing_to_update', status: 400 };
   if (revoke) sets.push('token_version = token_version + 1');
   db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, u.id);
 
   if (rotateMqtt && u.mqtt_user) {
     const np = randomMqttPassword();
-    db.prepare('UPDATE users SET mqtt_pass = ? WHERE id = ?').run(np, u.id);
+    db.prepare('UPDATE users SET mqtt_pass = ? WHERE id = ?').run(sealMqttPass(np), u.id);
     setMosquittoPassword(u.mqtt_user, np);
   }
   const reload = syncBroker(db);
@@ -122,41 +123,43 @@ export function updateUser(db, admin, id, patch, { ip }) {
   return { ok: true, user: publicUser(findUserById(db, u.id)), reload };
 }
 
-export function deleteUser(db, admin, id, { ip }) {
+export function deleteUser(db, admin, id, { ip, dataDir }) {
   const u = findUserById(db, id);
   if (!u) return { error: 'user_not_found', status: 404 };
   if (u.id === admin.id || (u.role === 'admin' && activeAdmins(db) <= 1 && !u.disabled)) {
     return { error: 'last_admin', status: 409 };
   }
-  db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
-  db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(u.id);
-  if (u.mqtt_user) setMosquittoPassword(u.mqtt_user, randomMqttPassword());
-  const reload = syncBroker(db);
-  audit(db, 'admin_user_delete', { userId: admin.id, ip, detail: `${u.id} ${u.phone || u.username}` });
-  return { ok: true, reload };
+  return purgeUserAccount(db, u, {
+    wipeHistory: true,
+    removeBundle: true,
+    dataDir,
+    actorId: admin.id,
+    ip,
+    reason: 'admin_user_delete',
+  });
 }
 
-/** Tài khoản mới tạo sau OTP mà chưa đăng ký được sinh trắc / mật khẩu (setup_complete = 0) quá hạn thì xoá và đổi mật khẩu MQTT. */
 export function purgeIncompleteUsers(db, maxAgeHours = 24) {
   const rows = db.prepare("SELECT * FROM users WHERE setup_complete = 0 AND created_at < datetime('now', ?)").all(`-${maxAgeHours} hours`);
   for (const u of rows) {
-    db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
-    db.prepare('DELETE FROM recovery_codes WHERE user_id = ?').run(u.id);
-    if (u.mqtt_user) setMosquittoPassword(u.mqtt_user, randomMqttPassword());
-    audit(db, 'setup_incomplete_purged', { userId: null, detail: `${u.id} ${u.phone || u.username}` });
+    purgeUserAccount(db, u, {
+      wipeHistory: false,
+      removeBundle: true,
+      reason: 'setup_incomplete_purged',
+    });
   }
-  if (rows.length) syncBroker(db);
   return rows.length;
 }
 
-/** ADMIN_PHONES="0912345678,0987654321": các số này luôn là admin (bootstrap). */
+/** ADMIN_USERNAMES="alice,bob" — luôn nâng role=admin. */
 export function applyBootstrapAdmins(db) {
-  const list = String(process.env.ADMIN_PHONES || '').split(',').map((s) => normalizePhone(s.trim())).filter(Boolean);
+  const list = String(process.env.ADMIN_USERNAMES || process.env.ADMIN_PHONES || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
   let n = 0;
-  for (const p of list) {
-    n += db.prepare("UPDATE users SET role = 'admin' WHERE (phone = ? OR username = ?) AND role != 'admin'").run(p, p).changes;
+  for (const name of list) {
+    n += db.prepare("UPDATE users SET role = 'admin' WHERE username = ? COLLATE NOCASE AND role != 'admin'").run(name).changes;
   }
-  if (n) console.log(`ADMIN_PHONES: ${n} user(s) promoted to admin`);
+  if (n) console.log(`ADMIN_USERNAMES: ${n} user(s) promoted to admin`);
   return n;
 }
 

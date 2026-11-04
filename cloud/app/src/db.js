@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
-import { normalizePhone, phoneVariants } from './phone.js';
 import { initHistoryTables } from './historyStore.js';
 import { initPolicyTables } from './policy.js';
 import { initHomePcTable } from './homePc.js';
@@ -13,18 +12,13 @@ function migrate(db) {
   const add = (name, ddl) => {
     if (!cols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`);
   };
-  add('phone', 'phone TEXT');
-  add('chat_id', 'chat_id INTEGER');
   add('notify_site', "notify_site TEXT NOT NULL DEFAULT 'factory1'");
   add('notify_device', "notify_device TEXT NOT NULL DEFAULT 'plc01'");
   add('mqtt_user', 'mqtt_user TEXT');
   add('mqtt_pass', 'mqtt_pass TEXT');
   // NULL = default plan (3 days); 0 = unlimited; N>=4 = N days. See retention.js
   add('retention_days', 'retention_days INTEGER');
-  add('email', 'email TEXT');
-  add('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
-  add('email_verified_at', 'email_verified_at INTEGER');
-  // Bumped on phone change / recovery → every older JWT stops working.
+  // Bumped on revoke → every older JWT stops working.
   add('token_version', 'token_version INTEGER NOT NULL DEFAULT 0');
   // Phân quyền: admin | operator | viewer (xem roles.js). Người dùng cũ = operator như trước.
   add('role', "role TEXT NOT NULL DEFAULT 'operator'");
@@ -103,15 +97,8 @@ export function openDb(dataDir) {
       password_hash TEXT NOT NULL,
       folder_path TEXT NOT NULL,
       version TEXT NOT NULL DEFAULT '1',
-      phone TEXT,
-      chat_id INTEGER,
       notify_site TEXT NOT NULL DEFAULT 'factory1',
       notify_device TEXT NOT NULL DEFAULT 'plc01',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS telegram_users (
-      phone TEXT PRIMARY KEY,
-      chat_id INTEGER NOT NULL UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
@@ -120,7 +107,7 @@ export function openDb(dataDir) {
       id TEXT PRIMARY KEY,
       site TEXT NOT NULL,
       device TEXT NOT NULL,
-      phone TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL,
       invited_by INTEGER NOT NULL,
       status TEXT NOT NULL,
@@ -129,6 +116,13 @@ export function openDb(dataDir) {
     );
     CREATE INDEX IF NOT EXISTS idx_site_invites_phone ON site_invites(phone, status);
   `);
+  {
+    const invCols = db.prepare('PRAGMA table_info(site_invites)').all().map((c) => c.name);
+    if (!invCols.includes('invite_token')) {
+      db.exec('ALTER TABLE site_invites ADD COLUMN invite_token TEXT');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_site_invites_token ON site_invites(invite_token, status)');
+    }
+  }
   migrate(db);
   migratePlatform(db);
   migrateSecurity(db); // bảng/cột của lõi bảo mật (passkey, phiên điều khiển, thiết bị, trạm…)
@@ -154,38 +148,31 @@ export function findUserById(db, id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
 
-export function findUserByPhone(db, phone) {
-  const n = normalizePhone(phone);
-  return db.prepare('SELECT * FROM users WHERE phone = ? OR username = ? COLLATE NOCASE').get(n, n);
-}
-
 export function upsertUser(db, {
   username, passwordHash, folderPath, version,
-  phone = null, chatId = null, notifySite = 'factory1', notifyDevice = 'plc01',
+  notifySite = 'factory1', notifyDevice = 'plc01',
 }) {
   const existing = findUserByUsername(db, username);
   if (existing) {
     db.prepare(`
       UPDATE users
       SET password_hash = ?, folder_path = ?, version = ?,
-          phone = COALESCE(?, phone),
-          chat_id = COALESCE(?, chat_id),
           notify_site = COALESCE(?, notify_site),
           notify_device = COALESCE(?, notify_device)
       WHERE id = ?
     `).run(
       passwordHash, folderPath, version,
-      phone, chatId, notifySite, notifyDevice,
+      notifySite, notifyDevice,
       existing.id,
     );
     return findUserById(db, existing.id);
   }
   const info = db.prepare(`
-    INSERT INTO users (username, password_hash, folder_path, version, phone, chat_id, notify_site, notify_device)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (username, password_hash, folder_path, version, notify_site, notify_device)
+    VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     username, passwordHash, folderPath, version,
-    phone || normalizePhone(username), chatId, notifySite, notifyDevice,
+    notifySite, notifyDevice,
   );
   return findUserById(db, info.lastInsertRowid);
 }
@@ -196,39 +183,10 @@ export function bumpVersion(db, username, version) {
   return findUserByUsername(db, username);
 }
 
-export function upsertTelegramUser(db, phone, chatId) {
-  const p = normalizePhone(phone);
-  // Same Telegram account moving to a new number: chat_id is UNIQUE, so drop the stale link first.
-  db.prepare('DELETE FROM telegram_users WHERE chat_id = ? AND phone != ?').run(chatId, p);
-  db.prepare(`
-    INSERT INTO telegram_users (phone, chat_id) VALUES (?, ?)
-    ON CONFLICT(phone) DO UPDATE SET chat_id = excluded.chat_id
-  `).run(p, chatId);
-  // Keep chat_id in sync for app users with this phone
-  db.prepare('UPDATE users SET chat_id = COALESCE(chat_id, ?) WHERE phone = ? OR username = ?')
-    .run(chatId, p, p);
-  return db.prepare('SELECT * FROM telegram_users WHERE phone = ?').get(p);
-}
-
-export function findTelegramByPhone(db, phone) {
-  for (const v of phoneVariants(phone)) {
-    const n = normalizePhone(v);
-    const row = db.prepare('SELECT * FROM telegram_users WHERE phone = ?').get(n);
-    if (row) return row;
-    // legacy rows stored with +
-    const raw = db.prepare('SELECT * FROM telegram_users WHERE phone = ?').get(v);
-    if (raw) return raw;
-  }
-  return null;
-}
-
-export { createOtpChallenge, getOtpChallenge, bumpOtpFail, deleteOtpChallenge } from '@plciot/security';
-
 export function findNotifyUsers(db, site, device) {
   return db.prepare(`
     SELECT * FROM users
-    WHERE chat_id IS NOT NULL
-      AND disabled = 0
+    WHERE disabled = 0
       AND notify_site = ?
       AND notify_device = ?
   `).all(site, device);

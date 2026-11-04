@@ -87,24 +87,23 @@ trị; nếu lệnh hợp lệ nhưng nguy hiểm → còn nút bấm vật lý 
 
 ---
 
-## 3. Đăng ký
+## 3. Đăng ký (danh tính theo thiết bị)
+
+> OTP/Telegram/SĐT/email đã **bỏ**. Chi tiết: [DEVICE-IDENTITY.md](DEVICE-IDENTITY.md).
 
 ```
-Người dùng ──(1) /start + chia sẻ SĐT──▶ Bot Telegram      (bot kiểm tra contact.user_id == from.id)
-Người dùng ──(2) nhập SĐT─────────────▶ Server ──OTP 6 số──▶ Telegram của số đó
-Người dùng ──(3) nhập OTP─────────────▶ Server: tạo tài khoản + vùng riêng s<SĐT>/plc01 + MQTT riêng
-Người dùng ──(4) thiết bị đầu tiên────▶ Mời bật vân tay hoặc Authenticator ──▶ nhận 10 mã khôi phục
+Factory ── provision + ký QR ──▶ tem dán trên gateway
+Người dùng ── quét QR ──▶ POST /api/devices/claim ──▶ user ẩn danh gắn site/device
+Người dùng ── passkey và/hoặc mật khẩu ──▶ kích hoạt tài khoản + MQTT
 ```
 
 **Vì sao an toàn**
-- **Chứng minh sở hữu số điện thoại:** bot chỉ chấp nhận số mà *chính tài khoản Telegram đó* chia sẻ; OTP gửi vào đúng Telegram ấy.
-- **OTP:** 6 số, sống 5 phút, lưu băm; 5 lần sai khoá bản mã đó; **ngân sách theo số điện thoại bất kể IP**: tối đa 6 lần xin/giờ và
-  10 lần sai/15 phút (chặn dò phân tán và spam Telegram nạn nhân); thêm giới hạn theo IP.
-- **Cách ly dữ liệu từ đầu:** tài khoản mới nằm trong vùng riêng, có tài khoản MQTT riêng chỉ đọc `plc/<site>/<device>/*` của mình.
-  Muốn vào nhà máy thật phải được chủ nhà máy mời, hoặc chứng minh đang đứng cạnh PLC.
-- **Thiết bị đầu tiên được ghi nhớ** (`known_devices`). Đây là điểm neo cho quy tắc *chỉ thiết bị đầu tiên bật yếu tố ngay* (mục 5.1).
-- **Mã khôi phục tự tạo** ngay khi bật yếu tố đầu tiên và buộc người dùng xác nhận đã lưu: để mất máy không phải nhờ ai.
-- **Hạn 3 ngày** (`CONTROL_ENROLL_GRACE_DAYS`) để bật yếu tố; quá hạn → khoá điều khiển (vẫn xem được).
+- **Chứng minh cầm đúng phần cứng:** QR ký Ed25519 (`CLAIM_ROOT_*`); secret claim một lần, lưu băm.
+- **Không PII:** không SĐT/Telegram/email trên đường auth.
+- **Cách ly dữ liệu từ đầu:** user gắn đúng `site/device` đã claim; MQTT theo namespace thiết bị.
+- **Trình duyệt tin cậy** (`known_devices` / `markDeviceTrusted`) sau claim hoặc đăng nhập đầy đủ.
+- **Mã khôi phục** khi bật yếu tố; không kênh OTP ngoài.
+- **Hạn 3 ngày** (`CONTROL_ENROLL_GRACE_DAYS`) để bật yếu tố điều khiển.
 
 ---
 

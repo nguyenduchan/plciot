@@ -17,6 +17,8 @@ process.env.CONTROL_PHYSICAL_BIT = '5';
 process.env.CONTROL_PHYSICAL_WAIT_SEC = '5';
 process.env.RATE_LIMIT_CONTROL_AUTH = '1000';
 process.env.RATE_LIMIT_CONTROL_CMD = '1000';
+process.env.SUBSCRIBE_REQUIRE_ACTIVATION = 'false';
+
 
 const { openDb } = await import('../src/db.js');
 const T = await import('@plciot/security');
@@ -45,8 +47,8 @@ ok(CA.ipInCidrs('203.0.113.77', ['203.0.113.0/24']) && !CA.ipInCidrs('203.0.114.
 /* ---- App thử ---- */
 const db = openDb(tmp);
 const mkUser = (name, role = 'operator') => {
-  const info = db.prepare(`INSERT INTO users (username, password_hash, folder_path, phone, role, notify_site, notify_device)
-    VALUES (?, 'x', 'f', ?, ?, 'siteA', 'plc01')`).run(name, name, role);
+  const info = db.prepare(`INSERT INTO users (username, password_hash, folder_path, role, notify_site, notify_device)
+    VALUES (?, 'x', 'f', ?, 'siteA', 'plc01')`).run(name, role);
   return Number(info.lastInsertRowid);
 };
 const uOp = mkUser('84900000010'); const uViewer = mkUser('84900000011', 'viewer'); const uAdmin = mkUser('84900000012', 'admin');
@@ -398,9 +400,9 @@ ok(r.body.status === 'cancelled' && !r.body.ticket, 'yêu cầu đã huỷ khôn
 // D. Máy cũ từ chối ; email không khả dụng
 r = await call('POST', '/api/devices/request', uPk, { label: 'Khác' });
 const reqD = r.body;
-ok(r.body.options.email === false, 'email chưa cấu hình: không có lựa chọn email');
+ok(!r.body.options.email, 'không còn lựa chọn email');
 r = await call('POST', `/api/devices/requests/${reqD.id}/email/start`, uPk, {});
-ok(r.status === 400 && r.body.error === 'old_channel_unavailable', 'email không khả dụng bị từ chối');
+ok(r.status === 404, 'route email đã gỡ');
 r = await call('POST', `/api/devices/requests/${reqD.id}/deny`, uPk, {}, { 'x-control-token': tokNewDev });
 ok(r.status === 200, 'máy cũ từ chối');
 r = await call('POST', `/api/devices/requests/${reqD.id}/poll`, uPk, { pollToken: reqD.pollToken });
@@ -442,13 +444,14 @@ ok(r.status === 401 && r.body.error === 'step_up_required', 'thao tác admin đ�
 
 /* ---- Cảnh báo thiết bị lạ ---- */
 const { noteLogin } = await import('@plciot/security');
-const uDev = db.prepare('SELECT * FROM users WHERE id = ?').get(uOp);
-const nl = (id) => noteLogin(db, uDev, { deviceId: id, ip: '1.2.3.4', method: 'OTP' });
+const uAlert = mkUser('u_alert_devices');
+const uDev = db.prepare('SELECT * FROM users WHERE id = ?').get(uAlert);
+const nl = (id) => noteLogin(db, uDev, { deviceId: id, ip: '1.2.3.4', method: 'passkey' });
 ok(nl('device-aaaaaaaaaaaaaaaa').notified === false, 'thiết bị đầu tiên: không báo');
 ok(nl('device-aaaaaaaaaaaaaaaa').known === true, 'thiết bị quen');
 ok(nl('device-bbbbbbbbbbbbbbbb').notified === true, 'thiết bị thứ hai: gửi cảnh báo');
 ok(nl('x').known === null, 'device-id sai định dạng bị bỏ qua');
-ok(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE event = 'login_new_device' AND user_id = ?").get(uOp).n === 1, 'ghi audit đăng nhập thiết bị mới');
+ok(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE event = 'login_new_device' AND user_id = ?").get(uAlert).n === 1, 'ghi audit đăng nhập thiết bị mới');
 
 /* ---- clientIp chỉ tin header từ proxy tin cậy ---- */
 const { clientIp } = await import('@plciot/security');
@@ -457,19 +460,7 @@ ok(clientIp(mkReq('203.0.113.9', { 'cf-connecting-ip': '1.2.3.4' })) === '203.0.
 ok(clientIp(mkReq('172.18.0.5', { 'cf-connecting-ip': '1.2.3.4' })) === '1.2.3.4', 'qua proxy tin cậy: dùng CF-Connecting-IP');
 ok(clientIp(mkReq('::ffff:172.18.0.5', { 'x-forwarded-for': '6.6.6.6, 9.9.9.9, 10.0.0.2' })) === '9.9.9.9', 'XFF: lấy hop không tin cậy ngoài cùng bên phải (không tin phần client tự thêm)');
 
-/* ---- OTP: ngân sách theo số điện thoại ---- */
-const OT = await import('../src/otp.js');
-const { createOtpChallenge } = await import('../src/db.js');
-mkUser('84900000030');
-let lim = null;
-for (let i = 0; i < 8 && !lim; i++) { const x = await OT.requestLoginOtp(db, { phone: '0900000030' }); if (x.error === 'rate_limited') lim = i; }
-ok(lim === 6, 'xin OTP quá 6 lần/giờ cho một số bị chặn (bất kể IP)');
-const hashOtp = (c) => crypto.createHash('sha256').update(String(c)).digest('hex');
-for (let i = 0; i < 10; i++) { createOtpChallenge(db, { phone: '84900000030', purpose: 'login', codeHash: hashOtp('123456') }); OT.verifyLoginOtp(db, { phone: '0900000030', otp: '000000' }); }
-createOtpChallenge(db, { phone: '84900000030', purpose: 'login', codeHash: hashOtp('123456') });
-ok(OT.verifyLoginOtp(db, { phone: '0900000030', otp: '123456' }).error === 'otp_locked', 'sai 10 lần trong 15 phút: khoá cả khi xin mã mới và nhập đúng');
-
-/* ---- Chống chiếm Telegram tự bật yếu tố đầu tiên: chỉ thiết bị đầu tiên được bật ngay ---- */
+/* ---- Chỉ thiết bị đầu tiên được bật yếu tố ngay ---- */
 const { noteLogin: noteL } = await import('@plciot/security');
 const uFd = mkUser('84900000040');
 const fdUser = db.prepare('SELECT * FROM users WHERE id = ?').get(uFd);
@@ -495,21 +486,14 @@ ok(r.body.status === 'pending' && !r.body.ticket, 'hết thời gian cũng khôn
 r = await call('POST', '/api/control/totp/setup', uFd, {}, { 'x-device-id': DEV_A });
 ok(r.status === 200, 'thiết bị đầu tiên bật yếu tố ngay, không cần chờ');
 
-/* ---- Không có bậc bảo mật thấp: OTP Telegram KHÔNG được dùng để điều khiển ---- */
-const uTg = mkUser('84900000050');
-db.prepare('UPDATE users SET chat_id = 777 WHERE id = ?').run(uTg);
-for (const route of ['/api/control/telegram/enable', '/api/control/telegram/send']) {
-  r = await call('POST', route, uTg, {});
-  ok(r.status === 404, `đường ${route} không còn tồn tại`);
-}
-r = await call('POST', '/api/control/unlock', uTg, { method: 'telegram', code: '123456' });
-ok(r.status === 400 && r.body.error === 'totp_not_enabled', 'unlock không nhận phương thức telegram');
-r = await call('GET', '/api/control/status', uTg);
-ok(r.body.methods.enrolled === false && !('canTelegram' in r.body.methods), 'đã liên kết Telegram vẫn chưa có yếu tố điều khiển');
-r = await cmd(uTg, { a: 7, v: 15 });
-ok(r.status === 401 && r.body.reason === 'no_factor', 'chỉ có Telegram: không điều khiển được');
-r = await cmd(uTg, { op: 'read', a: 100, n: 1 });
-ok(r.status === 200, 'nhưng vẫn đọc/xem được');
+/* ---- Chưa enroll yếu tố: không điều khiển được (vẫn đọc được) ---- */
+const uBare = mkUser('u_bare_no_factor');
+r = await call('GET', '/api/control/status', uBare);
+ok(r.body.methods.enrolled === false && !('canTelegram' in r.body.methods), 'chưa enroll: không có yếu tố điều khiển');
+r = await cmd(uBare, { a: 7, v: 15 });
+ok(r.status === 401 && (r.body.reason === 'no_factor' || r.body.error === 'step_up_required'), 'chưa enroll: không điều khiển được');
+r = await cmd(uBare, { op: 'read', a: 100, n: 1 });
+ok(r.status === 200, 'chưa enroll: vẫn đọc/xem được');
 
 /* ---- Giá trị ghi theo từng thanh ghi ---- */
 const { validateCmd: vc, plcControlConfig: cc } = await import('../src/plcCommands.js');

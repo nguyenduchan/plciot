@@ -1,0 +1,352 @@
+/**
+ * Claim thiết bị phần cứng qua QR đã ký (Ed25519).
+ * Payload sticker (base64url JSON): { v, site, device, claim, sig }
+ * Chuỗi ký: `${v}|${site}|${device}|${claim}` — sig = base64url(Ed25519(sigBytes)).
+ */
+import crypto from 'node:crypto';
+import { audit } from './audit.js';
+import { getConfig, rawSecret } from './config.js';
+import { sealSecret, openSecret } from './totp.js';
+
+const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
+const b64u = {
+  enc: (buf) => Buffer.from(buf).toString('base64url'),
+  dec: (s) => Buffer.from(String(s), 'base64url'),
+};
+
+function claimRootKeys() {
+  const pubPem = process.env.CLAIM_ROOT_PUBLIC_KEY || '';
+  const privPem = process.env.CLAIM_ROOT_PRIVATE_KEY || '';
+  return {
+    publicKey: pubPem ? crypto.createPublicKey(pubPem) : null,
+    privateKey: privPem ? crypto.createPrivateKey(privPem) : null,
+  };
+}
+
+/** Sinh cặp khoá Ed25519 (PEM) dùng khi provision / test. */
+export function generateClaimRootKeyPair() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+  };
+}
+
+export function claimMessage({ v = 1, site, device, claim }) {
+  return `${Number(v) || 1}|${site}|${device}|${claim}`;
+}
+
+export function signClaimPayload({ site, device, claim, v = 1, privateKeyPem }) {
+  const key = privateKeyPem
+    ? crypto.createPrivateKey(privateKeyPem)
+    : claimRootKeys().privateKey;
+  if (!key) throw new Error('claim_root_private_key_missing');
+  if (!SAFE.test(site) || !SAFE.test(device)) throw new Error('invalid_site_or_device');
+  const msg = claimMessage({ v, site, device, claim });
+  const sig = b64u.enc(crypto.sign(null, Buffer.from(msg, 'utf8'), key));
+  return { v, site, device, claim, sig };
+}
+
+export function encodeClaimQr(payload) {
+  return b64u.enc(Buffer.from(JSON.stringify(payload), 'utf8'));
+}
+
+export function decodeClaimQr(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  try {
+    const json = text.startsWith('{') ? text : b64u.dec(text).toString('utf8');
+    const obj = JSON.parse(json);
+    if (!obj || typeof obj !== 'object') return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+export function verifyClaimSignature(payload, publicKeyPem) {
+  const key = publicKeyPem
+    ? crypto.createPublicKey(publicKeyPem)
+    : claimRootKeys().publicKey;
+  if (!key) return { error: 'claim_root_public_key_missing', status: 503 };
+  const { v = 1, site, device, claim, sig } = payload || {};
+  if (!SAFE.test(String(site || '')) || !SAFE.test(String(device || ''))) return { error: 'invalid_site_or_device', status: 400 };
+  if (!claim || !sig) return { error: 'invalid_claim_payload', status: 400 };
+  let ok = false;
+  try {
+    ok = crypto.verify(null, Buffer.from(claimMessage({ v, site, device, claim }), 'utf8'), key, b64u.dec(sig));
+  } catch {
+    ok = false;
+  }
+  if (!ok) return { error: 'invalid_claim_signature', status: 401 };
+  return { ok: true, v: Number(v) || 1, site: String(site), device: String(device), claim: String(claim) };
+}
+
+export function hashClaimSecret(claim) {
+  return crypto.createHash('sha256').update(`plciot-claim:${claim}`).digest('hex');
+}
+
+function claimLoginUrl(qr) {
+  const base = (getConfig().publicUrl?.() || process.env.WEBAPP_PUBLIC_URL || '').replace(/\/$/, '');
+  return base ? `${base}/login.html?claim=${encodeURIComponent(qr)}` : `login.html?claim=${encodeURIComponent(qr)}`;
+}
+
+function buildQrBundle({ site, device, claim, privateKeyPem, label, note }) {
+  const payload = signClaimPayload({ site, device, claim, privateKeyPem });
+  const qr = encodeClaimQr(payload);
+  return {
+    site, device, label: label || null, note: note || null,
+    payload, qr, loginUrl: claimLoginUrl(qr),
+  };
+}
+
+/**
+ * Đăng ký phần cứng (admin/script). Chỉ device đã đăng ký mới claim được.
+ * Lưu claim_sealed để in lại QR; xoay secret khi reissue.
+ */
+export function provisionHardwareDevice(db, {
+  site, device, claim, privateKeyPem, label = '', note = '', rotate = true,
+}) {
+  const s = String(site || '').trim();
+  const d = String(device || 'plc01').trim();
+  const lab = String(label || '').trim().slice(0, 120);
+  const nt = String(note || '').trim().slice(0, 500);
+  if (!SAFE.test(s) || !SAFE.test(d)) return { error: 'invalid_site_or_device', status: 400 };
+  if (!claimRootKeys().privateKey && !privateKeyPem) return { error: 'claim_root_private_key_missing', status: 503 };
+  if (!claimRootKeys().publicKey && !process.env.CLAIM_ROOT_PUBLIC_KEY) {
+    return { error: 'claim_root_public_key_missing', status: 503 };
+  }
+
+  const existing = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (existing?.claimed_by && !rotate) {
+    return { error: 'device_already_claimed', status: 409 };
+  }
+
+  const secret = claim || crypto.randomBytes(24).toString('base64url');
+  let payloadBundle;
+  try {
+    payloadBundle = buildQrBundle({ site: s, device: d, claim: secret, privateKeyPem, label: lab, note: nt });
+  } catch (e) {
+    return { error: e.message || 'claim_sign_failed', status: 503 };
+  }
+  const now = Date.now();
+  const sealed = sealSecret(secret);
+  db.prepare(`
+    INSERT INTO hardware_devices (site, device, claim_hash, claim_sealed, label, note, claimed_by, claimed_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+    ON CONFLICT(site, device) DO UPDATE SET
+      claim_hash = excluded.claim_hash,
+      claim_sealed = excluded.claim_sealed,
+      label = excluded.label,
+      note = excluded.note,
+      claimed_by = NULL,
+      claimed_at = NULL,
+      created_at = excluded.created_at
+  `).run(s, d, hashClaimSecret(secret), sealed, lab || null, nt || null, now);
+
+  return { ok: true, ...payloadBundle, createdAt: now, claimed: false };
+}
+
+export function listHardwareDevices(db) {
+  const rows = db.prepare(`
+    SELECT h.site, h.device, h.label, h.note, h.claimed_by, h.claimed_at, h.created_at,
+           u.username AS claimed_username
+    FROM hardware_devices h
+    LEFT JOIN users u ON u.id = h.claimed_by
+    ORDER BY h.created_at DESC
+  `).all();
+  return rows.map((r) => ({
+    site: r.site,
+    device: r.device,
+    label: r.label || '',
+    note: r.note || '',
+    claimed: Boolean(r.claimed_by),
+    claimedBy: r.claimed_by || null,
+    claimedUsername: r.claimed_username || null,
+    claimedAt: r.claimed_at || null,
+    createdAt: r.created_at,
+  }));
+}
+
+/** Lấy lại QR đã lưu (không xoay secret). */
+export function getHardwareDeviceQr(db, { site, device, privateKeyPem }) {
+  const s = String(site || '').trim();
+  const d = String(device || '').trim();
+  const row = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (!row) return { error: 'not_found', status: 404 };
+  const secret = row.claim_sealed ? openSecret(row.claim_sealed) : null;
+  if (!secret) return { error: 'claim_secret_unavailable', status: 409 };
+  try {
+    const bundle = buildQrBundle({
+      site: s, device: d, claim: secret, privateKeyPem, label: row.label, note: row.note,
+    });
+    return {
+      ok: true, ...bundle,
+      claimed: Boolean(row.claimed_by),
+      claimedBy: row.claimed_by || null,
+      createdAt: row.created_at,
+    };
+  } catch (e) {
+    return { error: e.message || 'claim_sign_failed', status: 503 };
+  }
+}
+
+/** Xoay secret + QR mới (tem cũ hết hiệu lực). Huỷ liên kết claimed nếu admin buộc. */
+export function reissueHardwareDeviceQr(db, { site, device, privateKeyPem, unclaim = false }) {
+  const s = String(site || '').trim();
+  const d = String(device || '').trim();
+  const row = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (!row) return { error: 'not_found', status: 404 };
+  if (row.claimed_by && !unclaim) return { error: 'device_already_claimed', status: 409 };
+  return provisionHardwareDevice(db, {
+    site: s, device: d, privateKeyPem,
+    label: row.label || '', note: row.note || '', rotate: true,
+  });
+}
+
+export function updateHardwareDeviceMeta(db, { site, device, label, note }) {
+  const s = String(site || '').trim();
+  const d = String(device || '').trim();
+  const row = db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (!row) return { error: 'not_found', status: 404 };
+  const lab = label != null ? String(label).trim().slice(0, 120) : undefined;
+  const nt = note != null ? String(note).trim().slice(0, 500) : undefined;
+  if (lab !== undefined) db.prepare('UPDATE hardware_devices SET label = ? WHERE site = ? AND device = ?').run(lab || null, s, d);
+  if (nt !== undefined) db.prepare('UPDATE hardware_devices SET note = ? WHERE site = ? AND device = ?').run(nt || null, s, d);
+  return { ok: true, site: s, device: d };
+}
+
+export function deleteHardwareDevice(db, { site, device, force = false }) {
+  const s = String(site || '').trim();
+  const d = String(device || '').trim();
+  const row = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (!row) return { error: 'not_found', status: 404 };
+  if (row.claimed_by && !force) return { error: 'device_already_claimed', status: 409 };
+  db.prepare('DELETE FROM hardware_devices WHERE site = ? AND device = ?').run(s, d);
+  return { ok: true };
+}
+
+/**
+ * Quét QR → tạo (hoặc tái dùng) user ẩn danh gắn site/device, setup_complete=0.
+ * Đã claim rồi: chỉ trả lỗi site_taken (trừ khi cùng máy đang setup dở của chính claim đó — không hỗ trợ; dùng invite).
+ */
+export async function claimHardwareDevice(db, {
+  qr, registrationContext = {}, ip, deviceId,
+}) {
+  const decoded = decodeClaimQr(qr);
+  if (!decoded) return { error: 'invalid_claim_payload', status: 400 };
+  const verified = verifyClaimSignature(decoded);
+  if (verified.error) return verified;
+
+  const row = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(verified.site, verified.device);
+  if (!row) return { error: 'unknown_device', status: 404 };
+  const claimHash = hashClaimSecret(verified.claim);
+  if (row.claim_hash !== claimHash) return { error: 'invalid_claim_secret', status: 401 };
+
+  if (row.claimed_by) {
+    const owner = db.prepare('SELECT id, setup_complete, disabled FROM users WHERE id = ?').get(row.claimed_by);
+    if (owner && !owner.disabled && owner.setup_complete !== 0) {
+      return { error: 'device_already_claimed', status: 409 };
+    }
+    // Chủ cũ bỏ dở setup: cho phép claim lại (xoá dòng tạm)
+    if (owner && owner.setup_complete === 0) {
+      db.prepare('DELETE FROM users WHERE id = ? AND setup_complete = 0').run(owner.id);
+      db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?')
+        .run(verified.site, verified.device);
+    } else if (!owner) {
+      db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?')
+        .run(verified.site, verified.device);
+    } else {
+      return { error: 'device_already_claimed', status: 409 };
+    }
+  }
+
+  const taken = db.prepare('SELECT id FROM users WHERE notify_site = ? AND notify_device = ? AND disabled = 0 AND setup_complete = 1')
+    .get(verified.site, verified.device);
+  if (taken) return { error: 'site_taken', status: 409 };
+
+  const identity = getConfig().identity;
+  if (typeof identity.createAccount !== 'function') return { error: 'identity_misconfigured', status: 500 };
+
+  let user;
+  try {
+    user = await identity.createAccount(db, {
+      ...registrationContext,
+      site: verified.site,
+      device: verified.device,
+      contact: null,
+    });
+  } catch (e) {
+    console.error('claim.createAccount', e?.message);
+    return { error: 'provision_failed', status: 500 };
+  }
+  if (user?.error) return user;
+  if (!user?.id) return { error: 'provision_failed', status: 500 };
+
+  db.prepare('UPDATE users SET setup_complete = 0, notify_site = ?, notify_device = ?, site_owner = 1, role = COALESCE(role, ?) WHERE id = ?')
+    .run(verified.site, verified.device, 'operator', user.id);
+  db.prepare('UPDATE hardware_devices SET claimed_by = ?, claimed_at = ? WHERE site = ? AND device = ?')
+    .run(user.id, Date.now(), verified.site, verified.device);
+
+  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  audit(db, 'device_claimed', {
+    userId: user.id, ip, detail: `${verified.site}/${verified.device}${deviceId ? ` dev=${deviceId}` : ''}`,
+  });
+  return {
+    ok: true,
+    user,
+    site: verified.site,
+    device: verified.device,
+    browserDeviceId: deviceId || null,
+  };
+}
+
+/** Chấp nhận mã mời (invite token) — tạo user ẩn danh gắn site, không phải chủ. */
+export async function acceptInviteToken(db, {
+  token, registrationContext = {}, ip,
+}) {
+  const code = String(token || '').trim();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) return { error: 'invalid_invite', status: 400 };
+  const inv = db.prepare("SELECT * FROM site_invites WHERE id = ? AND status = 'pending'").get(code)
+    || db.prepare("SELECT * FROM site_invites WHERE invite_token = ? AND status = 'pending'").get(code);
+  if (!inv) return { error: 'not_found', status: 404 };
+  if (Date.now() > inv.expires_at) {
+    db.prepare("UPDATE site_invites SET status = 'expired' WHERE id = ?").run(inv.id);
+    return { error: 'invite_expired', status: 410 };
+  }
+
+  const identity = getConfig().identity;
+  let user;
+  try {
+    user = await identity.createAccount(db, {
+      ...registrationContext,
+      site: inv.site,
+      device: inv.device,
+      contact: null,
+      role: inv.role,
+      owner: false,
+    });
+  } catch (e) {
+    console.error('invite.createAccount', e?.message);
+    return { error: 'provision_failed', status: 500 };
+  }
+  if (user?.error) return user;
+
+  db.prepare('UPDATE users SET setup_complete = 0, notify_site = ?, notify_device = ?, site_owner = 0, role = ? WHERE id = ?')
+    .run(inv.site, inv.device, inv.role === 'viewer' ? 'viewer' : 'operator', user.id);
+  db.prepare("UPDATE site_invites SET status = 'accepted' WHERE id = ?").run(inv.id);
+  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  audit(db, 'site_invite_accepted', { userId: user.id, ip, detail: `${inv.site}/${inv.device}` });
+  return { ok: true, user, site: inv.site, device: inv.device, role: user.role };
+}
+
+/** Subject ổn định cho deviceProof (không dùng SĐT). */
+export function identitySubject(user) {
+  if (!user) return '';
+  return String(user.username || user.id);
+}
+
+export function requireClaimRootConfigured() {
+  if (!rawSecret() || String(rawSecret()).length < 16) return false;
+  return Boolean(claimRootKeys().publicKey);
+}

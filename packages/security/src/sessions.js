@@ -3,7 +3,7 @@
  *   • Passkey (vân tay / Face ID): phiên ngắn (CONTROL_PASSKEY_TTL_SEC, mặc định 300 s)
  *   • TOTP (Authenticator): phiên CONTROL_TOTP_TTL_SEC (mặc định 300 s), gắn với mạng; đổi mạng → hỏi lại
  *   • PC trạm kiểu cũ: IP trong CONTROL_LAN_CIDRS + khoá do admin cấp
- * OTP qua Telegram/SMS KHÔNG phải là yếu tố điều khiển (dựa vào SIM/tài khoản chat).
+ * Yếu tố điều khiển: Passkey / TOTP Authenticator (không kênh chat/SMS).
  */
 import crypto from 'crypto';
 import { getConfig } from './config.js';

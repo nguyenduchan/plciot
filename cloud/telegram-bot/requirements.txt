@@ -1,4 +1,0 @@
-python-telegram-bot
-httpx
-SQLAlchemy==2.0.28
-asyncpg

@@ -576,7 +576,7 @@
   // boot
   api('/api/me').then((me) => {
     if (!me.dashboardAdmin) {
-      msg('Console chỉ dành cho tài khoản trong ADMIN_DASHBOARD_PHONES / ADMIN_PHONES.', 'err');
+      msg('Console chỉ dành cho tài khoản trong ADMIN_DASHBOARD_USERS / ADMIN_USERNAMES.', 'err');
       return;
     }
     showTab('overview');

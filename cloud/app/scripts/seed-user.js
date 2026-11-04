@@ -1,40 +1,26 @@
 #!/usr/bin/env node
 /**
- * Create or update a user, copy webapp bundle, provision per-user MQTT ACL.
- *
- * Usage:
- *   node scripts/seed-user.js <SĐT_VN> [site] [device] [version]
- *
- * Example:
- *   node scripts/seed-user.js 84987654321 secret factory1 plc01 1
+ * Tạo/cập nhật user ẩn danh gắn site/device (không SĐT).
+ *   node scripts/seed-user.js <username> [site] [device] [version]
  */
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { openDb, upsertUser } from '../src/db.js';
+import { openDb, upsertUser, findUserByUsername } from '../src/db.js';
 import { hashPassword } from '../src/auth.js';
 import { copyDir, resolveBundleRoot } from '../src/bundle.js';
-import { normalizePhone, isValidVnPhone, formatVnLocal } from '../src/phone.js';
 import { provisionUserMqtt } from '../src/mqttProvision.js';
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const WEBAPP_SRC = path.resolve(process.env.WEBAPP_SRC || path.join(DATA_DIR, '..', '..', '..', 'webapp'));
 
 const [username, siteArg, deviceArg = 'plc01', version = '1'] = process.argv.slice(2);
-const password = crypto.randomBytes(24).toString('hex'); // không mật khẩu: người dùng vào bằng vân tay / OTP Telegram
-if (!username) {
-  console.error('Usage: node scripts/seed-user.js <SĐT_VN> [site] [device] [version]');
-  console.error('Example: node scripts/seed-user.js 0987654321 secret factory1 plc01');
+if (!username || !/^[a-zA-Z0-9_]{3,48}$/.test(username)) {
+  console.error('Usage: node scripts/seed-user.js <username> [site] [device] [version]');
   process.exit(1);
 }
-
-const phone = normalizePhone(username);
-if (!isValidVnPhone(phone)) {
-  console.error('Username must be a Vietnamese mobile number (09… / 84…). Got:', username, '→', phone);
-  process.exit(1);
-}
-const site = siteArg || `s${phone}`;
-const folder = site;
+const site = siteArg || `d_${username}`;
+const folder = `u_${username}`;
 if (!fs.existsSync(WEBAPP_SRC)) {
   console.error('WEBAPP_SRC not found:', WEBAPP_SRC);
   process.exit(1);
@@ -45,26 +31,16 @@ const dest = resolveBundleRoot(DATA_DIR, folder);
 console.log('Copying', WEBAPP_SRC, '->', dest);
 copyDir(WEBAPP_SRC, dest);
 
+const password = crypto.randomBytes(24).toString('hex');
 let user = upsertUser(db, {
-  username: phone, // canonical 84…
+  username,
   passwordHash: hashPassword(password),
   folderPath: folder,
-  version: String(version),
-  phone,
+  version,
+  phone: null,
   notifySite: site,
   notifyDevice: deviceArg,
 });
-
-const prov = provisionUserMqtt(db, user, { site, device: deviceArg, rotate: false });
-user = prov.user;
-
-console.log('User ready:', {
-  id: user.id,
-  username: user.username,
-  phoneLocal: formatVnLocal(user.username),
-  folder_path: user.folder_path,
-  notify_site: user.notify_site,
-  notify_device: user.notify_device,
-  mqtt_user: user.mqtt_user,
-  mqtt_provision: prov.provision,
-});
+db.prepare('UPDATE users SET setup_complete = 1, phone = NULL, chat_id = NULL WHERE id = ?').run(user.id);
+user = provisionUserMqtt(db, findUserByUsername(db, username), { site, device: deviceArg }).user;
+console.log('OK', { id: user.id, username: user.username, site: user.notify_site, device: user.notify_device });

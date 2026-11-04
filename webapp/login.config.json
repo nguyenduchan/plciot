@@ -1,6 +1,6 @@
 {
   "title": "Giám sát PLC",
-  "subtitle": "Đăng nhập bằng số điện thoại Việt Nam",
+  "subtitle": "Danh tính theo thiết bị — lưu username, mật khẩu và mã khôi phục",
   "themeColor": "#1a1a1a",
   "manifest": "manifest.json",
   "icon": "icon.svg",

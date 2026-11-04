@@ -37,16 +37,6 @@ services:
       SHELL_DIR: /app/shell
       WEBAPP_SRC: /app/shell
       APP_JWT_SECRET: ${APP_JWT_SECRET}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
-      TELEGRAM_BOT_POLLING: ${TELEGRAM_BOT_POLLING:-false}
-      TELEGRAM_NOTIFY_CHAT_IDS: ${TELEGRAM_NOTIFY_CHAT_IDS:-}
-      TELEGRAM_SHARED_PG_HOST: ${TELEGRAM_SHARED_PG_HOST:-host.docker.internal}
-      TELEGRAM_SHARED_PG_PORT: ${TELEGRAM_SHARED_PG_PORT:-5432}
-      TELEGRAM_SHARED_PG_USER: ${TELEGRAM_SHARED_PG_USER:-}
-      TELEGRAM_SHARED_PG_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD:-}
-      TELEGRAM_SHARED_PG_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
-      TELEGRAM_SHARED_DATABASE_URL: ${TELEGRAM_SHARED_DATABASE_URL:-}
       WEBAPP_PUBLIC_URL: ${WEBAPP_PUBLIC_URL:-https://plc.dieukhientudong.net}
       MQTT_URL: mqtt://mqtt:1883
       MQTT_USER: ${MQTT_NOTIFY_USER:-ingest}
@@ -64,8 +54,7 @@ services:
       CONTROL_TOTP_TTL_SEC: ${CONTROL_TOTP_TTL_SEC:-300}
       CONTROL_BIND_NET: ${CONTROL_BIND_NET:-false}
       FIRST_DEVICE_ONLY: ${FIRST_DEVICE_ONLY:-false}
-      OTP_CODE_TTL_SEC: ${OTP_CODE_TTL_SEC:-180}
-      OTP_TRUST_DAYS: ${OTP_TRUST_DAYS:-30}
+      DEVICE_TRUST_DAYS: ${DEVICE_TRUST_DAYS:-30}
       CONTROL_LAN_CIDRS: ${CONTROL_LAN_CIDRS:-}
       CONTROL_CRITICAL_ADDRS: ${CONTROL_CRITICAL_ADDRS:-4,6}
       CONTROL_PHYSICAL_BIT: ${CONTROL_PHYSICAL_BIT:-}
@@ -75,17 +64,14 @@ services:
       CONTROL_REG_LIMITS: ${CONTROL_REG_LIMITS:-}
       CSP_CONNECT_EXTRA: ${CSP_CONNECT_EXTRA:-}
       TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
-      OTP_REQ_PER_PHONE_HOUR: ${OTP_REQ_PER_PHONE_HOUR:-6}
-      OTP_FAIL_PER_PHONE_15MIN: ${OTP_FAIL_PER_PHONE_15MIN:-10}
       MQTT_INGEST_MIN_MS: ${MQTT_INGEST_MIN_MS:-0}
       HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-3}
       HISTORY_OPEN_ACCESS: ${HISTORY_OPEN_ACCESS:-false}
-      ADMIN_PHONES: ${ADMIN_PHONES:-}
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       RATE_LIMIT_API: ${RATE_LIMIT_API:-120}
       RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}
-      RATE_LIMIT_OTP: ${RATE_LIMIT_OTP:-5}
       MQTT_CONFIG_DIR: /mosquitto/config
       MQTT_DOCKER_CONTAINER: plciot-mqtt
       # Đồng bộ GitHub từ Console (Monitor) — xem docs/ADMIN-REMOTE.md
@@ -96,16 +82,8 @@ services:
       DEPLOY_COMPOSE_FILE: ${DEPLOY_COMPOSE_FILE:-/repo/cloud/docker-compose.yml}
       DEPLOY_COMPOSE_PROJECT: ${DEPLOY_COMPOSE_PROJECT:-plciot}
       DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-465}
-      SMTP_URL: ${SMTP_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-}
       DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
-      DEBUG_TRACE_PHONES: ${DEBUG_TRACE_PHONES:-}
       DEBUG_TRACE_TOKEN: ${DEBUG_TRACE_TOKEN:-}
-      ADMIN_DASHBOARD_PHONES: ${ADMIN_DASHBOARD_PHONES:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -116,37 +94,7 @@ services:
       - ${DEPLOY_REPO_HOST:-..}:${DEPLOY_REPO_DIR:-/repo}
       - ./config:/mosquitto/config
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on: [mqtt, telegram-db]
-    networks: [plciot]
-
-  telegram-db:                   # Postgres chứa telegram_users (SĐT ↔ chat_id), chỉ trong mạng Docker
-    image: postgres:15-alpine
-    container_name: plciot-telegram-db
-    restart: unless-stopped
-    mem_limit: 256m
-    environment:
-      POSTGRES_USER: ${TELEGRAM_SHARED_PG_USER}
-      POSTGRES_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD}
-      POSTGRES_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
-    volumes:
-      - telegram-pg:/var/lib/postgresql/data
-    networks: [plciot]
-
-  telegram-bot:                  # Bot Telegram (long-polling): /start + chia sẻ SĐT → telegram_users
-    build: ./telegram-bot
-    container_name: plciot-telegram-bot
-    restart: unless-stopped
-    mem_limit: 128m
-    environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      DB_TYPE: postgresql
-      POSTGRES_HOST: telegram-db
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${TELEGRAM_SHARED_PG_USER}
-      POSTGRES_PASSWORD: ${TELEGRAM_SHARED_PG_PASSWORD}
-      POSTGRES_DB: ${TELEGRAM_SHARED_PG_DB:-iot_postgres}
-      DB_POOL_SIZE: "5"
-    depends_on: [telegram-db]
+    depends_on: [mqtt]
     networks: [plciot]
 
   tunnel:                        # Cloudflare Tunnel: wss broker + HTTPS app, no open ports
@@ -167,8 +115,5 @@ networks:
     name: plciot_net
 
 volumes:
-  telegram-pg:
-    name: mqtt_server_postgres_data   # dùng lại volume cũ để giữ nguyên telegram_users
-    external: true
   mqtt-data:
     name: plciot_mqtt_data

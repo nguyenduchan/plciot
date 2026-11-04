@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thông báo bảo vệ dữ liệu cá nhân — plciot</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --muted: #555; --bg: #f7f7f5; --card: #fff; --line: #ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #eee; --muted: #aaa; --bg: #121212; --card: #1c1c1c; --line: #333; }
+  }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 28px 20px 64px; }
+  h1 { font-size: 1.45rem; margin: 0 0 8px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+  p, li { color: var(--muted); }
+  .meta { font-size: .9rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Thông báo bảo vệ dữ liệu cá nhân</h1>
+  <p class="meta">Phiên bản <strong id="ver">2026-11-01</strong> · Áp dụng dịch vụ giám sát/điều khiển IoT plciot</p>
+
+  <div class="card">
+    <h2>1. Mục đích xử lý</h2>
+    <p>Chúng tôi xử lý dữ liệu để: tạo và bảo vệ tài khoản gắn thiết bị; xác thực (mật khẩu, passkey/WebAuthn, TOTP, mã khôi phục); vận hành MQTT/telemetry; nhật ký bảo mật; hỗ trợ sự cố theo quy định pháp luật Việt Nam (Luật BVDLCN 2025, NĐ 356/2025 và quy định liên quan).</p>
+
+    <h2>2. Loại dữ liệu</h2>
+    <ul>
+      <li>Định danh tài khoản: tên người dùng hệ thống (ví dụ <code>u_…</code>), vai trò, site/device.</li>
+      <li>Bảo mật: băm mật khẩu, khoá công khai passkey, TOTP đã mã hoá, thiết bị tin cậy, địa chỉ IP trong nhật ký.</li>
+      <li>Vận hành IoT: sự kiện MQTT/telemetry gắn site/device theo gói lưu trữ.</li>
+      <li><strong>Không</strong> thu thập số điện thoại, email hay tin nhắn Telegram để đăng ký/OTP.</li>
+      <li>Sinh trắc học (Face ID / vân tay) chỉ xử lý trên thiết bị của bạn; máy chủ chỉ lưu khoá công khai WebAuthn.</li>
+    </ul>
+
+    <h2>3. Căn cứ &amp; đồng ý</h2>
+    <p>Khi nhận máy (QR) hoặc chấp nhận mã mời, bạn xác nhận đã đọc thông báo này và đồng ý xử lý dữ liệu cho các mục đích trên. Bạn có thể rút đồng ý bằng cách xoá tài khoản (sau khi xác thực lại).</p>
+
+    <h2>4. Thời hạn lưu trữ</h2>
+    <ul>
+      <li>Hồ sơ tài khoản: đến khi bạn xoá tài khoản hoặc quản trị viên xoá theo yêu cầu.</li>
+      <li>Lịch sử thiết bị: theo gói (mặc định vài ngày; gói cao hơn lâu hơn / không giới hạn nếu cấu hình).</li>
+      <li>Nhật ký bảo mật (<code>audit_log</code>): mặc định 365 ngày (cấu hình <code>AUDIT_RETENTION_DAYS</code>).</li>
+    </ul>
+
+    <h2>5. Quyền của bạn</h2>
+    <ul>
+      <li>Truy cập / tải dữ liệu của tôi (Cài đặt → Xuất dữ liệu).</li>
+      <li>Xoá lịch sử thiết bị trên máy chủ; xoá toàn bộ tài khoản.</li>
+      <li>Khiếu nại / liên hệ đầu mối bảo vệ dữ liệu (DPO) nếu được công bố trên hệ thống.</li>
+    </ul>
+
+    <h2>6. Bảo mật kỹ thuật</h2>
+    <p>Truyền tải HTTPS/WSS; mật khẩu băm; bí mật TOTP/MQTT được mã hoá khi lưu; phân quyền điều khiển; làm lạnh 24 giờ khi thêm máy mới. Nên mã hoá ổ đĩa máy chủ (LUKS/BitLocker) cho dữ liệu nghỉ.</p>
+
+    <h2>7. Liên hệ</h2>
+    <p id="dpo">Đầu mối BVDLCN / DPO: xem cấu hình máy chủ (<code>DPO_CONTACT</code>, <code>DPO_EMAIL</code>) hoặc liên hệ đơn vị vận hành dịch vụ.</p>
+  </div>
+  <p class="meta" style="margin-top:20px"><a href="/login.html">← Quay lại đăng nhập</a></p>
+</main>
+<script>
+fetch('/api/auth/config').then((r) => r.json()).then((c) => {
+  if (c.privacyVersion) document.getElementById('ver').textContent = c.privacyVersion;
+  const parts = [];
+  if (c.dpoContact) parts.push(c.dpoContact);
+  if (c.dpoEmail) parts.push(c.dpoEmail);
+  if (parts.length) document.getElementById('dpo').textContent = 'Đầu mối BVDLCN / DPO: ' + parts.join(' · ');
+}).catch(() => {});
+</script>
+</body>
+</html>

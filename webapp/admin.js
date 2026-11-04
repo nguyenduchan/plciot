@@ -12,17 +12,25 @@
     unauthorized: 'Phiên hết hạn, đăng nhập lại.',
     session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.',
     account_disabled: 'Tài khoản đã bị khoá.',
-    invalid_phone: 'Cần số di động Việt Nam hợp lệ.',
+    invalid_username: 'Username 3–48 ký tự (chữ, số, _).',
     invalid_role: 'Vai trò không hợp lệ.',
-    phone_in_use: 'Số này đã có tài khoản.',
+    username_in_use: 'Username đã có tài khoản.',
     invalid_site_or_device: 'Site/thiết bị chỉ gồm chữ, số, "_" và "-" (tối đa 48 ký tự).',
     last_admin: 'Không thể hạ quyền/khoá/xoá admin cuối cùng (hoặc chính bạn).',
     user_not_found: 'Không tìm thấy người dùng.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
     step_up_required: 'Cần xác nhận bằng vân tay / Authenticator.',
     reauth_required: 'Hãy đăng xuất rồi đăng nhập lại trước khi thao tác quản trị.',
-    admin_not_allowlisted: 'Chỉ SĐT trong ADMIN_DASHBOARD_PHONES mới được làm admin dashboard.',
+    admin_not_allowlisted: 'Username không nằm trong ADMIN_USERNAMES.',
+    claim_root_private_key_missing: 'Thiếu CLAIM_ROOT_PRIVATE_KEY trên server.',
+    claim_root_public_key_missing: 'Thiếu CLAIM_ROOT_PUBLIC_KEY trên server.',
+    claim_secret_unavailable: 'Không lấy lại được QR (thiết bị cũ). Hãy phát hành lại tem.',
+    device_already_claimed: 'Thiết bị đã có người dùng gắn. Phát hành lại sẽ cần huỷ liên kết.',
+    not_found: 'Không tìm thấy thiết bị.',
   };
+
+  let hwDevices = [];
+  let lastQr = null;
 
   function msg(text, cls) { const m = $('#msg'); m.textContent = text || ''; m.className = cls || ''; }
 
@@ -59,8 +67,8 @@
     $('#count').textContent = users.length;
     $('#list').innerHTML = users.map((u) => `
       <div class="u${u.disabled ? ' dis' : ''}" data-id="${u.id}">
-        <div><b>${esc(u.phoneLocal || u.phone)}</b> <span class="tag ${u.role}">${u.role}</span>${u.disabled ? ' <span class="tag viewer">đã khoá</span>' : ''}
-          <small>site <code>${esc(u.site)}</code> · thiết bị <code>${esc(u.device)}</code>${u.telegramLinked ? ' · Telegram ✓' : ''}</small></div>
+        <div><b>${esc(u.username)}</b> <span class="tag ${u.role}">${u.role}</span>${u.disabled ? ' <span class="tag viewer">đã khoá</span>' : ''}
+          <small>site <code>${esc(u.site)}</code> · thiết bị <code>${esc(u.device)}</code></small></div>
         <div></div>
         <div class="scopes" data-scopes>${scopeBoxes(u.scopes, 'data-sc')}</div>
         <div class="acts">
@@ -73,6 +81,63 @@
       </div>`).join('') || '<p class="help">Chưa có người dùng.</p>';
   }
 
+  function fmtTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString('vi-VN'); } catch { return String(ts); }
+  }
+
+  function renderHw() {
+    $('#hw-count').textContent = hwDevices.length;
+    $('#hw-list').innerHTML = hwDevices.map((d) => `
+      <div class="hw" data-site="${esc(d.site)}" data-device="${esc(d.device)}">
+        <div><b>${esc(d.label || `${d.site}/${d.device}`)}</b>
+          ${d.claimed ? '<span class="tag">đã gắn</span>' : '<span class="tag viewer">chưa gắn</span>'}
+          <small><code>${esc(d.site)}</code> / <code>${esc(d.device)}</code>
+            ${d.note ? ` · ${esc(d.note)}` : ''}
+            ${d.claimedUsername ? ` · user ${esc(d.claimedUsername)}` : ''}
+            · tạo ${esc(fmtTs(d.createdAt))}</small></div>
+        <div class="acts">
+          <button data-hw="qr">Xem / in QR</button>
+          <button data-hw="reissue">Phát hành lại tem</button>
+          <button data-hw="del" class="danger">Xoá</button>
+        </div>
+      </div>`).join('') || '<p class="help">Chưa có thiết bị. Thêm ở form phía trên.</p>';
+  }
+
+  async function showQr(bundle) {
+    lastQr = bundle;
+    const title = bundle.label || `${bundle.site}/${bundle.device}`;
+    $('#qr-title').textContent = title;
+    $('#qr-meta').textContent = `${bundle.site} / ${bundle.device}${bundle.note ? ` — ${bundle.note}` : ''}`;
+    $('#qr-url').textContent = bundle.loginUrl || bundle.qr;
+    const host = $('#qr-canvas');
+    host.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    host.appendChild(canvas);
+    const text = bundle.loginUrl || bundle.qr;
+    if (window.QRCode?.toCanvas) {
+      await window.QRCode.toCanvas(canvas, text, { width: 280, margin: 2, errorCorrectionLevel: 'M' });
+    } else {
+      host.innerHTML = `<p class="help">Không tải được thư viện QR. Link: <code>${esc(text)}</code></p>`;
+    }
+    $('#qr-modal').classList.add('on');
+  }
+
+  function closeQr() { $('#qr-modal').classList.remove('on'); }
+
+  async function loadHw() {
+    const j = await api('/api/admin/hardware');
+    hwDevices = j.devices || [];
+    const cfg = $('#hw-cfg');
+    if (cfg) {
+      cfg.textContent = j.configured
+        ? '✓ Khoá ký QR đã cấu hình.'
+        : '⚠ Chưa có CLAIM_ROOT_* — không tạo được tem. Chạy: node cloud/app/scripts/provision-device-qr.js gen-keys';
+      cfg.style.color = j.configured ? 'var(--ok)' : 'var(--warn)';
+    }
+    renderHw();
+  }
+
   async function load() {
     try {
       const j = await api('/api/admin/users');
@@ -80,6 +145,7 @@
       $('#n-scopes').innerHTML = scopeBoxes(scopesAll, 'data-nsc');
       $('#n-role').innerHTML = roleOpts('operator');
       render();
+      await loadHw();
     } catch (e) {
       $('#list').textContent = '';
       msg(e.message, 'err');
@@ -92,9 +158,66 @@
     try { await fn(); msg(okText, 'ok'); await load(); } catch (e) { msg(e.message, 'err'); }
   }
 
+  $('#hw-add').onclick = () => run(async () => {
+    const site = $('#hw-site').value.trim();
+    const device = $('#hw-dev').value.trim() || 'plc01';
+    if (!site) throw new Error('Nhập mã nhà máy (site).');
+    const r = await api('/api/admin/hardware', 'POST', {
+      site, device, label: $('#hw-label').value.trim(), note: $('#hw-note').value.trim(),
+    });
+    $('#hw-site').value = '';
+    $('#hw-label').value = '';
+    $('#hw-note').value = '';
+    await loadHw();
+    await showQr(r);
+  }, 'Đã thêm thiết bị. In tem QR và dán lên máy.');
+
+  $('#hw-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-hw]');
+    const row = e.target.closest('.hw');
+    if (!b || !row) return;
+    const site = row.dataset.site;
+    const device = row.dataset.device;
+    const d = hwDevices.find((x) => x.site === site && x.device === device);
+    if (b.dataset.hw === 'qr') {
+      run(async () => {
+        const r = await api(`/api/admin/hardware/${encodeURIComponent(site)}/${encodeURIComponent(device)}/qr`);
+        await showQr(r);
+      }, '');
+    } else if (b.dataset.hw === 'reissue') {
+      const unclaim = d?.claimed && confirm('Thiết bị đã gắn user. Phát hành lại sẽ huỷ liên kết claim (user cũ phải quét tem mới)?');
+      if (d?.claimed && !unclaim) return;
+      if (!confirm('Tem cũ sẽ hết hiệu lực. Tiếp tục?')) return;
+      run(async () => {
+        const r = await api(`/api/admin/hardware/${encodeURIComponent(site)}/${encodeURIComponent(device)}/reissue`, 'POST', { unclaim: Boolean(d?.claimed) });
+        await loadHw();
+        await showQr(r);
+      }, 'Đã phát hành tem mới.');
+    } else if (b.dataset.hw === 'del') {
+      if (!confirm(`Xoá đăng ký ${site}/${device}? Người dùng sẽ không claim được tem cũ.`)) return;
+      run(async () => {
+        await api(`/api/admin/hardware/${encodeURIComponent(site)}/${encodeURIComponent(device)}${d?.claimed ? '?force=1' : ''}`, 'DELETE');
+        await loadHw();
+      }, 'Đã xoá thiết bị.');
+    }
+  });
+
+  $('#qr-close').onclick = closeQr;
+  $('#qr-modal').addEventListener('click', (e) => { if (e.target === $('#qr-modal')) closeQr(); });
+  $('#qr-print').onclick = () => window.print();
+  $('#qr-copy').onclick = async () => {
+    const t = lastQr?.loginUrl || lastQr?.qr || '';
+    try {
+      await navigator.clipboard.writeText(t);
+      msg('Đã sao chép link claim.', 'ok');
+    } catch {
+      msg('Không sao chép được — chọn và copy thủ công.', 'err');
+    }
+  };
+
   $('#n-add').onclick = () => run(async () => {
     await api('/api/admin/users', 'POST', {
-      phone: $('#n-phone').value.trim(),
+      username: $('#n-phone').value.trim() || undefined,
       scopes: [...document.querySelectorAll('[data-nsc]')].filter((c) => c.checked).map((c) => c.dataset.nsc),
       role: $('#n-role').value, site: $('#n-site').value.trim() || undefined, device: $('#n-dev').value.trim() || undefined,
     });
@@ -118,16 +241,16 @@
     const id = row.dataset.id;
     const u = users.find((x) => String(x.id) === id);
     if (b.dataset.act === 'toggle') {
-      if (!u.disabled && !confirm(`Khoá ${u.phoneLocal}? Họ bị đăng xuất và mất quyền MQTT ngay.`)) return;
+      if (!u.disabled && !confirm(`Khoá ${u.username}? Họ bị đăng xuất và mất quyền MQTT ngay.`)) return;
       run(() => api(`/api/admin/users/${id}`, 'PATCH', { disabled: !u.disabled }), u.disabled ? 'Đã mở khoá.' : 'Đã khoá.');
     } else if (b.dataset.act === 'logout') {
-      if (confirm(`Đăng xuất ${u.phoneLocal} khỏi mọi thiết bị?`)) run(() => api(`/api/admin/users/${id}`, 'PATCH', { revokeSessions: true }), 'Đã đăng xuất mọi máy.');
+      if (confirm(`Đăng xuất ${u.username} khỏi mọi thiết bị?`)) run(() => api(`/api/admin/users/${id}`, 'PATCH', { revokeSessions: true }), 'Đã đăng xuất mọi máy.');
     } else if (b.dataset.act === 'site') {
       const site = prompt('Site mới:', u.site); if (!site) return;
       const device = prompt('Thiết bị mới:', u.device); if (!device) return;
       run(() => api(`/api/admin/users/${id}`, 'PATCH', { site, device }), 'Đã đổi site/thiết bị.');
     } else if (b.dataset.act === 'del') {
-      if (!confirm(`Xoá vĩnh viễn ${u.phoneLocal}? Không thể hoàn tác (nên dùng Khoá nếu chỉ tạm dừng).`)) return;
+      if (!confirm(`Xoá vĩnh viễn ${u.username}? Không thể hoàn tác (nên dùng Khoá nếu chỉ tạm dừng).`)) return;
       run(() => api(`/api/admin/users/${id}`, 'DELETE'), 'Đã xoá.');
     }
   });

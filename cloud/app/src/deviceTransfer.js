@@ -31,7 +31,7 @@ export async function transferDevice(db, fromId, toId, { admin = 'admin' } = {})
   const { notify_site: site, notify_device: device } = from;
 
   const wiped = wipeDeviceHistory(db, site, device);
-  const parkedSite = `s${from.phone || from.username}`;
+  const parkedSite = `s${from.username}`;
   const parkedDevice = 'plc01';
   // Never park on the namespace we just handed over.
   const parked = parkedSite === site && parkedDevice === device

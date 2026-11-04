@@ -21,28 +21,6 @@ export function migrateSecurity(db) {
       id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, device_id TEXT NOT NULL,
       last_seen INTEGER NOT NULL, background_at INTEGER, locked INTEGER NOT NULL DEFAULT 0
     );
-    CREATE TABLE IF NOT EXISTS otp_challenges (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL, purpose TEXT NOT NULL,
-      code_hash TEXT NOT NULL, password_hash TEXT, expires_at INTEGER NOT NULL,
-      fails INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_challenges(phone, purpose);
-    CREATE TABLE IF NOT EXISTS email_challenges (
-      user_id INTEGER PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL,
-      expires_at INTEGER NOT NULL, fails INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS phone_changes (
-      id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, kind TEXT NOT NULL,
-      old_phone TEXT NOT NULL, new_phone TEXT NOT NULL, new_contact TEXT,
-      status TEXT NOT NULL, new_otp_hash TEXT, old_otp_hash TEXT, old_channel TEXT,
-      otp_expires_at INTEGER, new_fails INTEGER NOT NULL DEFAULT 0, old_fails INTEGER NOT NULL DEFAULT 0,
-      new_verified INTEGER NOT NULL DEFAULT 0, old_verified INTEGER NOT NULL DEFAULT 0,
-      recovery_code_ok INTEGER NOT NULL DEFAULT 0, plc_ok INTEGER NOT NULL DEFAULT 0,
-      plc_bit INTEGER, plc_base INTEGER, plc_expires_at INTEGER, note TEXT,
-      execute_at INTEGER, reviewed_by TEXT, created_ip TEXT,
-      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_phone_changes_user ON phone_changes(user_id, status);
     CREATE TABLE IF NOT EXISTS audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts INTEGER NOT NULL,
@@ -94,9 +72,6 @@ export function migrateSecurity(db) {
       poll_hash TEXT NOT NULL,
       label TEXT,
       created_ip TEXT,
-      email_otp_hash TEXT,
-      email_otp_expires INTEGER,
-      email_fails INTEGER NOT NULL DEFAULT 0,
       execute_at INTEGER,
       ticket_hash TEXT,
       ticket_expires INTEGER,
@@ -162,50 +137,49 @@ export function migrateSecurity(db) {
     kind: "kind TEXT NOT NULL DEFAULT 'add'", notification_state: "notification_state TEXT NOT NULL DEFAULT 'pending'",
   });
   addColumns(db, 'app_sessions', { background_at: 'background_at INTEGER' });
-  addColumns(db, 'otp_challenges', { contact_id: 'contact_id TEXT' });
-  addColumns(db, 'phone_changes', {
-    new_contact: 'new_contact TEXT',
-    notification_state: "notification_state TEXT NOT NULL DEFAULT 'pending'",
-    recovery_device: 'recovery_device TEXT',
-    recovery_public_key: 'recovery_public_key TEXT',
-    session_id: 'session_id TEXT',
-    review_evidence: 'review_evidence TEXT',
-  });
-  const changeColumns = db.prepare('PRAGMA table_info(phone_changes)').all();
-  if (changeColumns.some((column) => column.name === 'new_chat_id')) {
-    db.exec('UPDATE phone_changes SET new_contact = CAST(new_chat_id AS TEXT) WHERE new_contact IS NULL AND new_chat_id IS NOT NULL');
-  }
-  // Thiết bị đã từng được xác nhận bằng OTP Telegram (máy tin cậy): chỉ máy này mới đăng nhập được bằng MỘT yếu tố (mật khẩu hoặc sinh trắc).
-  // Cột mới: các thiết bị đã có từ trước coi như đã tin cậy để không bắt mọi người xác nhận lại.
+  // Máy tin cậy (đã claim / đăng nhập thành công): đăng nhập bằng một yếu tố trên máy này.
   const kdCols = db.prepare('PRAGMA table_info(known_devices)').all().map((c) => c.name);
   if (!kdCols.includes('otp_verified')) {
     db.exec('ALTER TABLE known_devices ADD COLUMN otp_verified INTEGER NOT NULL DEFAULT 0');
     db.exec('UPDATE known_devices SET otp_verified = 1');
   }
-  // Thời điểm xác nhận OTP gần nhất của thiết bị: quá OTP_TRUST_DAYS thì máy phải OTP lại. Máy đã tin cậy từ trước tính từ lúc nâng cấp.
   if (!kdCols.includes('otp_verified_at')) {
     db.exec('ALTER TABLE known_devices ADD COLUMN otp_verified_at INTEGER');
     db.prepare('UPDATE known_devices SET otp_verified_at = ? WHERE otp_verified = 1').run(Date.now());
   }
   addColumns(db, 'users', {
-    phone: 'phone TEXT',
-    primary_contact: 'primary_contact TEXT',
     recovery_required: 'recovery_required INTEGER NOT NULL DEFAULT 0',
-    email: 'email TEXT',
-    email_verified: 'email_verified INTEGER NOT NULL DEFAULT 0',
-    email_verified_at: 'email_verified_at INTEGER',
     token_version: 'token_version INTEGER NOT NULL DEFAULT 0',
-    // TOTP cho điều khiển: bí mật đã mã hoá + step đã dùng (chống phát lại); totp_pending chờ nhập đúng mã đầu tiên
+    // TOTP (Authenticator) cho điều khiển: bí mật đã mã hoá + step đã dùng (chống phát lại)
     totp_secret: 'totp_secret TEXT',
     totp_enabled: 'totp_enabled INTEGER NOT NULL DEFAULT 0',
     totp_last_step: 'totp_last_step INTEGER NOT NULL DEFAULT 0',
     totp_pending: 'totp_pending TEXT',
     totp_device_id: 'totp_device_id TEXT',
-    // Hạn phải bật vân tay/Authenticator (đặt lười khi lần đầu cần); quá hạn mà chưa có yếu tố → khoá điều khiển
     enroll_deadline: 'enroll_deadline INTEGER',
-    // Mật khẩu ĐĂNG NHẬP (bcrypt), tách khỏi password_hash cũ; chỉ dùng trên máy đã tin cậy, không phải yếu tố điều khiển
     login_password_hash: 'login_password_hash TEXT',
-    // 0 = vừa tạo sau OTP, chưa đăng ký được sinh trắc / mật khẩu; chỉ thành 1 khi đặt mật khẩu hoặc đăng ký sinh trắc. Tài khoản cũ = 1.
+    // 0 = vừa claim QR, chưa đặt mật khẩu / sinh trắc; tài khoản cũ = 1.
     setup_complete: 'setup_complete INTEGER NOT NULL DEFAULT 1',
+    // Đồng ý BVDLCN: epoch ms + phiên bản Privacy Notice đã chấp nhận.
+    privacy_consent_at: 'privacy_consent_at INTEGER',
+    privacy_version: 'privacy_version TEXT',
+  });
+  // Phần cứng factory: claim secret (băm) + trạng thái đã nhận. QR sticker ký bằng CLAIM_ROOT_*.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hardware_devices (
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      claim_hash TEXT NOT NULL,
+      claimed_by INTEGER,
+      claimed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (site, device)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hardware_claimed ON hardware_devices(claimed_by);
+  `);
+  addColumns(db, 'hardware_devices', {
+    label: 'label TEXT',
+    note: 'note TEXT',
+    claim_sealed: 'claim_sealed TEXT',
   });
 }

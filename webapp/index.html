@@ -148,22 +148,6 @@
           <div id="acct-sum" class="muted">Đang tải…</div>
           <div id="acct-pending"></div>
 
-          <details class="sec">
-            <summary>Đổi số điện thoại</summary>
-            <p class="muted">Cần mật khẩu + mã OTP gửi tới kênh cũ và OTP gửi vào Telegram của <b>số mới</b> (số mới phải đã /start bot và chia sẻ SĐT).</p>
-            <div id="pc-1">
-              <label>Số mới<input id="pc-new" inputmode="tel" placeholder="0912345678" autocomplete="off"></label>
-              <label>Xác minh số cũ bằng<select id="pc-chan"></select></label>
-              <div class="row"><button id="pc-start" class="primary">Gửi mã xác nhận</button></div>
-            </div>
-            <div id="pc-2" hidden>
-              <label>Mã OTP gửi vào Telegram số MỚI<input id="pc-otp-new" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
-              <label id="pc-old-wrap">Mã OTP kênh cũ<input id="pc-otp-old" inputmode="numeric" maxlength="6" autocomplete="off"></label>
-              <label id="pc-code-wrap" hidden>Mã khôi phục<input id="pc-code" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></label>
-              <div class="row"><button id="pc-confirm" class="primary">Xác nhận đổi số</button><button id="pc-abort" class="fit">Huỷ</button></div>
-            </div>
-          </details>
-
           <details class="sec" id="ctl-sec" hidden>
             <summary>Điều khiển: vân tay / Authenticator</summary>
             <p class="muted">Mỗi lần điều khiển từ xa cần xác nhận. Điện thoại có vân tay / Face ID: chạm một lần. Máy cũ: mã Authenticator, nhớ 7 ngày (đổi mạng sẽ hỏi lại).</p>
@@ -182,19 +166,6 @@
           </details>
 
           <details class="sec">
-            <summary>Email khôi phục</summary>
-            <p class="muted">Dùng khi mất điện thoại. Email mới thêm chỉ dùng được để xác minh đổi số sau thời gian chờ (hiện ở trên).</p>
-            <div id="em-1">
-              <label>Email<input id="em-addr" type="email" autocomplete="email"></label>
-              <div class="row"><button id="em-send" class="primary">Gửi mã xác minh</button></div>
-            </div>
-            <div id="em-2" hidden>
-              <label>Mã xác minh gửi vào email<input id="em-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
-              <div class="row"><button id="em-verify" class="primary">Xác minh</button></div>
-            </div>
-          </details>
-
-          <details class="sec">
             <summary>Mã khôi phục (dự phòng)</summary>
             <p class="muted">10 mã dùng một lần. Lưu ở nơi an toàn (in ra / trình quản lý mật khẩu). Tạo lại sẽ vô hiệu bộ cũ.</p>
             <div class="row"><button id="rc-gen" class="primary">Tạo bộ mã mới</button></div>
@@ -206,6 +177,16 @@
             <p class="muted" id="ret-info"></p>
             <p class="muted">Xoá toàn bộ lịch sử đã lưu trên máy chủ cho thiết bị này (ví dụ trước khi bán/chuyển nhượng). Không thể hoàn tác.</p>
             <div class="row"><button id="wp-go" class="danger">Xoá lịch sử trên máy chủ</button></div>
+          </details>
+          <details class="sec">
+            <summary>Quyền dữ liệu cá nhân</summary>
+            <p class="muted">Xuất hồ sơ tài khoản, nhật ký liên quan và thiết bị tin cậy (không gồm mật khẩu / MQTT). Xoá tài khoản sẽ gỡ dữ liệu gắn user và thu hồi phiên.</p>
+            <p class="muted" id="privacy-info"></p>
+            <div class="row">
+              <button id="data-export" class="fit primary">Xuất dữ liệu của tôi</button>
+              <a id="privacy-doc" class="fit" href="/privacy.html" target="_blank" rel="noopener">Thông báo BVDLCN</a>
+            </div>
+            <div class="row" style="margin-top:8px"><button id="acct-delete" class="danger">Xoá tài khoản</button></div>
           </details>
           <p class="muted" id="acct-msg"></p>
         </div>

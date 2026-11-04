@@ -15,3 +15,5 @@ edge/demo-data/
 edge/.env
 
 tools/git-autosync.log
+tools/faceid-sim/
+tools/security-e2e/

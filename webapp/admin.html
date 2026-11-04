@@ -26,30 +26,74 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 #msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
 .scopes{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}.scopes label{display:flex;align-items:center;gap:6px;margin:0;font-size:14px;color:var(--fg)}.scopes input{width:18px;height:18px}
 .help{font-size:13px;color:var(--mut);line-height:1.5}
+.hw{display:grid;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.hw:last-child{border:0}
+.hw .acts{display:flex;flex-wrap:wrap;gap:6px}
+#qr-modal{position:fixed;inset:0;background:#0008;display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+#qr-modal.on{display:flex}
+#qr-sheet{background:var(--bg);color:var(--fg);border-radius:16px;padding:20px;max-width:420px;width:100%;box-shadow:0 12px 40px #0004}
+#qr-sheet canvas,#qr-sheet img{display:block;margin:12px auto}
+@media print{
+  body>*:not(#qr-modal){display:none!important}
+  #qr-modal{display:flex!important;position:static;background:#fff;padding:0}
+  #qr-modal .no-print{display:none!important}
+  #qr-sheet{box-shadow:none;max-width:none}
+}
 </style>
 </head>
 <body>
-<div class="top"><h1>Quản lý người dùng</h1><div style="display:flex;gap:12px"><a href="console.html">Console IoT</a><a href="index.html">← Về ứng dụng</a></div></div>
+<div class="top"><h1>Quản trị</h1><div style="display:flex;gap:12px"><a href="console.html">Console IoT</a><a href="index.html">← Về ứng dụng</a></div></div>
 <p id="msg"></p>
 
 <div class="panel form" style="max-width:none;margin-bottom:14px">
-  <h2>Thêm người dùng</h2>
-  <label>Số điện thoại (Việt Nam)<input id="n-phone" inputmode="tel" autocomplete="off" placeholder="09xxxxxxxx"></label>
+  <h2>Thêm thiết bị (QR in tem)</h2>
+  <p class="help">Chỉ thiết bị đã thêm ở đây mới được người dùng quét QR để gắn tài khoản. Cần cấu hình <code>CLAIM_ROOT_PUBLIC_KEY</code> và <code>CLAIM_ROOT_PRIVATE_KEY</code> trên server.</p>
+  <p id="hw-cfg" class="help"></p>
+  <label>Mã nhà máy (site)<input id="hw-site" autocapitalize="off" autocomplete="off" placeholder="factory1" required></label>
+  <label>Mã thiết bị<input id="hw-dev" value="plc01" autocapitalize="off" autocomplete="off" placeholder="plc01"></label>
+  <label>Tên hiển thị (tuỳ chọn)<input id="hw-label" autocomplete="off" placeholder="Máy đóng gói line 1"></label>
+  <label>Ghi chú (tuỳ chọn)<input id="hw-note" autocomplete="off" placeholder="Serial / vị trí lắp"></label>
+  <div class="row"><button id="hw-add" class="primary">Thêm thiết bị &amp; tạo QR</button></div>
+</div>
+
+<div class="panel" style="max-width:none;margin-bottom:14px">
+  <h2>Thiết bị đã đăng ký (<span id="hw-count">0</span>)</h2>
+  <div id="hw-list">Đang tải…</div>
+</div>
+
+<div id="qr-modal" role="dialog" aria-modal="true">
+  <div id="qr-sheet">
+    <h2 id="qr-title" style="margin:0 0 4px;font-size:18px">Tem thiết bị</h2>
+    <p id="qr-meta" class="help" style="margin:0"></p>
+    <div id="qr-canvas"></div>
+    <p id="qr-url" class="help" style="word-break:break-all;font-size:11px"></p>
+    <div class="row no-print" style="margin-top:12px">
+      <button id="qr-print" class="primary">In tem</button>
+      <button id="qr-copy" class="fit">Sao chép link</button>
+      <button id="qr-close" class="fit">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel form" style="max-width:none;margin-bottom:14px">
+  <h2>Thêm người dùng (tuỳ chọn)</h2>
+  <p class="help">Thường user tự tạo bằng quét QR thiết bị. Form này chỉ tạo sẵn tài khoản gắn site (không SĐT/Telegram).</p>
+  <label>Username (để trống = tự sinh)<input id="n-phone" autocomplete="off" placeholder="u_operator1"></label>
   <label>Vai trò
     <select id="n-role" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
   </label>
-  <label>Mã nhà máy (site) — để trống = tạo site riêng; nhập site có sẵn để chia sẻ cùng PLC<input id="n-site" autocapitalize="off" autocomplete="off"></label>
+  <label>Mã nhà máy (site)<input id="n-site" autocapitalize="off" autocomplete="off" placeholder="factory1"></label>
   <label>Mã thiết bị<input id="n-dev" value="plc01" autocapitalize="off" autocomplete="off"></label>
   <div class="help" style="margin:0">Được xem (monitor)</div>
   <div id="n-scopes" class="scopes" style="margin-bottom:14px"></div>
   <div class="row"><button id="n-add" class="primary">Thêm người dùng</button></div>
-  <p class="help"><b>admin</b>: quản lý người dùng + điều khiển. <b>operator</b>: xem + điều khiển. <b>viewer</b>: chỉ xem (broker không cấp quyền gửi lệnh).<br>Kênh <b>không mã hoá</b> (mqtt:// , ws://) luôn chỉ xem; điều khiển chỉ qua <b>mqtts:// , wss://</b> và phải có vai trò admin/operator.</p>
 </div>
 
 <div class="panel" style="max-width:none">
   <h2>Danh sách (<span id="count">0</span>)</h2>
   <div id="list">Đang tải…</div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script src="security/session.js"></script>
 <script src="security/device-proof.js"></script>
 <script src="security/security-client.js"></script>

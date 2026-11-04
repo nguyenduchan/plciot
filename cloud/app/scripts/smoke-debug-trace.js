@@ -20,8 +20,8 @@ const shell = fileURLToPath(new URL('../../../webapp', import.meta.url));
 const publisher = new URL('../src/controlPublisher.js', import.meta.url).href;
 const server = new URL('../src/server.js', import.meta.url).href;
 const bootstrap = `const publisher = await import(${JSON.stringify(publisher)}); publisher.setPublisher(async () => {}); await import(${JSON.stringify(server)});`;
-const MY = '84901112233';
-const OTHER = '84909998877';
+const MY = 'u_debug';
+const OTHER = 'u_other';
 
 const child = spawn(process.execPath, ['--input-type=module', '-e', bootstrap], {
   env: {
@@ -34,16 +34,11 @@ const child = spawn(process.execPath, ['--input-type=module', '-e', bootstrap], 
     WEBAPP_PUBLIC_URL: base,
     APP_JWT_SECRET: crypto.randomBytes(32).toString('hex'),
     MQTT_INGEST: 'false',
-    TELEGRAM_BOT_TOKEN: '',
-    TELEGRAM_BOT_POLLING: 'false',
-    TELEGRAM_SHARED_PG_HOST: '',
-    TELEGRAM_SHARED_DATABASE_URL: '',
-    SMTP_URL: '',
-    ADMIN_PHONES: '',
-    ADMIN_DASHBOARD_PHONES: '',
+    ADMIN_USERNAMES: '',
+    ADMIN_DASHBOARD_USERS: '',
     BUNDLE_AUTOSYNC: 'false',
     DEBUG_CLIENT_TRACE: 'true',
-    DEBUG_TRACE_PHONES: '0901112233',
+    DEBUG_TRACE_USERS: MY,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
   windowsHide: true,
@@ -66,24 +61,18 @@ try {
 
   assert.equal((await (await fetch(`${base}/api/health`)).json()).debugTrace, true);
 
-  const deny = await fetch(`${base}/api/debug/allowed?phone=${OTHER}`);
-  assert.equal((await deny.json()).allowed, false);
-
-  const allow = await (await fetch(`${base}/api/debug/allowed?phone=${MY}`)).json();
-  assert.equal(allow.allowed, true);
-
   const badPost = await fetch(`${base}/api/debug/trace`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Phone': OTHER },
+    headers: { 'Content-Type': 'application/json', 'X-Debug-User': OTHER },
     body: JSON.stringify({ events: [{ action: 'x', message: 'nope' }] }),
   });
   assert.equal(badPost.status, 403);
 
   const post = await fetch(`${base}/api/debug/trace`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Phone': MY },
+    headers: { 'Content-Type': 'application/json', 'X-Debug-User': MY },
     body: JSON.stringify({
-      phone: MY,
+      username: MY,
       events: [
         { action: 'login.start', message: 'test', level: 'info' },
         { action: 'login.verify_ok', message: 'ok', level: 'ok' },
@@ -91,17 +80,17 @@ try {
     }),
   });
   assert.equal(post.status, 200);
-  assert.equal((await post.json()).saved, 2);
+  assert.equal((await post.json()).ok, true);
 
-  const getOther = await fetch(`${base}/api/debug/trace?phone=${OTHER}`);
+  const getOther = await fetch(`${base}/api/debug/trace?user=${OTHER}`);
   assert.equal(getOther.status, 403);
 
-  const get = await (await fetch(`${base}/api/debug/trace?phone=${MY}`)).json();
-  assert.ok(get.events.some((e) => e.action === 'login.verify_ok'));
-  assert.ok(get.events.every((e) => e.phone === MY));
+  const get = await (await fetch(`${base}/api/debug/trace?user=${MY}`)).json();
+  assert.ok(get.entries?.length >= 1);
+  assert.ok(get.entries.every((e) => e.user === MY));
   assert.ok(fs.existsSync(path.join(tmp, 'data', 'debug-trace.jsonl')));
 
-  console.log('smoke-debug-trace: passed (phone allow-list)');
+  console.log('smoke-debug-trace: passed');
 } finally {
   if (child.exitCode == null && child.signalCode == null) {
     const closed = once(child, 'exit');

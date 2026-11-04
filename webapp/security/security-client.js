@@ -28,42 +28,36 @@
   const ERR = {
     totp_invalid: 'Mã không đúng hoặc đã dùng. Chờ mã mới (30 giây) rồi thử lại.',
     totp_locked: 'Nhập sai quá nhiều lần. Thử lại sau 15 phút.',
-    reauth_required: 'Cần đăng nhập lại (OTP Telegram) trước khi thiết lập bảo mật.',
+    reauth_required: 'Cần đăng nhập lại (mật khẩu) trước khi thiết lập bảo mật.',
     step_up_required: 'Cần xác thực để điều khiển.',
     webauthn_failed: 'Xác thực vân tay / Face ID không thành công.',
     credential_exists: 'Thiết bị này đã được đăng ký.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
-    first_device_required: 'Đây không phải thiết bị đầu tiên của tài khoản nên chưa bật được ngay. Hãy xác nhận bằng email hoặc chờ 24 giờ.',
-    otp_invalid: 'Mã không đúng.',
-    otp_expired: 'Mã hết hạn, gửi lại.',
-    otp_missing: 'Chưa có mã, bấm Gửi mã trước.',
-    otp_locked: 'Nhập sai quá nhiều, thử lại sau.',
+    first_device_required: 'Đây không phải thiết bị đầu tiên. Duyệt từ máy cũ hoặc dùng mã khôi phục.',
     totp_already_enabled: 'Authenticator đã được bật.',
     device_proof_required: 'Không xác minh được khoá của thiết bị này. Hãy dùng đúng trình duyệt đã tạo yêu cầu.',
     recovery_device_required: 'Hãy hoàn tất thiết lập trên trình duyệt đã tạo yêu cầu khôi phục.',
-    independent_proof_required: 'Cần máy cũ, mã khôi phục hoặc email đã xác minh; không thể chỉ chờ để được cấp quyền.',
+    independent_proof_required: 'Cần máy cũ hoặc mã khôi phục; không thể chỉ chờ để được cấp quyền.',
     notification_required: 'Chưa gửi được cảnh báo bảo mật. Yêu cầu chưa được tự động áp dụng.',
     approval_code_invalid: 'Mã ghép không đúng. Đối chiếu mã đang hiện trên máy mới.',
     secure_context_required: 'Cần HTTPS và trình duyệt hỗ trợ lưu khoá thiết bị.',
     device_storage_unavailable: 'Không lưu được khoá thiết bị. Kiểm tra quyền lưu dữ liệu của trình duyệt.',
-    device_revoked: 'Khoá thiết bị đã bị thu hồi. Hãy dùng quy trình khôi phục được xác minh.',
+    device_revoked: 'Khoá thiết bị đã bị thu hồi.',
     credential_rotation_failed: 'Chưa hoàn tất thu hồi credential cũ. Hãy thử lại sau.',
-    contact_changed: 'Kênh nhận OTP đã thay đổi. Hãy yêu cầu mã mới.',
     account_disabled: 'Tài khoản đã bị khoá. Liên hệ quản trị viên.',
     session_revoked: 'Phiên đăng nhập đã bị thu hồi. Hãy đăng nhập lại.',
     password_invalid: 'Sai mật khẩu hoặc tài khoản chưa đặt mật khẩu.',
     setup_incomplete: 'Tài khoản mới phải đăng ký đủ Face ID / vân tay (nếu máy hỗ trợ) và mật khẩu trước khi vào.',
     biometric_required: 'Máy này hỗ trợ Face ID / vân tay nên phải bật trước khi hoàn tất đăng ký.',
-    platform_unavailable: 'Máy này không có Face ID / vân tay / Windows Hello (hoặc trình duyệt không hỗ trợ) nên không bật được. Dùng mật khẩu hoặc Authenticator.',
-    missing_credentials: 'Nhập mật khẩu hoặc mã OTP.',
-    password_locked: 'Nhập sai mật khẩu quá nhiều lần. Thử lại sau 15 phút hoặc dùng OTP Telegram.',
-    password_new_device: 'Máy này chưa xác nhận OTP Telegram: cần thêm Face ID / vân tay (đã bật trước đó) hoặc dùng OTP Telegram.',
-    second_factor_required: 'Máy này chưa xác nhận OTP Telegram: nhập thêm mật khẩu rồi bấm Đăng nhập, hoặc dùng OTP Telegram.',
-    password_weak: 'Mật khẩu tối thiểu 8 ký tự và không được chứa số điện thoại.',
-    recover_need_two: 'Cần ít nhất 2 yếu tố khác loại: mã OTP (Telegram hoặc email), mật khẩu, vân tay / Face ID.',
+    platform_unavailable: 'Máy này không có Face ID / vân tay / Windows Hello. Dùng mật khẩu hoặc Authenticator.',
+    missing_credentials: 'Nhập mật khẩu.',
+    password_locked: 'Nhập sai mật khẩu quá nhiều lần. Thử lại sau 15 phút.',
+    password_new_device: 'Máy mới chưa tin cậy. Dùng mã khôi phục + mật khẩu (Khôi phục). Face ID máy cũ không mang sang.',
+    second_factor_required: 'Máy chưa tin cậy: nhập thêm mật khẩu.',
+    password_weak: 'Mật khẩu tối thiểu 8 ký tự.',
+    recover_need_two: 'Cần ít nhất 2 yếu tố khác loại: mã khôi phục, mật khẩu, vân tay / Face ID.',
     recover_invalid: 'Thông tin khôi phục không đúng.',
     recover_locked: 'Thử sai quá nhiều lần. Chờ 15 phút rồi thử lại.',
-    email_unavailable: 'Tài khoản chưa có email đã xác minh (hoặc chưa qua thời gian chờ 72 giờ), hoặc máy chủ chưa bật gửi email.',
     unauthorized: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
     forbidden: 'Bạn không có quyền thực hiện thao tác này.',
     server_error: 'Máy chủ gặp lỗi. Thử lại sau ít phút.',
@@ -72,11 +66,6 @@
     totp_not_enabled: 'Chưa bật Authenticator trên tài khoản này.',
     no_passkey: 'Tài khoản này chưa đăng ký vân tay / Face ID.',
     unknown_credential: 'Passkey này chưa được đăng ký cho tài khoản.',
-    old_channel_unavailable: 'Chưa có email đã xác minh. Dùng máy cũ duyệt hoặc mã khôi phục.',
-    email_send_failed: 'Không gửi được email. Thử lại sau hoặc dùng cách khác.',
-    email_disabled: 'Máy chủ chưa bật gửi email nên chưa thêm được email. Bạn vẫn có thể dùng mật khẩu hoặc vân tay.',
-    invalid_email: 'Email không hợp lệ.',
-    email_quarantine: 'Email mới thêm đang trong thời gian chờ.',
     recovery_code_invalid: 'Mã khôi phục không đúng hoặc đã dùng.',
     recovery_locked: 'Nhập sai mã khôi phục quá nhiều lần. Thử lại sau.',
     no_recovery_codes: 'Tài khoản chưa có mã khôi phục.',
@@ -87,6 +76,9 @@
     not_found: 'Không tìm thấy.',
     login_step_up_required: 'Cần xác thực passkey hoặc Authenticator để hoàn tất đăng nhập.',
     app_locked: 'Ứng dụng đã khoá. Hãy xác thực lại.',
+    privacy_consent_required: 'Cần đồng ý Thông báo bảo vệ dữ liệu cá nhân.',
+    privacy_version_mismatch: 'Thông báo bảo vệ dữ liệu đã cập nhật. Tải lại trang rồi đồng ý phiên bản mới.',
+    last_admin: 'Không thể xoá admin cuối cùng của hệ thống.',
   };
   const errText = (e) => ERR[e] || e || 'Lỗi';
   /** App thêm thông báo lỗi riêng (vd. lệnh PLC) mà không sửa lõi. */
@@ -265,7 +257,12 @@
       sheet.ok(`Đã bật đăng nhập bằng ${bioName()}`);
       await new Promise((resolve) => setTimeout(resolve, 900));
       sheet.close();
-      if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes);
+      // Trong luồng setup tài khoản mới: gộp mã vào kho lưu cuối (cùng username/mật khẩu), tránh hiện 2 lần.
+      if (r.body.recoveryCodes?.length) {
+        if (pendingSession?.isNew || ['claim', 'invite', 'bio'].includes(pendingSession?.src)) {
+          pendingSession._codes = r.body.recoveryCodes;
+        } else await showRecoveryCodes(r.body.recoveryCodes);
+      }
     } else {
       dbg('register.verify_fail', r.body?.error || 'verify failed', r.body, 'error');
       sheet.fail(errText(r.body?.error));
@@ -325,7 +322,13 @@
 
   async function totpEnable(code) {
     const r = await api('POST', '/api/control/totp/enable', { code });
-    if (r.ok) { saveToken(r.body); if (r.body.recoveryCodes?.length) await showRecoveryCodes(r.body.recoveryCodes); }
+    if (r.ok) {
+      saveToken(r.body);
+      if (r.body.recoveryCodes?.length) {
+        if (pendingSession?.isNew || ['claim', 'invite', 'bio'].includes(pendingSession?.src)) pendingSession._codes = r.body.recoveryCodes;
+        else await showRecoveryCodes(r.body.recoveryCodes);
+      }
+    }
     return r.body;
   }
 
@@ -423,69 +426,90 @@
     return false;
   }
 
-  /** Hiện mã khôi phục một lần; chỉ cho đóng khi người dùng xác nhận đã lưu. */
-  function showRecoveryCodes(codes) {
+  /**
+   * Bắt buộc lưu thông tin đăng nhập (không còn SĐT/email).
+   * Hiện username + mật khẩu (nếu vừa tạo) + mã khôi phục; chỉ đóng khi xác nhận đã lưu.
+   */
+  function showCredentialsVault({ username, password, codes } = {}) {
+    const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+    if (!username && !password && !list.length) return Promise.resolve(false);
     return new Promise((resolve) => {
-      const text = codes.join('\n');
+      const codeText = list.join('\n');
+      const exportText = [
+        'Thông tin đăng nhập plciot (giữ bí mật)',
+        username ? `Tên tài khoản: ${username}` : '',
+        password ? `Mật khẩu: ${password}` : '',
+        list.length ? `Mã khôi phục:\n${codeText}` : '',
+        '',
+        'Đổi điện thoại: đăng nhập bằng username + mật khẩu (hoặc mã khôi phục). Không quét lại QR tem.',
+        'Face ID / vân tay chỉ dùng trên từng máy đã tin cậy.',
+      ].filter((line, i, arr) => line !== '' || (arr[i - 1] && arr[i - 1] !== '')).join('\n');
       const m = modal(`
-        <h3>Lưu mã khôi phục</h3>
-        <p class="muted">10 mã dùng một lần. Nếu mất điện thoại, các mã này giúp <b>tự thêm máy mới</b> (chờ 24 giờ) mà không cần nhờ ai. Mã chỉ hiện <b>một lần</b>: chụp màn hình, in ra hoặc lưu vào trình quản lý mật khẩu.</p>
-        <pre class="codes">${escHtml(text)}</pre>
-        <div class="row"><button class="fit ctl-copy">Sao chép</button><button class="fit ctl-dl">Tải .txt</button></div>
-        <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" class="ctl-saved"> Tôi đã lưu các mã này</label>
+        <h3>Lưu thông tin đăng nhập</h3>
+        <p class="muted">Không còn SĐT/email khôi phục. Hãy lưu các mục dưới đây (trình quản lý mật khẩu / in / ảnh). Mật khẩu và mã khôi phục <b>chỉ hiện một lần</b> ở đây.</p>
+        ${username ? `<p><b>Tên tài khoản</b></p><pre class="codes">${escHtml(username)}</pre>` : ''}
+        ${password ? `<p><b>Mật khẩu</b></p><pre class="codes">${escHtml(password)}</pre>` : ''}
+        ${list.length ? `<p><b>Mã khôi phục</b> (mỗi mã dùng một lần; mất máy → chờ 24 giờ)</p><pre class="codes">${escHtml(codeText)}</pre>` : ''}
+        <p class="muted">Đổi điện thoại: dùng username + mật khẩu hoặc Khôi phục. <b>Không</b> quét lại QR tem thiết bị.</p>
+        <div class="row"><button class="fit ctl-copy">Sao chép tất cả</button><button class="fit ctl-dl">Tải .txt</button></div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" class="ctl-saved"> Tôi đã lưu tên tài khoản${password ? ', mật khẩu' : ''}${list.length ? ' và mã khôi phục' : ''}</label>
         <div class="row"><button class="primary ctl-done" disabled>Xong</button></div>`);
       m.q('.ctl-saved').onchange = (e) => { m.q('.ctl-done').disabled = !e.target.checked; };
-      m.q('.ctl-copy').onclick = async () => { try { await navigator.clipboard.writeText(text); m.q('.ctl-copy').textContent = 'Đã chép'; } catch {} };
+      m.q('.ctl-copy').onclick = async () => { try { await navigator.clipboard.writeText(exportText); m.q('.ctl-copy').textContent = 'Đã chép'; } catch {} };
       m.q('.ctl-dl').onclick = () => {
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([`Mã khôi phục Giám sát PLC\n${text}\n`], { type: 'text/plain' }));
-        a.download = 'ma-khoi-phuc.txt'; a.click();
+        a.href = URL.createObjectURL(new Blob([`${exportText}\n`], { type: 'text/plain' }));
+        a.download = 'plciot-dang-nhap.txt'; a.click();
       };
       m.q('.ctl-done').onclick = () => { m.close(); resolve(true); };
     });
   }
 
+  /** Hiện mã khôi phục một lần (tương thích chỗ gọi cũ). */
+  function showRecoveryCodes(codes) {
+    return showCredentialsVault({ codes });
+  }
+
 
   /**
-   * Máy chưa có vân tay/Authenticator (đăng ký mới hoặc OTP lần đầu): chọn ÍT NHẤT MỘT cách để lần sau khỏi OTP.
-   * Vân tay / Face ID, mật khẩu, email đều tuỳ chọn riêng lẻ; email chỉ để khôi phục nên không tính là cách đăng nhập.
-   * Trả về true (đã có vân tay → hoàn tất bằng phiên điều khiển) hoặc { basic: true } (chỉ mật khẩu → /api/login/complete-basic).
+   * Thiết lập đăng nhập: mật khẩu là bắt buộc (không còn SĐT/email);
+   * Face ID / vân tay là tiện ích trên máy này (bắt buộc nếu máy hỗ trợ, trừ khi opt-out).
    */
   function loginSetup(m, canPk, done, opts = {}) {
     const body = m.q('.ctl-body');
     if (opts.recovery) canPk = false;
     let hasPw = Boolean(pendingSession?.methods?.password);
     let hasPk = false;
-    // Máy hỗ trợ sinh trắc (canPk đã gồm kiểm tra cảm biến) thì BẮT BUỘC bật Face ID / vân tay; mật khẩu, email chỉ là thêm.
-    // Lối thoát duy nhất: bật không được (iCloud Keychain tắt, trình duyệt lỗi…) thì chọn "dùng mật khẩu thay thế" (ghi nhận).
     const bioRequired = Boolean(canPk) && !opts.recovery;
     let optOut = false;
     let setPw = '';
     body.innerHTML = `
       <h3>${opts.recovery ? 'Đặt lại thông tin đăng nhập' : 'Thiết lập đăng nhập'}</h3>
-      <p class="muted">${opts.recovery ? 'Khôi phục thành công. Đặt mật khẩu mới và/hoặc email nếu muốn. Muốn bật lại vân tay / Face ID và điều khiển thiết bị, hãy làm trong Cài đặt (cần xác nhận thêm vì lý do an toàn).' : bioRequired ? `Máy của bạn hỗ trợ <b>${bioName()}</b> nên bước này là <b>bắt buộc</b>. Mật khẩu và email là tuỳ chọn thêm.` : 'Máy này không có Face ID / vân tay nên hãy chọn <b>mật khẩu</b> (bắt buộc). Email là tuỳ chọn.'}</p>
+      <p class="muted">${opts.recovery ? 'Khôi phục thành công. Đặt mật khẩu mới nếu muốn. Face ID / điều khiển: làm lại trong Cài đặt trên máy này.' : bioRequired ? `<b>Mật khẩu bắt buộc</b> (để đổi điện thoại sau này). Máy hỗ trợ <b>${bioName()}</b> — nên bật cho tiện trên máy này.` : '<b>Mật khẩu bắt buộc</b>. Máy này không có Face ID / vân tay.'}</p>
       <div class="ctl-err" style="color:var(--bad)"></div><div class="ctl-ok" style="color:var(--ok,#16a34a)"></div>
-      ${opts.recovery ? '' : canPk ? `<div class="row"><button class="primary" data-a="pk">${bioRequired ? `Bắt buộc: bật ${bioName()}` : 'Bật vân tay / Face ID'}</button></div><div class="row su-nobio" hidden><button class="fit" data-a="nobio">Không bật được ${bioName()}? Dùng mật khẩu thay thế</button></div>` : '<p class="muted">Máy này không có vân tay / Face ID.</p>'}
+      ${opts.recovery ? '' : canPk ? `<div class="row"><button class="fit" data-a="pk">Bật ${bioName()} trên máy này</button></div><div class="row su-nobio" hidden><button class="fit" data-a="nobio">Không bật được ${bioName()}? Tiếp tục với mật khẩu</button></div>` : '<p class="muted">Máy này không có vân tay / Face ID.</p>'}
       <label>Mật khẩu (từ 8 ký tự)<input type="password" class="su-pw" autocomplete="new-password" placeholder="Mật khẩu"></label>
       <label>Nhập lại mật khẩu<input type="password" class="su-pw2" autocomplete="new-password" placeholder="Nhập lại"></label>
-      <div class="row"><button class="fit" data-a="pw">Đặt mật khẩu</button></div>
-      <label>Email khôi phục (không bắt buộc)<input type="email" class="su-mail" autocomplete="email" placeholder="ban@example.com"></label>
-      <div class="row"><button class="fit" data-a="mail">Gửi mã xác minh email</button></div>
-      <div class="su-mailcode" hidden><label>Mã email<input class="su-code" inputmode="numeric" maxlength="6" placeholder="000000"></label>
-        <div class="row"><button class="fit" data-a="mailok">Xác nhận email</button></div></div>
+      <div class="row"><button class="primary" data-a="pw">Đặt mật khẩu</button></div>
       <div class="row"><button class="primary" data-a="go" disabled>${opts.recovery ? 'Vào ứng dụng' : 'Hoàn tất'}</button>${opts.recovery ? '' : '<button class="fit" data-a="x">Huỷ đăng nhập</button>'}</div>`;
     const err = (t) => { m.q('.ctl-err').textContent = t || ''; if (t) m.q('.ctl-ok').textContent = ''; };
     const ok = (t) => { m.q('.ctl-ok').textContent = t || ''; if (t) m.q('.ctl-err').textContent = ''; };
     const refresh = () => {
-      const ready = opts.recovery || (bioRequired && !optOut ? hasPk : (hasPw || hasPk));
+      // Mật khẩu bắt buộc; Face ID tiện trên máy này (không chặn Hoàn tất nếu đã có mật khẩu).
+      const ready = opts.recovery || hasPw;
       m.q('[data-a="go"]').disabled = !ready;
-      m.q('[data-a="go"]').title = ready ? '' : (bioRequired && !optOut ? `Cần bật ${bioName()} trước` : 'Chọn ít nhất một cách: vân tay / Face ID hoặc mật khẩu');
+      m.q('[data-a="go"]').title = ready ? '' : 'Cần đặt mật khẩu';
+      if (bioRequired && !hasPk && !optOut) m.q('.su-nobio').hidden = false;
     };
     refresh();
     const click = async (a, b) => {
       err('');
       if (a === 'x') return done(false);
-      if (a === 'go') return done(opts.recovery ? true : hasPk ? true : { basic: true, password: setPw, bioCapable: bioRequired, bioOptOut: optOut });
+      if (a === 'go') {
+        if (opts.recovery) return done(true);
+        if (!hasPw) return err('Cần đặt mật khẩu trước.');
+        return done(hasPk ? true : { basic: true, password: setPw, bioCapable: Boolean(canPk), bioOptOut: true });
+      }
       if (a === 'nobio') {
         optOut = true; m.q('.su-nobio').hidden = true; m.q('[data-a="pk"]').textContent = `Thử lại bật ${bioName()}`;
         return ok('Đã chuyển sang dùng mật khẩu thay thế: hãy đặt mật khẩu rồi bấm Hoàn tất.'), refresh();
@@ -503,13 +527,6 @@
           if (p1 !== p2) return err('Hai mật khẩu không khớp.');
           const r = await api('POST', '/api/account/password', { password: p1 });
           if (r.ok) { hasPw = true; setPw = p1; if (pendingSession) pendingSession.methods = { ...(pendingSession.methods || {}), password: true }; b.textContent = '✓ Đã đặt mật khẩu'; ok('Đã đặt mật khẩu.'); } else err(errText(r.body.error));
-        } else if (a === 'mail') {
-          const r = await api('POST', '/api/account/email/request', { email: m.q('.su-mail').value.trim() });
-          if (r.ok && r.body.saved) ok('Đã lưu email. Sẽ xác minh khi hệ thống hỗ trợ gửi email.');
-          else if (r.ok) { m.q('.su-mailcode').hidden = false; ok('Đã gửi mã tới email. Nhập mã để xác minh.'); } else err(errText(r.body.error));
-        } else if (a === 'mailok') {
-          const r = await api('POST', '/api/account/email/verify', { otp: m.q('.su-code').value.trim() });
-          if (r.ok) { m.q('.su-mailcode').hidden = true; ok('Đã xác minh email (dùng để khôi phục sau 72 giờ).'); } else err(errText(r.body.error));
         }
       } finally { b.disabled = false; refresh(); }
     };
@@ -521,7 +538,7 @@
     const body = m.q('.ctl-body');
     body.innerHTML = `
       <h3>${escHtml(title)}</h3>
-      <p class="muted">Bước 2/2: nhập mật khẩu của bạn (OTP đã xác nhận).</p>
+      <p class="muted">Nhập mật khẩu tài khoản để mở khoá.</p>
       <div class="ctl-err" style="color:var(--bad)"></div>
       <label>Mật khẩu<input type="password" class="pp-pw" autocomplete="current-password" placeholder="Mật khẩu"></label>
       <div class="row"><button class="primary pp-go">Mở khoá</button><button class="fit pp-x">Huỷ</button></div>`;
@@ -532,7 +549,7 @@
     setTimeout(() => m.q('.pp-pw')?.focus(), 50);
   }
 
-  /** Phiên quá 10 phút mà chưa có yếu tố nào: xác nhận lại bằng mật khẩu hoặc OTP Telegram ngay tại chỗ, không phải đăng xuất. */
+  /** Phiên quá 10 phút: xác nhận lại bằng mật khẩu (không OTP/Telegram). */
   async function reauthModal() {
     const sec = await api('GET', '/api/account/security');
     const hasPw = Boolean(sec.body?.hasPassword);
@@ -541,10 +558,10 @@
         <h3>Xác nhận lại để tiếp tục</h3>
         <p class="muted">Để bảo mật, việc bật vân tay / Face ID cần bạn vừa xác nhận gần đây.</p>
         <div class="ctl-err" style="color:var(--bad)"></div>
-        ${hasPw ? '<label>Mật khẩu<input type="password" class="ra-pw" autocomplete="current-password"></label><div class="row"><button class="primary" data-a="pw">Xác nhận bằng mật khẩu</button></div>' : ''}
-        <div class="row"><button class="fit" data-a="send">Gửi OTP Telegram</button></div>
-        <label class="ra-otp-row" hidden>Mã OTP<input class="ra-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
-        <div class="row"><button class="primary ra-otp-go" data-a="otp" hidden>Xác nhận OTP</button><button class="fit" data-a="x">Huỷ</button></div></div>`);
+        ${hasPw
+          ? '<label>Mật khẩu<input type="password" class="ra-pw" autocomplete="current-password"></label><div class="row"><button class="primary" data-a="pw">Xác nhận bằng mật khẩu</button><button class="fit" data-a="x">Huỷ</button></div>'
+          : '<p class="muted">Tài khoản chưa có mật khẩu. Đăng xuất rồi đăng nhập lại bằng vân tay / Face ID.</p><div class="row"><button class="fit" data-a="x">Đóng</button></div>'}
+        </div>`);
       const err = (t) => { m.q('.ctl-err').textContent = t || ''; };
       const finish = (token) => {
         const s = LS.get('session', null);
@@ -556,15 +573,7 @@
           const a = b.dataset.a;
           err('');
           if (a === 'x') return finish(null);
-          if (a === 'send') {
-            const phone = String(session()?.username || '');
-            const r = await fetch(location.origin + '/api/login/request-otp', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device-Id': devId() }, body: JSON.stringify({ phone }) }).then((x) => x.json()).catch(() => ({ error: 'offline' }));
-            if (r.error) return err(errText(r.error));
-            m.q('.ra-otp-row').hidden = false; m.q('.ra-otp-go').hidden = false; m.q('.ra-otp').focus();
-            return;
-          }
-          const body = a === 'pw' ? { password: m.q('.ra-pw').value } : { otp: m.q('.ra-otp').value.trim() };
-          const r = await api('POST', '/api/account/reauth', body);
+          const r = await api('POST', '/api/account/reauth', { password: m.q('.ra-pw').value });
           if (r.ok && r.body.token) return finish(r.body.token);
           err(errText(r.body.error));
         };
@@ -605,19 +614,52 @@
     }
   }
 
+  /** Đếm ngược: "2 giờ 05:12" hoặc "05:12" hoặc "Hết hạn". */
+  function fmtCountdown(untilMs) {
+    const left = Math.max(0, Number(untilMs || 0) - Date.now());
+    if (!Number(untilMs)) return '—';
+    if (left <= 0) return 'Hết hạn';
+    const s = Math.floor(left / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(sec).padStart(2, '0');
+    return h > 0 ? `${h} giờ ${mm}:${ss}` : `${mm}:${ss}`;
+  }
+
+  /** Gắn interval cập nhật mọi phần tử [data-countdown] trong root; trả hàm dừng. */
+  function bindCountdowns(root) {
+    const tick = () => {
+      if (!root || !document.body.contains(root)) return;
+      root.querySelectorAll('[data-countdown]').forEach((el) => {
+        const until = Number(el.getAttribute('data-countdown') || 0);
+        el.textContent = fmtCountdown(until);
+        el.classList.toggle('ctl-cd-done', until > 0 && until <= Date.now());
+      });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }
+
   /**
-   * Máy mới (mất máy cũ hoặc đổi máy): xin quyền bằng
-   *   • duyệt từ máy cũ (ngay)  • mã khôi phục / OTP email (chờ 24 giờ, chủ được báo và có thể huỷ).
-   * Yêu cầu được nhớ trong localStorage nên đóng ứng dụng đi chờ rồi quay lại vẫn tiếp tục được.
+   * Máy mới (mất máy cũ hoặc đổi máy): xin quyền điều khiển bằng
+   *   • duyệt từ máy cũ (ngay)  • mã khôi phục (chờ 24 giờ).
+   * Không dùng QR tem thiết bị. Yêu cầu nhớ trong localStorage để quay lại sau cooling.
    */
   async function newDeviceFlow(m, done, canPkPlatform) {
     const body = m.q('.ctl-body');
     const gone = () => !document.body.contains(m.el);
-    const fmtT = (ms) => new Date(ms).toLocaleString('vi-VN');
+    const fmtT = (ms) => (ms ? new Date(ms).toLocaleString('vi-VN') : '—');
     const ua = /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Máy tính';
     const label = `${ua} ${new Date().toLocaleDateString('vi-VN')}`;
     const closeBtn = '<div class="row"><button class="fit ctl-close">Đóng</button></div>';
-    const wireClose = () => { const b = m.q('.ctl-close'); if (b) b.onclick = () => done(false); };
+    let stopCd = () => {};
+    const wireClose = () => {
+      const b = m.q('.ctl-close');
+      if (b) b.onclick = () => { stopCd(); done(false); };
+    };
     const poll = (req) => api('POST', `/api/devices/requests/${req.id}/poll`, { pollToken: req.pollToken });
 
     let req = LS.get('devReq', null);
@@ -625,11 +667,17 @@
     let st = null;
     if (req) {
       const r = await poll(req);
-      if (r.ok && ['pending', 'cooling', 'approved'].includes(r.body.status)) st = r.body; else { LS.del('devReq'); req = null; }
+      if (r.ok && ['pending', 'cooling', 'approved'].includes(r.body.status)) {
+        st = r.body;
+        if (r.body.approvalCode) req.approvalCode = r.body.approvalCode;
+        if (r.body.coolingHours != null) req.coolingHours = r.body.coolingHours;
+      } else { LS.del('devReq'); req = null; }
     }
     if (!req) {
       const replaceLost = await new Promise((resolve) => {
-        body.innerHTML = `<h3>Thêm thiết bị</h3><label><input type="checkbox" class="ctl-lost"> Máy cũ bị mất: thu hồi yếu tố và phiên cũ khi máy mới thiết lập xong</label>
+        body.innerHTML = `<h3>Thêm thiết bị</h3>
+          <p class="muted">Đổi điện thoại: đăng nhập bằng <b>mật khẩu</b> rồi thêm máy này. <b>Không</b> quét lại QR tem phần cứng.</p>
+          <label><input type="checkbox" class="ctl-lost"> Máy cũ bị mất: thu hồi Face ID / Authenticator và phiên cũ khi máy mới thiết lập xong</label>
           <div class="row"><button class="primary ctl-request">Tiếp tục</button><button class="fit ctl-close">Huỷ</button></div>`;
         m.q('.ctl-close').onclick = () => resolve(null);
         m.q('.ctl-request').onclick = () => resolve(m.q('.ctl-lost').checked);
@@ -640,62 +688,68 @@
         body.innerHTML = `<h3>Thêm thiết bị mới</h3><p style="color:var(--bad)">${escHtml(errText(r.body.error))}</p>${closeBtn}`;
         return wireClose();
       }
-      req = { id: r.body.id, pollToken: r.body.pollToken, options: r.body.options, coolingHours: r.body.coolingHours, emailHint: r.body.emailHint, userId: session()?.userId, approvalCode: r.body.approvalCode, kind: r.body.kind };
+      req = {
+        id: r.body.id, pollToken: r.body.pollToken, options: r.body.options,
+        coolingHours: r.body.coolingHours, userId: session()?.userId,
+        approvalCode: r.body.approvalCode, kind: r.body.kind,
+      };
       LS.set('devReq', req);
-      st = { status: 'pending' };
+      st = { status: 'pending', expiresAt: Date.now() + 30 * 60_000, approvalCode: r.body.approvalCode };
     }
 
     let shown = null; let enrolling = false;
+    let lastExecuteAt = st?.executeAt || null;
+    let lastExpiresAt = st?.expiresAt || null;
     const err = (t) => { const e = m.q('.ctl-err'); if (e) e.textContent = t || ''; };
 
     function renderPending() {
+      stopCd();
       const o = req.options || {};
+      const code = req.approvalCode || st?.approvalCode || '——————';
       body.innerHTML = `
-        <h3>Thêm thiết bị mới</h3>
-        <p>Mã ghép: <b>${escHtml(req.approvalCode || '')}</b></p>
-        ${o.device === false ? '' : '<p><b>Cách nhanh nhất:</b> mở ứng dụng trên <b>máy cũ</b> → sẽ có thông báo "Thiết bị mới xin vào" → bấm <b>Cho phép</b>. Màn hình này tự tiếp tục.</p>'}
+        <h3>Đổi máy — chờ duyệt</h3>
+        <div class="ctl-notice">Đưa <b>mã ghép</b> cho máy cũ. Trên máy cũ: Cài đặt → Duyệt thiết bị mới → nhập mã → <b>Cho phép</b>.</div>
+        <p class="muted" style="margin:8px 0 4px">Mã ghép (máy cũ nhập)</p>
+        <div class="ctl-pair-code">${escHtml(code)}</div>
+        <p class="ctl-cd-wrap">Yêu cầu hết hạn sau: <b class="ctl-cd" data-countdown="${Number(lastExpiresAt || 0)}">—</b></p>
         <div class="ctl-err" style="color:var(--bad)"></div>
-        ${o.recoveryCode ? `<hr><p class="muted">Không còn máy cũ? Dùng <b>mã khôi phục</b> (chờ ${req.coolingHours || 24} giờ):</p>
-          <input class="ctl-rc" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off">
+        ${o.device === false ? '<p class="muted">Tài khoản chưa có máy cũ để duyệt — dùng mã khôi phục bên dưới.</p>' : ''}
+        ${o.recoveryCode ? `<hr><p class="muted">Không còn máy cũ? Nhập <b>mã khôi phục</b> (chờ khoảng ${req.coolingHours || 24} giờ). Không dùng QR tem.</p>
+          <label>Mã khôi phục<input class="ctl-rc" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off"></label>
           <div class="row"><button class="fit ctl-rc-go">Dùng mã khôi phục</button></div>` : ''}
-        ${o.email ? `<hr><p class="muted">Nhận mã qua <b>email đã xác minh</b>${req.emailHint ? ` (${escHtml(req.emailHint)})` : ''}:</p>
-          <div class="row ctl-em-1"><button class="fit ctl-em-send">Gửi mã tới email</button></div>
-          <div class="ctl-em-2" hidden><input class="ctl-em-otp" inputmode="numeric" maxlength="6" placeholder="Mã 6 số trong email">
-            <div class="row"><button class="fit ctl-em-go">Xác nhận</button></div></div>` : ''}
-        ${o.wait ? `<hr><p class="muted">Không có máy cũ để duyệt. Có thể <b>chờ ${req.coolingHours || 24} giờ</b>: chủ tài khoản được báo và huỷ được nếu đây không phải bạn.</p><div class="row"><button class="fit ctl-wait">Chờ ${req.coolingHours || 24} giờ</button></div>` : ''}
-        ${!o.recoveryCode && !o.email && !o.wait ? '<p class="muted">Chưa có mã khôi phục hay email đã xác minh nên chỉ duyệt được từ máy cũ. Nếu mất máy cũ, hãy dùng <a href="recover.html">Khôi phục tài khoản</a>.</p>' : ''}
+        ${!o.recoveryCode && o.device === false ? '<p class="muted">Chưa có mã khôi phục. Hết đường: nhờ quản trị unclaim thiết bị.</p>' : ''}
         ${closeBtn}`;
       wireClose();
-      const wt = m.q('.ctl-wait');
-      if (wt) wt.onclick = async () => {
-        const r = await api('POST', `/api/devices/requests/${req.id}/wait`, {});
-        if (!r.ok) return err(errText(r.body.error));
-        handle({ status: r.body.status, executeAt: r.body.executeAt });
-      };
+      stopCd = bindCountdowns(body);
       const rc = m.q('.ctl-rc-go');
       if (rc) rc.onclick = async () => {
         const r = await api('POST', `/api/devices/requests/${req.id}/recovery`, { code: m.q('.ctl-rc').value.trim() });
         if (!r.ok) return err(errText(r.body.error));
-        handle({ status: r.body.status, executeAt: r.body.executeAt });
+        handle({ ...r.body, status: r.body.status });
       };
-      const es = m.q('.ctl-em-send');
-      if (es) {
-        es.onclick = async () => {
-          const r = await api('POST', `/api/devices/requests/${req.id}/email/start`, {});
-          if (!r.ok) return err(errText(r.body.error));
-          m.q('.ctl-em-1').hidden = true; m.q('.ctl-em-2').hidden = false;
-        };
-        m.q('.ctl-em-go').onclick = async () => {
-          const r = await api('POST', `/api/devices/requests/${req.id}/email/confirm`, { otp: m.q('.ctl-em-otp').value.trim() });
-          if (!r.ok) return err(errText(r.body.error));
-          handle({ status: r.body.status, executeAt: r.body.executeAt });
-        };
-      }
+    }
+
+    function renderCooling() {
+      stopCd();
+      body.innerHTML = `
+        <h3>Đang chờ cấp quyền</h3>
+        <div class="ctl-notice">Đã nhận mã khôi phục. Quyền điều khiển sẽ mở sau thời gian chờ bảo mật. Có thể đóng app và quay lại sau.</div>
+        <p class="ctl-cd-wrap">Còn lại: <b class="ctl-cd ctl-cd-lg" data-countdown="${Number(lastExecuteAt || 0)}">—</b></p>
+        <p class="muted">Dự kiến: <b>${escHtml(fmtT(lastExecuteAt))}</b></p>
+        <p class="muted">Hết giờ, màn hình này tự tiếp tục để bạn bật Face ID / Authenticator.</p>
+        <div class="ctl-err" style="color:var(--bad)"></div>
+        ${closeBtn}`;
+      wireClose();
+      stopCd = bindCountdowns(body);
     }
 
     function handle(b) {
       if (enrolling || gone()) return;
+      if (b.approvalCode) req.approvalCode = b.approvalCode;
+      if (b.executeAt != null) lastExecuteAt = b.executeAt;
+      if (b.expiresAt != null) lastExpiresAt = b.expiresAt;
       if (b.status === 'approved' && b.ticket) {
+        stopCd();
         enrolling = true;
         LS.set('enroll', { ticket: b.ticket, exp: Date.now() + (b.ticketExpiresIn || 900) * 1000 });
         LS.del('devReq');
@@ -703,40 +757,52 @@
           LS.del('enroll');
           if (v && req.kind !== 'replace_lost') LS.set('reviewDevices', { userId: session()?.userId });
           done(v);
-        }, 'Thiết bị đã được cho phép');
+        }, 'Thiết bị đã được cho phép — bật Face ID / Authenticator');
       }
-      if (b.status === shown) return;
-      shown = b.status;
       if (b.status === 'cooling') {
-        body.innerHTML = `
-          <h3>Đang chờ cấp quyền</h3>
-          <p>Vì dùng ${'mã khôi phục / email'}, quyền sẽ được cấp lúc <b>${fmtT(b.executeAt)}</b>. Chủ tài khoản đã được báo và có thể huỷ nếu đây không phải bạn.</p>
-          <p class="muted">Có thể đóng ứng dụng; quay lại sau thời điểm trên và mở lại hộp thoại này để hoàn tất.</p>${closeBtn}`;
-        wireClose();
-      } else if (['denied', 'cancelled', 'expired'].includes(b.status)) {
+        if (shown !== 'cooling') { shown = 'cooling'; renderCooling(); }
+        else {
+          const el = m.q('[data-countdown]');
+          if (el && lastExecuteAt) el.setAttribute('data-countdown', String(lastExecuteAt));
+        }
+        return;
+      }
+      if (['denied', 'cancelled', 'expired'].includes(b.status)) {
+        stopCd();
         LS.del('devReq');
-        const why = { denied: 'Máy cũ đã từ chối yêu cầu.', cancelled: 'Yêu cầu đã bị huỷ.', expired: 'Yêu cầu đã hết hạn.' }[b.status];
-        body.innerHTML = `<h3>Thêm thiết bị mới</h3><p>${why}</p>${closeBtn}`;
+        const why = { denied: 'Máy cũ đã từ chối yêu cầu.', cancelled: 'Yêu cầu đã bị huỷ.', expired: 'Yêu cầu đã hết hạn — hãy tạo lại.' }[b.status];
+        body.innerHTML = `<h3>Thêm thiết bị mới</h3><div class="ctl-notice">${why}</div>${closeBtn}`;
         wireClose();
-      } else renderPending();
+        shown = b.status;
+        return;
+      }
+      if (shown !== 'pending') { shown = 'pending'; renderPending(); }
+      else {
+        const el = m.q('[data-countdown]');
+        if (el && lastExpiresAt) el.setAttribute('data-countdown', String(lastExpiresAt));
+        const codeEl = m.q('.ctl-pair-code');
+        if (codeEl && req.approvalCode) codeEl.textContent = req.approvalCode;
+      }
     }
 
-    handle(st);
+    handle(st || { status: 'pending' });
     while (!gone() && !enrolling) {
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 2000));
       if (gone() || enrolling) break;
       const r = await poll(req);
       if (r.status === 401) {
-        body.innerHTML = `<h3>Phiên xác thực hết hạn</h3><p>Đăng nhập OTP lại để tiếp tục yêu cầu đã lưu.</p>${closeBtn}`;
+        stopCd();
+        body.innerHTML = `<h3>Phiên hết hạn</h3><p>Đăng nhập lại bằng mật khẩu để tiếp tục yêu cầu đã lưu.</p>${closeBtn}`;
         wireClose();
         break;
       }
       if (r.ok) handle(r.body);
     }
+    stopCd();
     return null;
   }
 
-  /** Máy cũ: xem các thiết bị đang xin vào, Cho phép / Từ chối. */
+  /** Máy cũ: xem các thiết bị đang xin vào — nhập mã ghép + đếm ngược nếu đang cooling. */
   async function reviewDevices() {
     let r = await api('GET', '/api/devices/requests');
     if (r.status === 401 && r.body.error === 'step_up_required') {
@@ -746,28 +812,49 @@
     }
     if (!r.ok) return;
     let list = r.body.requests || [];
-    if (!list.length) { const m0 = modal('<h3>Thiết bị mới</h3><p class="muted">Không có yêu cầu nào đang chờ.</p><div class="row"><button class="fit ctl-close">Đóng</button></div>'); m0.q('.ctl-close').onclick = m0.close; return; }
+    if (!list.length) {
+      const m0 = modal('<h3>Thiết bị mới</h3><p class="muted">Không có yêu cầu nào đang chờ.</p><div class="row"><button class="fit ctl-close">Đóng</button></div>');
+      m0.q('.ctl-close').onclick = m0.close;
+      return;
+    }
     const m = modal('<div class="ctl-body"></div>');
+    let stopCd = () => {};
     const draw = () => {
+      stopCd();
       if (!list.length) return m.close();
       m.q('.ctl-body').innerHTML = `
         <h3>Thiết bị mới xin vào</h3>
-        <p class="muted">Chỉ <b>Cho phép</b> nếu chính bạn vừa đăng nhập trên máy mới. Nếu không phải bạn, bấm <b>Từ chối</b>.</p>
+        <div class="ctl-notice">Chỉ <b>Cho phép</b> nếu chính bạn vừa mở máy mới. Nhập <b>mã ghép 6 số</b> đang hiện trên máy mới.</div>
         <div class="ctl-err" style="color:var(--bad)"></div>
-        ${list.map((q) => `<div class="pend"><b>${escHtml(q.label || 'Thiết bị')}</b><br>
-          <span class="muted">${new Date(q.createdAt).toLocaleString('vi-VN')}${q.ip ? ` · IP ${escHtml(q.ip)}` : ''}${q.status === 'cooling' ? ` · sẽ tự được cấp lúc ${new Date(q.executeAt).toLocaleString('vi-VN')}` : ''}</span>
-          ${q.kind === 'replace_lost' ? '<p>Máy cũ được khai báo bị mất. Hoàn tất sẽ thu hồi yếu tố và phiên cũ.</p>' : ''}
-          <label>Mã ghép trên máy mới<input data-code="${q.id}" inputmode="numeric" maxlength="6" autocomplete="off"></label>
-          <div class="row"><button class="primary" data-a="approve" data-id="${q.id}">Cho phép</button><button class="danger" data-a="deny" data-id="${q.id}">Từ chối</button></div></div>`).join('')}
+        ${list.map((q) => `<div class="pend">
+          <b>${escHtml(q.label || 'Thiết bị')}</b>
+          ${q.kind === 'replace_lost' ? '<p style="color:var(--bad)">Máy cũ bị mất — Cho phép sẽ thu hồi Face ID / phiên máy này.</p>' : ''}
+          <p class="muted">${new Date(q.createdAt).toLocaleString('vi-VN')}${q.ip ? ` · IP ${escHtml(q.ip)}` : ''}</p>
+          ${q.status === 'cooling' ? `<p class="ctl-cd-wrap">Đang chờ (mã khôi phục): còn <b data-countdown="${Number(q.executeAt || 0)}">—</b><br><span class="muted">Tự cấp lúc ${new Date(q.executeAt).toLocaleString('vi-VN')} — bạn vẫn có thể <b>Từ chối</b></span></p>` : ''}
+          ${q.status === 'pending' && q.expiresAt ? `<p class="ctl-cd-wrap muted">Yêu cầu hết hạn sau: <b data-countdown="${Number(q.expiresAt)}">—</b></p>` : ''}
+          ${q.status === 'pending' ? `<label>Mã ghép trên máy mới<input data-code="${q.id}" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+          <div class="row"><button class="primary" data-a="approve" data-id="${q.id}">Cho phép</button><button class="danger" data-a="deny" data-id="${q.id}">Từ chối</button></div>`
+          : `<div class="row"><button class="danger" data-a="deny" data-id="${q.id}">Từ chối / huỷ chờ</button></div>`}
+        </div>`).join('')}
         <div class="row"><button class="fit ctl-close">Đóng</button></div>`;
-      m.q('.ctl-close').onclick = m.close;
+      m.q('.ctl-close').onclick = () => { stopCd(); m.close(); };
+      stopCd = bindCountdowns(m.q('.ctl-body'));
       m.el.querySelectorAll('[data-a]').forEach((b) => {
         b.onclick = async () => {
-          const x = await api('POST', `/api/devices/requests/${b.dataset.id}/${b.dataset.a}`, { approvalCode: m.q(`[data-code="${b.dataset.id}"]`)?.value || '' });
+          const code = m.q(`[data-code="${b.dataset.id}"]`)?.value?.trim() || '';
+          if (b.dataset.a === 'approve' && !/^\d{6}$/.test(code)) {
+            m.q('.ctl-err').textContent = 'Nhập đủ mã ghép 6 số đang hiện trên máy mới.';
+            m.q(`[data-code="${b.dataset.id}"]`)?.focus();
+            return;
+          }
+          const x = await api('POST', `/api/devices/requests/${b.dataset.id}/${b.dataset.a}`, { approvalCode: code });
           if (!x.ok) { m.q('.ctl-err').textContent = errText(x.body.error); return; }
-          list = list.filter((q) => q.id !== b.dataset.id); draw();
+          list = list.filter((q) => q.id !== b.dataset.id);
+          draw();
         };
       });
+      const first = m.q('input[data-code]');
+      if (first) setTimeout(() => first.focus(), 50);
     };
     draw();
   }
@@ -1050,7 +1137,7 @@
   /** Bước 3: tạo mật khẩu (nhập + nhập lại), gửi lên server. Trả mật khẩu đã đặt hoặc null nếu huỷ. */
   function passwordSetStep(stepLabel) {
     return new Promise((resolve) => {
-      const box = stepBox(`${stepLabel}: tạo mật khẩu`, 'Tài khoản chưa có mật khẩu. Nhập mật khẩu (từ 8 ký tự, không chứa số điện thoại) và nhập lại.');
+      const box = stepBox(`${stepLabel}: tạo mật khẩu`, 'Mật khẩu bắt buộc (từ 8 ký tự). Dùng để đăng nhập khi đổi điện thoại — Face ID không mang sang máy mới.');
       box.body.innerHTML = `<label>Mật khẩu<input type="password" class="sp-1" autocomplete="new-password"></label>
         <label>Nhập lại mật khẩu<input type="password" class="sp-2" autocomplete="new-password"></label>
         <div class="row"><button class="primary sp-go">Lưu mật khẩu</button><button class="fit sp-x">Huỷ</button></div>`;
@@ -1124,9 +1211,8 @@
   }
 
   /**
-   * Sau khi xác nhận OTP (hoặc mở khoá lại): bước 2 sinh trắc, bước 3 mật khẩu. Trả payload đăng nhập hoặc null (huỷ).
-   *   bước 2: máy hỗ trợ sinh trắc: đã đăng ký thì đăng nhập, chưa thì bắt buộc đăng ký (public key lên server);
-   *   bước 3: server chưa có mật khẩu thì tạo mới; đã có mà chưa dùng sinh trắc thì nhập mật khẩu.
+   * Sau claim/invite/resume: sinh trắc (máy này) + mật khẩu bắt buộc.
+   * Kết thúc: hiện kho lưu username + mật khẩu + mã khôi phục (một lần).
    */
   async function loginStepper(data) {
     const bio = await bioInfo();
@@ -1143,15 +1229,14 @@
           if (!(await confirmStep(`Chưa xác nhận được ${bioName()}`, 'Thử lại, hoặc huỷ đăng nhập.', 'Thử lại'))) return null;
         }
       } else {
-        const r = await bioRegisterStep(Boolean(data.isNew));
+        // Không bắt buộc Face ID tuyệt đối (máy mới khác nhau): cho phép bỏ qua → mật khẩu.
+        const r = await bioRegisterStep(false);
         if (r === 'cancel') return null;
         usedBio = r === 'ok';
         optOut = r === 'optout';
       }
     }
-    // Tài khoản mới: ngay trước bước mật khẩu có bước email khôi phục (tuỳ chọn, bấm Tiếp tục để bỏ qua không cần nhập)
-    if (data.isNew) await emailOptionalStep();
-    const stepNo = bio.supported && !optOut ? 'Bước 3/3' : 'Bước 2/2';
+    const stepNo = (!methods.password && bio.supported) ? 'Bước 2/2' : 'Bước 1/1';
     let password = null;
     if (!methods.password) {
       password = await passwordSetStep(stepNo);
@@ -1159,55 +1244,27 @@
     } else if (!usedBio) {
       return passwordEnterStep(stepNo, bio.supported && !resume ? { bioCapable: true, bioOptOut: true } : {});
     }
+    let done;
     if (usedBio) {
-      const done = await api('POST', '/api/login/complete', {});
+      done = await api('POST', '/api/login/complete', {});
       if (!done.ok) throw new Error(errText(done.body.error));
-      return done.body;
+    } else {
+      done = await api('POST', '/api/login/complete-basic', { password, ...(bio.supported && !resume ? { bioCapable: true, bioOptOut: true } : {}) });
+      if (!done.ok) throw new Error(errText(done.body.error));
     }
-    // Vừa đặt mật khẩu mới (không dùng sinh trắc): hoàn tất bằng chính mật khẩu đó
-    const done = await api('POST', '/api/login/complete-basic', { password, ...(bio.supported && !resume ? { bioCapable: true, bioOptOut: true } : {}) });
-    if (!done.ok) throw new Error(errText(done.body.error));
-    return done.body;
+    const body = done.body;
+    const codes = body.recoveryCodes || pendingSession?._codes || [];
+    if (data.isNew || password || codes.length) {
+      await showCredentialsVault({
+        username: body.username || pendingSession?.username || data.username,
+        password: password || undefined,
+        codes,
+      });
+    }
+    return body;
   }
 
   /** Tuỳ chọn cho tài khoản mới: nhập email khôi phục (gửi mã xác minh). Bỏ qua được; lỗi gửi (vd. server chưa bật email) cũng không chặn đăng ký. */
-  function emailOptionalStep() {
-    return new Promise((resolve) => {
-      const box = stepBox('Email khôi phục (tuỳ chọn)', 'Thêm email để nhận mã khôi phục khi mất Telegram. Không bắt buộc, có thể bỏ qua và thêm sau trong Cài đặt.');
-      box.body.innerHTML = `<label>Email<input type="email" class="se-mail" autocomplete="email" placeholder="ban@example.com"></label>
-        <div class="se-codebox" hidden><p class="muted">Đã gửi mã tới email. Nhập mã rồi bấm Xác nhận mã, hoặc Bỏ qua.</p><label>Mã gửi tới email<input class="se-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label></div>
-        <div class="row"><button class="primary se-send">Tiếp tục</button><button class="fit se-skip">Bỏ qua</button></div>`;
-      const send = box.body.querySelector('.se-send');
-      let sent = false;
-      send.onclick = async () => {
-        box.err('');
-        if (!sent) {
-          const email = box.body.querySelector('.se-mail').value.trim();
-          if (!email) { box.m.close(); resolve(false); return; } // để trống: sang bước tiếp theo
-          send.disabled = true;
-          const r = await api('POST', '/api/account/email/request', { email });
-          send.disabled = false;
-          if (!r.ok) return box.err(errText(r.body.error));
-          if (r.body.saved) { // máy chủ chưa bật gửi email: đã ghi nhận, xác minh sau
-            box.body.innerHTML = '<p class="muted">Đã lưu email. Hệ thống sẽ xác minh khi hỗ trợ gửi email; bạn không cần làm gì thêm.</p><div class="row"><button class="primary se-ok">Tiếp tục</button></div>';
-            box.body.querySelector('.se-ok').onclick = () => { box.m.close(); resolve(true); };
-            return;
-          }
-          sent = true; box.body.querySelector('.se-codebox').hidden = false; send.textContent = 'Xác nhận mã';
-          box.body.querySelector('.se-code').focus();
-          return;
-        }
-        send.disabled = true;
-        const r = await api('POST', '/api/account/email/verify', { otp: box.body.querySelector('.se-code').value.trim() });
-        send.disabled = false;
-        if (!r.ok) return box.err(errText(r.body.error));
-        box.m.close(); resolve(true);
-      };
-      box.body.querySelector('.se-skip').onclick = () => { box.m.close(); resolve(false); };
-      setTimeout(() => box.body.querySelector('.se-mail')?.focus(), 50);
-    });
-  }
-
   /** Hộp xác nhận có/không. */
   function confirmStep(title, text, yes) {
     return new Promise((resolve) => {
@@ -1244,7 +1301,10 @@
 
   async function completeOtp(data) {
     if (!data.pending || !data.token) throw new Error(errText('login_step_up_required'));
-    pendingSession = { token: data.token, userId: data.userId, apiBase: location.origin, src: data.src, methods: data.methods };
+    pendingSession = {
+      token: data.token, userId: data.userId, username: data.username,
+      apiBase: location.origin, src: data.src, methods: data.methods, isNew: Boolean(data.isNew),
+    };
     if (data.methods?.passkey) LS.set('hasPasskey', true); // khôi phục cờ sau khi người dùng xoá dữ liệu trình duyệt
     LS.del('ctl');
     try {
@@ -1302,7 +1362,7 @@
   };
 
   window.Security = {
-    recoverySetup, passkeyProof, enrollPasskeyNow, enrollMandatory, completeNeedPassword, bioInfo, notice, api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator,
+    recoverySetup, passkeyProof, enrollPasskeyNow, enrollMandatory, completeNeedPassword, bioInfo, notice, api, unlock, errText, addErrors, modal, escHtml, LS, loginWithPasskey, offerEnroll, completeOtp, resumeLogin, passkeySupported, platformAvailable: platformAuthenticator, showCredentialsVault, showRecoveryCodes,
     reviewDevices, reviewRegisteredDevices, renderBanner, devId,
   };
 

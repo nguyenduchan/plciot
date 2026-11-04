@@ -7,17 +7,15 @@ import { openDb } from './db.js';
 import './securityAdapter.js';
 import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
 import { startBundleSync } from './bundleSync.js';
-import { formatVnLocal } from './phone.js';
-import { startTelegramBot } from './bot.js';
 import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
-import { telegramConfigured } from './telegram.js';
-import { sharedPgConfigured } from './sharedTg.js';
 import { queryTelemetry, queryEvents, historyStats } from './historyStore.js';
 import {
   configure, mountAuthentication, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit,
+  purgeExpiredAudit,
 } from '@plciot/security';
 import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
+import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
@@ -37,8 +35,6 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const SHELL_DIR = path.resolve(process.env.SHELL_DIR || path.join(DATA_DIR, '..', '..', '..', 'webapp'));
 const WEBAPP_SRC = path.resolve(process.env.WEBAPP_SRC || SHELL_DIR);
 const JWT_SECRET = process.env.APP_JWT_SECRET || '';
-const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || '';
-
 if (!JWT_SECRET || JWT_SECRET.length < 16) {
   console.error('APP_JWT_SECRET must be set (min 16 chars)');
   process.exit(1);
@@ -55,6 +51,8 @@ configure({
 const db = openDb(DATA_DIR);
 applyBootstrapAdmins(db);
 setInterval(() => { try { purgeIncompleteUsers(db); } catch (e) { console.error('purgeIncompleteUsers', e.message); } }, 3600_000).unref?.();
+setInterval(() => { try { purgeExpiredAudit(db); } catch (e) { console.error('purgeExpiredAudit', e.message); } }, 3600_000).unref?.();
+try { purgeExpiredAudit(db); } catch { /* ignore */ }
 const app = express();
 app.locals.db = db;
 
@@ -75,7 +73,6 @@ app.use(loginGateMiddleware);
 mountDebugTrace(app);
 
 function requireAdmin(req, res, next) {
-  // Chỉ SĐT trong ADMIN_DASHBOARD_PHONES / ADMIN_PHONES (docs/ADMIN-REMOTE.md)
   if (!isDashboardAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
   next();
 }
@@ -114,10 +111,7 @@ function appPayload(user) {
 const controlApi = mountAuthentication(app, {
   db, appPayload, registrationContext: { dataDir: DATA_DIR, webappSrc: WEBAPP_SRC }, adminOnly: [requireAdmin],
   extraStatus: () => ({ physicalConfirm: plcControlConfig().physicalBit !== null }),
-  authConfig: () => ({ telegram: telegramConfigured(), botUsername: BOT_USERNAME || null,
-    botLink: BOT_USERNAME ? `https://t.me/${BOT_USERNAME.replace(/^@/, '')}` : null,
-    sharedBot: sharedPgConfigured() || String(process.env.TELEGRAM_BOT_POLLING || 'false').toLowerCase() !== 'true' }),
-  presencePaths: { start: '/api/recovery/plc/start', check: '/api/recovery/plc/check' },
+  authConfig: () => ({ channel: 'device' }),
 });
 const { requireAuth, sensitiveStrict, reauth } = controlApi;
 const send = (res, result) => res.status(result.error ? result.status || 400 : 200).json(result);
@@ -131,6 +125,17 @@ app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, reauth, (req, r
   send(res, wipeOwnHistory(db, req.user, { reauthed: req.reauthed, ip: ipOf(req) }));
 });
 
+app.get('/api/account/data/export', requireAuth, sensitiveStrict, reauth, (req, res) => {
+  if (req.reauthed !== true) return send(res, { error: 'invalid_credentials', status: 401 });
+  const data = exportAccountData(db, req.user);
+  audit(db, 'account_exported', { userId: req.user.id, ip: ipOf(req) });
+  send(res, data);
+});
+
+app.post('/api/account/delete', requireAuth, sensitiveStrict, reauth, (req, res) => {
+  send(res, deleteOwnAccount(db, req.user, { reauthed: req.reauthed, ip: ipOf(req), dataDir: DATA_DIR }));
+});
+
 app.get('/api/me', requireAuth, (req, res) => {
   let u = req.user;
   if (!u.mqtt_user || !u.mqtt_pass) {
@@ -139,8 +144,6 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({
     userId: u.id,
     username: u.username,
-    phone: u.phone || u.username,
-    phoneLocal: formatVnLocal(u.phone || u.username),
     version: u.version,
     files: (() => { try { return listBundleFiles(resolveBundleRoot(DATA_DIR, u.folder_path)); } catch { return []; } })(),
     notifySite: u.notify_site,
@@ -174,7 +177,7 @@ app.patch('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) =
 });
 
 app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
-  send(res, deleteUser(db, req.user, Number(req.params.id), { ip: ipOf(req) }));
+  send(res, deleteUser(db, req.user, Number(req.params.id), { ip: ipOf(req), dataDir: DATA_DIR }));
 });
 
 /* ---------- Điều khiển: step-up (Passkey / TOTP), PC trạm, nút vật lý ---------- */
@@ -311,7 +314,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`plciot app listening on :${PORT}`);
   console.log(`DATA_DIR=${DATA_DIR}`);
   console.log(`SHELL_DIR=${SHELL_DIR}`);
-  startTelegramBot(db);
   startControlPublisher();
   startBundleSync(db, { dataDir: DATA_DIR, shellDir: SHELL_DIR });
   startMqttIngest(db);

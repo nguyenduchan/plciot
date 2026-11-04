@@ -24,6 +24,7 @@
 .phone-row .ph{flex:1}
 .flow-title{margin:0 0 12px;font-size:20px}
 .step[hidden],#pw-row[hidden],#switch-row[hidden],.login-actions button[hidden]{display:none!important}
-/* Máy đã xác nhận OTP (vd. sau đăng xuất): chỉ Face ID / mật khẩu, không nhập lại số điện thoại */
-.returning .phone-row,.returning #demo,.returning #btn-next,.returning #btn-otp,.returning #lnk-use-pw,.returning #btn-setup-passkey,.returning #tg-hint,.returning #try-passkey-row{display:none!important}
+/* Máy đã tin cậy (returning): ẩn QR claim / demo; giữ mật khẩu + Face ID */
+.returning #claim-row,.returning #btn-claim,.returning #btn-invite,.returning #demo,.returning #btn-next,.returning #btn-otp,.returning #lnk-use-pw,.returning #btn-setup-passkey,.returning #try-passkey-row{display:none!important}
+.returning #tg-hint{display:none!important}
 .row-btns{display:flex;gap:8px;margin:8px 0}.row-btns button{flex:1}

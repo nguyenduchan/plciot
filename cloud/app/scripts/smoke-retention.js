@@ -20,8 +20,8 @@ let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
 const DAY = 86400e3;
 const now = Date.now();
-const mk = (phone, site) => upsertUser(db, {
-  username: phone, passwordHash: hashPassword('pw12345'), folderPath: site, version: '1', phone, notifySite: site, notifyDevice: 'plc01',
+const mk = (username, site) => upsertUser(db, {
+  username, passwordHash: hashPassword('pw12345'), folderPath: site, version: '1', notifySite: site, notifyDevice: 'plc01',
 });
 const ev = (site, daysAgo) => insertEvent(db, { ts: now - daysAgo * DAY, site, device: 'plc01', kind: 'telemetry', payload: '{}', o: 1, i: 1, a: 0, c: 1, s: 0 });
 const count = (site) => db.prepare('SELECT COUNT(*) n FROM mqtt_events WHERE site = ?').get(site).n;

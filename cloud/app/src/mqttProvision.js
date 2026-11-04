@@ -3,11 +3,26 @@ import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { sealSecret, openSecret } from '@plciot/security';
 import { userScopes } from './roles.js';
 import {
   LEGACY_NS, PLATFORM_NS, DEFAULT_TENANT, dualNamespace, preferredNamespace,
   sanitizeId, topicBase, topicBases, mqttPublicEndpoints, contractInfo,
 } from './contract.js';
+
+/** Lưu mqtt_pass dạng AES-GCM (v1.…); plaintext cũ vẫn đọc được và được reseal khi ghi lại. */
+export function sealMqttPass(plain) {
+  if (!plain) return plain;
+  if (String(plain).startsWith('v1.')) return plain;
+  return sealSecret(String(plain));
+}
+
+export function openMqttPass(stored) {
+  if (!stored) return null;
+  const s = String(stored);
+  if (s.startsWith('v1.')) return openSecret(s);
+  return s;
+}
 
 // Hai file ACL cho hai nhóm listener của Mosquitto (per_listener_settings):
 //   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
@@ -227,16 +242,17 @@ export function provisionUserMqtt(db, user, { site, device, rotate = false, tena
   const deviceName = device || u.notify_device || 'plc01';
   const tenantId = tenant || u.tenant_id || DEFAULT_TENANT;
   const mqttUser = u.mqtt_user || mqttUsernameFor(u.id);
-  let mqttPass = u.mqtt_pass;
-  if (rotate || !mqttPass) mqttPass = randomMqttPassword();
+  let mqttPassPlain = openMqttPass(u.mqtt_pass);
+  if (rotate || !mqttPassPlain) mqttPassPlain = randomMqttPassword();
+  const mqttPassStored = sealMqttPass(mqttPassPlain);
 
   db.prepare(`
     UPDATE users
     SET mqtt_user = ?, mqtt_pass = ?, notify_site = ?, notify_device = ?, tenant_id = ?
     WHERE id = ?
-  `).run(mqttUser, mqttPass, siteName, deviceName, tenantId, u.id);
+  `).run(mqttUser, mqttPassStored, siteName, deviceName, tenantId, u.id);
 
-  const pw = setMosquittoPassword(mqttUser, mqttPass);
+  const pw = setMosquittoPassword(mqttUser, mqttPassPlain);
   rebuildAclFromUsers(db);
   const reload = reloadMosquitto();
 
@@ -251,13 +267,14 @@ function findFresh(db, id) {
 }
 
 export function mqttClientConfig(user) {
-  if (!user?.mqtt_user || !user?.mqtt_pass) return null;
+  const pass = openMqttPass(user?.mqtt_pass);
+  if (!user?.mqtt_user || !pass) return null;
   const tenant = user.tenant_id || DEFAULT_TENANT;
   const ns = preferredNamespace();
   const base = topicBase({ ns, tenant, site: user.notify_site, device: user.notify_device });
   return {
     user: user.mqtt_user,
-    pass: user.mqtt_pass,
+    pass,
     scopes: userScopes(user),
     canControl: user.role !== 'viewer',
     controlVia: controlViaServer() ? 'server' : 'mqtt',

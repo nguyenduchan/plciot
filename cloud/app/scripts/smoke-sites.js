@@ -32,10 +32,10 @@ let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
 
 const db = openDb(tmp);
-const mk = (phone, role = 'operator', site = null) => {
-  const s = site ?? `s${phone}`;
-  return Number(db.prepare(`INSERT INTO users (username, password_hash, folder_path, phone, role, notify_site, notify_device, mqtt_user, mqtt_pass)
-    VALUES (?, 'x', 'f', ?, ?, ?, 'plc01', ?, 'p')`).run(phone, phone, role, s, `u${phone}`).lastInsertRowid);
+const mk = (username, role = 'operator', site = null) => {
+  const s = site ?? `s${username}`;
+  return Number(db.prepare(`INSERT INTO users (username, password_hash, folder_path, role, notify_site, notify_device, mqtt_user, mqtt_pass)
+    VALUES (?, 'x', 'f', ?, ?, 'plc01', ?, 'p')`).run(username, role, s, `u${username}`).lastInsertRowid);
 };
 const published = [];
 setPublisher(async (site, device, cmd) => { published.push({ site, device, cmd }); });

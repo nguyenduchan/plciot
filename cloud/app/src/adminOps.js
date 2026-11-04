@@ -13,7 +13,11 @@ import {
 } from './tenants.js';
 import { historyStats, queryLastTelemetry, queryLastEvent } from './historyStore.js';
 import { contractInfo } from './contract.js';
-import { audit, clientIp } from '@plciot/security';
+import {
+  audit, clientIp,
+  listHardwareDevices, provisionHardwareDevice, getHardwareDeviceQr,
+  reissueHardwareDeviceQr, updateHardwareDeviceMeta, deleteHardwareDevice,
+} from '@plciot/security';
 import { retentionInfo } from './retention.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
@@ -411,7 +415,7 @@ export function mountAdminOps(app, {
       SELECT site, device, COUNT(*) AS n, MAX(ts) AS lastTs
       FROM mqtt_events GROUP BY site, device ORDER BY lastTs DESC LIMIT 30
     `).all();
-    const tables = ['users', 'tenants', 'devices', 'mqtt_events', 'webhooks', 'site_invites']
+    const tables = ['users', 'tenants', 'devices', 'mqtt_events', 'webhooks', 'site_invites', 'hardware_devices']
       .map((name) => {
         try {
           return { name, rows: db.prepare(`SELECT COUNT(*) n FROM ${name}`).get().n };
@@ -420,5 +424,69 @@ export function mountAdminOps(app, {
         }
       });
     res.json({ history: hist, byKind, topDevices, tables });
+  });
+
+  /* ---------- Thiết bị cứng (QR claim): chỉ device đã add mới được user quét ---------- */
+  const sendHw = (res, r) => (r?.error ? res.status(r.status || 400).json(r) : res.json(r));
+
+  app.get('/api/admin/hardware', ...gate, (_req, res) => {
+    const configured = Boolean(process.env.CLAIM_ROOT_PUBLIC_KEY && process.env.CLAIM_ROOT_PRIVATE_KEY);
+    res.json({ configured, devices: listHardwareDevices(db) });
+  });
+
+  app.post('/api/admin/hardware', ...writeGate, (req, res) => {
+    const r = provisionHardwareDevice(db, {
+      site: req.body?.site,
+      device: req.body?.device,
+      label: req.body?.label,
+      note: req.body?.note,
+    });
+    if (!r.error) {
+      audit(db, 'hardware_provision', {
+        userId: req.user.id, ip: clientIp(req), detail: `${r.site}/${r.device}`,
+      });
+    }
+    sendHw(res, r);
+  });
+
+  app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {
+    sendHw(res, getHardwareDeviceQr(db, { site: req.params.site, device: req.params.device }));
+  });
+
+  app.post('/api/admin/hardware/:site/:device/reissue', ...writeGate, (req, res) => {
+    const r = reissueHardwareDeviceQr(db, {
+      site: req.params.site,
+      device: req.params.device,
+      unclaim: Boolean(req.body?.unclaim),
+    });
+    if (!r.error) {
+      audit(db, 'hardware_reissue', {
+        userId: req.user.id, ip: clientIp(req), detail: `${r.site}/${r.device}`,
+      });
+    }
+    sendHw(res, r);
+  });
+
+  app.patch('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
+    sendHw(res, updateHardwareDeviceMeta(db, {
+      site: req.params.site,
+      device: req.params.device,
+      label: req.body?.label,
+      note: req.body?.note,
+    }));
+  });
+
+  app.delete('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
+    const r = deleteHardwareDevice(db, {
+      site: req.params.site,
+      device: req.params.device,
+      force: Boolean(req.query?.force === '1' || req.body?.force),
+    });
+    if (!r.error) {
+      audit(db, 'hardware_delete', {
+        userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}`,
+      });
+    }
+    sendHw(res, r);
   });
 }

@@ -2,9 +2,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { checkControlSession, revokeControlSessions } from './sessions.js';
-import { noteLogin, markOtpTrusted } from './loginAlerts.js';
+import { noteLogin, markDeviceTrusted } from './loginAlerts.js';
 import { getConfig } from './config.js';
 import { canonicalDeviceKey, verifyDeviceProof } from './deviceProof.js';
+import { identitySubject } from './deviceClaim.js';
+import { generateRecoveryCodes, recoveryCodesRemaining } from './recoveryCodes.js';
 
 const SALT_ROUNDS = 10;
 
@@ -29,14 +31,14 @@ export function loginScopeAllowed(payload, method, requestPath, deviceId) {
   if (method === 'GET') return requestPath === '/api/control/status';
   if (method !== 'POST') return false;
   return new Set([
-    '/api/login/complete', '/api/login/complete-basic', '/api/account/password', '/api/account/email/request', '/api/account/email/verify', '/api/control/unlock',
+    '/api/login/complete', '/api/login/complete-basic', '/api/account/password', '/api/control/unlock',
     '/api/webauthn/auth/options', '/api/webauthn/auth/verify',
     '/api/webauthn/register/options', '/api/webauthn/register/verify',
     '/api/control/totp/setup', '/api/control/totp/enable', '/api/devices/request',
-  ]).has(requestPath) || /^\/api\/devices\/requests\/[a-f0-9]+\/(poll|recovery|wait|email\/(start|confirm))$/.test(requestPath);
+  ]).has(requestPath) || /^\/api\/devices\/requests\/[a-f0-9]+\/(poll|recovery|wait)$/.test(requestPath);
 }
 
-export function createLoginChallenge(db, user, deviceId, secret, device = {}, src = 'otp') {
+export function createLoginChallenge(db, user, deviceId, secret, device = {}, src = 'claim') {
   if (!deviceId || deviceId.length > 128) return { error: 'device_required', status: 400 };
   const now = Date.now();
   db.prepare('DELETE FROM login_attempts WHERE expires_at < ? OR consumed = 1').run(now);
@@ -45,16 +47,17 @@ export function createLoginChallenge(db, user, deviceId, secret, device = {}, sr
   if (user.recovery_required) {
     const grant = db.prepare('SELECT * FROM recovery_enrollments WHERE user_id = ? AND device_id = ? AND used_at IS NULL AND expires_at > ?').get(user.id, deviceId, now);
     if (!grant || grant.public_key !== canonicalDeviceKey(device.publicKey)
-      || !verifyDeviceProof(db, { subject: getConfig().identity.normalize(user.phone || user.username), deviceId, action: 'otp-verify', publicKey: grant.public_key, proof: device.deviceProof })) {
+      || !verifyDeviceProof(db, { subject: identitySubject(user), deviceId, action: 'otp-verify', publicKey: grant.public_key, proof: device.deviceProof })) {
       return { error: 'recovery_device_required', status: 401 };
     }
     recoveryId = grant.change_id;
   }
   db.prepare('INSERT INTO login_attempts (id, user_id, device_id, expires_at) VALUES (?, ?, ?, ?)')
     .run(id, user.id, deviceId, now + 600_000);
+  const srcOk = ['resume', 'bio', 'claim', 'invite', 'password'].includes(src) ? src : 'claim';
   return {
     pending: true, userId: user.id, expiresAt: now + 600_000,
-    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, src: ['resume', 'bio'].includes(src) ? src : 'otp', nw: user.setup_complete === 0 ? 1 : 0, ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
+    token: signToken({ uid: user.id, tv: user.token_version | 0, scope: 'login_pending', did: deviceId, jti: id, src: srcOk, nw: user.setup_complete === 0 ? 1 : 0, ...(recoveryId ? { rid: recoveryId } : {}) }, secret, 600),
   };
 }
 
@@ -121,9 +124,16 @@ export function mountLoginSessions(app, { db, requireAuth, sensitiveStrict, logi
     if (fin.error) return res.status(fin.status || 500).json({ error: fin.error });
     const payload = loginPayload(fin.user, req);
     if (payload.error) return res.status(payload.status).json({ error: payload.error });
-    noteLogin(db, fin.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: `OTP + ${proof.method}` });
-    if (req.tokenPayload.src === 'otp') markOtpTrusted(db, req.user.id, req.headers['x-device-id']);
-    res.json({ ...payload, controlToken: req.headers['x-control-token'], method: proof.method, expiresAt: proof.expiresAt });
+    noteLogin(db, fin.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: proof.method });
+    markDeviceTrusted(db, req.user.id, req.headers['x-device-id']);
+    const extras = {};
+    if (req.tokenPayload.nw && recoveryCodesRemaining(db, fin.user.id) === 0) {
+      extras.recoveryCodes = generateRecoveryCodes(db, fin.user.id);
+    }
+    res.json({
+      ...payload, ...extras,
+      controlToken: req.headers['x-control-token'], method: proof.method, expiresAt: proof.expiresAt,
+    });
     } catch { res.status(500).json({ error: 'server_error' }); }
   });
   app.post('/api/login/lock', requireAuth, (req, res) => {

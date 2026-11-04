@@ -13,15 +13,14 @@
 
   const ERR = {
     not_site_owner: 'Chỉ chủ nhà máy mới làm được việc này.',
-    site_taken: 'Nhà máy này đã có người dùng. Hãy nhờ chủ nhà máy mời bạn bằng số điện thoại.',
+    site_taken: 'Nhà máy này đã có người dùng. Hãy nhờ chủ nhà máy tạo lời mời.',
     device_offline: 'Chưa thấy thiết bị này gửi dữ liệu. Kiểm tra gateway đã bật và tên nhà máy / thiết bị.',
     invalid_site_or_device: 'Tên nhà máy / thiết bị không hợp lệ (chữ, số, - và _).',
     already_yours: 'Đây đã là nhà máy của bạn.',
     owner_has_members: 'Bạn đang là chủ một nhà máy có thành viên khác. Hãy gỡ họ trước.',
     claim_expired: 'Hết thời gian chờ. Bắt đầu lại.',
-    same_phone: 'Không thể mời chính mình.',
-    already_member: 'Số này đã là thành viên.',
-    invalid_phone: 'Cần số di động Việt Nam hợp lệ.',
+    same_user: 'Không thể mời chính mình.',
+    already_member: 'Người này đã là thành viên.',
     invite_expired: 'Lời mời đã hết hạn.',
     cannot_remove_owner: 'Không gỡ được chủ nhà máy.',
     rate_limited: 'Thao tác quá nhiều, thử lại sau.',
@@ -102,17 +101,16 @@
     }
 
     if (d.isOwner) {
-      h += `<h4>Thành viên</h4>${d.members.map((m) => `<div class="row" style="align-items:center"><span style="flex:1">${esc(m.phone)} · ${m.owner ? 'chủ' : (m.role === 'viewer' ? 'chỉ xem' : 'điều khiển')}${m.me ? ' (bạn)' : ''}</span>${m.owner ? '' : `<button class="fit" data-rm="${m.id}">Gỡ</button>`}</div>`).join('')}`;
-      h += d.invitesOut.map((i) => `<div class="row" style="align-items:center"><span style="flex:1" class="muted">Đã mời ${esc(i.phone)} (${i.role === 'viewer' ? 'chỉ xem' : 'điều khiển'}), hết hạn ${fmt(i.expiresAt)}</span><button class="fit" data-ci="${i.id}">Huỷ</button></div>`).join('');
-      h += `<div class="row" style="margin-top:8px"><input id="inv-phone" inputmode="tel" placeholder="SĐT người được mời" style="flex:1"><select id="inv-role" style="max-width:130px"><option value="operator">Điều khiển</option><option value="viewer">Chỉ xem</option></select></div>
-        <div class="row"><button id="inv-go" class="primary">Mời thành viên</button></div>`;
+      h += `<h4>Thành viên</h4>${d.members.map((m) => `<div class="row" style="align-items:center"><span style="flex:1">${esc(m.username)} · ${m.owner ? 'chủ' : (m.role === 'viewer' ? 'chỉ xem' : 'điều khiển')}${m.me ? ' (bạn)' : ''}</span>${m.owner ? '' : `<button class="fit" data-rm="${m.id}">Gỡ</button>`}</div>`).join('')}`;
+      h += d.invitesOut.map((i) => `<div class="row" style="align-items:center"><span style="flex:1" class="muted">Mã mời <code>${esc(i.code || i.id)}</code> (${i.role === 'viewer' ? 'chỉ xem' : 'điều khiển'}), hết hạn ${fmt(i.expiresAt)}</span><button class="fit" data-ci="${i.id}">Huỷ</button></div>`).join('');
+      h += `<div class="row" style="margin-top:8px"><select id="inv-role" style="max-width:130px"><option value="operator">Điều khiển</option><option value="viewer">Chỉ xem</option></select>
+        <button id="inv-go" class="primary">Tạo mã mời</button></div>
+        <p class="muted">Gửi mã hoặc link <code>login.html?invite=…</code> cho thành viên (không dùng SĐT).</p>`;
       h += `<h4>PC nhà máy</h4>${d.stations.length ? d.stations.map((s) => `<div class="row" style="align-items:center"><span style="flex:1">🖥 ${esc(s.name)}<br><span class="muted">${s.lastSeenAt ? `thấy lần cuối ${fmt(s.lastSeenAt)}${s.ip ? ` · ${esc(s.ip)}` : ''}` : 'chưa kết nối'}</span></span><button class="fit danger" data-pc="${s.id}">Thu hồi</button></div>`).join('') : '<p class="muted">Chưa có PC nào được ghép.</p>'}
         <div class="row"><button id="pc-add" class="primary">Thêm PC (lấy mã ghép)</button></div>
         <p class="muted">Đổi PC: thêm PC mới rồi thu hồi PC cũ. PC bị thu hồi mất quyền ngay.</p>`;
     } else {
-      h += `<h4>Nhận thiết bị mới</h4><p class="muted">Nếu nhà máy của bạn chưa có ai dùng: nhập tên nhà máy / thiết bị in trên gateway rồi xác nhận bằng cách tác động vào ngõ vào PLC. Nếu đã có người dùng, hãy nhờ chủ nhà máy mời bạn.</p>
-        <div class="row"><input id="claim-site" placeholder="Tên nhà máy (site)" style="flex:1"><input id="claim-dev" placeholder="Thiết bị" value="plc01" style="max-width:110px"></div>
-        <div class="row"><button id="claim-go" class="primary">Nhận thiết bị</button></div><p id="site-claim-status" class="pend" hidden></p>`;
+      h += `<h4>Thêm thiết bị</h4><p class="muted">Quét mã QR trên tem thiết bị tại trang đăng nhập, hoặc nhờ chủ nhà máy tạo <b>mã mời</b>.</p>`;
     }
     body.innerHTML = h;
 
@@ -123,9 +121,10 @@
     body.querySelectorAll('[data-pc]').forEach((b) => { b.onclick = async () => { if (!confirm('Thu hồi PC này? Nó sẽ mất quyền ngay.')) return; const x = await call('DELETE', `/api/site/stations/${b.dataset.pc}`); msg(x.ok ? 'Đã thu hồi PC.' : err(x.data), !x.ok); load(); }; });
     const inv = $('#inv-go');
     if (inv) inv.onclick = async () => {
-      const x = await call('POST', '/api/site/invites', { phone: $('#inv-phone').value.trim(), role: $('#inv-role').value });
-      msg(x.ok ? 'Đã gửi lời mời (hiệu lực 7 ngày). Người được mời đăng nhập và bấm Chấp nhận.' : err(x.data), !x.ok);
-      if (x.ok) load();
+      const x = await call('POST', '/api/site/invites', { role: $('#inv-role').value });
+      if (!x.ok) return msg(err(x.data), true);
+      msg(`Mã mời: ${x.data.code} (7 ngày). Link: ${x.data.url || x.data.code}`);
+      load();
     };
     const pc = $('#pc-add');
     if (pc) pc.onclick = async () => {
@@ -133,8 +132,6 @@
       if (!x.ok) return msg(err(x.data), true);
       pairModal(x.data.code, x.data.expiresIn);
     };
-    const cg = $('#claim-go');
-    if (cg) cg.onclick = () => claimFlow($('#claim-site').value.trim(), $('#claim-dev').value.trim() || 'plc01');
   }
 
   load();

@@ -6,7 +6,7 @@
 > Gói chứa Passkey/TOTP, phiên điều khiển, thêm thiết bị, ghép PC, CSP/giới hạn tần suất và client trình duyệt; **không biết** app điều khiển PLC hay nhắn Telegram.
 > Core nay sở hữu cả OTP login/register, JWT/session, đổi số/khôi phục và controller xác thực. App PLC giữ `securityAdapter.js` (gửi tin, bundle, MQTT), `plcCommands.js`, `plcControlRoutes.js`, `sites.js`/`siteRoutes.js` và dashboard. Các module xác thực cũ trong app chỉ chuyển tiếp API. Hướng dẫn webapp mới: README của gói.
 
-**Không có mật khẩu.** Đăng nhập chính là **Passkey** (vân tay / Face ID / mã khoá thiết bị, không gõ SĐT): `POST /api/login/passkey/{options,verify}`. **OTP Telegram không còn đủ để vào ứng dụng**: OTP chỉ cấp token `login_pending` trong 10 phút, không có bundle hay thông tin MQTT. Tài khoản đã bật bảo vệ phải xác thực passkey/TOTP; tài khoản chưa có yếu tố phải thiết lập trước khi hoàn tất. Huỷ thiết lập không cấp phiên đầy đủ. Passkey có thể đồng bộ qua iCloud Keychain / Google Password Manager; đây không phải bằng chứng phần cứng gắn với một điện thoại duy nhất, cũng không phải eKYC.
+**Danh tính theo thiết bị (QR).** Không dùng SĐT / Telegram / email / OTP. Claim tem QR → user ẩn danh → passkey và/hoặc mật khẩu đăng nhập. Chi tiết: [DEVICE-IDENTITY.md](DEVICE-IDENTITY.md). Passkey có thể đồng bộ qua iCloud Keychain / Google Password Manager; đây không phải eKYC.
 
 ## Luồng đăng nhập và khoá ứng dụng
 

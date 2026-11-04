@@ -1,9 +1,7 @@
 import mqtt from 'mqtt';
-import { findNotifyUsers } from './db.js';
 import { insertEvent } from './historyStore.js';
 import { purgeByPlan, defaultDays } from './retention.js';
 import { noteTelemetry } from './plcProof.js';
-import { countDoneMessage, sendTelegramMessage, telegramConfigured } from './telegram.js';
 import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
 import { emitWebhook } from './webhooks.js';
 import { evaluateIngest, recordDeny, takeRejectStats } from './policy.js';
@@ -144,43 +142,11 @@ function onCountDone(db, { tenantId, site, device, cstate, r, appUrl, prevC }) {
       data: { count, target },
     });
   }
-  if (!telegramConfigured()) return;
-  const text = countDoneMessage({ site, device, count, target, appUrl });
-  const users = findNotifyUsers(db, site, device);
-  const chatIds = new Set(users.map((u) => u.chat_id).filter(Boolean));
-  for (const id of (process.env.TELEGRAM_NOTIFY_CHAT_IDS || '').split(',').map((x) => x.trim()).filter(Boolean)) {
-    chatIds.add(Number(id) || id);
-  }
-  for (const chatId of chatIds) {
-    sendTelegramMessage(chatId, text).catch((e) => console.error('Telegram send', e.message));
-  }
+  // Telegram/email đã tắt (danh tính theo thiết bị). Cảnh báo chỉ còn trong app.
+  return;
 }
 
-/** Nội dung cảnh báo gửi Telegram: [bit, tên, gợi ý xử lý]. Khớp ALARMS trong webapp/app.js. */
-const ALARM_TEXT = [
-  [1, 'Dừng khẩn cấp (E-stop)', 'Nhả nút dừng khẩn cấp trên máy rồi chạy lại.'],
-  [2, 'Lỗi cảm biến mức', 'Kiểm tra cảm biến mức và dây nối của nó.'],
-];
-const lastAlarmPush = new Map();
-/** Cảnh báo mới xuất hiện (hoặc đã hết) thì báo ngay qua Telegram cho người dùng của thiết bị; cùng thiết bị tối đa 1 tin cảnh báo mới mỗi 60 giây. */
-function pushAlarm(db, { site, device, mask, was, appUrl }) {
-  if (!telegramConfigured()) return;
-  const added = ALARM_TEXT.filter(([m]) => (mask & m) && !(was & m));
-  const cleared = mask === 0 && was !== 0;
-  if (!added.length && !cleared) return;
-  const key = `${site}/${device}`;
-  if (added.length) {
-    if (Date.now() - (lastAlarmPush.get(key) || 0) < 60_000) return;
-    lastAlarmPush.set(key, Date.now());
-  }
-  const link = String(appUrl || '').replace(/\/$/, '') + '/';
-  const where = `Nhà máy <code>${site}</code> / thiết bị <code>${device}</code>`;
-  const text = added.length
-    ? `<b>⚠️ Cảnh báo: ${added.map((a) => a[1]).join(', ')}</b>\n\n${where}\n${added.map((a) => `• ${a[2]}`).join('\n')}\n\n👉 <a href="${link}">Mở Giám sát PLC</a>`
-    : `<b>✅ Hết cảnh báo</b>\n\n${where}`;
-  const chatIds = new Set(findNotifyUsers(db, site, device).map((u) => u.chat_id).filter(Boolean));
-  for (const chatId of chatIds) sendTelegramMessage(chatId, text).catch((e) => console.error('Telegram alarm', e.message));
-}
+function pushAlarm() { /* push ngoài đã tắt */ }
 
 function maybeWebhookAlarm(db, tenantId, site, device, alarmMask, prevAlarm, appUrl) {
   const key = `${site}/${device}`;
