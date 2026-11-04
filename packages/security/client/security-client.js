@@ -99,6 +99,7 @@
   };
 
   async function api(method, path, body, extra) {
+    try { await window.SecurityDevice?.ready?.(); } catch { /* proof() báo lỗi rõ hơn ở nhánh cần chứng minh */ }
     const s = session();
     const tok = LS.get('ctl', null);
     const en = LS.get('enroll', null);
@@ -205,11 +206,11 @@
     });
   }
 
-  async function passkeyRegister(name) {
+  async function passkeyRegister(name, stepLabel) {
     dbg('register.start', 'Bắt đầu đăng ký Passkey/Face ID', { name });
     // Thiết bị không có sinh trắc: không gọi WebAuthn (Windows/Chrome sẽ mở cửa sổ "không hỗ trợ" rồi quay về vô nghĩa).
     if (!passkeySupported() || !(await platformAuthenticator())) return { ok: false, error: 'platform_unavailable' };
-    const sheet = bioSheet({ title: `Bật đăng nhập bằng ${bioName()}`, hint: `Chạm Tiếp tục, rồi xác nhận ${bioName()} khi máy hỏi.` });
+    const sheet = bioSheet({ title: `${stepLabel ? `${stepLabel}: ` : ''}Bật đăng nhập bằng ${bioName()}`, hint: `Chạm Tiếp tục, rồi xác nhận ${bioName()} khi máy hỏi.` });
     const o = await api('POST', '/api/webauthn/register/options', {});
     if (!o.ok) {
       dbg('register.options_fail', o.body?.error || 'options failed', o.body, 'error');
@@ -429,7 +430,7 @@
    * Bắt buộc lưu thông tin đăng nhập (không còn SĐT/email).
    * Hiện username + mật khẩu (nếu vừa tạo) + mã khôi phục; chỉ đóng khi xác nhận đã lưu.
    */
-  function showCredentialsVault({ username, password, codes } = {}) {
+  function showCredentialsVault({ username, password, codes, registered } = {}) {
     const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
     if (!username && !password && !list.length) return Promise.resolve(false);
     return new Promise((resolve) => {
@@ -444,8 +445,9 @@
         'Face ID / vân tay chỉ dùng trên từng máy đã tin cậy.',
       ].filter((line, i, arr) => line !== '' || (arr[i - 1] && arr[i - 1] !== '')).join('\n');
       const m = modal(`
-        <h3>Lưu thông tin đăng nhập</h3>
-        <p class="muted">Không còn SĐT/email khôi phục. Hãy lưu các mục dưới đây (trình quản lý mật khẩu / in / ảnh). Mật khẩu và mã khôi phục <b>chỉ hiện một lần</b> ở đây.</p>
+        <h3>${registered ? '✓ Đăng ký thành công — hãy lưu lại ngay' : 'Lưu thông tin đăng nhập'}</h3>
+        ${registered ? '<p><b>Bạn cần đúng 3 thứ dưới đây để đăng nhập lại hoặc khôi phục tài khoản khi đổi điện thoại, mất máy hay quên mật khẩu.</b></p>' : ''}
+        <p class="muted">Không có SĐT/email để khôi phục. Hãy lưu các mục dưới đây (trình quản lý mật khẩu / in / ảnh). Mật khẩu và mã khôi phục <b>chỉ hiện một lần</b> ở đây — đóng cửa sổ này là không xem lại được.</p>
         ${username ? `<p><b>Tên tài khoản</b></p><pre class="codes">${escHtml(username)}</pre>` : ''}
         ${password ? `<p><b>Mật khẩu</b></p><pre class="codes">${escHtml(password)}</pre>` : ''}
         ${list.length ? `<p><b>Mã khôi phục</b> (mỗi mã dùng một lần; mất máy → chờ 24 giờ)</p><pre class="codes">${escHtml(codeText)}</pre>` : ''}
@@ -1026,47 +1028,164 @@
 
   /** Bật vân tay / Face ID ngay trên máy này (dùng sau khi vừa đăng nhập): hộp sinh trắc của chính thiết bị, không phải mã QR. */
   /** Đường dẫn mở thẳng Cài đặt (chỉ Android / Windows cho phép trang web làm việc này; iPhone thì không). */
+  /** Đường dẫn mở thẳng Cài đặt của máy. Chỉ có trên Android / Windows / macOS: iPhone chặn mọi liên kết tới app Cài đặt từ trang web (lỗi «địa chỉ không hợp lệ»), nên không đưa nút ở đó. */
   function settingsLink() {
     const ua = navigator.userAgent;
     if (/Android/.test(ua)) return { href: 'intent:#Intent;action=android.settings.SECURITY_SETTINGS;end', text: 'Mở Cài đặt bảo mật' };
     if (/Windows/.test(ua)) return { href: 'ms-settings:signinoptions', text: 'Mở Cài đặt Windows Hello' };
+    if (/Macintosh/.test(ua)) return { href: 'x-apple.systempreferences:com.apple.preferences.password', text: 'Mở Cài đặt Touch ID' };
     return null;
   }
 
-  /** Hướng dẫn từng bước bật Face ID / vân tay trong Cài đặt của máy. Trả khi người dùng bấm "Đã bật, thử lại" (true) hoặc "Đóng" (false). */
+  /**
+   * Hình minh hoạ màn hình Cài đặt iPhone (vẽ bằng SVG, KHÔNG phải ảnh chụp thật): khoanh đỏ chỗ cần chạm / bật / tắt.
+   * rows: { h } tiêu đề nhóm | { t, k: 'nav'|'toggle'|'check', on, hi: nhãn đỏ } — hi có giá trị thì được khoanh.
+   */
+  function mockScreen({ title, back = 'Cài đặt', rows }) {
+    const W = 260; const RH = 30; const HH = 20; const TOP = 34;
+    const x = (v) => escHtml(String(v));
+    let y = TOP; let body = ''; let marks = '';
+    for (const r of rows) {
+      if (r.h) {
+        body += `<text x="14" y="${y + 14}" font-size="8.5" fill="#6d6d72">${x(r.h)}</text>`;
+        y += HH;
+        continue;
+      }
+      body += `<rect x="6" y="${y}" width="${W - 12}" height="${RH}" fill="#fff"/><line x1="16" y1="${y + RH}" x2="${W - 6}" y2="${y + RH}" stroke="#e5e5ea" stroke-width=".7"/>`;
+      body += `<text x="16" y="${y + 19}" font-size="11" fill="#111">${x(r.t)}</text>`;
+      const cx = W - 36;
+      if (r.k === 'toggle') {
+        body += `<rect x="${cx}" y="${y + 6}" width="30" height="18" rx="9" fill="${r.on ? '#34c759' : '#e5e5ea'}"/><circle cx="${r.on ? cx + 21 : cx + 9}" cy="${y + 15}" r="7.2" fill="#fff"/>`;
+      } else if (r.k === 'check') {
+        body += `<text x="${W - 26}" y="${y + 20}" font-size="15" fill="#007aff">✓</text>`;
+      } else {
+        body += `<text x="${W - 22}" y="${y + 20}" font-size="15" fill="#c4c4c7">›</text>`;
+      }
+      if (r.hi) {
+        marks += `<rect x="3" y="${y - 1}" width="${W - 6}" height="${RH + 2}" rx="7" fill="none" stroke="#e11d48" stroke-width="2.4"/>`
+          + `<rect x="${W - 62}" y="${y - 9}" width="54" height="14" rx="7" fill="#e11d48"/><text x="${W - 35}" y="${y + 1}" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle">${x(r.hi)}</text>`;
+      }
+      y += RH;
+    }
+    const H = y + 10;
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Hình minh hoạ: ${x(title)}" style="max-width:300px;display:block;border-radius:10px;border:1px solid #d1d1d6;background:#f2f2f7;font-family:-apple-system,system-ui,sans-serif">`
+      + `<text x="12" y="21" font-size="10.5" fill="#007aff">‹ ${x(back)}</text><text x="${W / 2 + 10}" y="21" font-size="11" font-weight="700" fill="#111" text-anchor="middle">${x(title)}</text>`
+      + body + marks + '</svg>';
+  }
+
+  /** Danh sách kiểm tra nhanh (vài dòng) hiện ngay trong hộp lỗi; hướng dẫn chi tiết chỉ mở khi người dùng bấm xem. */
+  function quickChecklist() {
+    const ua = navigator.userAgent;
+    const bio = bioName();
+    if (/iPhone|iPad/.test(ua)) return [`Đã thiết lập ${bio} và mã khoá màn hình`, 'Đã đăng nhập iCloud (Mật khẩu và Chuỗi khoá đang bật)', 'Đang dùng Safari hoặc Chrome (không dùng trình duyệt trong Zalo / Telegram)'];
+    if (/Android/.test(ua)) return ['Đã đặt khoá màn hình và thêm vân tay / khuôn mặt', 'Đang dùng Chrome'];
+    if (/Windows/.test(ua)) return ['Đã thiết lập Windows Hello (khuôn mặt, vân tay hoặc PIN)'];
+    if (/Macintosh/.test(ua)) return ['Đã thêm vân tay Touch ID'];
+    return ['Máy đã bật khoá màn hình và vân tay / khuôn mặt'];
+  }
+
+  /** Hướng dẫn ngắn bật Face ID / vân tay + nút mở thẳng Cài đặt. Trả true khi bấm "Đã bật, thử lại", false khi "Đóng". */
   function bioGuide() {
     const ua = navigator.userAgent;
     const bio = bioName();
+    // Mỗi bước: tiêu đề + danh sách thao tác cụ thể (chạm vào đâu, bật / chọn gì). Chữ in đậm là tên nút / mục trên máy.
+    const back = { t: 'Quay lại trang này', a: ['Bấm <b>Đã bật, thử lại</b>.'] };
     let steps;
     if (/iPhone|iPad/.test(ua)) {
       steps = [
-        `Mở <b>Cài đặt</b>, chọn <b>${bio === 'Touch ID' ? 'Touch ID & Mật mã' : 'Face ID & Mật mã'}</b>, nhập mật mã. Bảo đảm đã thiết lập ${bio} và bật <b>Mật khẩu tự động điền</b>.`,
-        'Mở <b>Cài đặt, [tên bạn], iCloud, Mật khẩu và Chuỗi khoá</b>, bật <b>Đồng bộ máy này</b>.',
-        'Mở <b>Cài đặt, Mật khẩu, Tuỳ chọn mật khẩu</b> (Password Options). Bật <b>Tự động điền mật khẩu và passkey</b>, chỉ chọn <b>Mật khẩu</b>; <b>tắt Authenticator</b> và các app khác nếu có.',
-        'Dùng <b>Safari</b> hoặc <b>Chrome</b> (không dùng trình duyệt trong Telegram / Zalo), đóng hẳn rồi mở lại trang này.',
+        { t: `Thiết lập ${bio}`,
+          img: mockScreen({ title: bio === 'Touch ID' ? 'Touch ID & Mật mã' : 'Face ID & Mật mã', rows: [
+            { t: `Thiết lập ${bio}`, k: 'nav', hi: 'CHẠM' },
+            { h: `DÙNG ${bio.toUpperCase()} CHO` },
+            { t: 'Mở khoá iPhone', k: 'toggle', on: true },
+            { t: 'Tự động điền mật khẩu', k: 'toggle', on: true, hi: 'BẬT' },
+          ] }),
+          a: [
+          `Mở <b>Cài đặt</b> › chạm <b>${bio === 'Touch ID' ? 'Touch ID & Mật mã' : 'Face ID & Mật mã'}</b>, nhập mật mã máy.`,
+          `Nếu chưa có: chạm <b>Thiết lập ${bio}</b> và làm theo hướng dẫn trên màn hình.`,
+          'Ở mục <b>Dùng Face ID cho</b>: bật <b>Tự động điền mật khẩu</b>.'.replace('Face ID', bio),
+        ] },
+        { t: 'Bật đồng bộ iCloud cho passkey',
+          img: mockScreen({ title: 'Mật khẩu và Chuỗi khoá', back: 'iCloud', rows: [
+            { t: 'Đồng bộ máy này', k: 'toggle', on: true, hi: 'BẬT' },
+            { t: 'Chuỗi khoá iCloud', k: 'nav' },
+          ] }),
+          a: [
+          'Mở <b>Cài đặt</b> › chạm <b>tên của bạn</b> (đầu trang) › <b>iCloud</b>.',
+          'Chạm <b>Mật khẩu và Chuỗi khoá</b> (hoặc <b>Mật khẩu</b>).',
+          'Bật <b>Đồng bộ máy này</b>.',
+        ] },
+        { t: 'Cho phép tự điền passkey',
+          img: mockScreen({ title: 'Tuỳ chọn mật khẩu', back: 'Mật khẩu', rows: [
+            { t: 'Tự động điền mật khẩu và passkey', k: 'toggle', on: true, hi: 'BẬT' },
+            { h: 'TỰ ĐỘNG ĐIỀN TỪ' },
+            { t: 'Mật khẩu', k: 'check', hi: 'CHỌN' },
+            { t: 'Authenticator', k: 'toggle', on: false, hi: 'TẮT' },
+          ] }),
+          a: [
+          'Mở <b>Cài đặt</b> › <b>Mật khẩu</b> › <b>Tuỳ chọn mật khẩu</b>.',
+          'Bật <b>Tự động điền mật khẩu và passkey</b>.',
+          'Ở mục <b>Tự động điền từ</b>: bật <b>Mật khẩu</b> (iCloud); <b>tắt</b> Authenticator và các app khác.',
+        ] },
+        { t: 'Mở lại trang bằng đúng trình duyệt', a: [
+          'Dùng <b>Safari</b> hoặc <b>Chrome</b>; không dùng trình duyệt trong Zalo / Telegram.',
+          'Đóng hẳn trang rồi mở lại.',
+        ] },
+        back,
       ];
     } else if (/Android/.test(ua)) {
       steps = [
-        'Mở <b>Cài đặt, Bảo mật (hoặc Sinh trắc học)</b>, thiết lập <b>khoá màn hình</b> và đăng ký <b>vân tay / khuôn mặt</b> nếu chưa có.',
-        'Mở <b>Cài đặt, Mật khẩu, passkey và tài khoản</b>, đặt <b>Dịch vụ ưu tiên</b> là <b>Trình quản lý mật khẩu của Google</b>; tắt Authenticator và các dịch vụ khác.',
-        'Dùng <b>Chrome</b>, đóng hẳn rồi mở lại trang này.',
+        { t: 'Đặt khoá màn hình và sinh trắc', a: [
+          'Mở <b>Cài đặt</b> › <b>Bảo mật</b> (hoặc <b>Sinh trắc học</b>).',
+          'Chạm <b>Khoá màn hình</b>, đặt mã PIN / hình / mật khẩu nếu chưa có.',
+          'Chạm <b>Vân tay</b> hoặc <b>Mở khoá bằng khuôn mặt</b> › thêm vân tay / khuôn mặt của bạn.',
+        ] },
+        { t: 'Chọn trình quản lý passkey', a: [
+          'Mở <b>Cài đặt</b> › <b>Mật khẩu, passkey và tài khoản</b>.',
+          'Ở <b>Dịch vụ ưu tiên</b>: chọn <b>Trình quản lý mật khẩu của Google</b>; tắt Authenticator và các dịch vụ khác.',
+        ] },
+        { t: 'Mở lại trang bằng Chrome', a: ['Đóng hẳn trang rồi mở lại bằng <b>Chrome</b>.'] },
+        back,
       ];
     } else if (/Windows/.test(ua)) {
       steps = [
-        'Mở <b>Cài đặt, Tài khoản, Tuỳ chọn đăng nhập</b>.',
-        'Thiết lập <b>Windows Hello</b> (khuôn mặt, vân tay hoặc mã PIN) rồi quay lại trang này.',
+        { t: 'Thiết lập Windows Hello', a: [
+          'Mở <b>Cài đặt</b> › <b>Tài khoản</b> › <b>Tuỳ chọn đăng nhập</b>.',
+          'Chọn <b>Nhận dạng khuôn mặt</b>, <b>Nhận dạng vân tay</b> hoặc <b>PIN</b> › chạm <b>Thiết lập</b>.',
+          'Làm theo hướng dẫn (tạo PIN nếu được yêu cầu).',
+        ] },
+        back,
+      ];
+    } else if (/Macintosh/.test(ua)) {
+      steps = [
+        { t: 'Thêm vân tay Touch ID', a: [
+          'Mở <b>Cài đặt hệ thống</b> › <b>Touch ID & Mật khẩu</b>.',
+          'Chạm <b>Thêm vân tay</b> và làm theo hướng dẫn.',
+        ] },
+        back,
       ];
     } else {
-      steps = ['Bật khoá màn hình và vân tay / khuôn mặt trong Cài đặt bảo mật của thiết bị, rồi quay lại thử lại.'];
+      steps = [
+        { t: 'Bật khoá màn hình và sinh trắc', a: ['Trong Cài đặt bảo mật của máy: đặt khoá màn hình và thêm vân tay / khuôn mặt.'] },
+        back,
+      ];
     }
     const link = settingsLink();
+    const badge = 'flex:0 0 26px;height:26px;border-radius:50%;background:var(--acc,#2563eb);color:var(--bg,#fff);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px';
     return new Promise((resolve) => {
-      const m = modal(`<div class="ctl-body"><h3>Cách bật ${escHtml(bio)}</h3>
-        <ol class="muted" style="padding-left:20px;line-height:1.5">${steps.map((t) => `<li style="margin-bottom:8px">${t}</li>`).join('')}</ol>
-        ${link ? '' : '<p class="muted">Trang web không mở được Cài đặt của iPhone; hãy làm theo các bước trên rồi quay lại đây.</p>'}
+      const m = modal(`<div class="ctl-body"><h3>Bật ${escHtml(bio)} — ${steps.length} bước</h3>
+        <p class="muted" style="margin:0;font-size:13px">Chạm từng bước để xem chi tiết.</p>
+        <ol style="list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:10px">${steps.map((st, i) => `
+          <li><details ${i === 0 ? 'open' : ''} style="border:1px solid var(--line,#444);border-radius:10px;padding:8px 10px">
+            <summary style="display:flex;gap:10px;align-items:center;cursor:pointer;list-style:none"><span style="${badge}">${i + 1}</span><span style="font-weight:600">${escHtml(st.t)}</span></summary>
+            <div style="margin-top:8px;padding-left:36px">
+              ${st.img ? `<div style="margin:0 0 6px">${st.img}<div class="muted" style="font-size:11px;margin-top:2px">Hình minh hoạ — vòng đỏ là chỗ cần chạm / bật / tắt (giao diện máy bạn có thể khác chút).</div></div>` : ''}
+              <ul class="muted" style="margin:0;padding-left:18px;font-size:13px;line-height:1.45">${st.a.map((x) => `<li style="margin-bottom:3px">${x}</li>`).join('')}</ul></div></details></li>`).join('')}
+        </ol>
+        ${link ? '' : '<p class="muted" style="margin:6px 0;font-size:13px">iPhone không cho trang web mở Cài đặt: hãy vuốt về Màn hình chính và mở app <b>Cài đặt</b>.</p>'}
         <div class="row" style="flex-direction:column">
-          ${link ? `<button class="fit" data-a="open">${escHtml(link.text)}</button>` : ''}
-          <button class="primary" data-a="retry">Đã bật, thử lại</button><button class="fit" data-a="x">Đóng</button></div></div>`);
+          ${link ? `<button class="primary" data-a="open">${escHtml(link.text)}</button>` : ''}
+          <button class="${link ? 'fit' : 'primary'}" data-a="retry">Đã bật, thử lại</button><button class="fit" data-a="x">Đóng</button></div></div>`);
       m.q('[data-a="open"]')?.addEventListener('click', () => { location.href = link.href; });
       m.q('[data-a="retry"]').onclick = () => { m.close(); resolve(true); };
       m.q('[data-a="x"]').onclick = () => { m.close(); resolve(false); };
@@ -1136,7 +1255,7 @@
   /** Bước 3: tạo mật khẩu (nhập + nhập lại), gửi lên server. Trả mật khẩu đã đặt hoặc null nếu huỷ. */
   function passwordSetStep(stepLabel) {
     return new Promise((resolve) => {
-      const box = stepBox(`${stepLabel}: tạo mật khẩu`, 'Mật khẩu bắt buộc (từ 8 ký tự). Dùng để đăng nhập khi đổi điện thoại — Face ID không mang sang máy mới.');
+      const box = stepBox(`${stepLabel}: tạo mật khẩu`, 'Mật khẩu bắt buộc (từ 8 ký tự, không chứa tên đăng nhập). Dùng để đăng nhập khi đổi điện thoại — Face ID không mang sang máy mới.');
       box.body.innerHTML = `<label>Mật khẩu<input type="password" class="sp-1" autocomplete="new-password"></label>
         <label>Nhập lại mật khẩu<input type="password" class="sp-2" autocomplete="new-password"></label>
         <div class="row"><button class="primary sp-go">Lưu mật khẩu</button><button class="fit sp-x">Huỷ</button></div>`;
@@ -1182,10 +1301,11 @@
   }
 
   /** Bước 2 (đăng ký): bắt buộc bật sinh trắc. Lối thoát duy nhất khi thất bại: dùng mật khẩu thay thế. Trả 'ok' | 'optout' | 'cancel'. */
-  async function bioRegisterStep(strict = false) {
+  async function bioRegisterStep(strict = false, stepLabel = '') {
     for (;;) {
       let r;
-      try { r = await passkeyRegister(`${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Máy tính'} ${new Date().toLocaleDateString('vi-VN')}`); } catch (e) { r = { ok: false, error: e?.message === 'cancelled' ? 'cancelled' : 'webauthn_failed' }; }
+      try { r = await passkeyRegister(`${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'Máy tính'} ${new Date().toLocaleDateString('vi-VN')}`, stepLabel); } catch (e) { r = { ok: false, error: e?.message === 'cancelled' ? 'cancelled' : 'webauthn_failed' }; }
+      dbg('bio.step_result', r.ok ? 'ok' : (r.error || 'fail'), { ok: Boolean(r.ok), error: r.error, detail: r.detail, strict }, r.ok ? 'ok' : 'warn');
       if (r.ok) return 'ok';
       if (r.error === 'reauth_required' && await reauthModal()) continue;
       // Hộp Face ID còn mở ở trạng thái lỗi: lấy lý do rồi đóng để chỉ còn một hộp lựa chọn
@@ -1194,15 +1314,19 @@
       const choice = await new Promise((resolve) => {
         const box = stepBox(`Chưa bật được ${bioName()}`, `Máy của bạn hỗ trợ ${bioName()} nên bước này là bắt buộc${strict ? ' để hoàn tất tài khoản mới' : ''}.`);
         box.err(why || (r.error && r.error !== 'cancelled' ? errText(r.error) : ''));
+        const quick = quickChecklist().map((t) => `<li style="margin-bottom:3px">${escHtml(t)}</li>`).join('');
         // Tài khoản mới: phải đăng ký đủ, không có lối thoát (chỉ thử lại hoặc huỷ). Tài khoản cũ vẫn có "dùng mật khẩu thay thế".
-        box.body.innerHTML = `<div class="row" style="flex-direction:column"><button class="primary sp-retry">Thử lại bật ${escHtml(bioName())}</button>
-          <button class="fit sp-guide">Hướng dẫn bật ${escHtml(bioName())} trong Cài đặt</button>
+        box.body.innerHTML = `<p class="muted" style="margin:0 0 4px;font-size:13px">Kiểm tra nhanh:</p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:18px;font-size:13px;line-height:1.4">${quick}</ul>
+          <div class="row" style="flex-direction:column"><button class="primary sp-retry">Thử lại bật ${escHtml(bioName())}</button>
+          <button class="fit sp-guide">Xem hướng dẫn chi tiết</button>
           ${strict ? '' : '<button class="fit sp-alt">Không bật được? Dùng mật khẩu thay thế</button>'}<button class="fit sp-x">Huỷ đăng nhập</button></div>`;
         box.body.querySelector('.sp-retry').onclick = () => { box.m.close(); resolve('retry'); };
         box.body.querySelector('.sp-guide').onclick = async () => { box.m.close(); resolve(await bioGuide() ? 'retry' : 'again'); };
         box.body.querySelector('.sp-alt')?.addEventListener('click', () => { box.m.close(); resolve('optout'); });
         box.body.querySelector('.sp-x').onclick = () => { box.m.close(); resolve('cancel'); };
       });
+      dbg('bio.step_choice', String(choice), { choice }, 'info');
       if (choice === 'retry') continue;
       if (choice === 'again') { r = null; continue; }
       return choice;
@@ -1215,6 +1339,7 @@
    */
   async function loginStepper(data) {
     const bio = await bioInfo();
+    dbg('stepper.start', 'Bắt đầu các bước thiết lập', { bio, registering: Boolean(data.registering), methods: data.methods, src: data.src }, 'info');
     const resume = data.src === 'resume';
     const methods = data.methods || {};
     let usedBio = false;
@@ -1229,13 +1354,13 @@
         }
       } else {
         // Không bắt buộc Face ID tuyệt đối (máy mới khác nhau): cho phép bỏ qua → mật khẩu.
-        const r = await bioRegisterStep(false);
+        const r = await bioRegisterStep(Boolean(data.registering), data.registering ? 'Bước 2/3' : '');
         if (r === 'cancel') return null;
         usedBio = r === 'ok';
         optOut = r === 'optout';
       }
     }
-    const stepNo = (!methods.password && bio.supported) ? 'Bước 2/2' : 'Bước 1/1';
+    const stepNo = data.registering ? (bio.supported ? 'Bước 3/3' : 'Bước 2/2') : (!methods.password && bio.supported) ? 'Bước 2/2' : 'Bước 1/1';
     let password = null;
     if (!methods.password) {
       password = await passwordSetStep(stepNo);
@@ -1258,6 +1383,7 @@
         username: body.username || pendingSession?.username || data.username,
         password: password || undefined,
         codes,
+        registered: Boolean(data.registering),
       });
     }
     return body;

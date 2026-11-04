@@ -84,6 +84,7 @@ services:
       DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
       DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
       DEBUG_TRACE_TOKEN: ${DEBUG_TRACE_TOKEN:-}
+      DEBUG_TRACE_USERS: ${DEBUG_TRACE_USERS:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

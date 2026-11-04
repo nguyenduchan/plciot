@@ -4,6 +4,7 @@ import { rateLimit } from './rateLimit.js';
 import { findUserByUsername } from './accounts.js';
 import { createSessionAuth, createAppSession, createLoginChallenge, signToken, mountLoginSessions, hashPassword, verifyPassword, consumeLoginChallenge } from './auth.js';
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 import { audit, countAudit } from './audit.js';
 import { verifyAuthentication } from './webauthn.js';
 import { factorSummary } from './sessions.js';
@@ -129,6 +130,63 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   const passwordLocked = (user) => countAudit(db, user.id, 'pw_fail', Date.now() - PW_LOCK_WINDOW) >= PW_LOCK_FAILS;
   const pwStrict = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_PASSWORD || 8), keyFn: (req) => `${clientIp(req)}:pw:${String(req.body?.username || req.user?.id || '')}` });
 
+  /* ---------- Đăng ký tự phục vụ, bước 1/3: chọn tên đăng nhập → phiên chờ; bước 2 sinh trắc, bước 3 mật khẩu (client) ---------- */
+  const USERNAME_RE = /^[a-z][a-z0-9_.-]{3,31}$/;
+  const AUTO_NAME_RE = /^u_[0-9a-f]{16}$/; // dạng tên tự sinh khi claim QR / mã mời: không cho đăng ký tay
+  const registerStrict = rateLimit({ windowMs: 60 * 60_000, max: Number(process.env.RATE_LIMIT_REGISTER || 10), keyFn: (req) => `${clientIp(req)}:register` });
+
+  app.post('/api/register', authStrict, registerStrict, asyncRoute(async (req, res) => {
+    if (!registrationOpen()) return send(res, { error: 'registration_closed', status: 403 });
+    const consent = requirePrivacyConsent(req.body);
+    if (consent.error) return send(res, consent);
+    const username = String(req.body?.username || '').trim().toLowerCase();
+    if (!USERNAME_RE.test(username) || AUTO_NAME_RE.test(username)) return send(res, { error: 'username_invalid', status: 400 });
+    const deviceId = String(req.headers['x-device-id'] || '');
+
+    const existing = findUserByUsername(db, username);
+    if (existing) {
+      // Chỉ chiếm lại tên của lượt đăng ký bỏ dở: chưa hoàn tất và không còn phiên chờ còn hạn của MÁY KHÁC
+      // (cùng máy làm lại ngay được sau khi huỷ giữa chừng).
+      const abandoned = existing.setup_complete === 0 && !existing.disabled
+        && !db.prepare('SELECT 1 FROM login_attempts WHERE user_id = ? AND expires_at > ? AND device_id <> ?').get(existing.id, Date.now(), deviceId);
+      if (!abandoned) return send(res, { error: 'username_taken', status: 409 });
+      db.prepare('DELETE FROM users WHERE id = ? AND setup_complete = 0').run(existing.id);
+    }
+
+    const identity = getConfig().identity;
+    if (typeof identity.createAccount !== 'function') return send(res, { error: 'identity_misconfigured', status: 500 });
+    let user;
+    try {
+      user = await identity.createAccount(db, {
+        ...registrationContext,
+        username,
+        site: `s_${crypto.randomBytes(5).toString('hex')}`,
+        device: 'plc01',
+        contact: null,
+        role: 'operator',
+        owner: true,
+      });
+    } catch (e) {
+      console.error('register.createAccount', e?.message);
+      return send(res, { error: 'provision_failed', status: 500 });
+    }
+    if (user?.error) return send(res, user);
+    if (!user?.id) return send(res, { error: 'provision_failed', status: 500 });
+
+    // Chưa có mật khẩu/sinh trắc: các bước 2 (sinh trắc) và 3 (mật khẩu) làm tiếp trên phiên chờ; chỉ kích hoạt khi hoàn tất.
+    db.prepare('UPDATE users SET setup_complete = 0 WHERE id = ?').run(user.id);
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    recordPrivacyConsent(db, user.id, { version: consent.version, ip: clientIp(req) });
+    audit(db, 'privacy_consent', { userId: user.id, ip: clientIp(req), detail: consent.version });
+    audit(db, 'account_registered', { userId: user.id, ip: clientIp(req) });
+    const challenge = pendingLogin(user, req, 'password');
+    if (!challenge.error) {
+      noteLogin(db, user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'đăng ký' });
+      markDeviceTrusted(db, user.id, req.headers['x-device-id']);
+    }
+    send(res, { ...challenge, registered: true });
+  }));
+
   app.post('/api/account/password', requireAuth, sensitiveStrict, security.reauth, asyncRoute(async (req, res) => {
     const password = req.body?.password;
     const uname = String(req.user.username || '');
@@ -157,7 +215,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     const username = String(req.body?.username || '').trim();
     const user = findUserByUsername(db, username);
     const password = String(req.body?.password || '');
-    const usable = Boolean(user?.login_password_hash) && !user.disabled && !user.recovery_required;
+    const usable = Boolean(user?.login_password_hash) && !user.disabled && !user.recovery_required && user.setup_complete !== 0;
     const match = verifyPassword(password, usable ? user.login_password_hash : DUMMY_HASH);
     if (usable && passwordLocked(user)) return send(res, { error: 'password_locked', status: 429 });
     if (!usable || !match) {
@@ -209,7 +267,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     const { password, credential, cid, recoveryCode } = req.body || {};
     const groups = new Set([recoveryCode && 'recovery', password && 'knowledge', credential && 'device'].filter(Boolean));
     if (groups.size < 2) return send(res, { error: 'recover_need_two', status: 400 });
-    if (!user || user.disabled) return send(res, { error: 'recover_invalid', status: 401 });
+    if (!user || user.disabled || user.setup_complete === 0) return send(res, { error: 'recover_invalid', status: 401 });
     if (countAudit(db, user.id, 'recover_fail', Date.now() - REC_WINDOW) >= REC_FAILS) return send(res, { error: 'recover_locked', status: 429 });
     const deviceId = String(req.headers['x-device-id'] || '');
     if (!verifyDeviceProof(db, { subject: identitySubject(user), deviceId, action: 'recover', publicKey: req.body?.publicKey, proof: req.body?.deviceProof })) {

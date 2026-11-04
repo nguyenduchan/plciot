@@ -32,6 +32,9 @@ const ERR = {
   privacy_version_mismatch: 'Thông báo bảo vệ dữ liệu đã cập nhật. Tải lại trang rồi đồng ý phiên bản mới.',
   recover_need_two: 'Cần ít nhất 2 yếu tố khác loại.',
   recover_invalid: 'Khôi phục thất bại. Kiểm tra lại thông tin.',
+  username_invalid: 'Tên đăng nhập 4–32 ký tự: chữ thường, số, _ . - và phải bắt đầu bằng chữ.',
+  username_taken: 'Tên đăng nhập đã có người dùng. Hãy chọn tên khác.',
+  password_weak: 'Mật khẩu cần 8–72 ký tự và không chứa tên đăng nhập.',
   channel_disabled: 'Kênh này đã tắt. Dùng QR thiết bị hoặc passkey/mật khẩu.',
 };
 
@@ -41,10 +44,10 @@ function privacyPayload() {
   return { consent: true, privacyVersion };
 }
 
-function requireConsentChecked() {
-  if ($('#privacy-consent')?.checked) return true;
+function requireConsentChecked(boxId = 'privacy-consent', rowId = 'privacy-row') {
+  if ($('#' + boxId)?.checked) return true;
   setError('privacy_consent_required');
-  $('#privacy-row')?.scrollIntoView?.({ block: 'nearest' });
+  $('#' + rowId)?.scrollIntoView?.({ block: 'nearest' });
   return false;
 }
 
@@ -68,7 +71,7 @@ function setError(codeOrMsg) {
 
 function setBusy(on) {
   loginBusy = on;
-  ['btn-claim', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio', 'demo'].forEach((id) => {
+  ['btn-register', 'tab-login', 'tab-register', 'btn-claim', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio', 'demo'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on;
   });
@@ -171,6 +174,7 @@ async function finishLogin(data) {
 }
 
 async function api(path, body) {
+  try { await window.SecurityDevice?.ready?.(); } catch { /* không có IndexedDB: dùng mã trong localStorage */ }
   let device;
   const needProof = path === '/api/login/password' || path === '/api/login/recover';
   if (needProof && window.SecurityDevice) {
@@ -198,6 +202,8 @@ function restoreLogin() {
   $('#progress').classList.remove('on');
   $('#step-creds').hidden = false;
   if ($('#step-recover')) $('#step-recover').hidden = true;
+  if ($('#auth-tabs')) $('#auth-tabs').hidden = false;
+  if ($('#rc-open-row')) $('#rc-open-row').hidden = false;
 }
 
 const localTrusted = () => {
@@ -211,6 +217,11 @@ async function loadAuthConfig() {
     const j = await r.json();
     if (Number(j.deviceTrustDays || j.otpTrustDays) > 0) trustDays = Number(j.deviceTrustDays || j.otpTrustDays);
     if (j.privacyVersion) privacyVersion = String(j.privacyVersion);
+    if (j.registrationOpen === false) {
+      registrationOpen = false;
+      $('#tab-register').hidden = true;
+      if (!$('#pane-register').hidden) showTab('login');
+    }
     const link = $('#privacy-link');
     if (link && j.privacyUrl) link.href = j.privacyUrl;
     window.AuthApp?.onAuthConfig?.(j);
@@ -227,18 +238,23 @@ async function tryResume() {
 }
 
 /** Sau claim/invite: phiên chờ → bắt buộc setup passkey/password rồi vào app. */
-async function afterPending(data) {
+async function afterPending(data, doneMsg = '✓ Thiết bị đã gắn. Đang vào ứng dụng…') {
   LS.set('session', { token: data.token, userId: data.userId, username: data.username, apiBase: location.origin, online: true, gate: 'setup' });
   if (data.username) LS.set('lastUsername', data.username);
   LS.set('deviceAt', Date.now());
-  const verified = await window.Security.completeOtp(data);
+  let verified;
+  try { verified = await window.Security.completeOtp(data); } catch (ex) {
+    window.PlcDebug?.log?.('register.exit', 'completeOtp lỗi', { name: ex?.name, message: ex?.message }, 'error');
+    throw ex;
+  }
   if (!verified) {
+    window.PlcDebug?.log?.('register.exit', 'Thiết lập bị huỷ/không hoàn tất → quay lại form', {}, 'warn');
     LS.del('session');
     setError('Chưa hoàn tất thiết lập bảo mật.');
     restoreLogin();
     return false;
   }
-  $('#ok-msg').textContent = '✓ Thiết bị đã gắn. Đang vào ứng dụng…';
+  $('#ok-msg').textContent = doneMsg;
   $('#ok-msg').hidden = false;
   await finishLogin(verified);
   return true;
@@ -267,6 +283,7 @@ async function redeemInvite() {
   if (loginBusy) return;
   setError('');
   $('#invite-row').hidden = false;
+  if ($('#more-device')) $('#more-device').open = true;
   const code = ($('#invite-code')?.value || '').trim();
   if (!code) { setError('Nhập mã mời.'); $('#invite-code')?.focus(); return; }
   if (!requireConsentChecked()) return;
@@ -345,13 +362,20 @@ async function passwordLogin() {
   }
 }
 
-async function syncPasskeyButton() {
-  if (!window.Security?.passkeySupported() || !LS.get('hasPasskey', false) || !localTrusted()) return;
-  const bio = await window.Security.bioInfo();
+/** Luôn cho chọn một trong hai cách như app ngân hàng: nhập tên + mật khẩu, hoặc bấm Face ID / vân tay (không cần gõ tên: passkey tự nhận tài khoản). */
+async function showFaceIdOption() {
+  if (!window.Security?.passkeySupported()) return;
+  let bio;
+  try { bio = await window.Security.bioInfo(); } catch { return; }
   if (!bio.supported) return;
   $('#btn-passkey').textContent = `Đăng nhập bằng ${bio.label}`;
+  $('#btn-passkey').className = 'fit';
   $('#btn-passkey').hidden = false;
   $('#btn-passkey').onclick = () => passkeyLogin();
+  if ($('#or-sep')) $('#or-sep').hidden = $('#btn-login').hidden;
+  if (!document.body.classList.contains('returning')) {
+    $('#flow-hint').textContent = `Chọn 1 cách đăng nhập: nhập tên đăng nhập + mật khẩu, hoặc bấm «Đăng nhập bằng ${bio.label}». Chưa có tài khoản? Chọn tab «Đăng ký».`;
+  }
 }
 
 /** Màn hình mặc định: mật khẩu là chính; QR claim phụ; Face ID chỉ khi máy tin cậy. */
@@ -369,7 +393,7 @@ function passwordFirstView() {
   $('#btn-claim').className = 'fit';
   $('#btn-invite').hidden = false;
   $('#lnk-use-pw').hidden = true;
-  $('#flow-hint').textContent = 'Đăng nhập bằng tên tài khoản + mật khẩu đã lưu. Máy mới lần đầu: «Nhận máy mới (QR tem)». Đổi điện thoại: không quét QR tem — dùng mật khẩu hoặc Khôi phục.';
+  $('#flow-hint').textContent = 'Đăng nhập bằng tên đăng nhập + mật khẩu đã lưu. Chưa có tài khoản? Chọn tab «Đăng ký».';
   $('#switch-row').hidden = true;
 }
 
@@ -391,21 +415,21 @@ async function returningView() {
   document.body.classList.add('returning');
   // Máy tin cậy: Face ID tiện lợi; mật khẩu luôn sẵn làm dự phòng.
   $('#flow-hint').textContent = canBio
-    ? `Máy này đã tin cậy — đăng nhập ${username} bằng ${bio.label} hoặc mật khẩu.`
+    ? `Chọn 1 cách đăng nhập ${username}: mật khẩu hoặc ${bio.label}.`
     : `Đăng nhập ${username} bằng mật khẩu.`;
   $('#claim-row').hidden = true;
   $('#btn-claim').hidden = true;
   $('#btn-invite').hidden = true;
   $('#btn-passkey').hidden = !canBio;
   if (canBio) {
-    $('#btn-passkey').className = 'primary';
+    $('#btn-passkey').className = 'fit';
     $('#btn-passkey').textContent = `Đăng nhập bằng ${bio.label}`;
     $('#btn-passkey').onclick = () => passkeyLogin();
   }
   $('#pw-row').hidden = !plan.hasPassword;
   $('#btn-login').hidden = !plan.hasPassword;
   if (plan.hasPassword) {
-    $('#btn-login').className = canBio ? 'fit' : 'primary';
+    $('#btn-login').className = 'primary';
     $('#btn-login').textContent = 'Đăng nhập bằng mật khẩu';
   }
   $('#switch-row').hidden = false;
@@ -418,6 +442,78 @@ async function returningView() {
   };
   return true;
 }
+
+/* ---------- Tab Đăng nhập / Đăng ký ---------- */
+let registrationOpen = true;
+function showTab(name) {
+  const reg = name === 'register' && registrationOpen;
+  $('#pane-login').hidden = reg;
+  $('#pane-register').hidden = !reg;
+  for (const [id, on] of [['tab-login', !reg], ['tab-register', reg]]) {
+    const tab = $('#' + id);
+    tab.classList.toggle('on', on);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+  setError('');
+  $('#ok-msg').hidden = true;
+  if (reg) {
+    document.body.classList.remove('returning');
+    syncRegisterBioHint();
+    $('#reg-username')?.focus();
+  }
+}
+$('#tab-login').onclick = () => showTab('login');
+$('#tab-register').onclick = () => showTab('register');
+$('#auth-tabs').onkeydown = (event) => {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  const next = event.key === 'ArrowRight' ? 'register' : 'login';
+  showTab(next);
+  $('#tab-' + next).focus();
+};
+
+async function syncRegisterBioHint() {
+  if (!window.Security) return;
+  try {
+    const bio = await window.Security.bioInfo();
+    const steps = bio.supported
+      ? ['Chọn tên đăng nhập', `Thêm ${bio.label} (bắt buộc)`, 'Tạo mật khẩu']
+      : ['Chọn tên đăng nhập', 'Tạo mật khẩu'];
+    const list = $('#reg-steps');
+    if (list) list.innerHTML = steps.map((t, i) => `<li${i === 0 ? ' class="on"' : ''}>${t.replace(/</g, '&lt;')}</li>`).join('');
+    document.querySelector('#pane-register .flow-title').textContent = `Bước 1/${steps.length}: Tên đăng nhập`;
+    $('#reg-bio-hint').textContent = bio.supported
+      ? `Bước tiếp theo máy sẽ yêu cầu thêm ${bio.label} — không bỏ qua được.`
+      : 'Máy này chưa hỗ trợ vân tay / Face ID nên tài khoản chỉ dùng mật khẩu.';
+  } catch {}
+}
+
+const USERNAME_RE = /^[a-z][a-z0-9_.-]{3,31}$/;
+/** Bước 1/3: chọn username → server tạo phiên chờ; bước 2 (sinh trắc) và 3 (mật khẩu) chạy trong completeOtp. */
+async function registerAccount() {
+  if (loginBusy) return;
+  setError('');
+  const username = ($('#reg-username')?.value || '').trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) { setError('username_invalid'); $('#reg-username')?.focus(); return; }
+  if (!requireConsentChecked('reg-privacy-consent', 'reg-privacy-row')) return;
+  window.PlcDebug?.setPhone?.(username);
+  setBusy(true);
+  try {
+    const { ok, data } = await api('/api/register', { username, ...privacyPayload() });
+    if (!ok) { setError(data.error || 'server_error'); return; }
+    await afterPending({ ...data, username: data.username || username, registering: true },
+      '✓ Đăng ký thành công. Đang vào ứng dụng…');
+  } catch (ex) {
+    restoreLogin();
+    setError(errCode(ex, 'Không kết nối được máy chủ.'));
+  } finally {
+    setBusy(false);
+  }
+}
+$('#btn-register').onclick = () => registerAccount();
+$('#reg-username')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); registerAccount(); }
+});
 
 $('#btn-claim').onclick = () => claimDevice();
 $('#btn-invite').onclick = () => {
@@ -471,6 +567,8 @@ if ($('#rc-open')) {
     setError('');
     if ($('#rc-phone')) $('#rc-phone').value = LS.get('lastUsername', '');
     $('#step-creds').hidden = true;
+    $('#auth-tabs').hidden = true;
+    $('#rc-open-row').hidden = true;
     $('#step-recover').hidden = false;
     recover.bio = null;
     recoverState();
@@ -480,6 +578,8 @@ if ($('#rc-back')) {
   $('#rc-back').onclick = () => {
     $('#step-recover').hidden = true;
     $('#step-creds').hidden = false;
+    $('#auth-tabs').hidden = false;
+    $('#rc-open-row').hidden = false;
     setError('');
   };
 }
@@ -538,20 +638,21 @@ if ($('#rc-go')) {
   await loadAuthConfig();
   await tryResume();
   const returned = await returningView();
-  if (!returned) {
-    passwordFirstView();
-    await syncPasskeyButton(); // chỉ hiện Face ID nếu máy tin cậy + đã có passkey local
-  }
+  if (!returned) passwordFirstView();
+  await showFaceIdOption(); // luôn hiện cạnh ô mật khẩu nếu máy hỗ trợ sinh trắc
   const q = new URLSearchParams(location.search);
   if (q.get('revoked')) setError('Phiên đã bị thu hồi. Vui lòng đăng nhập lại.');
   // Deeplink: ?claim=... hoặc ?invite=...
   const claim = q.get('claim');
   const invite = q.get('invite');
+  if (q.get('tab') === 'register') showTab('register');
   if (claim && $('#claim-qr')) {
+    if ($('#more-device')) $('#more-device').open = true;
     $('#claim-qr').value = claim;
     claimDevice();
   } else if (invite) {
     $('#invite-row').hidden = false;
+    if ($('#more-device')) $('#more-device').open = true;
     if ($('#invite-code')) $('#invite-code').value = invite;
     redeemInvite();
   } else if (returned && LS.get('hasPasskey', false) && localTrusted() && !q.get('out')) {

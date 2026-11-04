@@ -11,8 +11,8 @@ const defaults = {
     normalize: (s) => String(s || '').trim(),
     valid: (s) => Boolean(String(s || '').trim()),
     format: (s) => String(s || ''),
-    createAccount: async (db, { site = 'device', device = 'plc01' } = {}) => {
-      const username = `u_${crypto.randomBytes(8).toString('hex')}`;
+    createAccount: async (db, { site = 'device', device = 'plc01', username: chosen } = {}) => {
+      const username = chosen || `u_${crypto.randomBytes(8).toString('hex')}`;
       const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
       if (cols.has('notify_site') && cols.has('notify_device')) {
         const created = db.prepare(

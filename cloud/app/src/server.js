@@ -108,6 +108,14 @@ function appPayload(user) {
   };
 }
 
+// Nhật ký truy cập các bước đăng ký sinh trắc / đăng ký (không ghi nội dung): giúp chẩn đoán lỗi trên điện thoại.
+app.use(['/api/register', '/api/webauthn', '/api/login/complete', '/api/login/complete-basic', '/api/account/password'], (req, res, next) => {
+  res.on('finish', () => {
+    console.log(`[auth] ${req.method} ${req.originalUrl.split('?')[0]} -> ${res.statusCode} ua="${String(req.headers['user-agent'] || '').slice(0, 90)}"`);
+  });
+  next();
+});
+
 const controlApi = mountAuthentication(app, {
   db, appPayload, registrationContext: { dataDir: DATA_DIR, webappSrc: WEBAPP_SRC }, adminOnly: [requireAdmin],
   extraStatus: () => ({ physicalConfirm: plcControlConfig().physicalBit !== null }),

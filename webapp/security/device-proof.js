@@ -43,5 +43,9 @@
     const publicKey = { kty: 'EC', crv: 'P-256', x: key.publicKey.x, y: key.publicKey.y };
     return { deviceId: key.id, publicKey, deviceProof };
   }
-  window.SecurityDevice = { proof };
+  /** Chờ khoá thiết bị sẵn sàng. Mã thiết bị thật nằm trong IndexedDB; localStorage.devId chỉ được đồng bộ theo nó khi khoá được đọc,
+   *  nên mọi request cần mã thiết bị phải chờ hàm này (nếu không, máy từng có khoá cũ sẽ gửi mã lệch → login_step_up_required). */
+  const ready = () => deviceKey().then((key) => key.id);
+  window.SecurityDevice = { proof, ready };
+  ready().catch(() => {});
 })();

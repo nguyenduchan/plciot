@@ -23,31 +23,41 @@
     </div>
   </div>
   <div class="panel form">
-    <h2 class="flow-title">Thiết bị &amp; đăng nhập</h2>
+    <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Đăng nhập hoặc đăng ký">
+      <button type="button" id="tab-login" role="tab" aria-selected="true" aria-controls="pane-login" class="on">Đăng nhập</button>
+      <button type="button" id="tab-register" role="tab" aria-selected="false" aria-controls="pane-register" tabindex="-1">Đăng ký</button>
+    </div>
     <p id="error" role="alert" aria-atomic="true"></p>
     <p id="ok-msg" class="ok" role="status" hidden></p>
-    <p class="hint" id="tg-hint">Không còn SĐT/email. Hãy lưu <b>tên tài khoản + mật khẩu + mã khôi phục</b>. Face ID / vân tay chỉ dùng trên máy đã tin cậy (không mang sang máy mới).</p>
 
+    <div id="pane-login" role="tabpanel" aria-labelledby="tab-login">
     <div id="step-creds" class="step">
-      <p class="hint" id="flow-hint">Đăng nhập bằng mật khẩu, hoặc nhận máy mới bằng QR tem (chỉ lần đầu).</p>
-      <label id="username-row">Tên tài khoản<input id="username" autocomplete="username" placeholder="u_…"></label>
+      <p class="hint" id="flow-hint">Đăng nhập bằng tên đăng nhập + mật khẩu đã đăng ký.</p>
+      <label id="username-row">Tên đăng nhập<input id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Tên đăng nhập"></label>
       <label id="pw-row">Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu"></label>
-      <label id="claim-row">Mã QR thiết bị — chỉ lần nhận máy đầu<textarea id="claim-qr" rows="3" placeholder="Dán chuỗi QR từ tem thiết bị (không dùng khi đổi điện thoại)"></textarea></label>
-      <label id="invite-row" hidden>Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
-      <label id="privacy-row" class="privacy-consent" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0">
-        <input id="privacy-consent" type="checkbox" style="margin-top:4px">
-        <span>Tôi đã đọc <a id="privacy-link" href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để tạo tài khoản / nhận thiết bị.</span>
-      </label>
       <div class="login-actions">
         <button type="button" id="btn-login" class="primary">Đăng nhập bằng mật khẩu</button>
+        <p class="or-sep" id="or-sep" hidden><span>hoặc</span></p>
         <button type="button" id="btn-passkey" class="fit" hidden>Đăng nhập bằng vân tay / Face ID</button>
-        <button type="button" id="btn-claim" class="fit">Nhận máy mới (QR tem)</button>
-        <button type="button" id="btn-invite" class="fit">Dùng mã mời</button>
         <button type="button" id="btn-next" class="fit" hidden>Tiếp tục</button>
         <button type="button" id="btn-otp" class="fit" hidden></button>
         <button type="button" id="lnk-use-pw" class="fit" hidden>Hiện ô mật khẩu</button>
         <button type="button" id="btn-setup-passkey" class="fit" hidden>Thiết lập Face ID trên máy này</button>
 {{demoButton}}      </div>
+      <details id="more-device" class="more-device">
+        <summary>Có thiết bị mới (QR tem / mã mời)?</summary>
+        <p class="hint" id="tg-hint">Dành cho thiết bị đã được cấp tem QR hoặc mã mời. Đổi điện thoại thì <b>không</b> quét lại tem — hãy đăng nhập bằng mật khẩu hoặc Khôi phục.</p>
+        <label id="claim-row">Mã QR thiết bị — chỉ lần nhận máy đầu<textarea id="claim-qr" rows="3" placeholder="Dán chuỗi QR từ tem thiết bị"></textarea></label>
+        <label id="invite-row" hidden>Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
+        <label id="privacy-row" class="privacy-consent">
+          <input id="privacy-consent" type="checkbox">
+          <span>Tôi đã đọc <a id="privacy-link" href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để nhận thiết bị.</span>
+        </label>
+        <div class="login-actions">
+          <button type="button" id="btn-claim" class="fit">Nhận máy mới (QR tem)</button>
+          <button type="button" id="btn-invite" class="fit">Dùng mã mời</button>
+        </div>
+      </details>
     </div>
 
     <p class="hint" id="switch-row" style="text-align:center" hidden><a href="#" id="lnk-switch">Dùng tài khoản khác</a></p>
@@ -57,7 +67,7 @@
     <div id="step-recover" class="step" hidden>
       <p class="hint" style="font-weight:600">Khôi phục khi mất máy / quên mật khẩu</p>
       <p class="hint">Cần <b>ít nhất 2</b> trong: <b>mã khôi phục</b>, <b>mật khẩu</b>, <b>vân tay / Face ID trên máy này</b>. <b>Không</b> quét lại QR tem thiết bị (tem chỉ dùng lần nhận máy đầu). Face ID máy cũ không mang sang máy mới.</p>
-      <label>Tên tài khoản<input id="rc-phone" autocomplete="username" placeholder="u_…"></label>
+      <label>Tên đăng nhập<input id="rc-phone" autocomplete="username" autocapitalize="none" placeholder="Tên đăng nhập"></label>
       <label>Mã khôi phục<input id="rc-otp" autocomplete="one-time-code" placeholder="XXXX-XXXX"></label>
       <label>Mật khẩu<input id="rc-pw" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại"></label>
       <button type="button" id="rc-bio" class="fit">Xác nhận bằng vân tay / Face ID (máy này)</button>
@@ -70,7 +80,28 @@
       </div>
     </div>
 
-    <p class="hint" style="margin-top:14px;text-align:center"><a href="#" id="rc-open">Quên mật khẩu / mất máy? Khôi phục</a></p>
+    <p class="hint" id="rc-open-row" style="margin-top:14px;text-align:center"><a href="#" id="rc-open">Quên mật khẩu / mất máy? Khôi phục</a></p>
+    </div>
+
+    <div id="pane-register" role="tabpanel" aria-labelledby="tab-register" hidden>
+      <h2 class="flow-title">Bước 1/3: Tên đăng nhập</h2>
+      <ol class="reg-steps" id="reg-steps" aria-label="Các bước đăng ký">
+        <li class="on">Chọn tên đăng nhập</li>
+        <li>Thêm vân tay / Face ID</li>
+        <li>Tạo mật khẩu</li>
+      </ol>
+      <label>Tên đăng nhập<input id="reg-username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="vd: nhamay_an"></label>
+      <p class="hint reg-sub">4–32 ký tự: chữ thường, số, <code>_ . -</code>; bắt đầu bằng chữ.</p>
+      <p class="hint reg-sub" id="reg-bio-hint">Bước tiếp theo máy sẽ yêu cầu thêm vân tay / Face ID.</p>
+      <label id="reg-privacy-row" class="privacy-consent">
+        <input id="reg-privacy-consent" type="checkbox">
+        <span>Tôi đã đọc <a href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để tạo tài khoản.</span>
+      </label>
+      <div class="login-actions">
+        <button type="button" id="btn-register" class="primary">Tiếp tục</button>
+      </div>
+      <p class="hint" style="margin-top:12px">Cuối cùng bạn sẽ nhận <b>mã khôi phục</b>. Hãy lưu lại cùng tên đăng nhập và mật khẩu để lấy lại tài khoản khi mất máy hoặc quên mật khẩu. Tài khoản chỉ được tạo khi hoàn tất cả các bước.</p>
+    </div>
 
     <div id="progress">
       <div class="muted" id="prog-label">Đang tải ứng dụng…</div>

@@ -52,6 +52,10 @@ export function debugTraceEnabled() {
 export function mountDebugTrace(app) {
   if (!enabled()) return;
   const limit = rateLimit({ windowMs: 60_000, max: 60, keyFn: (req) => `${clientIp(req)}:dbg` });
+  app.get('/api/debug/allowed', limit, (req, res) => {
+    const user = userFromReq(req);
+    res.json({ enabled: true, user: user || undefined, needUser: !user, allowed: Boolean(user) && tokenOk(req) && userAllowedForDebug(user) });
+  });
   app.post('/api/debug/trace', limit, (req, res) => {
     if (!tokenOk(req) || !userAllowedForDebug(userFromReq(req))) return res.status(403).json({ error: 'forbidden' });
     const entry = {

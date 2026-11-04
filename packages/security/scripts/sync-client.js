@@ -9,6 +9,7 @@
  * App mới chỉ cần viết login.config.json rồi chạy lệnh này, không tự viết lại HTML/CSS/luồng các bước đăng nhập.
  */
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -49,6 +50,14 @@ if (fs.existsSync(cfgFile)) {
   let html = norm(fs.readFileSync(path.join(srcDir, 'login.template.html'), 'utf8'))
     .replace(/\{\{(\w+)\}\}/g, (_, k) => (k in parts ? parts[k] : esc(d[k] ?? '')));
   html = html.replace('<!doctype html>\n', '<!doctype html>\n<!-- GENERATED từ packages/security/client/login.template.html + login.config.json bằng "npm run sync-client". KHÔNG sửa ở đây. -->\n');
+  // Gắn mã phiên bản (hash nội dung) vào script/CSS cục bộ: Cloudflare ép Browser Cache TTL (vd 4 giờ) lên .js/.css nên
+  // không có tham số này thì trình duyệt giữ bản cũ sau khi deploy. SW so khớp theo pathname nên không ảnh hưởng.
+  html = html.replace(/(src|href)="((?:security\/)?[\w.\/-]+\.(?:js|css))"/g, (whole, attr, rel) => {
+    const file = path.join(appDir, rel);
+    if (!fs.existsSync(file)) return whole;
+    const v = crypto.createHash('sha1').update(norm(fs.readFileSync(file, 'utf8'))).digest('hex').slice(0, 8);
+    return `${attr}="${rel}?v=${v}"`;
+  });
   write(path.join(appDir, 'login.html'), html);
 }
 if (check) { if (drift) process.exit(1); console.log('client khớp bản sao trong app'); }

@@ -25,9 +25,9 @@ configure({
   notify: notifyOwner,
   identity: {
     /** Tạo user ẩn danh gắn site/device (claim QR hoặc invite). */
-    createAccount: async (db, { site, device, webappSrc, role = 'operator', owner = true } = {}) => {
+    createAccount: async (db, { site, device, webappSrc, role = 'operator', owner = true, username: chosen } = {}) => {
       if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
-      const username = `u_${crypto.randomBytes(8).toString('hex')}`;
+      const username = chosen || `u_${crypto.randomBytes(8).toString('hex')}`;
       const siteId = String(site || 'device').trim();
       const deviceId = String(device || 'plc01').trim();
       const user = upsertUser(db, {

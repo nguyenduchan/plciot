@@ -28,3 +28,29 @@
 .returning #claim-row,.returning #btn-claim,.returning #btn-invite,.returning #demo,.returning #btn-next,.returning #btn-otp,.returning #lnk-use-pw,.returning #btn-setup-passkey,.returning #try-passkey-row{display:none!important}
 .returning #tg-hint{display:none!important}
 .row-btns{display:flex;gap:8px;margin:8px 0}.row-btns button{flex:1}
+
+/* Tab Đăng nhập / Đăng ký */
+.auth-tabs{display:flex;gap:4px;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:16px}
+.auth-tabs[hidden]{display:none}
+.auth-tabs button{flex:1;border:0;background:none;padding:11px 10px;border-radius:10px;font-weight:500;font-size:15px;color:var(--mut);cursor:pointer}
+.auth-tabs button[hidden]{display:none}
+.auth-tabs button.on{background:var(--card);color:var(--acc);font-weight:600;box-shadow:0 1px 3px #0002}
+.auth-tabs button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+[role=tabpanel][hidden]{display:none!important}
+.reg-sub{margin:-4px 0 12px}
+.privacy-consent{display:flex;gap:8px;align-items:flex-start;margin:10px 0}
+.privacy-consent input{margin-top:4px}
+.more-device{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.more-device summary{cursor:pointer;color:var(--mut);font-size:14px}
+.more-device[open] summary{margin-bottom:10px}
+.returning #more-device{display:none!important}
+
+.reg-steps{margin:0 0 14px;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:6px}
+.reg-steps li{counter-increment:s;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
+.reg-steps li::before{content:counter(s);flex:0 0 22px;height:22px;border-radius:50%;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.reg-steps li.on{color:var(--fg);font-weight:600}
+.reg-steps li.on::before{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+
+.or-sep{display:flex;align-items:center;gap:10px;margin:2px 0;color:var(--mut);font-size:13px}
+.or-sep::before,.or-sep::after{content:"";flex:1;height:1px;background:var(--line)}
+.or-sep[hidden]{display:none}
