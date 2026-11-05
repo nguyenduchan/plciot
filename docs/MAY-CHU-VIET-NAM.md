@@ -60,6 +60,21 @@ python -c "import socket,time;t=time.time();s=socket.create_connection(('plc-mqt
 ```
 Kết quả mong đợi từ mạng trong nước: **dưới 30 ms** (trước đây ~147 ms). Mở app, nhãn phải là **Trực tuyến**.
 
+## Hybrid (web qua Tunnel + MQTTS thẳng VPS)
+
+`docker-compose.yml` hiện tại giữ **Cloudflare Tunnel** cho `plc.dieukhientudong.net` (login/webapp) và thêm **HAProxy** publish `PUB_PORT_MQTTS` (mặc định **48263**) để SCADA C# / gateway nối `mqtts://` thẳng IP VPS, không vòng Hong Kong.
+
+Trên VPS `.env`:
+```
+PUB_PORT_MQTTS=48263
+MQTT_DOMAIN=plc-mqtt.dieukhientudong.net
+MQTT_PUBLIC_HOST=14.225.224.218
+MQTT_PUBLIC_IP=14.225.224.218
+```
+
+Khi chưa đổi DNS → HAProxy tự tạo **self-signed**; trong SCADA điền `CloudPinSha256` (log container `plciot-haproxy` in `CloudPinSha256=…`).  
+C# Conveyor: `UseCloudMqtts("14.225.224.218", 48263)` + `CloudTransport=mqtts`.
+
 ## Hoàn tác
 Xoá bản ghi `A` `plc-mqtt`, vào tunnel `plc-broker` → Routes → Add route lại `plc-mqtt.dieukhientudong.net` → `http://mqtt:9001`, rồi `docker compose -p plciot up -d` trên PC.
 

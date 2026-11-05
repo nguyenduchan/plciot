@@ -1,5 +1,7 @@
 # Self-contained stack, isolated from any other Docker project on this machine:
-# own compose project name, own containers/network/volume, own loopback-only host ports.
+# own compose project name, own containers/network/volume.
+# - Webapp/API: Cloudflare Tunnel (HTTPS, không mở cổng app ra ngoài).
+# - MQTTS thẳng VPS: HAProxy :PUB_PORT_MQTTS → Mosquitto 1884 (SCADA C# / gateway mqtts).
 name: plciot
 
 services:
@@ -10,7 +12,7 @@ services:
     mem_limit: 64m
     cpus: 0.5
     pids_limit: 64
-    ports:                       # loopback only; the internet reaches the broker through the tunnel
+    ports:                       # loopback only (thử trên máy); Internet vào MQTT qua HAProxy hoặc tunnel
       - "127.0.0.1:21883:1883"   # không mã hoá → MONITOR ONLY
       - "127.0.0.1:29001:9001"   # không mã hoá → MONITOR ONLY
       - "127.0.0.1:21884:1884"   # kênh có CONTROL: chỉ để thử trên chính máy này, KHÔNG mở ra ngoài
@@ -18,6 +20,34 @@ services:
     volumes:
       - ./config:/mosquitto/config
       - mqtt-data:/mosquitto/data
+    networks: [plciot]
+
+  # MQTTS công khai thẳng VPS (không qua Cloudflare). C#/gateway: mqtts://<IP|domain>:48263
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: plciot-haproxy
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 1.0
+    pids_limit: 64
+    user: root
+    entrypoint: ["/bin/sh", "/usr/local/etc/haproxy/haproxy-entrypoint.sh"]
+    environment:
+      MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
+      MQTT_PUBLIC_IP: ${MQTT_PUBLIC_IP:-}
+      MAX_CONN_PER_IP: ${MAX_CONN_PER_IP:-30}
+      MAX_CONN_RATE: ${MAX_CONN_RATE:-60}
+      BAN_CONN_RATE: ${BAN_CONN_RATE:-300}
+      MAX_BYTES_10S: ${MAX_BYTES_10S:-262144}
+      MAX_TLS_RATE: ${MAX_TLS_RATE:-100}
+    ports:
+      - "${PUB_PORT_MQTTS:-48263}:8883"   # mqtts:// — CONTROL theo ACL
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./config/trusted.lst:/usr/local/etc/haproxy/trusted.lst:ro
+      - ./config/haproxy-entrypoint.sh:/usr/local/etc/haproxy/haproxy-entrypoint.sh:ro
+      - caddy-data:/caddy:ro
+    depends_on: [mqtt]
     networks: [plciot]
 
   app:                           # Login API + per-user webapp bundles (SQLite user → folder_path)
@@ -42,6 +72,11 @@ services:
       MQTT_USER: ${MQTT_NOTIFY_USER:-ingest}
       MQTT_PASS: ${MQTT_NOTIFY_PASS:-}
       MQTT_INGEST: ${MQTT_INGEST:-true}
+      # Endpoint mqtts công khai (trả trong /api/health + provision) — SCADA/gateway nối thẳng VPS
+      MQTT_PUBLIC_HOST: ${MQTT_PUBLIC_HOST:-}
+      MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
+      MQTT_PUBLIC_MQTTS_PORT: ${PUB_PORT_MQTTS:-48263}
+      MQTT_PUBLIC_WSS: ${MQTT_PUBLIC_WSS:-}
       # Điều khiển qua server (step-up Passkey/TOTP) — xem docs/CONTROL-SECURITY.md
       CONTROL_VIA_SERVER: ${CONTROL_VIA_SERVER:-true}
       CONTROL_STEPUP: ${CONTROL_STEPUP:-true}
@@ -118,3 +153,5 @@ networks:
 volumes:
   mqtt-data:
     name: plciot_mqtt_data
+  caddy-data:
+    name: plciot_caddy_data

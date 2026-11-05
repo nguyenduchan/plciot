@@ -10,7 +10,8 @@
 |---|---|---|
 | Số màn hình | MỘT màn hình trên máy chính (`UseSingleScreen`) | điều khiển trực tiếp, không client-server |
 | Màn hình phụ | không | |
-| Điện thoại | Off mặc định; `Enforce` không cho `Control` (tối đa MonitorOnly) | khách hàng không cho điều khiển từ điện thoại |
+| Điện thoại | MonitorOnly mặc định; `Enforce` không cho `Control` | MQTTS thẳng VPS `14.225.224.218:48263`; không điều khiển từ điện thoại |
+| Cloud | `UseCloudMqtts("14.225.224.218", 48263)` user `gw` | không qua Cloudflare Tunnel; self-signed → cần `CloudPinSha256` trong config.json |
 | Thanh ghi ghi được | D3 chế độ, D4 mặt nạ Y, D6 chạy/dừng, D7 mục tiêu, D9 xoá đếm | khớp whitelist gateway |
 
 ## Giao diện (WPF, `MainWindow`)
@@ -39,5 +40,6 @@ Theo phong cách Grafana tối: thanh bên trái, thanh trên có trạng thái 
 - Cửa sổ WPF khi chạy thật (mới build); PLC thật.
 
 ## Lịch sử thay đổi
+- MQTTS thẳng VPS (`14.225.224.218:48263`): `UseCloudMqtts` + Mobile MonitorOnly; mật khẩu/`CloudPinSha256` chỉ trong `config.json`.
 - Tách từ ứng dụng WPF cũ (`Plciot.Scada.App`) thành giải pháp riêng trên framework.
 - Thêm đăng nhập cục bộ 4 vai trò, khoá tạm, tự đăng xuất, nhật ký kiểm toán; đổi giao diện sang phong cách Grafana.

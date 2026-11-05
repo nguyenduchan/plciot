@@ -40,6 +40,20 @@ public static class ScadaConfigExtensions
         return cfg;
     }
 
+    /// <summary>
+    /// Cầu nối cloud MQTTS thẳng máy chủ (VPS), không qua WebSocket/tunnel.
+    /// <paramref name="pinSha256"/> = SHA-256 hex của chứng chỉ server khi dùng self-signed; trống = xác thực chuỗi CA thông thường.
+    /// </summary>
+    public static ScadaConfig UseCloudMqtts(this ScadaConfig cfg, string host, int port = 48263, string? pinSha256 = null)
+    {
+        cfg.CloudHost = host;
+        cfg.CloudPort = port;
+        cfg.CloudTransport = "mqtts";
+        cfg.CloudWsPath = "/";
+        if (pinSha256 != null) cfg.CloudPinSha256 = pinSha256;
+        return cfg;
+    }
+
     /// <summary>Danh sách thanh ghi D mà mọi nguồn được ghi (riêng từng khách hàng).</summary>
     public static ScadaConfig UseWritableRegisters(this ScadaConfig cfg, params int[] registers)
     {

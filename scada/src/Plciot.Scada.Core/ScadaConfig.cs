@@ -128,8 +128,9 @@ public sealed class ScadaConfig
     /// <summary>Cầu nối cloud chạy khi điện thoại được phép (xem hoặc điều khiển) — suy ra từ <see cref="Mobile"/>.</summary>
     [JsonIgnore] public bool CloudEnabled => Mobile != MobileAccess.Off;
     public string CloudHost { get; set; } = "plc-mqtt.dieukhientudong.net";
-    public int CloudPort { get; set; } = 8883;
-    /// <summary>"mqtts" (TCP+TLS, mặc định) hoặc "wss" (WebSocket+TLS, qua cổng 443 khi tường lửa chặn 8883).</summary>
+    /// <summary>Cổng MQTTS công khai trên VPS (HAProxy <c>PUB_PORT_MQTTS</c>, mặc định 48263). WSS qua tunnel dùng 443.</summary>
+    public int CloudPort { get; set; } = 48263;
+    /// <summary>"mqtts" (TCP+TLS thẳng VPS, mặc định) hoặc "wss" (WebSocket+TLS, qua cổng 443 / Cloudflare Tunnel).</summary>
     public string CloudTransport { get; set; } = "mqtts";
     public string CloudWsPath { get; set; } = "/";
     public string CloudUser { get; set; } = "gw";

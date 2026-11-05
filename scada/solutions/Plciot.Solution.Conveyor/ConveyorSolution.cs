@@ -13,10 +13,11 @@ public sealed class ConveyorSolution : IScadaSolution
     /// <summary>Giá trị khởi tạo khi chưa có file cấu hình (nhân viên hiện trường sẽ sửa IP, mật khẩu trong file).</summary>
     public ScadaConfig CreateDefaultConfig()
     {
-        var cfg = new ScadaConfig { Site = "factory1", Device = "plc01" }
+        var cfg = new ScadaConfig { Site = "factory1", Device = "plc01", CloudUser = "gw" }
             .UsePlc(PlcSource.ModbusTcp, "192.168.1.10")
             .UseSingleScreen()                       // một màn hình, điều khiển trực tiếp, không client-server
-            .UseMobile(MobileAccess.Off)             // điện thoại tắt cho tới khi điền CloudHost/CloudPassword (đổi thành MonitorOnly)
+            .UseCloudMqtts("14.225.224.218", 48263) // MQTTS thẳng VPS (HAProxy); mật khẩu + pin điền trong config.json
+            .UseMobile(MobileAccess.MonitorOnly)     // bật cầu nối cloud (chỉ xem từ điện thoại)
             .UseWritableRegisters(3, 4, 6, 7, 9);    // chế độ, mặt nạ đầu ra, chạy/dừng, mục tiêu, xoá đếm
         return cfg;
     }
