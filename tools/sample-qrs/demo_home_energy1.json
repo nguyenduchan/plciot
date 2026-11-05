@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "energy1",
+  "label": "Điện năng",
+  "profile": "energy",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZW5lcmd5MSIsImNsYWltIjoiQXB2U1ktQy1ORk9oY1BvdnVFNTAzWUg3Z1dXeGRGLWwiLCJzaWciOiI1MlR4bjZsUDJEMGhtWU9YV3VvOEtYbUtrbTRsbHdPTDh1RFNFMWhrV09rcnRvTFppTjUtY29rdWxab2JIc3Bic1VFamc1VGVYM0M1ek9ONGVWcXJCdyJ9",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZW5lcmd5MSIsImNsYWltIjoiQXB2U1ktQy1ORk9oY1BvdnVFNTAzWUg3Z1dXeGRGLWwiLCJzaWciOiI1MlR4bjZsUDJEMGhtWU9YV3VvOEtYbUtrbTRsbHdPTDh1RFNFMWhrV09rcnRvTFppTjUtY29rdWxab2JIc3Bic1VFamc1VGVYM0M1ek9ONGVWcXJCdyJ9",
+  "uiMeta": null
+}

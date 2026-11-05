@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "generic1",
+  "label": "Tuỳ chọn",
+  "profile": "generic",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ2VuZXJpYzEiLCJjbGFpbSI6ImJ3OUtMMi1PakpMQUtITXpOTzctblEtRnVKbl93Ml9XIiwic2lnIjoiZU5tWjZxLUxlTjIyVnJ5c05Rck5xZDlDQjBqZ0hWUnpRVGt5Uk5xbTNiT2dZMGFMT2s2M0hwNDJhS1AyMnFibzRhZU91eVVFS2tTWGNmX1hRakJxRFEifQ",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ2VuZXJpYzEiLCJjbGFpbSI6ImJ3OUtMMi1PakpMQUtITXpOTzctblEtRnVKbl93Ml9XIiwic2lnIjoiZU5tWjZxLUxlTjIyVnJ5c05Rck5xZDlDQjBqZ0hWUnpRVGt5Uk5xbTNiT2dZMGFMT2s2M0hwNDJhS1AyMnFibzRhZU91eVVFS2tTWGNmX1hRakJxRFEifQ",
+  "uiMeta": null
+}

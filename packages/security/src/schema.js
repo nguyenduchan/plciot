@@ -181,5 +181,7 @@ export function migrateSecurity(db) {
     label: 'label TEXT',
     note: 'note TEXT',
     claim_sealed: 'claim_sealed TEXT',
+    profile: 'profile TEXT',
+    ui_meta: 'ui_meta TEXT',
   });
 }

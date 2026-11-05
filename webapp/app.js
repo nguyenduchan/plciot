@@ -59,7 +59,11 @@ class MqttLink {
     const k = t.slice(base.length + 1);
     try {
       if (k === 'status') this.h.status(p);
-      else if (k === 'telemetry') this.h.regs(JSON.parse(p).r);
+      else if (k === 'telemetry') {
+        const j = JSON.parse(p);
+        this.h.regs(j.r);
+        window.DevicesUi?.onTelemetry?.(j);
+      }
       else if (k === 'ack') this.h.ack(JSON.parse(p));
       else if (k === 'history') this.h.history(JSON.parse(p));
     } catch {}
@@ -77,6 +81,7 @@ class DemoLink {
   start() { this.h.status('online'); this.t = setInterval(() => this.tick(), 1000); this.tick(); }
   stop() { clearInterval(this.t); }
   tick() {
+    this.clk++;
     const r = this.r, pumpOn = r[R.DO] & 1;
     this.level = Math.min(100, Math.max(0, this.level + (pumpOn ? 3 : 0) - 1.2 - Math.random() * 0.5));
     if (Math.random() < 0.004) this.estop = !this.estop;
@@ -101,6 +106,19 @@ class DemoLink {
     if (H.s >= 3600) { H.m[0] = Math.floor(H.r / 60); H.c.pop(); H.m.pop(); H.c.splice(1, 0, H.c[0]); H.m.splice(1, 0, H.m[0]); H.c[0] = 0; H.m[0] = 0; H.s = 0; H.r = 0; H.n++; }
     if (this.n++ % 5 === 0) this.h.history(JSON.parse(JSON.stringify(H)));
     this.h.regs(r.slice());
+    // Demo multi-device payload (schema 2) cho catalog UI
+    window.DevicesUi?.onTelemetry?.({
+      schema: 2,
+      r: r.slice(),
+      d: {
+        env01: { t: 24 + Math.sin(this.clk / 20) * 3, h: 55 + Math.cos(this.clk / 25) * 8 },
+        pump1: { run: pumpOn ? 1 : 0, hours: 12.4, flow: pumpOn ? 25 + Math.random() * 10 : 0 },
+        sw1: { on: (r[R.DO] >> 2) & 1 },
+        energy1: { kw: pumpOn ? 1.1 + Math.random() * 0.4 : 0.05, kwh: 340 },
+        tank1: { level: this.level },
+        motor1: { run: r[R.CSTATE] === 1 ? 1 : 0, rpm: r[R.CSTATE] === 1 ? 1400 : 0 },
+      },
+    });
   }
   u(i) { return this.r[i] + this.r[i + 1] * 65536; }
   add(i) { const v = this.r[i] + this.r[i + 1] * 65536 + 1; this.r[i] = v & 0xFFFF; this.r[i + 1] = v >>> 16; }
@@ -307,13 +325,15 @@ function onHist(o) { S.hist = o; S.histTs = Date.now(); render(); }
 
 /* ------------------------------------------------------------- UI */
 const tabs = ['dash', 'conv', 'ctrl', 'rep', 'set'];
-/** Kiểu giao diện: Đơn giản (chủ xưởng: màu trạng thái, thẻ trạng thái, ít chỉ số, tên đời thường) hoặc Vận hành (gần như không màu). */
+/** simple = điện thoại: widget + báo cáo; pro = SCADA (I/O, băng tải). */
 function applyUi() {
   document.body.classList.toggle('ui-simple', simpleUi());
   const h = $('#switches')?.previousElementSibling;
   if (h) h.textContent = simpleUi() ? 'Thiết bị' : 'Điều khiển đầu ra';
-  // Kiểu Đơn giản không có tab Điều khiển (đầu ra thủ công) và Báo cáo (bảng tuỳ biến): nếu đang ở đó thì về Tổng quan
-  if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-rep').hidden)) showTab('dash');
+  const dashLbl = document.querySelector('nav button[data-tab="dash"] span');
+  if (dashLbl) dashLbl.textContent = simpleUi() ? 'Thiết bị' : 'Tổng quan';
+  // Phone: ẩn ctrl/conv; giữ tab Báo cáo (biểu đồ)
+  if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-conv').hidden)) showTab('dash');
 }
 function showTab(t) {
   tabs.forEach((x) => { $('#tab-' + x).hidden = x !== t; });
@@ -601,6 +621,14 @@ function lockTenantFields(locked) {
     if (el) el.readOnly = locked;
   });
 }
+
+window.applySiteFromDevices = (site, gateway) => {
+  if (!site) return;
+  let changed = false;
+  if (cfg.site !== site) { cfg.site = site; changed = true; }
+  if (gateway && cfg.dev !== gateway) { cfg.dev = gateway; changed = true; }
+  if (changed) { LS.set('cfg', cfg); loadSettings(); }
+};
 
 async function alignSiteDevFromSession() {
   const session = LS.get('session', null);

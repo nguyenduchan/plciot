@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "tank1",
+  "label": "Bồn / mức",
+  "profile": "tank",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoidGFuazEiLCJjbGFpbSI6ImtUTlhscW9jOGZBcVBxWkRCcmRNdGZSZ005NHdfQ1RSIiwic2lnIjoidDVyQkpBSjg5U0hfSFRNLXptNUlYQkpNRHBfUWplWUF5ajRkRWJYQjNNcUlvOFhvTDBOS2l5NzVTWWJBZDJtaDlLSzdMdFYzaWpQOXI2OW9vSUhOQmcifQ",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoidGFuazEiLCJjbGFpbSI6ImtUTlhscW9jOGZBcVBxWkRCcmRNdGZSZ005NHdfQ1RSIiwic2lnIjoidDVyQkpBSjg5U0hfSFRNLXptNUlYQkpNRHBfUWplWUF5ajRkRWJYQjNNcUlvOFhvTDBOS2l5NzVTWWJBZDJtaDlLSzdMdFYzaWpQOXI2OW9vSUhOQmcifQ",
+  "uiMeta": null
+}

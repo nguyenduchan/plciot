@@ -25,6 +25,8 @@ import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
+import { mountUserDevices } from './userDevices.js';
+import { mountGatewayEnroll } from './gatewayEnroll.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
 import { loginGateMiddleware } from './opsFlags.js';
@@ -194,6 +196,10 @@ mountPlcControl(app, { db, requireAuth, security: controlApi });
 mountSite(app, { db, requireAuth, reauth });
 /* ---------- Nền tảng đa tenant: admin tenants + partner API (MQTTS provision) ---------- */
 mountPartnerRoutes(app, { db, requireAuth, reauth });
+/* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */
+mountGatewayEnroll(app, { db });
+/* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
+mountUserDevices(app, { db, requireAuth, sensitiveStrict });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,

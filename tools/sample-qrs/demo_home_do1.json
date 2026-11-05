@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "do1",
+  "label": "Đầu ra số",
+  "profile": "do",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZG8xIiwiY2xhaW0iOiJPdjFlcWc3bmJQcDVWRlVPS2NWSmN1aFdnNWNHNjBpTSIsInNpZyI6InRMQk1fcHVGMGFNWGVISERaZWcxS3RPak01QzdjbXNzWDl2MVJiLUxUOUhwUmIyc3NvZ1NHYWYtTFM5RS02cGt5bENibUw1anhRbFRsamdFWFV0bEJRIn0",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZG8xIiwiY2xhaW0iOiJPdjFlcWc3bmJQcDVWRlVPS2NWSmN1aFdnNWNHNjBpTSIsInNpZyI6InRMQk1fcHVGMGFNWGVISERaZWcxS3RPak01QzdjbXNzWDl2MVJiLUxUOUhwUmIyc3NvZ1NHYWYtTFM5RS02cGt5bENibUw1anhRbFRsamdFWFV0bEJRIn0",
+  "uiMeta": null
+}

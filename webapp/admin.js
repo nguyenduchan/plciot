@@ -31,8 +31,90 @@
 
   let hwDevices = [];
   let lastQr = null;
+  /** Catalog type từ API — không hard-code trong file admin. */
+  let typeCatalog = [
+    { id: 'iot-hub', title: 'Gateway (nhiều device con)' },
+    { id: 'pump', title: 'Bơm' },
+    { id: 'env', title: 'Môi trường' },
+    { id: 'switch', title: 'Công tắc' },
+    { id: 'relay', title: 'Relay' },
+    { id: 'di', title: 'Đầu vào số' },
+    { id: 'do', title: 'Đầu ra số' },
+    { id: 'motor', title: 'Động cơ' },
+    { id: 'energy', title: 'Điện năng' },
+    { id: 'tank', title: 'Bồn / mức' },
+    { id: 'conveyor', title: 'Băng tải' },
+    { id: 'generic', title: 'Tuỳ chọn' },
+  ];
 
   function msg(text, cls) { const m = $('#msg'); m.textContent = text || ''; m.className = cls || ''; }
+
+  function typeOptionsHtml(selected, excludeHub) {
+    return typeCatalog
+      .filter((t) => !excludeHub || t.id !== 'iot-hub')
+      .map((t) => `<option value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}>${esc(t.id)} — ${esc(t.title)}</option>`)
+      .join('');
+  }
+
+  function fillProfileSelect() {
+    const sel = $('#hw-profile');
+    if (!sel) return;
+    const cur = sel.value || 'iot-hub';
+    sel.innerHTML = typeOptionsHtml(cur, false);
+    if (![...sel.options].some((o) => o.value === cur)) sel.value = typeCatalog[0]?.id || 'generic';
+    else sel.value = cur;
+    toggleSeedBox();
+  }
+
+  function toggleSeedBox() {
+    const box = $('#hw-seed-box');
+    if (!box) return;
+    const hub = $('#hw-profile')?.value === 'iot-hub';
+    box.hidden = !hub;
+    if (hub && !$('#hw-seed-rows')?.children.length) addSeedRow();
+  }
+
+  function addSeedRow(pre = {}) {
+    const host = $('#hw-seed-rows');
+    if (!host) return;
+    const row = document.createElement('div');
+    row.className = 'hw-seed-row';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1.2fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:end';
+    row.innerHTML = `
+      <label style="margin:0">childId<input class="seed-id" autocapitalize="off" placeholder="pump1" value="${esc(pre.childId || '')}"></label>
+      <label style="margin:0">Loại<select class="seed-type">${typeOptionsHtml(pre.type || 'pump', true)}</select></label>
+      <label style="margin:0">Tên hiển thị<input class="seed-title" placeholder="Bơm nước" value="${esc(pre.title || '')}"></label>
+      <button type="button" class="fit danger seed-rm" title="Xoá">×</button>`;
+    host.appendChild(row);
+    row.querySelector('.seed-rm').onclick = () => row.remove();
+  }
+
+  function collectSeedUiMeta() {
+    if ($('#hw-profile')?.value !== 'iot-hub') return undefined;
+    const seed = [];
+    $('#hw-seed-rows')?.querySelectorAll('.hw-seed-row').forEach((row) => {
+      const childId = row.querySelector('.seed-id')?.value.trim();
+      const type = row.querySelector('.seed-type')?.value;
+      const title = row.querySelector('.seed-title')?.value.trim();
+      if (!childId || !type) return;
+      seed.push({ childId, type, title: title || undefined });
+    });
+    if (!seed.length) throw new Error('Gateway cần ít nhất một device con (nút + Thêm device con).');
+    return { seed };
+  }
+
+  function kitText(bundle) {
+    const g = bundle?.gateway;
+    if (!g) return '';
+    return JSON.stringify({
+      enroll: g.enroll?.url,
+      body: g.enrollBody || { qr: bundle.qr },
+      mqtt: { host: g.mqtt?.host, port: g.mqtt?.port, username: g.mqtt?.username, tls: true },
+      topics: g.topics,
+      pack: g.pack,
+      payloadExample: g.payloadExample,
+    }, null, 2);
+  }
 
   async function api(path, method = 'GET', body, retried) {
     let ctlTok = null;
@@ -93,6 +175,7 @@
         <div><b>${esc(d.label || `${d.site}/${d.device}`)}</b>
           ${d.claimed ? '<span class="tag">đã gắn</span>' : '<span class="tag viewer">chưa gắn</span>'}
           <small><code>${esc(d.site)}</code> / <code>${esc(d.device)}</code>
+            ${d.profile ? ` · <b>${esc(d.profile)}</b>` : ' · <span class="tag viewer">chưa profile</span>'}
             ${d.note ? ` · ${esc(d.note)}` : ''}
             ${d.claimedUsername ? ` · user ${esc(d.claimedUsername)}` : ''}
             · tạo ${esc(fmtTs(d.createdAt))}</small></div>
@@ -108,8 +191,23 @@
     lastQr = bundle;
     const title = bundle.label || `${bundle.site}/${bundle.device}`;
     $('#qr-title').textContent = title;
-    $('#qr-meta').textContent = `${bundle.site} / ${bundle.device}${bundle.note ? ` — ${bundle.note}` : ''}`;
+    const gw = bundle.gateway;
+    $('#qr-meta').textContent = `${bundle.site} / ${bundle.device}`
+      + `${bundle.profile ? ` · ${bundle.profile}` : ''}${bundle.note ? ` — ${bundle.note}` : ''}`
+      + (gw?.topicBase ? ` · MQTT ${gw.topicBase}` : '')
+      + (gw?.seed?.length ? ` · ${gw.seed.length} device con` : '');
     $('#qr-url').textContent = bundle.loginUrl || bundle.qr;
+    const gwEl = $('#qr-gateway');
+    if (gwEl) {
+      const text = kitText(bundle);
+      if (text) {
+        gwEl.style.display = 'block';
+        gwEl.textContent = text;
+      } else {
+        gwEl.style.display = 'none';
+        gwEl.textContent = '';
+      }
+    }
     const host = $('#qr-canvas');
     host.innerHTML = '';
     const canvas = document.createElement('canvas');
@@ -138,8 +236,20 @@
     renderHw();
   }
 
+  async function loadTypes() {
+    try {
+      const r = await fetch(`${base}/api/v1/ui/types`);
+      const data = await r.json();
+      if (r.ok && Array.isArray(data.types) && data.types.length) {
+        typeCatalog = data.types.map((t) => ({ id: t.id, title: t.title || t.id }));
+      }
+    } catch { /* giữ fallback */ }
+    fillProfileSelect();
+  }
+
   async function load() {
     try {
+      await loadTypes();
       const j = await api('/api/admin/users');
       roles = j.roles; users = j.users; scopesAll = j.scopes || scopesAll;
       $('#n-scopes').innerHTML = scopeBoxes(scopesAll, 'data-nsc');
@@ -158,16 +268,28 @@
     try { await fn(); msg(okText, 'ok'); await load(); } catch (e) { msg(e.message, 'err'); }
   }
 
+  $('#hw-profile')?.addEventListener('change', toggleSeedBox);
+  $('#hw-seed-add')?.addEventListener('click', () => addSeedRow());
+
   $('#hw-add').onclick = () => run(async () => {
     const site = $('#hw-site').value.trim();
-    const device = $('#hw-dev').value.trim() || 'plc01';
+    const device = $('#hw-dev').value.trim() || 'gw01';
     if (!site) throw new Error('Nhập mã nhà máy (site).');
+    const profile = $('#hw-profile')?.value || 'generic';
+    const uiMeta = collectSeedUiMeta();
     const r = await api('/api/admin/hardware', 'POST', {
-      site, device, label: $('#hw-label').value.trim(), note: $('#hw-note').value.trim(),
+      site,
+      device,
+      label: $('#hw-label').value.trim(),
+      note: $('#hw-note').value.trim(),
+      profile,
+      uiMeta,
     });
-    $('#hw-site').value = '';
     $('#hw-label').value = '';
     $('#hw-note').value = '';
+    const rows = $('#hw-seed-rows');
+    if (rows) rows.innerHTML = '';
+    toggleSeedBox();
     await loadHw();
     await showQr(r);
   }, 'Đã thêm thiết bị. In tem QR và dán lên máy.');
@@ -214,6 +336,41 @@
       msg('Không sao chép được — chọn và copy thủ công.', 'err');
     }
   };
+  $('#qr-copy-enroll')?.addEventListener('click', async () => {
+    const body = lastQr?.gateway?.enrollBody || (lastQr?.qr ? { qr: lastQr.qr } : null);
+    if (!body) return msg('Chưa có QR.', 'err');
+    const text = JSON.stringify({
+      url: lastQr?.gateway?.enroll?.url || '/api/v1/gateway/enroll',
+      body,
+    }, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      msg('Đã sao chép enroll JSON (dán vào firmware/C#).', 'ok');
+    } catch {
+      msg('Không sao chép được — chọn khối JSON phía trên.', 'err');
+    }
+  });
+  $('#qr-mqtt-kit')?.addEventListener('click', () => run(async () => {
+    if (!lastQr?.site || !lastQr?.device) throw new Error('Chưa có tem.');
+    const r = await api(
+      `/api/admin/hardware/${encodeURIComponent(lastQr.site)}/${encodeURIComponent(lastQr.device)}/mqtt-kit`,
+      'POST',
+      {},
+    );
+    await showQr({ ...lastQr, ...r, gateway: r.gateway });
+    const text = JSON.stringify({
+      mqtt: r.gateway?.mqtt,
+      topics: r.gateway?.topics,
+      pack: r.gateway?.pack,
+      payloadExample: r.gateway?.payloadExample,
+    }, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      msg('Đã sao chép MQTT (có password) + pack.', 'ok');
+    } catch {
+      msg('Đã hiện MQTT (có password) bên dưới.', 'ok');
+    }
+  }, ''));
 
   $('#n-add').onclick = () => run(async () => {
     await api('/api/admin/users', 'POST', {

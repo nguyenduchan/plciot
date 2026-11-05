@@ -28,6 +28,12 @@ Gắn public key `~/.ssh/id_ed25519_plciot.pub` vào VPS `/root/.ssh/authorized_
 - Đổi env/secret: SSH sửa trực tiếp trên VPS, không sync từ local.
 - Nhiều PC: mỗi máy khoá SSH riêng; cùng lệnh sync.
 
+## Gateway / MQTT
+
+- Một format telemetry: `schema:2` + `d` — phục vụ monitor + UI; control qua `cmd`/`ack`.
+- Gateway: enroll → `pack` + topics; không ingest-map / connectKind / format UI thừa.
+- Type/widget: `admin.html` + `/api/v1/ui/dashboard`.
+
 ## Khi user nhờ deploy / lên VPS
 
 Ưu tiên `sync-vps.ps1`. Chỉ dùng `git push` + pull trên VPS nếu user yêu cầu rõ. Trước sync: xác nhận OpenSSH + `ssh -o BatchMode=yes plciot-vps hostname` được.

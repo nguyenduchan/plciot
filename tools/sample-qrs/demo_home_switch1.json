@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "switch1",
+  "label": "Công tắc",
+  "profile": "switch",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoic3dpdGNoMSIsImNsYWltIjoiRFhtTzZOSmdYdlhBZnpWOExXbFJiaEUxTnpvMThfYWwiLCJzaWciOiJPLU02ZjJLZFQ0ZHhhVTh6T2pNUlV2QnpFX1RPdVE5X0NiRXpxMnVmUnZ2WDlWa0RpSTdNU25IMDVwdDZyOW9UOHppVDlYRWtFN3plOUtQQTBnRDBEdyJ9",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoic3dpdGNoMSIsImNsYWltIjoiRFhtTzZOSmdYdlhBZnpWOExXbFJiaEUxTnpvMThfYWwiLCJzaWciOiJPLU02ZjJLZFQ0ZHhhVTh6T2pNUlV2QnpFX1RPdVE5X0NiRXpxMnVmUnZ2WDlWa0RpSTdNU25IMDVwdDZyOW9UOHppVDlYRWtFN3plOUtQQTBnRDBEdyJ9",
+  "uiMeta": null
+}

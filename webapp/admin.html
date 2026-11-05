@@ -47,13 +47,26 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 
 <div class="panel form" style="max-width:none;margin-bottom:14px">
   <h2>Thêm thiết bị (QR in tem)</h2>
-  <p class="help">Chỉ thiết bị đã thêm ở đây mới được người dùng quét QR để gắn tài khoản. Cần cấu hình <code>CLAIM_ROOT_PUBLIC_KEY</code> và <code>CLAIM_ROOT_PRIVATE_KEY</code> trên server.</p>
+  <p class="help">Nhập <b>một lần</b> tại đây (site / mã tem / seed). Server tự cấp MQTT. Gateway MCU/C# gọi <code>POST /api/v1/gateway/enroll</code> với cùng QR — không hard-code broker/pass/danh sách con. User điện thoại vẫn quét QR để claim.</p>
   <p id="hw-cfg" class="help"></p>
-  <label>Mã nhà máy (site)<input id="hw-site" autocapitalize="off" autocomplete="off" placeholder="factory1" required></label>
-  <label>Mã thiết bị<input id="hw-dev" value="plc01" autocapitalize="off" autocomplete="off" placeholder="plc01"></label>
-  <label>Tên hiển thị (tuỳ chọn)<input id="hw-label" autocomplete="off" placeholder="Máy đóng gói line 1"></label>
+  <label>Mã nhà máy (site)<input id="hw-site" autocapitalize="off" autocomplete="off" placeholder="demo_home" required></label>
+  <label>Mã trên tem (gateway hoặc 1 device)<input id="hw-dev" value="gw01" autocapitalize="off" autocomplete="off" placeholder="gw01"></label>
+  <label>Loại trên tem
+    <select id="hw-profile" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
+  </label>
+  <label>Tên hiển thị (tuỳ chọn)<input id="hw-label" autocomplete="off" placeholder="Gateway nhà / Bơm sân"></label>
   <label>Ghi chú (tuỳ chọn)<input id="hw-note" autocomplete="off" placeholder="Serial / vị trí lắp"></label>
-  <div class="row"><button id="hw-add" class="primary">Thêm thiết bị &amp; tạo QR</button></div>
+
+  <div id="hw-seed-box" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <strong>Thiết bị sau gateway (type trên server → UI)</strong>
+      <button type="button" id="hw-seed-add" class="fit">+ Thêm device con</button>
+    </div>
+    <p class="help" style="margin-top:0">Gateway chỉ publish số <code>d.{childId}.{field}</code>. Type chọn ở đây để app dựng widget / monitor / control.</p>
+    <div id="hw-seed-rows"></div>
+  </div>
+
+  <div class="row" style="margin-top:12px"><button id="hw-add" class="primary">Thêm &amp; tạo QR</button></div>
 </div>
 
 <div class="panel" style="max-width:none;margin-bottom:14px">
@@ -67,9 +80,12 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
     <p id="qr-meta" class="help" style="margin:0"></p>
     <div id="qr-canvas"></div>
     <p id="qr-url" class="help" style="word-break:break-all;font-size:11px"></p>
+    <pre id="qr-gateway" class="help no-print" style="display:none;text-align:left;font-size:11px;max-height:160px;overflow:auto;background:#f6f7f9;padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all"></pre>
     <div class="row no-print" style="margin-top:12px">
       <button id="qr-print" class="primary">In tem</button>
       <button id="qr-copy" class="fit">Sao chép link</button>
+      <button id="qr-copy-enroll" class="fit">Sao chép enroll</button>
+      <button id="qr-mqtt-kit" class="fit">Hiện MQTT (pass)</button>
       <button id="qr-close" class="fit">Đóng</button>
     </div>
   </div>

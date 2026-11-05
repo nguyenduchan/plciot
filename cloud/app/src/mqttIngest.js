@@ -83,14 +83,21 @@ export function startMqttIngest(db) {
       const text = buf.toString();
 
       if (kind === 'telemetry') {
-        const data = JSON.parse(text);
-        const r = data.r;
-        noteTelemetry(site, device, r[0] | 0, now);
-        const key = `${tenantId}/${site}/${device}`;
-        const cstate = r[8] | 0;
-        onCountDone(db, { tenantId, site, device, cstate, r, appUrl, prevC });
-        maybeWebhookAlarm(db, tenantId, site, device, r[2] | 0, prevAlarm, appUrl);
+        const canonical = verdict.resolved?.canonical || JSON.parse(text);
+        const storeText = verdict.resolved?.text || text;
+        const r = Array.isArray(canonical.r) ? canonical.r : null;
 
+        if (r) {
+          noteTelemetry(site, device, r[0] | 0, now);
+          const cstate = r[8] | 0;
+          onCountDone(db, { tenantId, site, device, cstate, r, appUrl, prevC });
+          maybeWebhookAlarm(db, tenantId, site, device, r[2] | 0, prevAlarm, appUrl);
+        } else {
+          // schema:2 / d — đánh dấu online; không map conveyor r[]
+          noteTelemetry(site, device, 1, now);
+        }
+
+        const key = `${tenantId}/${site}/${device}`;
         if (minInterval > 0) {
           const prev = lastTeleStore.get(key) || 0;
           if (now - prev < minInterval) return;
@@ -98,8 +105,12 @@ export function startMqttIngest(db) {
         }
 
         insert({
-          ts: now, site, device, kind, payload: text,
-          o: r[1] | 0, i: r[0] | 0, a: r[2] | 0, c: u32(r, 16), s: cstate,
+          ts: now, site, device, kind, payload: storeText,
+          o: r ? (r[1] | 0) : null,
+          i: r ? (r[0] | 0) : null,
+          a: r ? (r[2] | 0) : null,
+          c: r ? u32(r, 16) : null,
+          s: r ? (r[8] | 0) : null,
         });
         return;
       }

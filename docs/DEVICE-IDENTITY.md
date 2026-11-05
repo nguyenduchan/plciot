@@ -43,3 +43,5 @@ Sinh khoá: `node cloud/app/scripts/provision-device-qr.js gen-keys`.
 ## Kiểm thử
 
 `node cloud/app/scripts/smoke-device-claim.js`
+
+QR mẫu (có `profile` để dashboard tự dựng widget): `node cloud/app/scripts/gen-sample-device-qrs.js` → `tools/sample-qrs/`. UI contract: [UI-CONTRACT.md](UI-CONTRACT.md).

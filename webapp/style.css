@@ -319,7 +319,40 @@ body.ui-simple .state.run{color:var(--ok)}
 .status-card.st-alarm .sc-i{color:var(--al-crit)}
 .status-card.st-idle .sc-i{color:var(--mut)}
 
-/* Kiểu Đơn giản: không có tab Điều khiển (đầu ra thủ công) và Báo cáo (bảng tuỳ biến); chỉ còn Tổng quan, Băng tải, Cài đặt */
-body.ui-simple nav button[data-tab="ctrl"],body.ui-simple nav button[data-tab="rep"]{display:none}
+/* Phone (simple): widget cards + báo cáo/biểu đồ; ẩn sơ đồ SCADA / I-O / băng tải */
+body.ui-simple nav button[data-tab="ctrl"],
+body.ui-simple nav button[data-tab="conv"]{display:none}
+body.ui-simple .scada-legacy{display:none !important}
 body.ui-simple .widgets .ctlw{grid-column:1/-1}
 body.ui-simple .widgets .ctlw .row{gap:10px}
+
+/* ---------- Catalog thiết bị — UI điện thoại (chỉ widgets) ---------- */
+.dev-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.dev-head h2{margin:0;font-size:1.15rem;font-weight:700}
+.dev-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:720px){
+  body:not(.ui-simple) .dev-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+}
+.dev-empty{padding:28px 16px;border:1px dashed var(--line);border-radius:16px;text-align:center;line-height:1.45}
+.dev-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:12px}
+.dev-card header{display:flex;align-items:baseline;gap:8px}
+.dev-card header h3{margin:0;font-size:1.1rem;font-weight:700;flex:1}
+.dev-card header .muted{font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.dev-card header .dw-rm{margin-left:auto;min-width:36px;min-height:36px}
+.dev-widgets{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dev-widgets .dw{background:color-mix(in srgb,var(--fg) 5%,transparent);border-radius:12px;padding:12px}
+.dev-widgets .dw .k{font-size:12px;color:var(--mut);margin-bottom:6px;font-weight:500}
+.dev-widgets .dw .v{font-size:1.5rem;font-weight:700;letter-spacing:-0.03em;line-height:1.15}
+.dev-widgets .dw.ctlw{grid-column:1/-1}
+.dev-widgets .dw-toggle{width:100%;min-height:44px;font-size:16px;border-radius:12px}
+.dev-widgets .gauge-bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:8px 0}
+.dev-widgets .gauge-bar i{display:block;height:100%;background:var(--acc);border-radius:99px}
+.dev-widgets .chip{display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-weight:600;font-size:15px}
+.dev-widgets .chip.on{background:var(--accbg);border-color:var(--acc);color:var(--acc)}
+.dev-widgets .dw-toggle.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+body.ui-simple #dev-panel.phone-flush{padding:0;background:transparent;box-shadow:none;border:none}
+body.ui-simple #tab-dash.phone-home{gap:12px}
+body.ui-simple .dev-card{box-shadow:0 10px 28px color-mix(in srgb,var(--fg) 8%,transparent);border:none}
+body.ui-simple .dev-head{padding:0 2px}
+body:not(.ui-simple) .dev-card{border-radius:6px;box-shadow:none}
+body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}

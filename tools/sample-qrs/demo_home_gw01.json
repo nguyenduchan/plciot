@@ -1,0 +1,67 @@
+{
+  "site": "demo_home",
+  "device": "gw01",
+  "label": "Gateway nhà (seed all)",
+  "profile": "iot-hub",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ3cwMSIsImNsYWltIjoiMlYtbTU1VGlIc1hrUFFSRzhhemhpQVc5LTMtT2hsNTAiLCJzaWciOiJKOXNvUWRDRWgzZFo1dDNMOUxCTktfVERVS2xkVU9PTXg1Z2k4SGp5OGJ0YXBpWHQzX0hwaHNzaDYwODY1RzQtRlJGOS1yQjM5dWhiZXhKUnU2aFdCdyJ9",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ3cwMSIsImNsYWltIjoiMlYtbTU1VGlIc1hrUFFSRzhhemhpQVc5LTMtT2hsNTAiLCJzaWciOiJKOXNvUWRDRWgzZFo1dDNMOUxCTktfVERVS2xkVU9PTXg1Z2k4SGp5OGJ0YXBpWHQzX0hwaHNzaDYwODY1RzQtRlJGOS1yQjM5dWhiZXhKUnU2aFdCdyJ9",
+  "uiMeta": {
+    "seed": [
+      {
+        "childId": "plc01",
+        "type": "conveyor",
+        "title": "Băng tải"
+      },
+      {
+        "childId": "env1",
+        "type": "env",
+        "title": "Môi trường"
+      },
+      {
+        "childId": "switch1",
+        "type": "switch",
+        "title": "Công tắc"
+      },
+      {
+        "childId": "relay1",
+        "type": "relay",
+        "title": "Relay"
+      },
+      {
+        "childId": "di1",
+        "type": "di",
+        "title": "Đầu vào số"
+      },
+      {
+        "childId": "do1",
+        "type": "do",
+        "title": "Đầu ra số"
+      },
+      {
+        "childId": "pump1",
+        "type": "pump",
+        "title": "Bơm"
+      },
+      {
+        "childId": "motor1",
+        "type": "motor",
+        "title": "Động cơ"
+      },
+      {
+        "childId": "energy1",
+        "type": "energy",
+        "title": "Điện năng"
+      },
+      {
+        "childId": "tank1",
+        "type": "tank",
+        "title": "Bồn / mức"
+      },
+      {
+        "childId": "generic1",
+        "type": "generic",
+        "title": "Tuỳ chọn"
+      }
+    ]
+  }
+}

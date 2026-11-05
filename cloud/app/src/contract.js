@@ -7,11 +7,15 @@
  *   Chuẩn đa tenant:            iot/{tenant}/{site}/{device}/{kind}
  *
  * kind ∈ telemetry | status | history | cmd | ack
- * Payload JSON có trường schema (số nguyên); hiện tại = 1.
+ * Telemetry IoT: schema 2 + d.{childId}.{field}
+ * Cmd / conveyor legacy: schema 1 (+ r[] khi băng tải)
  */
 import crypto from 'crypto';
 
+/** Schema lệnh / partner legacy (cmd, ack, r[]). */
 export const SCHEMA_VERSION = 1;
+/** Schema telemetry IoT (monitor + UI bind). */
+export const TELEMETRY_SCHEMA = 2;
 export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack']);
 export const LEGACY_NS = 'plc';
 export const PLATFORM_NS = 'iot';
@@ -137,12 +141,15 @@ export function mqttPublicEndpoints() {
 export function contractInfo() {
   return {
     schema: SCHEMA_VERSION,
+    telemetrySchema: TELEMETRY_SCHEMA,
     kinds: [...KINDS],
     namespaces: { legacy: LEGACY_NS, platform: PLATFORM_NS },
     preferredNs: preferredNamespace(),
     dualNs: dualNamespace(),
     defaultTenant: DEFAULT_TENANT,
     endpoints: mqttPublicEndpoints(),
+    telemetry: { shape: 'd', example: { schema: TELEMETRY_SCHEMA, d: { childId: { field: 0 } } } },
+    control: { shape: 'cmd', example: { schema: SCHEMA_VERSION, id: '…', a: 6, v: 1 } },
   };
 }
 

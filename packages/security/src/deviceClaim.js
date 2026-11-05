@@ -106,11 +106,18 @@ function buildQrBundle({ site, device, claim, privateKeyPem, label, note }) {
  */
 export function provisionHardwareDevice(db, {
   site, device, claim, privateKeyPem, label = '', note = '', rotate = true,
+  profile = '', uiMeta = null,
 }) {
   const s = String(site || '').trim();
   const d = String(device || 'plc01').trim();
   const lab = String(label || '').trim().slice(0, 120);
   const nt = String(note || '').trim().slice(0, 500);
+  const prof = String(profile || '').trim().slice(0, 64);
+  let metaJson = null;
+  if (uiMeta != null) {
+    try { metaJson = typeof uiMeta === 'string' ? uiMeta : JSON.stringify(uiMeta); } catch { metaJson = null; }
+    if (metaJson && metaJson.length > 8000) return { error: 'ui_meta_too_large', status: 400 };
+  }
   if (!SAFE.test(s) || !SAFE.test(d)) return { error: 'invalid_site_or_device', status: 400 };
   if (!claimRootKeys().privateKey && !privateKeyPem) return { error: 'claim_root_private_key_missing', status: 503 };
   if (!claimRootKeys().publicKey && !process.env.CLAIM_ROOT_PUBLIC_KEY) {
@@ -132,24 +139,29 @@ export function provisionHardwareDevice(db, {
   const now = Date.now();
   const sealed = sealSecret(secret);
   db.prepare(`
-    INSERT INTO hardware_devices (site, device, claim_hash, claim_sealed, label, note, claimed_by, claimed_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+    INSERT INTO hardware_devices (site, device, claim_hash, claim_sealed, label, note, profile, ui_meta, claimed_by, claimed_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
     ON CONFLICT(site, device) DO UPDATE SET
       claim_hash = excluded.claim_hash,
       claim_sealed = excluded.claim_sealed,
       label = excluded.label,
       note = excluded.note,
+      profile = COALESCE(excluded.profile, hardware_devices.profile),
+      ui_meta = COALESCE(excluded.ui_meta, hardware_devices.ui_meta),
       claimed_by = NULL,
       claimed_at = NULL,
       created_at = excluded.created_at
-  `).run(s, d, hashClaimSecret(secret), sealed, lab || null, nt || null, now);
+  `).run(s, d, hashClaimSecret(secret), sealed, lab || null, nt || null, prof || null, metaJson, now);
 
-  return { ok: true, ...payloadBundle, createdAt: now, claimed: false };
+  return {
+    ok: true, ...payloadBundle, createdAt: now, claimed: false,
+    profile: prof || null, uiMeta: metaJson ? JSON.parse(metaJson) : null,
+  };
 }
 
 export function listHardwareDevices(db) {
   const rows = db.prepare(`
-    SELECT h.site, h.device, h.label, h.note, h.claimed_by, h.claimed_at, h.created_at,
+    SELECT h.site, h.device, h.label, h.note, h.profile, h.ui_meta, h.claimed_by, h.claimed_at, h.created_at,
            u.username AS claimed_username
     FROM hardware_devices h
     LEFT JOIN users u ON u.id = h.claimed_by
@@ -160,6 +172,8 @@ export function listHardwareDevices(db) {
     device: r.device,
     label: r.label || '',
     note: r.note || '',
+    profile: r.profile || '',
+    uiMeta: (() => { try { return r.ui_meta ? JSON.parse(r.ui_meta) : null; } catch { return null; } })(),
     claimed: Boolean(r.claimed_by),
     claimedBy: r.claimed_by || null,
     claimedUsername: r.claimed_username || null,
@@ -204,15 +218,24 @@ export function reissueHardwareDeviceQr(db, { site, device, privateKeyPem, uncla
   });
 }
 
-export function updateHardwareDeviceMeta(db, { site, device, label, note }) {
+export function updateHardwareDeviceMeta(db, { site, device, label, note, profile, uiMeta }) {
   const s = String(site || '').trim();
   const d = String(device || '').trim();
   const row = db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
   if (!row) return { error: 'not_found', status: 404 };
   const lab = label != null ? String(label).trim().slice(0, 120) : undefined;
   const nt = note != null ? String(note).trim().slice(0, 500) : undefined;
+  const prof = profile != null ? String(profile).trim().slice(0, 64) : undefined;
+  let metaJson;
+  if (uiMeta !== undefined) {
+    try { metaJson = uiMeta == null ? null : (typeof uiMeta === 'string' ? uiMeta : JSON.stringify(uiMeta)); } catch {
+      return { error: 'invalid_ui_meta', status: 400 };
+    }
+  }
   if (lab !== undefined) db.prepare('UPDATE hardware_devices SET label = ? WHERE site = ? AND device = ?').run(lab || null, s, d);
   if (nt !== undefined) db.prepare('UPDATE hardware_devices SET note = ? WHERE site = ? AND device = ?').run(nt || null, s, d);
+  if (prof !== undefined) db.prepare('UPDATE hardware_devices SET profile = ? WHERE site = ? AND device = ?').run(prof || null, s, d);
+  if (metaJson !== undefined) db.prepare('UPDATE hardware_devices SET ui_meta = ? WHERE site = ? AND device = ?').run(metaJson, s, d);
   return { ok: true, site: s, device: d };
 }
 

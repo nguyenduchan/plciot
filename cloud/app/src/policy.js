@@ -7,6 +7,7 @@
 import crypto from 'crypto';
 import { resolveSubscriber, requireKnownDevice, requireActiveSubscription } from './deviceBinding.js';
 import { setMosquittoPassword, randomMqttPassword, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
+import { resolveTelemetryMessage } from './telemetryNormalize.js';
 
 const floodBuckets = new Map(); // key -> { n, windowStart }
 let rejectStats = Object.create(null);
@@ -138,23 +139,35 @@ function maybeAutoBlock(db, { site, device, tenant, reason }) {
   });
 }
 
-function validatePayload(kind, text, bufLen) {
+/**
+ * @param {string} kind
+ * @param {string} text
+ * @param {number} bufLen
+ * @param {{ canonical?: object } | null} resolved — đã normalize (schema:2 d hoặc legacy r[])
+ */
+function validatePayload(kind, text, bufLen, resolved = null) {
   if (bufLen > maxPayloadBytes()) {
     return { reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes()}` };
   }
   if (kind === 'telemetry') {
-    let data;
-    try { data = JSON.parse(text); } catch {
+    const data = resolved?.canonical;
+    if (!data) {
       return { reason: 'invalid_json', detail: 'telemetry' };
     }
-    if (!Array.isArray(data.r)) return { reason: 'policy_telemetry_shape', detail: 'missing r[]' };
-    // Tối thiểu 18 thanh ghi (map D0.. như PROTOCOL); generic profile có thể nới bằng env sau
+    const schema = data.schema != null ? Number(data.schema) : (data.d ? 2 : 1);
+    if (schema > 2) return { reason: 'schema_unsupported', detail: String(schema) };
+
+    if (data.d && typeof data.d === 'object' && !Array.isArray(data.d)) {
+      const keys = Object.keys(data.d);
+      if (!keys.length) return { reason: 'policy_telemetry_shape', detail: 'empty d' };
+      if (keys.length > 128) return { reason: 'policy_telemetry_shape', detail: 'd too many keys' };
+      return null;
+    }
+
+    if (!Array.isArray(data.r)) return { reason: 'policy_telemetry_shape', detail: 'missing r[] or d' };
     const minR = Number(process.env.POLICY_TELEMETRY_MIN_REGS || 18);
     if (data.r.length < minR) return { reason: 'policy_telemetry_shape', detail: `r length < ${minR}` };
     if (data.r.length > 512) return { reason: 'policy_telemetry_shape', detail: 'r too long' };
-    if (data.schema != null && Number(data.schema) > 1) {
-      return { reason: 'schema_unsupported', detail: String(data.schema) };
-    }
   }
   if (kind === 'status') {
     const ok = ['online', 'offline', 'plc_fault', 'fault'].includes(String(text).trim())
@@ -187,7 +200,20 @@ export function evaluateIngest(db, {
   const flood = checkFlood(site, device);
   if (flood) return { allow: false, reason: flood.reason, detail: flood.detail };
 
-  const shape = validatePayload(kind, text, bufLen);
+  // Size trước parse — tránh lệch reason (invalid_json vs payload_too_large)
+  if (bufLen > maxPayloadBytes()) {
+    return { allow: false, reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes()}` };
+  }
+
+  let resolved = null;
+  if (kind === 'telemetry') {
+    resolved = resolveTelemetryMessage(db, { site, device, payloadBuf });
+    if (!resolved.ok) {
+      return { allow: false, reason: resolved.reason, detail: resolved.detail };
+    }
+  }
+
+  const shape = validatePayload(kind, text, bufLen, resolved);
   if (shape) return { allow: false, reason: shape.reason, detail: shape.detail };
 
   const sub = resolveSubscriber(db, { tenant, site, device, ns });
@@ -201,7 +227,7 @@ export function evaluateIngest(db, {
     }
   }
 
-  return { allow: true, sub };
+  return { allow: true, sub, resolved };
 }
 
 export function logPolicyEvent(db, row) {

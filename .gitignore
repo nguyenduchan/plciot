@@ -17,3 +17,10 @@ edge/.env
 tools/git-autosync.log
 tools/faceid-sim/
 tools/security-e2e/
+
+# Sample QR / e2e local artifacts (không commit khoá claim hay DB tạm)
+tools/sample-qrs/claim-root.env
+tools/sample-qrs/_tmp.db
+tools/sample-qrs/e2e-session.json
+tools/CsUiQrE2e/bin/
+tools/CsUiQrE2e/obj/

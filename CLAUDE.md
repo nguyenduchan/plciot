@@ -31,6 +31,9 @@ Không ghi đè: `cloud/.env`, `cloud/config/passwd`, `cloud/app/data`.
 
 ## Quy ước khác
 
-- QR tem gắn **sau đăng nhập** (Cài đặt → Nhà máy), không tạo user tại login.
+- MQTT telemetry **một shape**: `schema:2` + `d` (monitor/UI). Control: `cmd`/`ack`. Gateway enroll → `pack[]` + topics — **không** quản lý format/map thừa.
+- Type/widget chỉ trên server (tem + `/api/v1/ui/dashboard`). Chi tiết: `docs/PROVISIONING-FLOW.md`.
+- UI contract: `GET /api/v1/ui/dashboard` — web + C# cùng schema (`docs/UI-CONTRACT.md`).
 - Đăng ký có rate-limit chống spam DB (`RATE_LIMIT_REGISTER*`, `REGISTER_MAX_*`).
+- QR mẫu test: `tools/sample-qrs/` (gen: `cd cloud/app && node scripts/gen-sample-device-qrs.js`).
 - Rule Cursor: `.cursor/rules/vps-dev-sync.mdc`.

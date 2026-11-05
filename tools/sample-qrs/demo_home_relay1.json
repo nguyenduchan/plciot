@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "relay1",
+  "label": "Relay",
+  "profile": "relay",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicmVsYXkxIiwiY2xhaW0iOiJlNUxSdTdlY3F6amhOTUZJU0NtTHJlQUx0QVIxRjlWViIsInNpZyI6IkQtOUU3elFYc2MyTlh6TUFGdWNLMl9EZmhSMnNSdEJnVzdKWEd1MnJINUZBZ0l1bllIZm95azdBZllMb3lDelByNlBRQjRWckdURk5xZG1tZFBmTkRnIn0",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicmVsYXkxIiwiY2xhaW0iOiJlNUxSdTdlY3F6amhOTUZJU0NtTHJlQUx0QVIxRjlWViIsInNpZyI6IkQtOUU3elFYc2MyTlh6TUFGdWNLMl9EZmhSMnNSdEJnVzdKWEd1MnJINUZBZ0l1bllIZm95azdBZllMb3lDelByNlBRQjRWckdURk5xZG1tZFBmTkRnIn0",
+  "uiMeta": null
+}

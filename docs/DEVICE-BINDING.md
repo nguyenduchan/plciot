@@ -30,20 +30,17 @@ Quản lý trên web: **`/console.html`** (admin) — Gói, Thiết bị, Tenant
 
 Chỉ cần client MQTT 3.1.1/5 hỗ trợ **TLS (MQTTS)** + username/password — hầu hết module IoT (ESP32, Quectel, SIMCom, gateway Advantech/USR, PLC có MQTT…) đều được.
 
-### Tham số cấp từ Console → Provision
+### Tham số MQTT (admin tem + enroll)
 
-| Tham số | Ví dụ |
+Tạo tem **`admin.html`** → `POST /api/v1/gateway/enroll` `{ "qr" }` (hoặc admin **Hiện MQTT**). Xem [PROVISIONING-FLOW.md](PROVISIONING-FLOW.md).
+
+| Dùng cho | Field enroll |
 |---|---|
-| Host / port | `mqtts://plc-mqtt.example.com:8883` |
-| Username | `d_acme_plant1_gw01` |
-| Password | (chuỗi cấp một lần) |
-| Client ID | gợi ý từ provision hoặc `{device}-{serial}` |
-| Topic telemetry | `iot/acme/plant1/gw01/telemetry` |
-| Topic status (LWT) | `…/status` = `offline` retain |
-| Topic cmd | subscribe `…/cmd` |
-| Topic ack | publish `…/ack` |
+| Monitor | `topics.telemetry` + `pack` / `payloadExample` (`schema:2` + `d`) |
+| Control | `topics.cmd` / `topics.ack` |
+| UI | Type trên tem → `/api/v1/ui/dashboard` (không nằm trong MQTT) |
 
-Payload khuyến nghị: `{"schema":1,"ts":…,"r":[…]}` — thiết bị cũ chỉ gửi `{"r":[…]}` vẫn được.
+Không cấu hình “MQTT format” riêng — một shape telemetry. Legacy conveyor `r[]` chỉ nội bộ ingest.
 
 ### Không cần
 

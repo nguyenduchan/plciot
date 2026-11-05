@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "di1",
+  "label": "Đầu vào số",
+  "profile": "di",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZGkxIiwiY2xhaW0iOiI2MmFfRDFzekdWQlFSVVBzMVdHY1dyM1RNU0xoTHFyNyIsInNpZyI6Ik9jLU0yNGlkelVvR3VYQWN6WEVrRUNfUFdLVE5raTh1d3ZlTHRzeHF2NkdBdEdKTTVUR1ZqS2hMdUpuZUNWc3dNMHdNTk5HQkdkY0tvZG52YWNPQkJRIn0",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZGkxIiwiY2xhaW0iOiI2MmFfRDFzekdWQlFSVVBzMVdHY1dyM1RNU0xoTHFyNyIsInNpZyI6Ik9jLU0yNGlkelVvR3VYQWN6WEVrRUNfUFdLVE5raTh1d3ZlTHRzeHF2NkdBdEdKTTVUR1ZqS2hMdUpuZUNWc3dNMHdNTk5HQkdkY0tvZG52YWNPQkJRIn0",
+  "uiMeta": null
+}

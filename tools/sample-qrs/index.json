@@ -1,0 +1,115 @@
+{
+  "site": "demo_home",
+  "types": [
+    "conveyor",
+    "env",
+    "switch",
+    "relay",
+    "di",
+    "do",
+    "pump",
+    "motor",
+    "energy",
+    "tank",
+    "iot-hub",
+    "generic"
+  ],
+  "items": [
+    {
+      "file": "demo_home_gw01.txt",
+      "site": "demo_home",
+      "device": "gw01",
+      "profile": "iot-hub",
+      "label": "Gateway nhà (seed all)",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ3cwMSIsImNsYWltIjoiMlYtbTU1VGlIc1hrUFFSRzhhemhpQVc5LTMtT2hsNTAiLCJzaWciOiJKOXNvUWRDRWgzZFo1dDNMOUxCTktfVERVS2xkVU9PTXg1Z2k4SGp5OGJ0YXBpWHQzX0hwaHNzaDYwODY1RzQtRlJGOS1yQjM5dWhiZXhKUnU2aFdCdyJ9"
+    },
+    {
+      "file": "demo_home_plc01.txt",
+      "site": "demo_home",
+      "device": "plc01",
+      "profile": "conveyor",
+      "label": "Băng tải",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicGxjMDEiLCJjbGFpbSI6InE3T3ZJeUJfLWdOUHcwcnpIUG9TeVgxUWUwbmd3dDlkIiwic2lnIjoiUHYwai1hd21fZ3gyS3ZMSDlKSWprenJqUFlSaUlhZXJVRWl3eXYwc09vSzFuV3Y4aVZnRzh2bXQ5SmJ0cDRVZTdXTGdvUmlKdTFodFRlVWFodEh6QWcifQ"
+    },
+    {
+      "file": "demo_home_env1.txt",
+      "site": "demo_home",
+      "device": "env1",
+      "profile": "env",
+      "label": "Môi trường",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZW52MSIsImNsYWltIjoiWTF0cVY1S0dhYUdYdzNXYzVmaW43WExwOFEwX2ZsN18iLCJzaWciOiJ3Zmd5UnhTTUU3dW5VNUNkRnVheTlqM1U0SndwRldSSXNvbkpWYnFKMFozQUZyTzU5Y28yckJUOWliY2s3NFQxYlI2TmY1WHRPT0RtakhMcVp6OXFEQSJ9"
+    },
+    {
+      "file": "demo_home_switch1.txt",
+      "site": "demo_home",
+      "device": "switch1",
+      "profile": "switch",
+      "label": "Công tắc",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoic3dpdGNoMSIsImNsYWltIjoiRFhtTzZOSmdYdlhBZnpWOExXbFJiaEUxTnpvMThfYWwiLCJzaWciOiJPLU02ZjJLZFQ0ZHhhVTh6T2pNUlV2QnpFX1RPdVE5X0NiRXpxMnVmUnZ2WDlWa0RpSTdNU25IMDVwdDZyOW9UOHppVDlYRWtFN3plOUtQQTBnRDBEdyJ9"
+    },
+    {
+      "file": "demo_home_relay1.txt",
+      "site": "demo_home",
+      "device": "relay1",
+      "profile": "relay",
+      "label": "Relay",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicmVsYXkxIiwiY2xhaW0iOiJlNUxSdTdlY3F6amhOTUZJU0NtTHJlQUx0QVIxRjlWViIsInNpZyI6IkQtOUU3elFYc2MyTlh6TUFGdWNLMl9EZmhSMnNSdEJnVzdKWEd1MnJINUZBZ0l1bllIZm95azdBZllMb3lDelByNlBRQjRWckdURk5xZG1tZFBmTkRnIn0"
+    },
+    {
+      "file": "demo_home_di1.txt",
+      "site": "demo_home",
+      "device": "di1",
+      "profile": "di",
+      "label": "Đầu vào số",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZGkxIiwiY2xhaW0iOiI2MmFfRDFzekdWQlFSVVBzMVdHY1dyM1RNU0xoTHFyNyIsInNpZyI6Ik9jLU0yNGlkelVvR3VYQWN6WEVrRUNfUFdLVE5raTh1d3ZlTHRzeHF2NkdBdEdKTTVUR1ZqS2hMdUpuZUNWc3dNMHdNTk5HQkdkY0tvZG52YWNPQkJRIn0"
+    },
+    {
+      "file": "demo_home_do1.txt",
+      "site": "demo_home",
+      "device": "do1",
+      "profile": "do",
+      "label": "Đầu ra số",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZG8xIiwiY2xhaW0iOiJPdjFlcWc3bmJQcDVWRlVPS2NWSmN1aFdnNWNHNjBpTSIsInNpZyI6InRMQk1fcHVGMGFNWGVISERaZWcxS3RPak01QzdjbXNzWDl2MVJiLUxUOUhwUmIyc3NvZ1NHYWYtTFM5RS02cGt5bENibUw1anhRbFRsamdFWFV0bEJRIn0"
+    },
+    {
+      "file": "demo_home_pump1.txt",
+      "site": "demo_home",
+      "device": "pump1",
+      "profile": "pump",
+      "label": "Bơm",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicHVtcDEiLCJjbGFpbSI6IldYdE9jY0NVR2FCSjZjUjZTQWE0UTIyU3RqQzhiVFNnIiwic2lnIjoib3c4ZU0wOTRvMFhoZnBvVGNtWnR1T0haeFlMUFpKX3FPVDBMNl9vM01HeWd3cHFqNWhyWjN4VEJ3R0E0Uy1OSWlkRjZxZXRYY2oxdG9TR19nQkFhQ1EifQ"
+    },
+    {
+      "file": "demo_home_motor1.txt",
+      "site": "demo_home",
+      "device": "motor1",
+      "profile": "motor",
+      "label": "Động cơ",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoibW90b3IxIiwiY2xhaW0iOiIwOTFXVFE4eEsyTHBrbFkxdmgzZUhjOHhpRk1LdGlTXyIsInNpZyI6Ikl5cE1zN1Z3THZkaDJnM0hUTWZEdk1uNFVUS0RxTXFYREVCWHgydGJMN3FCcGMtcDRFYk8waF9jS0tUMnZubENYN0l6NjF2SHNFMnhkcEd1RDExcUFnIn0"
+    },
+    {
+      "file": "demo_home_energy1.txt",
+      "site": "demo_home",
+      "device": "energy1",
+      "profile": "energy",
+      "label": "Điện năng",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZW5lcmd5MSIsImNsYWltIjoiQXB2U1ktQy1ORk9oY1BvdnVFNTAzWUg3Z1dXeGRGLWwiLCJzaWciOiI1MlR4bjZsUDJEMGhtWU9YV3VvOEtYbUtrbTRsbHdPTDh1RFNFMWhrV09rcnRvTFppTjUtY29rdWxab2JIc3Bic1VFamc1VGVYM0M1ek9ONGVWcXJCdyJ9"
+    },
+    {
+      "file": "demo_home_tank1.txt",
+      "site": "demo_home",
+      "device": "tank1",
+      "profile": "tank",
+      "label": "Bồn / mức",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoidGFuazEiLCJjbGFpbSI6ImtUTlhscW9jOGZBcVBxWkRCcmRNdGZSZ005NHdfQ1RSIiwic2lnIjoidDVyQkpBSjg5U0hfSFRNLXptNUlYQkpNRHBfUWplWUF5ajRkRWJYQjNNcUlvOFhvTDBOS2l5NzVTWWJBZDJtaDlLSzdMdFYzaWpQOXI2OW9vSUhOQmcifQ"
+    },
+    {
+      "file": "demo_home_generic1.txt",
+      "site": "demo_home",
+      "device": "generic1",
+      "profile": "generic",
+      "label": "Tuỳ chọn",
+      "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoiZ2VuZXJpYzEiLCJjbGFpbSI6ImJ3OUtMMi1PakpMQUtITXpOTzctblEtRnVKbl93Ml9XIiwic2lnIjoiZU5tWjZxLUxlTjIyVnJ5c05Rck5xZDlDQjBqZ0hWUnpRVGt5Uk5xbTNiT2dZMGFMT2s2M0hwNDJhS1AyMnFibzRhZU91eVVFS2tTWGNmX1hRakJxRFEifQ"
+    }
+  ]
+}

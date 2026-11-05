@@ -47,7 +47,7 @@ Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PAR
 
 | Topic | Chiều | Nội dung | Retain |
 |---|---|---|---|
-| `<base>/telemetry` | gw → app | `{"schema":1,"r":[D0..D39]}` mỗi 1 s (`schema` khuyến nghị) | có |
+| `<base>/telemetry` | gw → app | `{"schema":1,"r":[D0..D39]}` hoặc `schema:2` kèm `"d":{ childId: {…} }` (nhiều thiết bị con / UI contract) | có |
 | `<base>/history` | gw → app | `{"c":[49],"s":giây,"n":số giờ,"r":giây chạy,"m":[49]}` mỗi 60 s (lịch sử theo giờ do PLC giữ) | có |
 | `<base>/status` | gw → app | `online` / `plc_fault` / `offline` (LWT) | có |
 | `<base>/cmd` | app → gw | `{"schema":1,"id":"x","a":4,"v":5}` ghi D4 = 5 (chỉ user `ctl`) | không |
@@ -64,3 +64,5 @@ PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thự
 `plciot-app` subscribe `plc/+/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 3 ngày (`HISTORY_DEFAULT_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
 
 Webapp (đã đăng nhập) khi mở gọi `GET /api/history/telemetry?site=&dev=&since=` (Bearer JWT), ghi vào IndexedDB để xem offline / khi app từng đóng. Live vẫn qua MQTT trực tiếp.
+
+Dashboard widget (web + C#): [UI-CONTRACT.md](UI-CONTRACT.md) — `GET /api/v1/ui/dashboard`, thêm thiết bị bằng QR (`POST /api/devices`).

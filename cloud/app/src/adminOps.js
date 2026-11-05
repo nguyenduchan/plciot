@@ -18,6 +18,7 @@ import {
   listHardwareDevices, provisionHardwareDevice, getHardwareDeviceQr,
   reissueHardwareDeviceQr, updateHardwareDeviceMeta, deleteHardwareDevice,
 } from '@plciot/security';
+import { attachGatewayBundle, bumpConfigRev, ensureMqttForHardware } from './gatewayEnroll.js';
 import { retentionInfo } from './retention.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
@@ -435,22 +436,45 @@ export function mountAdminOps(app, {
   });
 
   app.post('/api/admin/hardware', ...writeGate, (req, res) => {
+    let uiMeta = req.body?.uiMeta ?? req.body?.ui_meta;
+    if (uiMeta != null && typeof uiMeta === 'object' && uiMeta.configRev == null) {
+      uiMeta = { ...uiMeta, configRev: 1 };
+    }
     const r = provisionHardwareDevice(db, {
       site: req.body?.site,
       device: req.body?.device,
       label: req.body?.label,
       note: req.body?.note,
+      profile: req.body?.profile,
+      uiMeta,
     });
     if (!r.error) {
       audit(db, 'hardware_provision', {
         userId: req.user.id, ip: clientIp(req), detail: `${r.site}/${r.device}`,
       });
     }
-    sendHw(res, r);
+    // Một lần nhập seed → tự cấp MQTT; gateway enroll bằng cùng QR (không copy pass tay)
+    sendHw(res, attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false }));
   });
 
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {
-    sendHw(res, getHardwareDeviceQr(db, { site: req.params.site, device: req.params.device }));
+    const r = getHardwareDeviceQr(db, { site: req.params.site, device: req.params.device });
+    sendHw(res, attachGatewayBundle(db, r, { rotateMqtt: false, includePassword: false }));
+  });
+
+  /** Kit MQTT đầy đủ (có password) — dùng copy vào gateway bán sẵn / DTU. */
+  app.post('/api/admin/hardware/:site/:device/mqtt-kit', ...writeGate, (req, res) => {
+    const r = getHardwareDeviceQr(db, { site: req.params.site, device: req.params.device });
+    const bundled = attachGatewayBundle(db, r, {
+      rotateMqtt: Boolean(req.body?.rotateMqtt),
+      includePassword: true,
+    });
+    if (!bundled.error) {
+      audit(db, 'hardware_mqtt_kit', {
+        userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}`,
+      });
+    }
+    sendHw(res, bundled);
   });
 
   app.post('/api/admin/hardware/:site/:device/reissue', ...writeGate, (req, res) => {
@@ -464,16 +488,33 @@ export function mountAdminOps(app, {
         userId: req.user.id, ip: clientIp(req), detail: `${r.site}/${r.device}`,
       });
     }
-    sendHw(res, r);
+    sendHw(res, attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false }));
   });
 
   app.patch('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
-    sendHw(res, updateHardwareDeviceMeta(db, {
-      site: req.params.site,
-      device: req.params.device,
+    const site = req.params.site;
+    const device = req.params.device;
+    let uiMeta = req.body?.uiMeta ?? req.body?.ui_meta;
+    if (uiMeta !== undefined) {
+      const row = db.prepare('SELECT ui_meta FROM hardware_devices WHERE site = ? AND device = ?')
+        .get(site, device);
+      uiMeta = bumpConfigRev(row?.ui_meta, uiMeta);
+    }
+    const r = updateHardwareDeviceMeta(db, {
+      site, device,
       label: req.body?.label,
       note: req.body?.note,
-    }));
+      profile: req.body?.profile,
+      uiMeta,
+    });
+    if (!r.error) {
+      const row = db.prepare('SELECT profile FROM hardware_devices WHERE site = ? AND device = ?')
+        .get(site, device);
+      try {
+        ensureMqttForHardware(db, { site, device, profile: row?.profile, rotate: false });
+      } catch { /* mosquitto có thể offline lúc patch */ }
+    }
+    sendHw(res, r);
   });
 
   app.delete('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
@@ -483,6 +524,7 @@ export function mountAdminOps(app, {
       force: Boolean(req.query?.force === '1' || req.body?.force),
     });
     if (!r.error) {
+      try { revokeDevice(db, 'default', req.params.site, req.params.device); } catch { /* ignore */ }
       audit(db, 'hardware_delete', {
         userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}`,
       });

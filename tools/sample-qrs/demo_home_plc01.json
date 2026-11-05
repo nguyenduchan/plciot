@@ -1,0 +1,9 @@
+{
+  "site": "demo_home",
+  "device": "plc01",
+  "label": "Băng tải",
+  "profile": "conveyor",
+  "loginUrl": "login.html?claim=eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicGxjMDEiLCJjbGFpbSI6InE3T3ZJeUJfLWdOUHcwcnpIUG9TeVgxUWUwbmd3dDlkIiwic2lnIjoiUHYwai1hd21fZ3gyS3ZMSDlKSWprenJqUFlSaUlhZXJVRWl3eXYwc09vSzFuV3Y4aVZnRzh2bXQ5SmJ0cDRVZTdXTGdvUmlKdTFodFRlVWFodEh6QWcifQ",
+  "qr": "eyJ2IjoxLCJzaXRlIjoiZGVtb19ob21lIiwiZGV2aWNlIjoicGxjMDEiLCJjbGFpbSI6InE3T3ZJeUJfLWdOUHcwcnpIUG9TeVgxUWUwbmd3dDlkIiwic2lnIjoiUHYwai1hd21fZ3gyS3ZMSDlKSWprenJqUFlSaUlhZXJVRWl3eXYwc09vSzFuV3Y4aVZnRzh2bXQ5SmJ0cDRVZTdXTGdvUmlKdTFodFRlVWFodEh6QWcifQ",
+  "uiMeta": null
+}

@@ -38,30 +38,39 @@
     <div id="alarm-bar" class="alarm-bar comm" role="status" aria-live="polite"><span class="ab-i" aria-hidden="true">■</span><span class="ab-t">Đang kết nối…</span></div>
 
     <main>
-      <section id="tab-dash" class="tab cols">
+      <section id="tab-dash" class="tab cols phone-home">
         <div id="status-card" class="status-card st-comm span" role="status" aria-live="polite"><span class="sc-i" aria-hidden="true">■</span><div class="sc-b"><div class="sc-t">Đang kết nối…</div><div class="sc-h"></div></div></div>
-        <div class="panel span">
+        <!-- Phone UI: chỉ widget cards theo UI contract — không sơ đồ SCADA -->
+        <div class="panel span phone-flush" id="dev-panel">
+          <div class="dev-head">
+            <h2>Thiết bị</h2>
+            <button type="button" id="dev-add" class="primary">+ Thêm</button>
+          </div>
+          <div id="dev-grid" class="dev-grid"></div>
+        </div>
+        <!-- Legacy băng tải / I-O / biểu đồ: chỉ mode pro (SCADA kỹ thuật) -->
+        <div class="panel span pro-only scada-legacy">
           <div class="widgets">
             <div class="w"><div class="k">Số lượng hiện tại</div><div class="v" id="w-cnt">0</div><div class="d" id="w-state">—</div></div>
             <div class="w"><div class="k">Giờ này</div><div class="v" id="w-hour">—</div><div class="d" id="w-hourd"></div></div>
             <div class="w"><div class="k">24 giờ qua</div><div class="v" id="w-24">—</div><div class="d" id="w-24d"></div></div>
             <div class="w ringw"><div class="ring" id="w-ring"><span id="w-runp">—</span></div><div><div class="k">Thời gian chạy</div><div class="d" id="w-rund">24 giờ qua</div></div></div>
-            <div class="w pro-only"><div class="k">Tốc độ băng tải</div><div class="v"><span id="w-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="w-spdbar"></i></div><div class="d" id="w-spdd"></div></div>
+            <div class="w"><div class="k">Tốc độ băng tải</div><div class="v"><span id="w-spd">—</span><small> sp/phút</small></div><div class="bar"><i id="w-spdbar"></i></div><div class="d" id="w-spdd"></div></div>
             <div class="w ctlw"><div class="k">Điều khiển máy</div><div class="row"><button id="w-start" class="primary">▶ Chạy</button><button id="w-stop" class="danger">■ Dừng máy</button></div><div class="d" id="w-d"></div></div>
           </div>
         </div>
-        <div class="panel span"><h2>Sự kiện gần nhất</h2><div id="events" class="events"></div></div>
-        <div class="panel span pro-only">
+        <div class="panel span pro-only scada-legacy"><h2>Sự kiện gần nhất</h2><div id="events" class="events"></div></div>
+        <div class="panel span pro-only scada-legacy">
           <h2>Số lượng đếm được theo thời gian</h2>
           <div class="seg" id="cum-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
           <div id="wcum" class="chart"></div>
           <p class="muted">Tổng số sản phẩm đếm được cộng dồn từ đầu khoảng chọn (dữ liệu ghi trên thiết bị khi app mở).</p>
         </div>
-        <div class="panel"><h2>Sản lượng mỗi giờ (24 giờ qua)</h2><canvas id="wbars" data-h="170"></canvas><p class="muted" id="w-note"></p></div>
-        <div class="panel pro-only"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
-        <div class="panel pro-only"><h2>Đầu vào</h2><div id="ins" class="grid"></div></div>
-        <div class="panel pro-only"><h2>Đầu ra</h2><div id="outs" class="grid"></div></div>
-        <div class="panel span pro-only"><h2>Cảnh báo</h2><div id="alarms"></div><p class="muted" id="stamp"></p></div>
+        <div class="panel pro-only scada-legacy"><h2>Sản lượng mỗi giờ (24 giờ qua)</h2><canvas id="wbars" data-h="170"></canvas><p class="muted" id="w-note"></p></div>
+        <div class="panel pro-only scada-legacy"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
+        <div class="panel pro-only scada-legacy"><h2>Đầu vào</h2><div id="ins" class="grid"></div></div>
+        <div class="panel pro-only scada-legacy"><h2>Đầu ra</h2><div id="outs" class="grid"></div></div>
+        <div class="panel span pro-only scada-legacy"><h2>Cảnh báo</h2><div id="alarms"></div><p class="muted" id="stamp"></p></div>
       </section>
 
       <section id="tab-conv" class="tab cols" hidden>
@@ -110,7 +119,7 @@
 
       <section id="tab-set" class="tab" hidden>
         <div class="panel form">
-          <label>Kiểu giao diện<select id="uiMode"><option value="simple">Đơn giản (chủ xưởng)</option><option value="pro">Vận hành (kỹ thuật)</option></select></label>
+          <label>Kiểu giao diện<select id="uiMode"><option value="simple">Điện thoại — widget + báo cáo</option><option value="pro">SCADA kỹ thuật (I/O, băng tải)</option></select></label>
           <div class="pro-only">
           <label class="check"><input type="checkbox" id="demo"> Chạy thử (dữ liệu giả, không cần máy chủ)</label>
           <label>Địa chỉ máy chủ MQTT (WebSocket bảo mật)<input id="url" placeholder="wss://plc-mqtt.dieukhientudong.net" autocapitalize="off" autocorrect="off"></label>
@@ -202,6 +211,18 @@
 </div>
 <div id="toast"></div>
 
+<div id="dev-modal" class="ctl-modal" hidden>
+  <div class="ctl-box">
+    <h3>Thêm thiết bị</h3>
+    <p class="muted">Dán mã QR trên tem — máy chủ đã biết loại thiết bị, giao diện tự dựng. Không cần chọn widget.</p>
+    <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Dán chuỗi QR từ tem thiết bị"></textarea></label>
+    <div class="row">
+      <button type="button" id="dev-add-go" class="primary">Thêm</button>
+      <button type="button" id="dev-modal-close" class="fit">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/uPlot.iife.min.js"></script>
 <script src="vendor/gridstack-all.js"></script>
 <script src="mqtt-lite.js"></script>
@@ -213,6 +234,7 @@
 <script src="auth-app.js"></script>
 <script src="control.js"></script>
 <script src="site.js"></script>
+<script src="devices.js"></script>
 <script src="app.js"></script>
 <script src="security/account.js"></script>
 </body>
