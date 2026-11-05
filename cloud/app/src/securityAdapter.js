@@ -50,6 +50,16 @@ configure({
       applyDefaultSubscription(db, provisioned.id);
       return { ok: true };
     },
+    /** Sau khi user đã login gắn QR tem → xoay MQTT ACL theo site/device mới. */
+    onDeviceClaimed: async (db, user, { site, device }) => {
+      try {
+        provisionUserMqtt(db, user, { site, device, rotate: true });
+        return { ok: true };
+      } catch (e) {
+        console.error('onDeviceClaimed', e.message);
+        return { error: 'provision_failed', status: 500 };
+      }
+    },
   },
   accountExtra: (user) => ({ ...retentionInfo(user), subscription: subscriptionInfo(user) }),
   presence: {

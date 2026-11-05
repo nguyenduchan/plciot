@@ -45,16 +45,14 @@
         <button type="button" id="btn-setup-passkey" class="fit" hidden>Thiết lập Face ID trên máy này</button>
 {{demoButton}}      </div>
       <details id="more-device" class="more-device">
-        <summary>Có thiết bị mới (QR tem / mã mời)?</summary>
-        <p class="hint" id="tg-hint">Dành cho thiết bị đã được cấp tem QR hoặc mã mời. Đổi điện thoại thì <b>không</b> quét lại tem — hãy đăng nhập bằng mật khẩu hoặc Khôi phục.</p>
-        <label id="claim-row">Mã QR thiết bị — chỉ lần nhận máy đầu<textarea id="claim-qr" rows="3" placeholder="Dán chuỗi QR từ tem thiết bị"></textarea></label>
-        <label id="invite-row" hidden>Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
+        <summary>Có mã mời nhà máy?</summary>
+        <p class="hint" id="tg-hint">Tem QR thiết bị gắn <b>sau khi đăng nhập</b> (Cài đặt → Nhà máy). Đổi điện thoại: đăng nhập bằng mật khẩu / Khôi phục — <b>không</b> quét lại tem.</p>
+        <label id="invite-row">Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
         <label id="privacy-row" class="privacy-consent">
           <input id="privacy-consent" type="checkbox">
-          <span>Tôi đã đọc <a id="privacy-link" href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để nhận thiết bị.</span>
+          <span>Tôi đã đọc <a id="privacy-link" href="/privacy.html" target="_blank" rel="noopener">Thông báo bảo vệ dữ liệu cá nhân</a> và đồng ý xử lý dữ liệu để nhận lời mời.</span>
         </label>
         <div class="login-actions">
-          <button type="button" id="btn-claim" class="fit">Nhận máy mới (QR tem)</button>
           <button type="button" id="btn-invite" class="fit">Dùng mã mời</button>
         </div>
       </details>

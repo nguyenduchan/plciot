@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Smoke: provision QR → claim → pending user (không OTP/SĐT).
+ * Smoke: provision QR → claim bởi user ĐÃ đăng nhập (không tạo user từ QR).
  * Chạy: node scripts/smoke-device-claim.js
  */
 import fs from 'node:fs';
@@ -42,13 +42,14 @@ process.env.APP_JWT_SECRET = 'smoke-claim-secret-16chars';
 configure({
   secret: () => process.env.APP_JWT_SECRET,
   identity: {
-    createAccount: async (database, { site, device }) => {
-      const username = `u_${crypto.randomBytes(4).toString('hex')}`;
+    createAccount: async (database, { site, device, username: chosen }) => {
+      const username = chosen || `u_${crypto.randomBytes(4).toString('hex')}`;
       const r = database.prepare(
         'INSERT INTO users (username, password_hash, folder_path, notify_site, notify_device, setup_complete, site_owner, role) VALUES (?, ?, ?, ?, ?, 0, 1, ?)',
       ).run(username, hashPassword('x'), `f_${username}`, site, device, 'operator');
       return database.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
     },
+    onDeviceClaimed: async () => ({ ok: true }),
   },
 });
 
@@ -60,22 +61,37 @@ function ok(cond, msg) {
   console.log('ok', msg);
 }
 
+const me = db.prepare(
+  'INSERT INTO users (username, password_hash, folder_path, notify_site, notify_device, setup_complete, site_owner, role) VALUES (?, ?, ?, ?, ?, 1, 1, ?)',
+).run('owner1', hashPassword('x'), 'f_owner1', 's_temp', 'plc01', 'operator');
+const userId = me.lastInsertRowid;
+
 const prov = provisionHardwareDevice(db, { site: 'plantA', device: 'plc01' });
 ok(prov.ok && prov.qr, 'provision');
 const decoded = decodeClaimQr(prov.qr);
 ok(decoded?.sig, 'decode qr');
 ok(!verifyClaimSignature(decoded).error, 'verify sig');
 
-const claimed = await claimHardwareDevice(db, { qr: prov.qr, ip: '127.0.0.1', deviceId: 'browser-device-id-123456' });
-ok(claimed.ok && claimed.user?.setup_complete === 0, 'claim creates incomplete user');
-ok(claimed.site === 'plantA' && claimed.device === 'plc01', 'site/device bound');
-ok(claimed.user.username.startsWith('u_'), 'anonymous username');
-ok(!claimed.user.phone, 'no phone');
+const noAuth = await claimHardwareDevice(db, { qr: prov.qr, ip: '127.0.0.1' });
+ok(noAuth.error === 'unauthorized', 'claim without userId rejected');
 
-// Hoàn tất setup rồi claim lại phải bị chặn
-db.prepare('UPDATE users SET setup_complete = 1 WHERE id = ?').run(claimed.user.id);
-const blocked = await claimHardwareDevice(db, { qr: prov.qr });
-ok(blocked.error === 'device_already_claimed' || blocked.error === 'site_taken', `claimed device blocked (${blocked.error})`);
+const claimed = await claimHardwareDevice(db, {
+  qr: prov.qr, userId, ip: '127.0.0.1', deviceId: 'browser-device-id-123456',
+});
+ok(claimed.ok && !claimed.already, 'claim binds existing user');
+ok(claimed.site === 'plantA' && claimed.device === 'plc01', 'site/device bound');
+ok(claimed.user.id === userId, 'same user id');
+ok(claimed.user.notify_site === 'plantA', 'user notify_site updated');
+ok(db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 1, 'no extra user created');
+
+const again = await claimHardwareDevice(db, { qr: prov.qr, userId });
+ok(again.ok && again.already, 'idempotent re-claim by same user');
+
+const other = db.prepare(
+  'INSERT INTO users (username, password_hash, folder_path, notify_site, notify_device, setup_complete, site_owner, role) VALUES (?, ?, ?, ?, ?, 1, 1, ?)',
+).run('owner2', hashPassword('x'), 'f_owner2', 's_other', 'plc01', 'operator');
+const blocked = await claimHardwareDevice(db, { qr: prov.qr, userId: other.lastInsertRowid });
+ok(blocked.error === 'device_already_claimed', `claimed device blocked (${blocked.error})`);
 
 try { db.close(); } catch { /* ignore */ }
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* Windows lock */ }

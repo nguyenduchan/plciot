@@ -1,0 +1,10 @@
+# Dán vào %USERPROFILE%\.ssh\config trên mỗi PC (cơ quan / nhà).
+# Rồi: ssh plciot-vps   hoặc   .\cloud\scripts\sync-vps.ps1
+
+Host plciot-vps
+  HostName 14.225.224.218
+  User root
+  IdentityFile ~/.ssh/id_ed25519_plciot
+  IdentitiesOnly yes
+  ServerAliveInterval 30
+  ServerAliveCountMax 4

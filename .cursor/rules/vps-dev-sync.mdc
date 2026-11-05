@@ -1,0 +1,33 @@
+---
+description: Dev trên PC local/nhà → sync code lên VPS plciot (không bắt buộc GitHub)
+alwaysApply: true
+---
+
+# Deploy local → VPS
+
+VPS: `14.225.224.218`, SSH alias `plciot-vps`, path `/root/plciot`.
+Web: `https://plc.dieukhientudong.net` (Cloudflare Tunnel). MQTTS thẳng VPS `:48263`.
+
+## PC mới (nhà / cơ quan) — 1 lần
+
+```powershell
+.\cloud\scripts\setup-dev-pc.ps1 -Test
+```
+
+Gắn public key `~/.ssh/id_ed25519_plciot.pub` vào VPS `/root/.ssh/authorized_keys` (từ máy đã SSH được hoặc `ssh root@14.225.224.218` nhập mật khẩu 1 lần). Chi tiết: `docs/MAY-CHU-VIET-NAM.md`, mẫu `cloud/scripts/ssh-config.example`.
+
+## Sau khi sửa code — sync (không qua GitHub)
+
+```powershell
+.\cloud\scripts\sync-vps.ps1           # cloud/ + webapp/ + packages/security
+.\cloud\scripts\sync-vps.ps1 -Build    # khi đổi cloud/app hoặc packages/security
+.\cloud\scripts\sync-vps.ps1 -Service haproxy
+```
+
+- **Không** ghi đè trên VPS: `cloud/.env`, `cloud/config/passwd`, `cloud/app/data`.
+- Đổi env/secret: SSH sửa trực tiếp trên VPS, không sync từ local.
+- Nhiều PC: mỗi máy khoá SSH riêng; cùng lệnh sync.
+
+## Khi user nhờ deploy / lên VPS
+
+Ưu tiên `sync-vps.ps1`. Chỉ dùng `git push` + pull trên VPS nếu user yêu cầu rõ. Trước sync: xác nhận OpenSSH + `ssh -o BatchMode=yes plciot-vps hostname` được.

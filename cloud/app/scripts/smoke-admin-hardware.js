@@ -6,7 +6,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import {
   configure, migrateSecurity, generateClaimRootKeyPair, provisionHardwareDevice,
-  listHardwareDevices, getHardwareDeviceQr, claimHardwareDevice, deleteHardwareDevice,
+  listHardwareDevices, getHardwareDeviceQr, claimHardwareDevice, deleteHardwareDevice, hashPassword,
 } from '@plciot/security';
 
 const keys = generateClaimRootKeyPair();
@@ -34,6 +34,7 @@ configure({
       ).run(u, 'x', `f_${u}`, site, device);
       return database.prepare('SELECT * FROM users WHERE id=?').get(r.lastInsertRowid);
     },
+    onDeviceClaimed: async () => ({ ok: true }),
   },
 });
 
@@ -41,6 +42,11 @@ function ok(cond, msg) {
   if (!cond) { console.error('FAIL', msg); process.exit(1); }
   console.log('ok', msg);
 }
+
+const owner = db.prepare(
+  'INSERT INTO users (username, password_hash, folder_path, notify_site, notify_device, setup_complete, site_owner) VALUES (?,?,?,?,?,1,1)',
+).run('admin_owner', hashPassword('x'), 'f_ao', 's_tmp', 'plc01');
+const userId = owner.lastInsertRowid;
 
 const p = provisionHardwareDevice(db, { site: 'plant1', device: 'plc01', label: 'Line A', note: 'SN-1' });
 ok(p.ok && p.qr && p.loginUrl.includes('claim='), 'provision + loginUrl');
@@ -50,12 +56,13 @@ ok(again.qr === p.qr, 'reprint same qr');
 
 const ghost = provisionHardwareDevice(db, { site: 'ghost', device: 'x' });
 db.prepare('DELETE FROM hardware_devices WHERE site=?').run('ghost');
-const unk = await claimHardwareDevice(db, { qr: ghost.qr });
+const unk = await claimHardwareDevice(db, { qr: ghost.qr, userId });
 ok(unk.error === 'unknown_device', 'reject unregistered device');
 
-const claimed = await claimHardwareDevice(db, { qr: p.qr });
-ok(claimed.ok, 'claim registered device');
+const claimed = await claimHardwareDevice(db, { qr: p.qr, userId });
+ok(claimed.ok, 'claim registered device by logged-in user');
 ok(listHardwareDevices(db)[0].claimed, 'marked claimed');
+ok(db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 1, 'claim did not create user');
 
 const del = deleteHardwareDevice(db, { site: 'plant1', device: 'plc01' });
 ok(del.error === 'device_already_claimed', 'block delete while claimed');

@@ -7,8 +7,8 @@
 
 | Hạng mục | Cách làm trên plciot |
 |---|---|
-| Thu thập tối thiểu | Không SĐT / email / Telegram OTP; tài khoản `u_*` + claim QR |
-| Đồng ý | Bắt buộc `consent: true` khi `/api/devices/claim` và `/api/invites/redeem` |
+| Thu thập tối thiểu | Không SĐT / email / Telegram OTP; đăng ký username; QR gắn sau login |
+| Đồng ý | Bắt buộc `consent: true` khi `/api/register` và `/api/invites/redeem` |
 | Lưu đồng ý | `users.privacy_consent_at`, `users.privacy_version` |
 | Quyền xuất / xoá | `GET /api/account/data/export`, `POST /api/account/delete` (reauth) |
 | DPO | Env `DPO_CONTACT`, `DPO_EMAIL` → `/api/auth/config` |

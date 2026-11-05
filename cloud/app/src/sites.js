@@ -1,8 +1,8 @@
 /**
  * Nhà máy (site/device), chủ site và thành viên — danh tính theo thiết bị (QR), không SĐT/Telegram.
  *
- *   Claim thiết bị — quét QR sticker (POST /api/devices/claim trong @plciot/security).
- *   Mời thành viên — chủ tạo mã/QR mời; người nhận redeem tại login.
+ *   Claim thiết bị — sau đăng nhập, dán QR tem (POST /api/devices/claim, requireAuth).
+ *   Mời thành viên — chủ tạo mã mời; người nhận redeem tại login.
  *   Gỡ thành viên  — về vùng riêng, rotate MQTT.
  */
 import crypto from 'crypto';

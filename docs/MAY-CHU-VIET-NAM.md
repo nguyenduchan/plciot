@@ -78,5 +78,53 @@ C# Conveyor: `UseCloudMqtts("14.225.224.218", 48263)` + `CloudTransport=mqtts`.
 ## Hoàn tác
 Xoá bản ghi `A` `plc-mqtt`, vào tunnel `plc-broker` → Routes → Add route lại `plc-mqtt.dieukhientudong.net` → `http://mqtt:9001`, rồi `docker compose -p plciot up -d` trên PC.
 
+## Code trên PC local / nhà → sync lên VPS
+
+Mỗi máy Windows (cơ quan **hoặc** nhà) làm **một lần** rồi code bình thường, deploy bằng sync (không bắt buộc GitHub).
+
+### 1) Setup PC mới (1 lần / máy)
+
+```powershell
+cd D:\Project\embedded\plciot   # hoặc đường dẫn repo trên máy nhà
+.\cloud\scripts\setup-dev-pc.ps1 -Test
+```
+
+Script sẽ:
+- kiểm tra OpenSSH Client
+- tạo khoá `~/.ssh/id_ed25519_plciot` (riêng cho plciot)
+- thêm Host `plciot-vps` → `14.225.224.218` vào `~/.ssh/config`
+- in **public key** — phải gắn vào VPS trước khi sync
+
+**Gắn khoá lên VPS** (chọn 1):
+
+- Từ máy **đã SSH được** (vd PC cơ quan), thay `PUBKEY` bằng dòng `.pub` của máy mới:
+
+```powershell
+ssh plciot-vps "mkdir -p /root/.ssh && chmod 700 /root/.ssh && echo 'PUBKEY' >> /root/.ssh/authorized_keys && sort -u /root/.ssh/authorized_keys -o /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"
+```
+
+- Hoặc trên **chính máy mới**, nhập mật khẩu root 1 lần:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519_plciot.pub | ssh root@14.225.224.218 "mkdir -p .ssh && chmod 700 .ssh && cat >> .ssh/authorized_keys && chmod 600 .ssh/authorized_keys"
+```
+
+Mẫu SSH config: `cloud/scripts/ssh-config.example`.
+
+### 2) Hàng ngày: sửa code → đẩy VPS
+
+```powershell
+cd D:\Project\embedded\plciot
+.\cloud\scripts\sync-vps.ps1              # sync cloud/ + webapp/ + packages/security
+.\cloud\scripts\sync-vps.ps1 -Service haproxy
+.\cloud\scripts\sync-vps.ps1 -Build        # khi đổi cloud/app hoặc packages/security
+```
+
+- SSH host mặc định: `plciot-vps` (`-Target` hoặc `$env:PLCIOT_VPS`).
+- Path VPS mặc định: `/root/plciot` (`$env:PLCIOT_VPS_PATH`).
+- **Không** ghi đè `.env`, `config/passwd`, `cloud/app/data` trên VPS.
+- Nhiều PC cùng sync được; mỗi PC nên có **khoá SSH riêng** (đừng copy private key giữa máy).
+- GitHub chỉ để lưu lịch sử / kéo code sang máy khác — không bắt buộc để deploy.
+
 ## Chi phí vận hành
-Mosquitto + Caddy cùng chiếm chừng 20–30 MB RAM và gần 0% CPU, nên VPS nhỏ nhất là đủ. Cập nhật ứng dụng không cần chạm VPS: chỉ upload lại thư mục `webapp/`.
+Mosquitto + Caddy cùng chiếm chừng 20–30 MB RAM và gần 0% CPU, nên VPS nhỏ nhất là đủ. Cập nhật ứng dụng không cần chạm VPS: chỉ upload lại thư mục `webapp/` (hoặc chạy `sync-vps.ps1`).

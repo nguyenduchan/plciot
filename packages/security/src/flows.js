@@ -26,7 +26,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   const requireAuth = createSessionAuth(db, secret);
   const authStrict = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_AUTH || 10), keyFn: (req) => `${clientIp(req)}:auth` });
   const sensitiveStrict = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_SENSITIVE || 8), keyFn: (req) => `${clientIp(req)}:sensitive:${req.user?.id || req.body?.id || ''}` });
-  const claimStrict = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_CLAIM || 8), keyFn: (req) => `${clientIp(req)}:claim` });
+  const inviteStrict = rateLimit({ windowMs: 60 * 60_000, max: Number(process.env.RATE_LIMIT_INVITE_REDEEM || 5), keyFn: (req) => `${clientIp(req)}:invite` });
   const send = (res, result) => res.status(result.error ? result.status || 400 : 200).json(result);
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve().then(() => handler(req, res)).catch(next);
   const registrationOpen = () => String(process.env.REGISTRATION_OPEN || 'true').toLowerCase() !== 'false';
@@ -70,30 +70,33 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     ...authConfig(),
   }));
 
-  /* ---------- Claim QR phần cứng / mã mời → phiên chờ setup ---------- */
-  app.post('/api/devices/claim', authStrict, claimStrict, asyncRoute(async (req, res) => {
-    if (!registrationOpen()) return send(res, { error: 'registration_closed', status: 403 });
-    const consent = requirePrivacyConsent(req.body);
-    if (consent.error) return send(res, consent);
+  /* ---------- Claim QR phần cứng: CHỈ sau khi đã đăng nhập (không tạo user mới) ---------- */
+  const claimAuthed = rateLimit({
+    windowMs: 60 * 60_000,
+    max: Number(process.env.RATE_LIMIT_CLAIM || 10),
+    keyFn: (req) => `${clientIp(req)}:claim:${req.user?.id || 0}`,
+  });
+  app.post('/api/devices/claim', requireAuth, sensitiveStrict, claimAuthed, asyncRoute(async (req, res) => {
+    if (req.tokenPayload?.scope && req.tokenPayload.scope !== 'full') {
+      return send(res, { error: 'login_step_up_required', status: 401 });
+    }
     const result = await claimHardwareDevice(db, {
       qr: req.body?.qr || req.body?.payload,
-      registrationContext,
+      userId: req.user.id,
       ip: clientIp(req),
       deviceId: req.headers['x-device-id'],
     });
     if (result.error) return send(res, result);
-    recordPrivacyConsent(db, result.user.id, { version: consent.version, ip: clientIp(req) });
-    audit(db, 'privacy_consent', { userId: result.user.id, ip: clientIp(req), detail: consent.version });
-    result.user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.user.id);
-    const challenge = pendingLogin(result.user, req, 'claim');
-    if (!challenge.error) {
-      noteLogin(db, result.user, { deviceId: req.headers['x-device-id'], ip: clientIp(req), method: 'claim QR' });
-      markDeviceTrusted(db, result.user.id, req.headers['x-device-id']);
-    }
-    send(res, { ...challenge, site: result.site, device: result.device });
+    send(res, {
+      ok: true,
+      already: Boolean(result.already),
+      site: result.site,
+      device: result.device,
+      username: result.user?.username,
+    });
   }));
 
-  app.post('/api/invites/redeem', authStrict, claimStrict, asyncRoute(async (req, res) => {
+  app.post('/api/invites/redeem', authStrict, inviteStrict, asyncRoute(async (req, res) => {
     if (!registrationOpen()) return send(res, { error: 'registration_closed', status: 403 });
     const consent = requirePrivacyConsent(req.body);
     if (consent.error) return send(res, consent);
@@ -133,10 +136,54 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   /* ---------- Đăng ký tự phục vụ, bước 1/3: chọn tên đăng nhập → phiên chờ; bước 2 sinh trắc, bước 3 mật khẩu (client) ---------- */
   const USERNAME_RE = /^[a-z][a-z0-9_.-]{3,31}$/;
   const AUTO_NAME_RE = /^u_[0-9a-f]{16}$/; // dạng tên tự sinh khi claim QR / mã mời: không cho đăng ký tay
-  const registerStrict = rateLimit({ windowMs: 60 * 60_000, max: Number(process.env.RATE_LIMIT_REGISTER || 10), keyFn: (req) => `${clientIp(req)}:register` });
+  // Chống spam tạo tài khoản: theo IP/giờ, theo IP/ngày, trần toàn cục/ngày, dọn user bỏ dở.
+  const registerStrict = rateLimit({
+    windowMs: 60 * 60_000,
+    max: Number(process.env.RATE_LIMIT_REGISTER || 3),
+    keyFn: (req) => `${clientIp(req)}:register`,
+  });
+  const registerDayStrict = rateLimit({
+    windowMs: 24 * 60 * 60_000,
+    max: Number(process.env.RATE_LIMIT_REGISTER_DAY || 5),
+    keyFn: (req) => `${clientIp(req)}:register-day`,
+  });
 
-  app.post('/api/register', authStrict, registerStrict, asyncRoute(async (req, res) => {
+  function purgeAbandonedRegistrations() {
+    const maxAgeMs = Number(process.env.REGISTER_ABANDON_MS || 6 * 60 * 60_000);
+    const cutoff = Date.now() - maxAgeMs;
+    // User setup_complete=0 không còn login_attempts còn hạn và quá hạn → xoá
+    const stale = db.prepare(`
+      SELECT u.id FROM users u
+      WHERE u.setup_complete = 0 AND u.disabled = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM login_attempts a WHERE a.user_id = u.id AND a.expires_at > ?
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_log a WHERE a.user_id = u.id AND a.event = 'account_registered' AND a.ts > ?
+        )
+    `).all(Date.now(), cutoff);
+    for (const row of stale) {
+      try { db.prepare('DELETE FROM users WHERE id = ? AND setup_complete = 0').run(row.id); } catch { /* ignore */ }
+    }
+    return stale.length;
+  }
+
+  app.post('/api/register', authStrict, registerStrict, registerDayStrict, asyncRoute(async (req, res) => {
     if (!registrationOpen()) return send(res, { error: 'registration_closed', status: 403 });
+    purgeAbandonedRegistrations();
+    const globalMax = Number(process.env.REGISTER_MAX_PER_DAY || 50);
+    if (globalMax > 0) {
+      const since = Date.now() - 24 * 60 * 60_000;
+      const n = db.prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE event = 'account_registered' AND ts > ?",
+      ).get(since).n;
+      if (n >= globalMax) return send(res, { error: 'registration_busy', status: 503 });
+    }
+    const incompleteMax = Number(process.env.REGISTER_MAX_INCOMPLETE || 100);
+    if (incompleteMax > 0) {
+      const incomplete = db.prepare('SELECT COUNT(*) AS n FROM users WHERE setup_complete = 0 AND disabled = 0').get().n;
+      if (incomplete >= incompleteMax) return send(res, { error: 'registration_busy', status: 503 });
+    }
     const consent = requirePrivacyConsent(req.body);
     if (consent.error) return send(res, consent);
     const username = String(req.body?.username || '').trim().toLowerCase();

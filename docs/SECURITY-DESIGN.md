@@ -93,15 +93,16 @@ trị; nếu lệnh hợp lệ nhưng nguy hiểm → còn nút bấm vật lý 
 
 ```
 Factory ── provision + ký QR ──▶ tem dán trên gateway
-Người dùng ── quét QR ──▶ POST /api/devices/claim ──▶ user ẩn danh gắn site/device
-Người dùng ── passkey và/hoặc mật khẩu ──▶ kích hoạt tài khoản + MQTT
+Người dùng ── POST /api/register ──▶ username + passkey/mật khẩu (rate-limit)
+Người dùng đã login ── POST /api/devices/claim ──▶ gắn site/device vào tài khoản
 ```
 
 **Vì sao an toàn**
+- **Claim sau login:** QR không tạo user → chống spam tài khoản / nghẽn DB.
 - **Chứng minh cầm đúng phần cứng:** QR ký Ed25519 (`CLAIM_ROOT_*`); secret claim một lần, lưu băm.
 - **Không PII:** không SĐT/Telegram/email trên đường auth.
-- **Cách ly dữ liệu từ đầu:** user gắn đúng `site/device` đã claim; MQTT theo namespace thiết bị.
-- **Trình duyệt tin cậy** (`known_devices` / `markDeviceTrusted`) sau claim hoặc đăng nhập đầy đủ.
+- **Cách ly dữ liệu:** user gắn đúng `site/device` đã claim; MQTT theo namespace thiết bị.
+- **Trình duyệt tin cậy** (`known_devices` / `markDeviceTrusted`) sau đăng nhập đầy đủ.
 - **Mã khôi phục** khi bật yếu tố; không kênh OTP ngoài.
 - **Hạn 3 ngày** (`CONTROL_ENROLL_GRACE_DAYS`) để bật yếu tố điều khiển.
 

@@ -22,21 +22,23 @@ const ERR = {
   password_required: 'Nhập mật khẩu.',
   password_invalid: 'Sai mật khẩu.',
   password_new_device: 'Máy mới chưa tin cậy. Dùng «Khôi phục» với mã khôi phục + mật khẩu (Face ID máy cũ không mang sang; không quét lại QR tem).',
-  device_already_claimed: 'Thiết bị đã có chủ. Đăng nhập tài khoản hiện có hoặc dùng mã mời — không claim QR lại.',
+  device_already_claimed: 'Thiết bị đã có chủ. Đăng nhập tài khoản của bạn rồi gắn QR trong Cài đặt → Nhà máy.',
   site_taken: 'Thiết bị đã có người dùng.',
+  owner_has_members: 'Bạn đang là chủ nhà máy khác còn thành viên. Gỡ họ trước khi nhận máy mới.',
   invalid_claim_payload: 'Mã QR không hợp lệ.',
   invalid_claim_signature: 'Mã QR không xác thực được (tem giả hoặc khoá sai).',
   unknown_device: 'Thiết bị chưa được đăng ký trên máy chủ.',
   invalid_invite: 'Mã mời không hợp lệ.',
   invite_expired: 'Mã mời đã hết hạn.',
-  privacy_consent_required: 'Cần đồng ý Thông báo bảo vệ dữ liệu cá nhân trước khi nhận máy / mã mời.',
+  privacy_consent_required: 'Cần đồng ý Thông báo bảo vệ dữ liệu cá nhân trước khi nhận lời mời.',
   privacy_version_mismatch: 'Thông báo bảo vệ dữ liệu đã cập nhật. Tải lại trang rồi đồng ý phiên bản mới.',
   recover_need_two: 'Cần ít nhất 2 yếu tố khác loại.',
   recover_invalid: 'Khôi phục thất bại. Kiểm tra lại thông tin.',
   username_invalid: 'Tên đăng nhập 4–32 ký tự: chữ thường, số, _ . - và phải bắt đầu bằng chữ.',
   username_taken: 'Tên đăng nhập đã có người dùng. Hãy chọn tên khác.',
   password_weak: 'Mật khẩu cần 8–72 ký tự và không chứa tên đăng nhập.',
-  channel_disabled: 'Kênh này đã tắt. Dùng QR thiết bị hoặc passkey/mật khẩu.',
+  registration_busy: 'Hệ thống đang hạn chế đăng ký mới. Thử lại sau hoặc liên hệ quản trị.',
+  channel_disabled: 'Kênh này đã tắt. Dùng passkey/mật khẩu hoặc mã mời.',
 };
 
 let privacyVersion = '2026-11-01';
@@ -72,7 +74,7 @@ function setError(codeOrMsg) {
 
 function setBusy(on) {
   loginBusy = on;
-  ['btn-register', 'tab-login', 'tab-register', 'btn-claim', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio', 'demo'].forEach((id) => {
+  ['btn-register', 'tab-login', 'tab-register', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio', 'demo'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on;
   });
@@ -239,7 +241,7 @@ async function tryResume() {
 }
 
 /** Sau claim/invite: phiên chờ → bắt buộc setup passkey/password rồi vào app. */
-async function afterPending(data, doneMsg = '✓ Thiết bị đã gắn. Đang vào ứng dụng…') {
+async function afterPending(data, doneMsg = '✓ Tài khoản đã sẵn sàng. Đang vào ứng dụng…') {
   LS.set('session', { token: data.token, userId: data.userId, username: data.username, apiBase: location.origin, online: true, gate: 'setup' });
   if (data.username) LS.set('lastUsername', data.username);
   LS.set('deviceAt', Date.now());
@@ -259,25 +261,6 @@ async function afterPending(data, doneMsg = '✓ Thiết bị đã gắn. Đang 
   $('#ok-msg').hidden = false;
   await finishLogin(verified);
   return true;
-}
-
-async function claimDevice() {
-  if (loginBusy) return;
-  setError('');
-  const qr = ($('#claim-qr')?.value || '').trim();
-  if (!qr) { setError('Dán hoặc quét mã QR trên tem thiết bị.'); return; }
-  if (!requireConsentChecked()) return;
-  setBusy(true);
-  try {
-    const { ok, data } = await api('/api/devices/claim', { qr, ...privacyPayload() });
-    if (!ok) { setError(data.error || 'server_error'); return; }
-    await afterPending(data);
-  } catch (ex) {
-    restoreLogin();
-    setError(errCode(ex, 'Không kết nối được máy chủ.'));
-  } finally {
-    setBusy(false);
-  }
 }
 
 async function redeemInvite() {
@@ -379,7 +362,7 @@ async function showFaceIdOption() {
   }
 }
 
-/** Màn hình mặc định: mật khẩu là chính; QR claim phụ; Face ID chỉ khi máy tin cậy. */
+/** Màn hình mặc định: mật khẩu là chính; Face ID chỉ khi máy tin cậy. QR tem gắn sau đăng nhập. */
 function passwordFirstView() {
   document.body.classList.remove('returning');
   const username = LS.get('lastUsername', '') || '';
@@ -389,12 +372,9 @@ function passwordFirstView() {
   $('#btn-login').hidden = false;
   $('#btn-login').className = 'primary';
   $('#btn-login').textContent = 'Đăng nhập bằng mật khẩu';
-  $('#claim-row').hidden = false;
-  $('#btn-claim').hidden = false;
-  $('#btn-claim').className = 'fit';
-  $('#btn-invite').hidden = false;
+  if ($('#btn-invite')) $('#btn-invite').hidden = false;
   $('#lnk-use-pw').hidden = true;
-  $('#flow-hint').textContent = 'Đăng nhập bằng tên đăng nhập + mật khẩu đã lưu. Chưa có tài khoản? Chọn tab «Đăng ký».';
+  $('#flow-hint').textContent = 'Đăng nhập bằng tên đăng nhập + mật khẩu đã lưu. Chưa có tài khoản? Chọn tab «Đăng ký». Tem QR gắn sau khi vào app (Cài đặt → Nhà máy).';
   $('#switch-row').hidden = true;
 }
 
@@ -418,9 +398,7 @@ async function returningView() {
   $('#flow-hint').textContent = canBio
     ? `Chọn 1 cách đăng nhập ${username}: mật khẩu hoặc ${bio.label}.`
     : `Đăng nhập ${username} bằng mật khẩu.`;
-  $('#claim-row').hidden = true;
-  $('#btn-claim').hidden = true;
-  $('#btn-invite').hidden = true;
+  if ($('#btn-invite')) $('#btn-invite').hidden = true;
   $('#btn-passkey').hidden = !canBio;
   if (canBio) {
     $('#btn-passkey').className = 'fit';
@@ -516,15 +494,7 @@ $('#reg-username')?.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') { event.preventDefault(); registerAccount(); }
 });
 
-$('#btn-claim').onclick = () => claimDevice();
-$('#btn-invite').onclick = () => {
-  if ($('#invite-row').hidden) {
-    $('#invite-row').hidden = false;
-    $('#invite-code')?.focus();
-    return;
-  }
-  redeemInvite();
-};
+$('#btn-invite').onclick = () => redeemInvite();
 $('#btn-login').onclick = () => passwordLogin();
 $('#lnk-use-pw').onclick = () => {
   $('#username-row').hidden = false;
@@ -643,16 +613,17 @@ if ($('#rc-go')) {
   await showFaceIdOption(); // luôn hiện cạnh ô mật khẩu nếu máy hỗ trợ sinh trắc
   const q = new URLSearchParams(location.search);
   if (q.get('revoked')) setError('Phiên đã bị thu hồi. Vui lòng đăng nhập lại.');
-  // Deeplink: ?claim=... hoặc ?invite=...
+  // Deeplink: ?claim= → lưu để gắn sau đăng nhập; ?invite= → redeem tại login
   const claim = q.get('claim');
   const invite = q.get('invite');
   if (q.get('tab') === 'register') showTab('register');
-  if (claim && $('#claim-qr')) {
-    if ($('#more-device')) $('#more-device').open = true;
-    $('#claim-qr').value = claim;
-    claimDevice();
-  } else if (invite) {
-    $('#invite-row').hidden = false;
+  if (claim) {
+    try { sessionStorage.setItem('pendingClaimQr', claim); } catch { /* ignore */ }
+    setError('');
+    $('#ok-msg').textContent = 'Đăng nhập (hoặc đăng ký) xong, vào Cài đặt → Nhà máy để gắn mã QR thiết bị.';
+    $('#ok-msg').hidden = false;
+  }
+  if (invite) {
     if ($('#more-device')) $('#more-device').open = true;
     if ($('#invite-code')) $('#invite-code').value = invite;
     redeemInvite();

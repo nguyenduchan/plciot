@@ -227,12 +227,17 @@ export function deleteHardwareDevice(db, { site, device, force = false }) {
 }
 
 /**
- * Quét QR → tạo (hoặc tái dùng) user ẩn danh gắn site/device, setup_complete=0.
- * Đã claim rồi: chỉ trả lỗi site_taken (trừ khi cùng máy đang setup dở của chính claim đó — không hỗ trợ; dùng invite).
+ * Quét QR tem → gắn site/device vào tài khoản ĐÃ đăng nhập (không tạo user mới).
+ * Claim/đăng ký tài khoản tách nhau: chống spam tạo hàng loạt user từ QR trên trang login.
  */
 export async function claimHardwareDevice(db, {
-  qr, registrationContext = {}, ip, deviceId,
+  qr, userId, ip, deviceId,
 }) {
+  if (!userId) return { error: 'unauthorized', status: 401 };
+  const me = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!me || me.disabled) return { error: 'unauthorized', status: 401 };
+  if (me.setup_complete === 0) return { error: 'setup_incomplete', status: 401 };
+
   const decoded = decodeClaimQr(qr);
   if (!decoded) return { error: 'invalid_claim_payload', status: 400 };
   const verified = verifyClaimSignature(decoded);
@@ -243,52 +248,57 @@ export async function claimHardwareDevice(db, {
   const claimHash = hashClaimSecret(verified.claim);
   if (row.claim_hash !== claimHash) return { error: 'invalid_claim_secret', status: 401 };
 
+  if (row.claimed_by === me.id) {
+    return { ok: true, already: true, user: me, site: verified.site, device: verified.device };
+  }
+
   if (row.claimed_by) {
     const owner = db.prepare('SELECT id, setup_complete, disabled FROM users WHERE id = ?').get(row.claimed_by);
     if (owner && !owner.disabled && owner.setup_complete !== 0) {
       return { error: 'device_already_claimed', status: 409 };
     }
-    // Chủ cũ bỏ dở setup: cho phép claim lại (xoá dòng tạm)
+    // Chủ cũ bỏ dở đăng ký: giải phóng tem (không tạo user mới từ QR)
     if (owner && owner.setup_complete === 0) {
       db.prepare('DELETE FROM users WHERE id = ? AND setup_complete = 0').run(owner.id);
-      db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?')
-        .run(verified.site, verified.device);
-    } else if (!owner) {
-      db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?')
-        .run(verified.site, verified.device);
-    } else {
-      return { error: 'device_already_claimed', status: 409 };
+    }
+    db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?')
+      .run(verified.site, verified.device);
+  }
+
+  const taken = db.prepare(
+    'SELECT id FROM users WHERE notify_site = ? AND notify_device = ? AND disabled = 0 AND setup_complete = 1 AND id != ?',
+  ).get(verified.site, verified.device, me.id);
+  if (taken) return { error: 'site_taken', status: 409 };
+
+  // Đang là chủ nhà máy khác còn thành viên → không chuyển lung tung
+  const others = db.prepare(
+    'SELECT COUNT(*) AS n FROM users WHERE notify_site = ? AND notify_device = ? AND id != ? AND disabled = 0',
+  ).get(me.notify_site, me.notify_device, me.id).n;
+  if (me.site_owner === 1 && others > 0
+    && (me.notify_site !== verified.site || me.notify_device !== verified.device)) {
+    return { error: 'owner_has_members', status: 409 };
+  }
+
+  db.prepare("UPDATE users SET notify_site = ?, notify_device = ?, site_owner = 1, role = COALESCE(NULLIF(role, ''), ?) WHERE id = ?")
+    .run(verified.site, verified.device, 'operator', me.id);
+  db.prepare('UPDATE hardware_devices SET claimed_by = ?, claimed_at = ? WHERE site = ? AND device = ?')
+    .run(me.id, Date.now(), verified.site, verified.device);
+
+  let user = db.prepare('SELECT * FROM users WHERE id = ?').get(me.id);
+  const identity = getConfig().identity;
+  if (typeof identity.onDeviceClaimed === 'function') {
+    try {
+      const hook = await identity.onDeviceClaimed(db, user, {
+        site: verified.site, device: verified.device, ip, deviceId,
+      });
+      if (hook?.error) return hook;
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(me.id);
+    } catch (e) {
+      console.error('claim.onDeviceClaimed', e?.message);
+      return { error: 'provision_failed', status: 500 };
     }
   }
 
-  const taken = db.prepare('SELECT id FROM users WHERE notify_site = ? AND notify_device = ? AND disabled = 0 AND setup_complete = 1')
-    .get(verified.site, verified.device);
-  if (taken) return { error: 'site_taken', status: 409 };
-
-  const identity = getConfig().identity;
-  if (typeof identity.createAccount !== 'function') return { error: 'identity_misconfigured', status: 500 };
-
-  let user;
-  try {
-    user = await identity.createAccount(db, {
-      ...registrationContext,
-      site: verified.site,
-      device: verified.device,
-      contact: null,
-    });
-  } catch (e) {
-    console.error('claim.createAccount', e?.message);
-    return { error: 'provision_failed', status: 500 };
-  }
-  if (user?.error) return user;
-  if (!user?.id) return { error: 'provision_failed', status: 500 };
-
-  db.prepare('UPDATE users SET setup_complete = 0, notify_site = ?, notify_device = ?, site_owner = 1, role = COALESCE(role, ?) WHERE id = ?')
-    .run(verified.site, verified.device, 'operator', user.id);
-  db.prepare('UPDATE hardware_devices SET claimed_by = ?, claimed_at = ? WHERE site = ? AND device = ?')
-    .run(user.id, Date.now(), verified.site, verified.device);
-
-  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   audit(db, 'device_claimed', {
     userId: user.id, ip, detail: `${verified.site}/${verified.device}${deviceId ? ` dev=${deviceId}` : ''}`,
   });

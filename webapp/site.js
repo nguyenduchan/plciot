@@ -26,6 +26,11 @@
     rate_limited: 'Thao tác quá nhiều, thử lại sau.',
     reauth_required: 'Để bảo mật, hãy đăng xuất rồi đăng nhập lại trước khi thực hiện thao tác này.',
     cancelled: 'Đã huỷ.',
+    device_already_claimed: 'Tem QR đã có chủ khác.',
+    invalid_claim_payload: 'Mã QR không hợp lệ.',
+    invalid_claim_signature: 'Mã QR không xác thực được.',
+    unknown_device: 'Thiết bị chưa được đăng ký trên máy chủ.',
+    invalid_claim_secret: 'Mã QR không khớp tem.',
   };
   const err = (d) => ERR[d.error] || (window.Ctl ? window.Ctl.errText(d.error) : d.error) || 'Lỗi';
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -67,24 +72,18 @@
     wrap.querySelector('.close').onclick = close;
   }
 
-  /* ---------- nhận thiết bị ---------- */
-  async function claimFlow(site, device) {
+  /* ---------- gắn tem QR (sau đăng nhập) ---------- */
+  async function claimQr(qr) {
     msg('');
-    const s = await call('POST', '/api/site/claim/start', { site, device });
-    if (!s.ok) return msg(err(s.data), true);
-    const box = $('#site-claim-status');
-    box.hidden = false;
-    let left = s.data.expiresIn;
-    box.innerHTML = `Để chứng minh bạn đang ở cạnh PLC: <b>bật rồi tắt ngõ vào X${s.data.bit}</b> trong <b id="site-left">${left}</b> giây.`;
-    while (left > 0) {
-      await new Promise((r) => setTimeout(r, 2000));
-      left -= 2; const el = $('#site-left'); if (el) el.textContent = String(Math.max(left, 0));
-      const c = await call('POST', '/api/site/claim/check', {});
-      if (!c.ok) { box.hidden = true; return msg(err(c.data), true); }
-      if (c.data.claimed) { msg('Đã nhận thiết bị. Đang tải lại…'); return setTimeout(() => location.reload(), 800); }
-    }
-    box.hidden = true;
-    msg(ERR.claim_expired, true);
+    const text = String(qr || '').trim();
+    if (!text) return msg('Dán chuỗi QR từ tem thiết bị.', true);
+    const x = await call('POST', '/api/devices/claim', { qr: text });
+    if (!x.ok) return msg(err(x.data), true);
+    try { sessionStorage.removeItem('pendingClaimQr'); } catch { /* ignore */ }
+    msg(x.data.already
+      ? `Thiết bị ${x.data.site}/${x.data.device} đã gắn với tài khoản này.`
+      : `Đã gắn thiết bị ${x.data.site}/${x.data.device}. Đang tải lại…`);
+    if (!x.data.already) setTimeout(() => location.reload(), 800);
   }
 
   async function load() {
@@ -93,6 +92,11 @@
     if (!r.ok) { body.textContent = err(r.data); return; }
     const d = r.data;
     let h = `<p>Nhà máy: <b>${esc(d.site)}/${esc(d.device)}</b> ${d.online ? '🟢 đang kết nối' : '⚪ chưa thấy dữ liệu'} · ${d.isOwner ? 'bạn là <b>chủ</b>' : `quyền <b>${d.role === 'viewer' ? 'chỉ xem' : 'điều khiển'}</b>`} · ${d.memberCount} người dùng</p>`;
+
+    h += `<h4>Gắn thiết bị bằng QR tem</h4>
+      <p class="muted">Quét/dán mã trên tem phần cứng sau khi đã đăng nhập. Không tạo tài khoản mới.</p>
+      <label>Mã QR<textarea id="hw-qr" rows="3" placeholder="Dán chuỗi QR từ tem thiết bị"></textarea></label>
+      <div class="row"><button id="hw-claim" class="primary">Gắn thiết bị</button></div>`;
 
     if (d.invitesIn.length) {
       h += `<h4>Lời mời dành cho bạn</h4>${d.invitesIn.map((i) => `<div class="pend">${esc(i.from)} mời bạn vào <b>${esc(i.site)}/${esc(i.device)}</b> (${i.role === 'viewer' ? 'chỉ xem' : 'điều khiển'}).
@@ -110,10 +114,12 @@
         <div class="row"><button id="pc-add" class="primary">Thêm PC (lấy mã ghép)</button></div>
         <p class="muted">Đổi PC: thêm PC mới rồi thu hồi PC cũ. PC bị thu hồi mất quyền ngay.</p>`;
     } else {
-      h += `<h4>Thêm thiết bị</h4><p class="muted">Quét mã QR trên tem thiết bị tại trang đăng nhập, hoặc nhờ chủ nhà máy tạo <b>mã mời</b>.</p>`;
+      h += `<p class="muted">Muốn vào nhà máy của người khác: nhờ chủ tạo <b>mã mời</b>. Tem QR gắn thiết bị của chính bạn ở ô phía trên.</p>`;
     }
     body.innerHTML = h;
 
+    const hwBtn = $('#hw-claim');
+    if (hwBtn) hwBtn.onclick = () => claimQr($('#hw-qr')?.value);
     body.querySelectorAll('[data-acc]').forEach((b) => { b.onclick = async () => { const x = await call('POST', `/api/invites/${b.dataset.acc}/accept`, {}); if (x.ok) { msg('Đã vào nhà máy. Đang tải lại…'); setTimeout(() => location.reload(), 800); } else msg(err(x.data), true); }; });
     body.querySelectorAll('[data-dec]').forEach((b) => { b.onclick = async () => { await call('POST', `/api/invites/${b.dataset.dec}/decline`, {}); load(); }; });
     body.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = async () => { if (!confirm('Gỡ thành viên này khỏi nhà máy?')) return; const x = await call('DELETE', `/api/site/members/${b.dataset.rm}`); msg(x.ok ? 'Đã gỡ.' : err(x.data), !x.ok); load(); }; });
@@ -134,5 +140,12 @@
     };
   }
 
-  load();
+  load().then(() => {
+    let pending = '';
+    try { pending = sessionStorage.getItem('pendingClaimQr') || ''; } catch { /* ignore */ }
+    if (pending && $('#hw-qr')) {
+      $('#hw-qr').value = pending;
+      claimQr(pending);
+    }
+  });
 }());
