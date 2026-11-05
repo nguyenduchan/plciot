@@ -1,3 +1,4 @@
-# Shell scripts must keep LF so they run on Linux VPS.
+# Shell / HAProxy configs must keep LF so they run on Linux VPS.
 cloud/config/*.sh text eol=lf
+cloud/config/*.cfg text eol=lf
 cloud/scripts/*.sh text eol=lf
