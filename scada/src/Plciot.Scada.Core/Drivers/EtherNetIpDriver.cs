@@ -48,6 +48,7 @@ public sealed class EtherNetIpDriver : IRegisterDriver
         {
             // Tag một phần tử riêng: ghi cả mảng sẽ đè lên các giá trị PLC vừa cập nhật
             using var t = NewTag($"{_tagName}[{address}]", 1);
+            await t.InitializeAsync(ct);                      // phải khởi tạo tag trước khi Set (libplctag.NET)
             t.SetInt16(0, unchecked((short)value));
             await t.WriteAsync(ct);
         }

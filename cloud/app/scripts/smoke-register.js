@@ -32,7 +32,7 @@ const child = spawn(process.execPath, ['--input-type=module', '-e', bootstrap], 
     SHELL_DIR: shell, WEBAPP_SRC: shell, WEBAPP_PUBLIC_URL: base,
     APP_JWT_SECRET: crypto.randomBytes(32).toString('hex'),
     MQTT_INGEST: 'false', ADMIN_USERNAMES: '', BUNDLE_AUTOSYNC: 'true', REGISTRATION_OPEN: 'true',
-    RATE_LIMIT_AUTH: '200', RATE_LIMIT_REGISTER: '200', RATE_LIMIT_SENSITIVE: '200',
+    RATE_LIMIT_AUTH: '200', RATE_LIMIT_REGISTER: '200', RATE_LIMIT_REGISTER_DAY: '500', REGISTER_MAX_PER_DAY: '500', REGISTER_MAX_INCOMPLETE: '500', RATE_LIMIT_SENSITIVE: '200',
   },
   stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
@@ -71,12 +71,12 @@ try {
   const USER = 'nhamay_an';
   const PASS = 'MatKhau-Manh-123';
 
-  // --- Giao diện: hai tab + bước 1 đăng ký (chỉ username, không ô mật khẩu/OTP/email) ---
+  // --- Giao diện: hai tab + bước 1 đăng ký (chỉ username, không ô mật khẩu) ---
   const html = await (await fetch(`${base}/login.html`)).text();
   for (const id of ['tab-login', 'tab-register', 'pane-login', 'pane-register', 'reg-username', 'btn-register']) {
     ok(html.includes(`id="${id}"`), `login.html có #${id}`);
   }
-  ok(!html.includes('id="reg-password"') && !/otp|email/i.test(html.slice(html.indexOf('id="pane-register"'), html.indexOf('id="progress"'))), 'tab đăng ký không có mật khẩu/OTP/email ở bước 1');
+  ok(!html.includes('id="reg-password"') && !/<input[^>]+type="(email|tel)"/i.test(html.slice(html.indexOf('id="pane-register"'), html.indexOf('id="progress"'))), 'tab đăng ký không có ô mật khẩu/email/số điện thoại ở bước 1');
 
   // --- Bước 1: validate ---
   ok((await post('/api/register', { username: 'ab', ...consent })).body.error === 'username_invalid', 'username quá ngắn bị từ chối');

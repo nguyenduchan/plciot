@@ -4,7 +4,7 @@ export function securityHeaders(_req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
   // CSP: không cho script nội tuyến/nguồn lạ → XSS khó lấy được JWT và token điều khiển. connect-src mở wss:/ws: cho broker MQTT.
   const extra = process.env.CSP_CONNECT_EXTRA ? ` ${process.env.CSP_CONNECT_EXTRA}` : '';
   res.setHeader('Content-Security-Policy', [

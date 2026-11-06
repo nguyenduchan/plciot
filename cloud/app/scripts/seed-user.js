@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tạo/cập nhật user ẩn danh gắn site/device (không SĐT).
+ * Tạo/cập nhật user ẩn danh gắn site/device (chỉ username).
  *   node scripts/seed-user.js <username> [site] [device] [version]
  */
 import crypto from 'crypto';
@@ -37,10 +37,9 @@ let user = upsertUser(db, {
   passwordHash: hashPassword(password),
   folderPath: folder,
   version,
-  phone: null,
   notifySite: site,
   notifyDevice: deviceArg,
 });
-db.prepare('UPDATE users SET setup_complete = 1, phone = NULL, chat_id = NULL WHERE id = ?').run(user.id);
+db.prepare('UPDATE users SET setup_complete = 1 WHERE id = ?').run(user.id);
 user = provisionUserMqtt(db, findUserByUsername(db, username), { site, device: deviceArg }).user;
 console.log('OK', { id: user.id, username: user.username, site: user.notify_site, device: user.notify_device });

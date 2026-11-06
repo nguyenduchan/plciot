@@ -63,10 +63,6 @@ try {
   assert.equal((await get('/recover.html')).status, 404);
   assert.equal((await get('/api/me')).status, 401);
   assert.equal((await get('/api/bundle/index.html')).status, 401);
-  assert.equal((await get('/api/login/request-otp', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-  })).status, 404);
-  assert.equal((await get('/api/phone/cancel?id=missing&t=missing')).status, 404);
   assert.ok(fs.existsSync(path.join(tmp, 'data', 'app.db')));
   console.log('smoke-server: startup, core routes, auth gate passed');
 } finally {

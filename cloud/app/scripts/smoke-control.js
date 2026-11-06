@@ -512,6 +512,36 @@ ok(r.status === 400 && r.body.error === 'value_out_of_range' && r.body.max === 2
 const { jwtTtlSeconds } = await import('../src/auth.js');
 ok(jwtTtlSeconds() === 72 * 3600, 'JWT mặc định 72 giờ (trượt), không còn 7 ngày');
 
+/* ---- Lệnh nguy hiểm xác nhận bằng MẬT KHẨU (người dùng chưa bật Face ID/Authenticator) ---- */
+{
+  const uPw = mkUser('user_pw');
+  db.prepare('UPDATE users SET login_password_hash = ? WHERE id = ?').run(T.hashPassword ? T.hashPassword('Mat-Khau-Test-1') : (await import('../src/auth.js')).hashPassword('Mat-Khau-Test-1'), uPw);
+  let q = await cmd(uPw, { id: 'pw1', a: 4, v: 3 });
+  ok(q.status === 401 && q.body.reason === 'critical_command' && q.body.methods?.password === true && q.body.commandChallenge, 'lệnh nguy hiểm: chưa có yếu tố vẫn được hỏi, kèm lựa chọn mật khẩu');
+  const ch = q.body.commandChallenge; const pwCmd = q.body.command;
+  q = await call('POST', '/api/control/unlock-password', uPw, { password: 'Mat-Khau-Test-1' });
+  ok(q.status === 400 && q.body.error === 'command_challenge_required', 'xác nhận bằng mật khẩu bắt buộc kèm challenge của đúng một lệnh');
+  q = await call('POST', '/api/control/unlock-password', uPw, { password: 'sai-mat-khau' }, { 'x-command-challenge': ch });
+  ok(q.status === 401 && q.body.error === 'password_invalid', 'sai mật khẩu bị từ chối');
+  q = await call('POST', '/api/control/unlock-password', uPw, { password: 'Mat-Khau-Test-1' }, { 'x-command-challenge': ch });
+  ok(q.status === 200 && q.body.controlToken && q.body.method === 'password', 'đúng mật khẩu: nhận phiên gắn với lệnh này');
+  const pwTok = q.body.controlToken;
+  q = await cmd(uPw, { ...pwCmd, v: 2 }, { 'x-control-token': pwTok, 'x-command-challenge': ch });
+  ok(q.status === 401, 'sửa nội dung lệnh sau khi xác nhận bị từ chối');
+  const before = published.length;
+  q = await cmd(uPw, pwCmd, { 'x-control-token': pwTok, 'x-command-challenge': ch });
+  ok(q.status === 202 && q.body.pending && published.length === before, 'mật khẩu đúng: qua bước xác nhận, vẫn chờ nút vật lý (lớp bảo vệ khác giữ nguyên)');
+  noteTelemetry('siteA', 'plc01', 0);
+  await new Promise((x) => setTimeout(x, 20));
+  noteTelemetry('siteA', 'plc01', 1 << 5);
+  const pr = await call('GET', `/api/control/confirm/${q.body.confirmId}`, uPw);
+  ok(pr.status === 200 && pr.body.sent && published.length === before + 1 && published.at(-1).cmd.a === 4, 'bấm nút vật lý: lệnh xác nhận bằng mật khẩu được phát');
+  q = await cmd(uPw, { a: 7, v: 20 }, { 'x-control-token': pwTok });
+  ok(q.status === 401, 'phiên mật khẩu không mở khoá điều khiển chung cho lệnh thường');
+  q = await cmd(uPw, pwCmd, { 'x-control-token': pwTok, 'x-command-challenge': ch });
+  ok(q.status === 401, 'xác nhận chỉ dùng được một lần (không phát lại)');
+}
+
 /* ---- Thu hồi ---- */
 r = await call('POST', '/api/control/lock', uPk, {}, { 'x-control-token': tokPk });
 r = await cmd(uPk, { a: 7, v: 9 }, { 'x-control-token': tokPk });

@@ -25,6 +25,8 @@ public sealed class CloudBridge : IAsyncDisposable
     readonly ConcurrentDictionary<string, (byte[] Payload, bool Retain)> _latest = new();
     readonly ConcurrentDictionary<string, long> _lastTele = new();
     readonly ConcurrentDictionary<string, (byte[] Payload, bool Retain)> _pendingTele = new();
+    readonly ConcurrentDictionary<string, byte[]> _lastSent = new();
+    long _expediteUntil;                                   // Stopwatch ticks: tới lúc này telemetry gửi ngay, không chờ khoảng chống dồn
     readonly string _cmdTopic;
     TaskCompletionSource _dropped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile CloudState _state;
@@ -144,16 +146,29 @@ public sealed class CloudBridge : IAsyncDisposable
         {
             var now = Stopwatch.GetTimestamp();
             var last = _lastTele.GetOrAdd(topic, 0);
-            if (last != 0 && Stopwatch.GetElapsedTime(last, now).TotalMilliseconds < _cfg.CloudTelemetryMinMs)
+            if (last != 0 && Stopwatch.GetElapsedTime(last, now).TotalMilliseconds < RequiredGapMs(topic, payload, now))
             {
                 _pendingTele[topic] = (payload, retain);
                 return;
             }
             _lastTele[topic] = now;
+            _lastSent[topic] = payload;
             _pendingTele.TryRemove(topic, out _);
         }
         _ = SendAsync(topic, payload, retain, CancellationToken.None);
     }
+
+    /// <summary>Dữ liệu đổi → chỉ cần cách nhau CloudTelemetryFastMs; không đổi → nhịp tim CloudTelemetryMinMs; vừa có lệnh điều khiển → gửi ngay.</summary>
+    double RequiredGapMs(string topic, byte[] payload, long now)
+    {
+        if (Stopwatch.GetTimestamp() < Interlocked.Read(ref _expediteUntil)) return 0;
+        var changed = !_lastSent.TryGetValue(topic, out var prev) || !prev.AsSpan().SequenceEqual(payload);
+        return changed ? Math.Min(_cfg.CloudTelemetryFastMs, _cfg.CloudTelemetryMinMs) : _cfg.CloudTelemetryMinMs;
+    }
+
+    /// <summary>Sau lệnh điều khiển: trong <paramref name="ms"/> tới, telemetry (trạng thái mới của PLC) được gửi lên ngay.</summary>
+    public void Expedite(int ms = 3000) =>
+        Interlocked.Exchange(ref _expediteUntil, Stopwatch.GetTimestamp() + (long)(ms / 1000.0 * Stopwatch.Frequency));
 
     /// <summary>Gửi trực tiếp một phản hồi (ví dụ từ chối lệnh) lên cloud.</summary>
     public Task PublishAckAsync(string json) =>
@@ -176,14 +191,16 @@ public sealed class CloudBridge : IAsyncDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            try { await Task.Delay(Math.Max(100, _cfg.CloudTelemetryMinMs / 4), ct); } catch (OperationCanceledException) { return; }
+            try { await Task.Delay(25, ct); } catch (OperationCanceledException) { return; }
             foreach (var topic in _pendingTele.Keys.ToArray())
             {
                 var last = _lastTele.GetOrAdd(topic, 0);
-                if (last != 0 && Stopwatch.GetElapsedTime(last).TotalMilliseconds < _cfg.CloudTelemetryMinMs) continue;
+                if (!_pendingTele.TryGetValue(topic, out var pend)) continue;
+                if (last != 0 && Stopwatch.GetElapsedTime(last).TotalMilliseconds < RequiredGapMs(topic, pend.Payload, Stopwatch.GetTimestamp())) continue;
                 if (_pendingTele.TryRemove(topic, out var v) && State == CloudState.Connected)
                 {
                     _lastTele[topic] = Stopwatch.GetTimestamp();
+                    _lastSent[topic] = v.Payload;
                     await SendAsync(topic, v.Payload, v.Retain, ct);
                 }
             }

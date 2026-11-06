@@ -8,7 +8,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plc-roles-'));
 process.env.MQTT_CONFIG_DIR = path.join(tmp, 'cfg');
 process.env.APP_JWT_SECRET = 'x'.repeat(32);
 process.env.MQTT_DOCKER_CONTAINER = 'no-such-container';
-process.env.ADMIN_PHONES = '0900000001';
+process.env.ADMIN_USERNAMES = 'rootadmin';
 
 const { openDb, upsertUser, findUserById } = await import('../src/db.js');
 const { hashPassword } = await import('../src/auth.js');
@@ -25,25 +25,25 @@ const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else conso
 const acl = () => fs.readFileSync(path.join(tmp, 'cfg', 'acl'), 'utf8');
 
 const root = upsertUser(db, {
-  username: '84900000001', passwordHash: hashPassword('pw123456'), folderPath: 's1', version: '1', phone: '84900000001',
+  username: 'rootadmin', passwordHash: hashPassword('pw123456'), folderPath: 's1', version: '1',
 });
 ok(root.role === 'operator', 'người dùng cũ mặc định operator');
 A.applyBootstrapAdmins(db);
 const admin = findUserById(db, root.id);
-ok(admin.role === 'admin', 'ADMIN_PHONES nâng thành admin');
+ok(admin.role === 'admin', 'ADMIN_USERNAMES nâng thành admin');
 
 // thêm user
-let r = A.createUser(db, admin, { phone: '0911111111', role: 'viewer', site: 'plantA', device: 'plc01' }, ctx);
+let r = A.createUser(db, admin, { username: 'viewer_a', role: 'viewer', site: 'plantA', device: 'plc01' }, ctx);
 ok(r.ok && r.user.role === 'viewer', 'admin thêm viewer');
 const viewer = r.user;
-r = A.createUser(db, admin, { phone: '0922222222', role: 'operator', site: 'plantA', device: 'plc01' }, ctx);
+r = A.createUser(db, admin, { username: 'operator_a', role: 'operator', site: 'plantA', device: 'plc01' }, ctx);
 ok(r.ok, 'admin thêm operator cùng site');
 const oper = r.user;
 
-ok(A.createUser(db, admin, { phone: '0911111111' }, ctx).error === 'phone_in_use', 'trùng SĐT bị từ chối');
-ok(A.createUser(db, admin, { phone: '0933333333' }, ctx).ok === true, 'admin tạo user chỉ cần SĐT (không mật khẩu)');
-ok(A.createUser(db, admin, { phone: '0933333333', role: 'root' }, ctx).error === 'invalid_role', 'role lạ bị từ chối');
-ok(A.createUser(db, admin, { phone: '0933333333', site: 'a/../b' }, ctx).error === 'invalid_site_or_device', 'site chứa ký tự nguy hiểm bị từ chối');
+ok(A.createUser(db, admin, { username: 'viewer_a' }, ctx).error === 'username_in_use', 'trùng username bị từ chối');
+ok(A.createUser(db, admin, { username: 'newuser_c' }, ctx).ok === true, 'admin tạo user chỉ cần username (không mật khẩu)');
+ok(A.createUser(db, admin, { username: 'newuser_c', role: 'root' }, ctx).error === 'invalid_role', 'role lạ bị từ chối');
+ok(A.createUser(db, admin, { username: 'newuser_c', site: 'a/../b' }, ctx).error === 'invalid_site_or_device', 'site chứa ký tự nguy hiểm bị từ chối');
 
 // ACL theo vai trò
 const blockOf = (id) => {
@@ -86,7 +86,7 @@ const blockIn = (file, id) => {
   for (let j = i + 1; j < lines.length && !lines[j].startsWith('user '); j++) out.push(lines[j]);
   return out.join('\n');
 };
-const op2 = A.createUser(db, admin, { phone: '0944444444', role: 'operator', site: 'plantB' }, ctx).user;
+const op2 = A.createUser(db, admin, { username: 'operator_b', role: 'operator', site: 'plantB' }, ctx).user;
 ok(!blockIn('acl', op2.id).includes('write'), 'kênh mã hoá: operator không ghi cmd trực tiếp');
 ok(!blockIn('acl-monitor', op2.id).includes('write') && blockIn('acl-monitor', op2.id).includes('topic read plc/plantB/plc01/telemetry'),
   'kênh không mã hoá: operator chỉ đọc, không ghi cmd');

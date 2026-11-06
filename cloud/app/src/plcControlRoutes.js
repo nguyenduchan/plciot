@@ -8,7 +8,9 @@ import { canControl } from './roles.js';
 import { edgeSince } from './plcProof.js';
 import { publishCmd } from './controlPublisher.js';
 import { isOpsOpen } from './opsFlags.js';
-import { plcControlConfig, validateCmd } from './plcCommands.js';
+import { plcControlConfig, validateCmd, validateChildCmd } from './plcCommands.js';
+import { listUserDevices } from './userDevices.js';
+import { deviceToUiNode } from './uiContract.js';
 import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
 import { DEFAULT_TENANT, preferredNamespace, LEGACY_NS } from './contract.js';
@@ -40,17 +42,25 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
   }
 
   async function dispatch(user, cmd, via, ip) {
+    const t0 = Date.now();
     await publishCmd(user.notify_site, user.notify_device, cmd, publishOpts(user));
-    audit(db, 'control_cmd', { userId: user.id, ip, detail: `${via} ${cmd.op || 'w'} a=${cmd.a} ${cmd.v ?? cmd.n ?? ''}` });
+    const ms = Date.now() - t0;
+    if (ms > 50) console.warn(`[ctl] publish chậm ${ms} ms id=${cmd.id}`);
+    // ghi audit SAU khi lệnh đã đi (không nằm trên đường trễ của lệnh)
+    setImmediate(() => audit(db, 'control_cmd', { userId: user.id, ip, detail: `${via} ${cmd.op || 'w'} ${cmd.key ? `${cmd.child}.${cmd.key}` : `a=${cmd.a}`} ${cmd.v ?? cmd.n ?? ''}` }));
   }
 
   app.post('/api/control/cmd', requireAuth, cmdLimit, async (req, res) => {
     if (!isOpsOpen('remote_control_open')) {
       return out(res, 503, { error: 'remote_control_paused' });
     }
+    const tIn = Date.now();
     const cfg = configForUser(req.user);
     if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
-    const v = validateCmd(req.body, cfg);
+    // {child,key,v}: nút của thiết bị con (bơm, relay…) theo widget của loại thiết bị; còn lại là ghi/đọc thanh ghi D
+    const v = req.body?.key != null
+      ? validateChildCmd(req.body, listUserDevices(db, req.user).map(deviceToUiNode))
+      : validateCmd(req.body, cfg);
     if (v.error) return out(res, 400, v);
     const ip = clientIp(req);
     let via = 'read';
@@ -66,7 +76,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
         return out(res, 403, { error: 'enroll_required', deadline: es.deadline });
       }
       const a = authorize(req);
-      if (a.error && (!v.critical || !a.methods?.enrolled)) {
+      if (a.error && (!v.critical || !(a.methods?.enrolled || a.methods?.password))) {
         audit(db, 'control_denied', { userId: req.user.id, ip, detail: `${a.reason} a=${v.cmd.a}` });
         return out(res, a.status, a);
       }
@@ -83,10 +93,9 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
           if (commandChallenges.size >= 1000) return out(res, 429, { error: 'rate_limited' });
           const id = crypto.randomBytes(16).toString('hex');
           commandChallenges.set(id, { userId: req.user.id, sessionId: req.tokenPayload?.sid, fingerprint, expires: now + 60_000 });
-          const factors = factorSummary(db, req.user.id);
           return out(res, 401, {
             error: 'step_up_required', reason: 'critical_command', commandChallenge: id,
-            methods: { passkey: factors.passkeys > 0, totp: factors.totp, enrolled: factors.passkeys > 0 || factors.totp },
+            methods: security.methodsFor(req.user),          // passkey / totp / password (xác nhận đúng lệnh này)
             command: v.cmd, target: { site: req.user.notify_site, device: req.user.notify_device },
           });
         }
@@ -109,7 +118,8 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     } catch (e) {
       return out(res, 503, { error: 'mqtt_unavailable' });
     }
-    res.json({ ok: true, id: v.cmd.id, via });
+    // serverMs = thời gian xử lý + phát lệnh trong server (không gồm mạng tới trình duyệt)
+    res.json({ ok: true, id: v.cmd.id, via, serverMs: Date.now() - tIn });
   });
 
   /** Client hỏi lại sau khi bấm nút vật lý; lệnh chỉ phát khi PLC báo cạnh tín hiệu mới ở ngõ vào đó. */

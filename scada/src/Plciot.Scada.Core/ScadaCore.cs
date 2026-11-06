@@ -32,7 +32,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         if (err != null) throw new ArgumentException(err);
         _cfg = cfg;
         _driver = driver;
-        _writable = cfg.WritableRegisters.ToHashSet();
+        // địa chỉ khai báo trong Pack là các điểm điều khiển thiết bị con (cloud đã whitelist theo widget) nên được phép ghi
+        _writable = cfg.WritableRegisters.Concat(cfg.Pack.Select(x => x.Address)).ToHashSet();
     }
 
     public ScadaConfig Config => _cfg;
@@ -46,6 +47,9 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     public string[] RecentLog { get { lock (_log) return _log.ToArray(); } }
 
     public event Action<string>? Log;
+    /// <summary>Luồng dữ liệu để hiển thị/giám sát: (hướng, kênh, nội dung). Hướng: "PLC→GW", "GW→PLC", "GW→Cloud", "Cloud→GW".</summary>
+    public event Action<string, string, string>? Traffic;
+    public void Trace(string direction, string channel, string text) => Traffic?.Invoke(direction, channel, text);
     /// <summary>Dữ liệu mới theo hợp đồng MQTT (kind = telemetry|status|history, payload JSON/chuỗi, retain) cho các dịch vụ tuỳ chọn.</summary>
     public event Action<string, byte[], bool>? Publish;
     /// <summary>Chế độ gateway: nơi gửi lệnh tới gateway.</summary>
@@ -79,11 +83,14 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         {
             try
             {
-                var regs = await _driver!.ReadAsync(0, Contract.TelemetryRegs, ct);
+                var packMax = _cfg.Pack.Count == 0 ? 0 : _cfg.Pack.Max(x => x.Address) + 1;
+                var all = await _driver!.ReadAsync(0, Math.Max(Contract.TelemetryRegs, packMax), ct);
+                var regs = all[..Contract.TelemetryRegs];
                 _fails = 0;
                 SetStatus("online");
                 _state.SetTelemetry(regs);
-                if (Publish != null) Publish("telemetry", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { r = regs })), true);
+                Trace("PLC→GW", _cfg.Source.ToString(), $"read D0..D{all.Length - 1}: {string.Join(',', all.Take(Contract.TelemetryRegs))}");
+                if (Publish != null) Publish("telemetry", BuildTelemetry(regs, all), true);
                 if ((DateTime.UtcNow - lastHistory).TotalMilliseconds >= _cfg.HistoryMs)
                 {
                     await ReadHistoryAsync(ct);
@@ -104,6 +111,19 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             catch (OperationCanceledException) { break; }
         }
         SetStatus("offline", force: true);
+    }
+
+    /// <summary>Không có Pack: {"r":[..]} như cũ. Có Pack: {"schema":2,"r":[..],"d":{child:{field:số}}}.</summary>
+    byte[] BuildTelemetry(ushort[] regs, ushort[] all)
+    {
+        if (_cfg.Pack.Count == 0) return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { r = regs }));
+        var d = new Dictionary<string, Dictionary<string, double>>();
+        foreach (var x in _cfg.Pack)
+        {
+            if (!d.TryGetValue(x.Child, out var f)) d[x.Child] = f = new();
+            f[x.Field] = Math.Round(all[x.Address] / x.Scale, 3);
+        }
+        return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { schema = 2, r = regs, d }));
     }
 
     async Task ReadHistoryAsync(CancellationToken ct)
@@ -133,6 +153,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     public void ApplyExternal(string kind, byte[] payload, bool retain = true)
     {
         _state.Apply(kind, payload);
+        Trace("PLC→GW", "MQTT " + kind, Encoding.UTF8.GetString(payload));
         Publish?.Invoke(kind, payload, retain);
     }
 
@@ -157,6 +178,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         {
             if (ExternalCommandSink == null) return CommandPolicy.AckJson(cmd.Id, false, "no_link");
             if (!cmd.IsRead) Emit($"Điều khiển ({actor}) qua gateway: D{cmd.Address} = {cmd.Value}");
+            Trace("GW→PLC", "MQTT", Encoding.UTF8.GetString(raw ?? Array.Empty<byte>()));
             raw ??= Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id = cmd.Id, a = cmd.Address, v = cmd.Value }));
             await ExternalCommandSink(raw);
             return null;
@@ -171,6 +193,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             }
             else
             {
+                Trace("GW→PLC", _cfg.Source.ToString(), $"write D{cmd.Address} = {cmd.Value}");
                 await _driver.WriteAsync(cmd.Address, (ushort)cmd.Value, ct);        // THẲNG xuống PLC
                 Emit($"Điều khiển ({actor}): D{cmd.Address} = {cmd.Value}");
                 ack = CommandPolicy.AckJson(cmd.Id, true);
@@ -184,6 +207,55 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         }
         _state.SetAck(ack);
         return ack;
+    }
+
+    /// <summary>
+    /// Lệnh theo thiết bị con từ cloud: {"id","child","key","v"}. Có driver → đổi thành ghi thanh ghi theo <see cref="ScadaConfig.Pack"/>
+    /// (D = v × Scale) rồi chạy qua đường thường (whitelist, chính sách). Chế độ gateway → chuyển nguyên lệnh cho PLC/gateway, ack đến sau.
+    /// Trả về JSON ack, hoặc null nếu ack sẽ do PLC gửi.
+    /// </summary>
+    public async Task<string?> ExecuteKeyAsync(byte[] payload, ControlSource source, string actor, CancellationToken ct = default)
+    {
+        string? id = null, child = null, key;
+        double v;
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var r = doc.RootElement;
+            if (r.TryGetProperty("id", out var idEl)) id = idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : idEl.ToString();
+            key = r.TryGetProperty("key", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null;
+            if (key == null || !r.TryGetProperty("v", out var vEl) || !vEl.TryGetDouble(out v)) return CommandPolicy.AckJson(id, false, "bad_value");
+            if (r.TryGetProperty("child", out var c) && c.ValueKind == JsonValueKind.String) child = c.GetString();
+        }
+        catch (JsonException) { return CommandPolicy.AckJson(null, false, "bad_json"); }
+        if (!_cfg.AllowsControl(source))
+        {
+            Emit($"Từ chối lệnh ghi từ {source} ({actor}): chính sách không cho phép");
+            return CommandPolicy.AckJson(id, false, source == ControlSource.Mobile ? "remote_disabled" : "control_disabled");
+        }
+        // giới hạn do tem provisioning đặt cho trường này: gateway tự kiểm lại, không tin hoàn toàn vào cloud
+        var field = _cfg.Pack.FirstOrDefault(x => string.Equals(x.Field, key, StringComparison.OrdinalIgnoreCase)
+            && (child == null || string.Equals(x.Child, child, StringComparison.OrdinalIgnoreCase)));
+        if (field != null && ((field.Min.HasValue && v < field.Min) || (field.Max.HasValue && v > field.Max)))
+        {
+            Emit($"Từ chối lệnh {child}.{key} = {v}: ngoài khoảng {field.Min}–{field.Max}");
+            return CommandPolicy.AckJson(id, false, "value_out_of_range");
+        }
+        if (_driver == null)
+        {
+            if (ExternalCommandSink == null) return CommandPolicy.AckJson(id, false, "no_link");
+            Emit($"Điều khiển ({actor}) qua gateway: {child}.{key} = {v}");
+            Trace("GW→PLC", "MQTT", Encoding.UTF8.GetString(payload));
+            await ExternalCommandSink(payload);
+            return null;
+        }
+        var map = _cfg.Pack.FirstOrDefault(x => string.Equals(x.Field, key, StringComparison.OrdinalIgnoreCase)
+            && (child == null || string.Equals(x.Child, child, StringComparison.OrdinalIgnoreCase)));
+        if (map == null) return CommandPolicy.AckJson(id, false, "unknown_key");
+        var raw = Math.Round(v * map.Scale);
+        if (raw is < 0 or > 65535) return CommandPolicy.AckJson(id, false, "bad_value");
+        var translated = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id, a = map.Address, v = (int)raw }));
+        return await ExecuteAsync(translated, source, actor, ct);
     }
 
     /// <summary>Ghi từ màn hình trên máy chính (<see cref="ControlSource.LocalScreen"/>).</summary>

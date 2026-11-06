@@ -40,6 +40,18 @@ public sealed class ControlPolicy
     public bool Lan { get; set; } = false;
 }
 
+/// <summary>Gateway gom thanh ghi D thành số liệu thiết bị con: d.&lt;Child&gt;.&lt;Field&gt; = D[Address] / Scale (telemetry schema:2).</summary>
+public sealed class PackMap
+{
+    public string Child { get; set; } = "";
+    public string Field { get; set; } = "";
+    public int Address { get; set; }
+    public double Scale { get; set; } = 1;
+    /// <summary>Khoảng giá trị (đơn vị kỹ thuật, trước khi nhân Scale) cho phép GHI xuống trường này; do tem provisioning đặt. null = không giới hạn.</summary>
+    public double? Min { get; set; }
+    public double? Max { get; set; }
+}
+
 public enum PlcSource { Gateway, ModbusTcp, ModbusRtu, S7, EtherNetIp, MitsubishiMc, OmronFins, BeckhoffAds, OpcUa }
 public enum LocalRole { Device, Monitor, Operator }
 
@@ -67,6 +79,8 @@ public sealed class ScadaConfig
     public MobileAccess Mobile { get; set; } = MobileAccess.Off;
     /// <summary>Các thanh ghi D mà MỌI nguồn được phép ghi. Mỗi khách hàng có thể khác nhau (đặt trong giải pháp của họ).</summary>
     public List<int> WritableRegisters { get; set; } = new() { 3, 4, 6, 7, 9 };
+    /// <summary>Đóng gói thiết bị con từ thanh ghi (rỗng = chỉ gửi r[] kiểu băng tải cũ).</summary>
+    public List<PackMap> Pack { get; set; } = new();
 
     /// <summary>Quyền ghi theo nguồn lệnh (đọc luôn được phép).</summary>
     public bool AllowsControl(ControlSource s) => s switch
@@ -137,7 +151,10 @@ public sealed class ScadaConfig
     public string CloudPassword { get; set; } = "";
     /// <summary>SHA-256 (hex) của chứng chỉ máy chủ; trống = xác thực chuỗi chứng chỉ thông thường. Dùng cho chứng chỉ tự ký.</summary>
     public string CloudPinSha256 { get; set; } = "";
+    /// <summary>Nhịp tim: telemetry KHÔNG đổi chỉ gửi lại sau khoảng này (giữ webapp thấy gateway còn sống).</summary>
     public int CloudTelemetryMinMs { get; set; } = 1000;
+    /// <summary>Telemetry ĐỔI được gửi ngay, cách nhau tối thiểu khoảng này (chống dồn; server ingest giới hạn ~120 tin/phút/thiết bị).</summary>
+    public int CloudTelemetryFastMs { get; set; } = 300;
     public string ClientSuffix { get; set; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
 
     // ---- Giao diện web cục bộ (nhiều màn hình trong nhà máy). Dùng tài khoản LocalUsers vai trò Monitor/Operator.
@@ -173,6 +190,8 @@ public sealed class ScadaConfig
     /// <summary>Công tắc an toàn: false = lệnh ghi từ điện thoại/cloud bị từ chối tại nhà máy (vẫn xem được).</summary>
     [JsonIgnore] public bool AllowRemoteControl => Mobile == MobileAccess.Control;
     public int RemoteCmdPerSec { get; set; } = 5;
+    /// <summary>Chống phát lại: lệnh từ cloud có "ts" cũ (hoặc ở tương lai) hơn khoảng này bị từ chối. 0 = tắt. Cần đồng hồ gateway lệch server không quá khoảng này.</summary>
+    public int CmdMaxAgeSec { get; set; } = 10;
 
     [JsonIgnore] public string BaseTopic => Contract.Base(Site, Device);
     /// <summary>Web/màn hình phụ chỉ chạy ở topology nhiều màn hình (một màn hình thì không có client-server).</summary>
@@ -198,6 +217,10 @@ public sealed class ScadaConfig
         if (InfluxEnabled && (string.IsNullOrWhiteSpace(InfluxUrl) || string.IsNullOrWhiteSpace(InfluxToken))) return "Thiếu URL/token InfluxDB.";
         if (Source == PlcSource.ModbusRtu && !Enum.TryParse<System.IO.Ports.Parity>(SerialParity, true, out _)) return "SerialParity phải là None, Even hoặc Odd.";
         if (PollMs < 100) return "Chu kỳ đọc tối thiểu 100 ms.";
+        if (Pack.Any(x => string.IsNullOrWhiteSpace(x.Child) || string.IsNullOrWhiteSpace(x.Field) || x.Address is < 0 or >= Contract.MaxRegister || x.Scale <= 0))
+            return "Pack: child/field không được trống, địa chỉ D 0–299, scale > 0.";
+        if (Pack.Any(x => x.Min.HasValue && x.Max.HasValue && x.Min > x.Max)) return "Pack: Min không được lớn hơn Max.";
+        if (CmdMaxAgeSec < 0) return "CmdMaxAgeSec không được âm.";
         if (CloudEnabled)
         {
             if (string.IsNullOrWhiteSpace(CloudHost)) return "Thiếu địa chỉ máy chủ cloud.";

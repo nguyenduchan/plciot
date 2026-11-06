@@ -49,3 +49,24 @@ export function validateCmd(body, cfg = plcControlConfig()) {
   if (v < lo || v > hi) return { error: 'value_out_of_range', min: lo, max: hi };
   return { cmd: { id, a, v }, write: true, critical: cfg.critical.has(a) };
 }
+
+/**
+ * Lệnh điều khiển thiết bị con của hub: {child, key, v}. Chỉ nhận khi người dùng có thiết bị đó trên dashboard và
+ * widget của loại thiết bị khai báo đúng `cmd.key`; v phải là giá trị `on` hoặc `off` của widget (không cho số tuỳ ý).
+ * @param devices danh sách deviceToUiNode() của người dùng
+ */
+export function validateChildCmd(body, devices) {
+  const b = body || {};
+  const child = String(b.child || '');
+  const key = String(b.key || '');
+  if (!/^[A-Za-z0-9_-]{1,48}$/.test(child) || !/^[A-Za-z0-9_]{1,32}$/.test(key)) return { error: 'bad_command' };
+  const dev = (devices || []).find((d) => d.childId === child);
+  const w = dev?.widgets?.find((x) => x.cmd && x.cmd.key === key);
+  if (!w) return { error: 'bad_command' };
+  const v = Number(b.v);
+  if (!(v === Number(w.cmd.on ?? 1) || v === Number(w.cmd.off ?? 0))) return { error: 'value_out_of_range', min: w.cmd.off ?? 0, max: w.cmd.on ?? 1 };
+  const lim = w.cmd.limits;                                        // khoảng do tem provisioning đặt (thu hẹp thêm)
+  if (lim && (v < lim.min || v > lim.max)) return { error: 'value_out_of_range', min: lim.min, max: lim.max };
+  const id = /^[a-z0-9]{1,16}$/i.test(String(b.id || '')) ? String(b.id) : crypto.randomBytes(5).toString('hex');
+  return { cmd: { id, child, key, v }, write: true, critical: Boolean(w.cmd.critical) };
+}

@@ -5,14 +5,16 @@ import { writeFileSync } from 'node:fs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tests = [
   'scripts/smoke-bundle-cache.js',
-  'scripts/smoke-login-ui.js',
-  'scripts/smoke-login.js',
   '../../packages/security/test/smoke-device-proof.js',
-  '../../packages/security/test/smoke-auth-flows.js',
   '../../packages/security/test/smoke-session.js',
-  '../../packages/security/test/smoke-recovery-ui.js',
   '../../packages/security/test/smoke-security.js',
   'scripts/smoke-server.js',
+  'scripts/smoke-register.js',
+  'scripts/smoke-child-control.js',
+  'scripts/smoke-device-claim.js',
+  'scripts/smoke-admin-hardware.js',
+  'scripts/smoke-ui-contract.js',
+  'scripts/smoke-gateway-enroll.js',
   'scripts/smoke-control.js',
   'scripts/smoke-sites.js',
   'scripts/smoke-roles.js',
@@ -23,7 +25,6 @@ const tests = [
   'scripts/smoke-policy.js',
   'scripts/smoke-deploy.js',
   'scripts/smoke-debug-trace.js',
-  'scripts/smoke-account.js',
   'scripts/smoke-retention.js',
 ];
 

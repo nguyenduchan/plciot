@@ -118,6 +118,8 @@ services:
       DEPLOY_COMPOSE_PROJECT: ${DEPLOY_COMPOSE_PROJECT:-plciot}
       DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
       DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
+      # Khoá công khai xác minh chữ ký tem QR (khoá riêng KHÔNG để trên server; ký bằng máy provision)
+      CLAIM_ROOT_PUBLIC_KEY: ${CLAIM_ROOT_PUBLIC_KEY:-}
       DEBUG_TRACE_TOKEN: ${DEBUG_TRACE_TOKEN:-}
       DEBUG_TRACE_USERS: ${DEBUG_TRACE_USERS:-}
     extra_hosts:

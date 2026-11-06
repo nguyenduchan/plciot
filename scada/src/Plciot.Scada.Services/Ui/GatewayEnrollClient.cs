@@ -58,6 +58,14 @@ public sealed class GatewayPackItem
 {
     public string? Id { get; set; }
     public List<string>? Fields { get; set; }
+    /// <summary>Khoảng giá trị được ghi cho từng trường (do tem provisioning đặt).</summary>
+    public Dictionary<string, GatewayLimit>? Limits { get; set; }
+}
+
+public sealed class GatewayLimit
+{
+    public double Min { get; set; }
+    public double Max { get; set; }
 }
 
 public sealed class GatewaySeedChild

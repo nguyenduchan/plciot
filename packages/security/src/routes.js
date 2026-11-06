@@ -163,7 +163,7 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
 
   function methodsFor(u) {
     const f = factorSummary(db, u.id);
-    return { passkey: f.passkeys > 0, totp: f.totp, enrolled: f.passkeys > 0 || f.totp };
+    return { passkey: f.passkeys > 0, totp: f.totp, enrolled: f.passkeys > 0 || f.totp, password: Boolean(u.login_password_hash) };
   }
 
   /* ---------- trạng thái ---------- */
@@ -238,6 +238,20 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     const r = checkTotpCode(u, req.body?.code, clientIp(req));
     if (r.error) return out(res, r.status, r);
     issue(req, res, 'totp');
+  });
+
+  /** Xác nhận MỘT lệnh nguy hiểm bằng mật khẩu đăng nhập (thay cho Face ID / Authenticator). Bắt buộc kèm X-Command-Challenge. */
+  app.post('/api/control/unlock-password', requireAuth, strict, (req, res) => {
+    if (!/^[a-f0-9]{32}$/.test(String(req.headers['x-command-challenge'] || ''))) return out(res, 400, { error: 'command_challenge_required' });
+    const u = reload(req.user.id);
+    const pw = String(req.body?.password || '');
+    if (!u.login_password_hash || !pw) return out(res, 400, { error: 'password_not_set' });
+    if (countAudit(db, u.id, 'pw_fail', Date.now() - 15 * 60_000) >= 5) return out(res, 429, { error: 'password_locked' });
+    if (!verifyPassword(pw, u.login_password_hash)) {
+      audit(db, 'pw_fail', { userId: u.id, ip: clientIp(req), detail: 'command_confirm' });
+      return out(res, 401, { error: 'password_invalid' });
+    }
+    issue(req, res, 'password');
   });
 
   app.post('/api/control/lock', requireAuth, (req, res) => {
@@ -466,7 +480,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
     const ip = clientIp(req);
     if (stationOk(db, req.user.id, req.headers, ip, cfg)) return { ok: true, via: 'station' };
     const c = checkControlSession(db, req.user.id, tokenOf(req), ip, cfg);
-    if (c.ok) return { ok: true, via: c.method };
+    // phiên 'password' chỉ xác nhận ĐÚNG MỘT lệnh nguy hiểm (kiểm riêng bằng checkControlSession + commandId), không bao giờ mở khoá điều khiển chung
+    if (c.ok && c.method !== 'password') return { ok: true, via: c.method };
     return {
       error: 'step_up_required',
       reason: methodsFor(req.user).enrolled ? c.reason : 'no_factor',

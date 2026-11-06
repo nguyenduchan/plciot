@@ -84,6 +84,30 @@ public class ControlPolicyTests
         if (!allowed) Assert.Contains(src == ControlSource.Mobile ? "remote_disabled" : "control_disabled", ack);
     }
 
+    [Theory]
+    [InlineData(MobileAccess.Control, "run", 1, true, 1)]
+    [InlineData(MobileAccess.Control, "flow", 3, true, 30)]        // scale 10
+    [InlineData(MobileAccess.Control, "nope", 1, false, 0)]        // key không có trong Pack
+    [InlineData(MobileAccess.MonitorOnly, "run", 1, false, 0)]     // điện thoại chỉ xem → từ chối
+    public async Task Child_key_command_is_translated_through_pack(MobileAccess mobile, string key, int v, bool allowed, int expectedD)
+    {
+        using var plc = new FakeModbusPlc();
+        var cfg = new ScadaConfig
+        {
+            Site = "f1", Device = "plc01", Source = PlcSource.ModbusTcp, PlcHost = "127.0.0.1", PlcPort = plc.Port, PollMs = 5000,
+            Mobile = mobile, WebEnabled = false,
+            Pack = new() { new PackMap { Child = "pump1", Field = "run", Address = 52, Scale = 1 }, new PackMap { Child = "pump1", Field = "flow", Address = 54, Scale = 10 } },
+        };
+        await using var core = new ScadaCore(cfg, DriverFactory.Create(cfg));
+        await core.StartAsync();
+        var payload = Encoding.UTF8.GetBytes($"{{\"id\":\"k1\",\"child\":\"pump1\",\"key\":\"{key}\",\"v\":{v}}}");
+        var ack = await core.ExecuteKeyAsync(payload, ControlSource.Mobile, "test");
+        Assert.NotNull(ack);
+        Assert.Equal(allowed, ack!.Contains("\"ok\":true"));
+        var addr = key == "flow" ? 54 : 52;
+        Assert.Equal(expectedD, plc.Get(addr));
+    }
+
     [Fact]
     public async Task Reads_are_always_allowed_from_every_source()
     {

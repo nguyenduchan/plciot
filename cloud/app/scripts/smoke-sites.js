@@ -65,71 +65,45 @@ async function call(method, url, uid, body, headers = {}) {
 }
 
 /* ---- migration: chủ site mặc định = id nhỏ nhất ---- */
-const a = mk('84900000101', 'operator', 'plantX'); const b = mk('84900000102', 'operator', 'plantX');
+const a = mk('owner_a', 'operator', 'plantX'); const b = mk('member_b', 'operator', 'plantX');
 let r = await call('GET', '/api/site', a);
 ok(r.body.isOwner === true && r.body.members.length === 2, 'người dùng đầu tiên của site tự là chủ, thấy danh sách thành viên');
 r = await call('GET', '/api/site', b);
 ok(r.body.isOwner === false && !r.body.members, 'thành viên thường không thấy danh sách');
-r = await call('POST', '/api/site/invites', b, { phone: '0900000999' });
+r = await call('POST', '/api/site/invites', b, { role: 'operator' });
 ok(r.status === 403 && r.body.error === 'not_site_owner', 'thành viên không được mời người khác');
 
-/* ---- nhận thiết bị chưa có chủ ---- */
-const c = mk('84900000103');
-r = await call('POST', '/api/site/claim/start', c, { site: 'plantX', device: 'plc01' });
-ok(r.status === 409 && r.body.error === 'site_taken', 'site đã có người dùng: không nhận được (phải được mời)');
-r = await call('POST', '/api/site/claim/start', c, { site: 'plantNew', device: 'plc01' });
-ok(r.status === 404 && r.body.error === 'device_offline', 'thiết bị không gửi telemetry: không nhận được');
-r = await call('POST', '/api/site/claim/start', c, { site: '../x', device: 'plc01' });
-ok(r.status === 400, 'tên site nguy hiểm bị từ chối');
+/* ---- nhận thiết bị: claim vật lý (ngõ X) đã thay bằng QR tem ---- */
+const c = mk('owner_c', 'operator', 'plantNew');       // chủ site riêng (người đầu tiên của site)
 noteTelemetry('plantNew', 'plc01', 0);
 r = await call('POST', '/api/site/claim/start', c, { site: 'plantNew', device: 'plc01' });
-ok(r.status === 200 && Number.isInteger(r.body.bit), 'thiết bị đang online: bắt đầu thử thách vật lý');
-const bit = r.body.bit;
-r = await call('POST', '/api/site/claim/check', c, {});
-ok(r.body.waiting === true, 'chưa tác động ngõ vào: vẫn chờ');
-await new Promise((x) => setTimeout(x, 20));
-noteTelemetry('plantNew', 'plc01', 1 << bit);
-r = await call('POST', '/api/site/claim/check', c, {});
-ok(r.body.claimed && r.body.site === 'plantNew', 'tác động đúng ngõ vào: nhận thiết bị');
-const cu = db.prepare('SELECT * FROM users WHERE id = ?').get(c);
-ok(cu.notify_site === 'plantNew' && cu.site_owner === 1, 'thành chủ site, đã chuyển namespace');
-ok(fs.readFileSync(path.join(tmp, 'cfg', 'acl'), 'utf8').includes('topic read plc/plantNew/plc01/telemetry'), 'ACL MQTT cập nhật sang site mới');
-const d = mk('84900000104');
-r = await call('POST', '/api/site/claim/start', d, { site: 'plantNew', device: 'plc01' });
-ok(r.status === 409, 'người thứ hai không nhận lại được site đã có chủ');
+ok(r.status === 410 && r.body.error === 'use_device_qr_claim', 'claim vật lý đã bỏ: dùng QR tem (xem smoke-device-claim)');
+const d = mk('member_d', 'operator', 'plantNew');
 
-/* ---- mời thành viên ---- */
-r = await call('POST', '/api/site/invites', c, { phone: '0900000104', role: 'operator' });
-ok(r.status === 200 && r.body.id, 'chủ site mời theo SĐT (không cần admin)');
+/* ---- mời thành viên bằng mã mời (token), không cần SĐT/email ---- */
+r = await call('POST', '/api/site/invites', c, { role: 'operator' });
+ok(r.status === 200 && r.body.id && r.body.code && r.body.url.includes('invite='), 'chủ site tạo mã mời (token + liên kết)');
 const inv = r.body.id;
-r = await call('POST', '/api/site/invites', c, { phone: '0900000103' });
-ok(r.status === 400 && r.body.error === 'same_phone', 'không tự mời mình');
-r = await call('POST', '/api/site/invites', c, { phone: '12' });
-ok(r.status === 400, 'SĐT sai bị từ chối');
-r = await call('GET', '/api/site', d);
-ok(r.body.invitesIn.length === 1 && r.body.invitesIn[0].site === 'plantNew', 'người được mời thấy lời mời');
-r = await call('POST', `/api/invites/${inv}/accept`, b);
-ok(r.status === 404, 'người khác không chấp nhận hộ được');
-r = await call('POST', `/api/invites/${inv}/accept`, d);
-ok(r.body.ok && r.body.role === 'operator', 'người được mời chấp nhận');
-const du = db.prepare('SELECT * FROM users WHERE id = ?').get(d);
-ok(du.notify_site === 'plantNew' && du.site_owner === 0, 'thành viên vào site, không phải chủ');
-r = await call('POST', '/api/site/invites', c, { phone: '0900000104' });
-ok(r.status === 409 && r.body.error === 'already_member', 'đã là thành viên thì không mời lại');
+r = await call('POST', '/api/site/invites', d, { role: 'operator' });
+ok(r.status === 403 && r.body.error === 'not_site_owner', 'thành viên không tạo được mã mời');
+r = await call('POST', '/api/site/invites', c, { role: 'root' });
+ok(r.status === 200 && r.body.role === 'operator', 'role lạ bị đưa về operator');
+r = await call('GET', '/api/site', c);
+ok(r.body.isOwner === true && r.body.invitesOut?.length >= 2, 'chủ thấy các mã mời đã tạo');
+r = await call('DELETE', `/api/site/invites/${inv}`, c);
+ok(r.body.ok, 'chủ huỷ mã mời');
+r = await call('DELETE', `/api/site/invites/${inv}`, c);
+ok(r.status === 404, 'mã mời đã huỷ không huỷ lại được');
+r = await call('POST', '/api/site/invites', c, { role: 'viewer' });
+db.prepare("UPDATE site_invites SET expires_at = ? WHERE id = ?").run(Date.now() - 1, r.body.id);
+r = await call('POST', `/api/invites/${r.body.id}/accept`, d);
+ok(r.status === 410 || r.status === 404, 'mã mời hết hạn không chấp nhận được');
 r = await call('DELETE', `/api/site/members/${c}`, c);
 ok(r.status === 409, 'không gỡ chủ site');
 r = await call('DELETE', `/api/site/members/${d}`, c);
 ok(r.body.ok, 'chủ site gỡ thành viên');
 const du2 = db.prepare('SELECT * FROM users WHERE id = ?').get(d);
-ok(du2.notify_site === 's84900000104' && du2.token_version === 1, 'thành viên bị gỡ về vùng riêng, phiên cũ bị thu hồi');
-r = await call('POST', '/api/site/invites', c, { phone: '0900000104', role: 'viewer' });
-const inv2 = r.body.id;
-r = await call('POST', `/api/invites/${inv2}/decline`, d);
-ok(r.body.ok && (await call('GET', '/api/site', d)).body.invitesIn.length === 0, 'từ chối lời mời');
-r = await call('POST', '/api/site/invites', c, { phone: '0900000104', role: 'viewer' });
-db.prepare("UPDATE site_invites SET expires_at = ? WHERE id = ?").run(Date.now() - 1, r.body.id);
-r = await call('POST', `/api/invites/${r.body.id}/accept`, d);
-ok(r.status === 410, 'lời mời hết hạn không chấp nhận được');
+ok(du2.notify_site !== 'plantNew' && du2.token_version === 1, 'thành viên bị gỡ về vùng riêng, phiên cũ bị thu hồi');
 
 /* ---- ghép PC nhà máy ---- */
 r = await call('POST', '/api/site/pair-code', b, { name: 'x' });

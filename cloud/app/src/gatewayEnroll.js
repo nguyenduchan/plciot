@@ -13,6 +13,7 @@ import {
 } from './contract.js';
 import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
+import { normalizeLimits } from './childControl.js';
 
 function parseUiMeta(raw) {
   if (!raw) return null;
@@ -99,6 +100,7 @@ export function seedFromHardware(hw) {
         type,
         title: s.title ? String(s.title).slice(0, 120) : null,
         fields: childFields(type),
+        limits: normalizeLimits(s.limits),
       });
     }
   } else {
@@ -109,6 +111,7 @@ export function seedFromHardware(hw) {
         type,
         title: hw.label || null,
         fields: childFields(type),
+        limits: normalizeLimits(meta?.limits),
       });
     }
   }
@@ -170,7 +173,10 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     ack: `${base}/ack`,
   };
   const role = resolveDeviceTypeId(hw.profile) === 'iot-hub' || children.length > 1 ? 'hub' : 'leaf';
-  const pack = children.map(({ id, fields }) => ({ id, fields: fields || [] }));
+  // limits: khoảng giá trị mỗi trường do tem đặt — gateway tự kiểm lại trước khi ghi xuống PLC (phòng thủ nhiều lớp)
+  const pack = children.map(({ id, fields, limits }) => ({
+    id, fields: fields || [], ...(limits && Object.keys(limits).length ? { limits } : {}),
+  }));
   const baseUrl = publicBaseUrl();
 
   return {

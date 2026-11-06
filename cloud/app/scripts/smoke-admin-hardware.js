@@ -18,7 +18,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hw-'));
 const db = new Database(path.join(tmp, 't.db'));
 db.exec(`CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT NOT NULL DEFAULT 'x',
-  folder_path TEXT NOT NULL DEFAULT 'f', version TEXT DEFAULT '1', phone TEXT,
+  folder_path TEXT NOT NULL DEFAULT 'f', version TEXT DEFAULT '1',
   notify_site TEXT DEFAULT 'f', notify_device TEXT DEFAULT 'plc01', site_owner INTEGER DEFAULT 0,
   role TEXT DEFAULT 'operator', disabled INTEGER DEFAULT 0, setup_complete INTEGER DEFAULT 1
 )`);

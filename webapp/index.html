@@ -215,7 +215,16 @@
   <div class="ctl-box">
     <h3>Thêm thiết bị</h3>
     <p class="muted">Dán mã QR trên tem — máy chủ đã biết loại thiết bị, giao diện tự dựng. Không cần chọn widget.</p>
-    <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Dán chuỗi QR từ tem thiết bị"></textarea></label>
+    <div class="row">
+      <button type="button" id="dev-scan" class="fit">📷 Quét camera</button>
+      <button type="button" id="dev-pick" class="fit">🖼 Chọn ảnh QR</button>
+      <input type="file" id="dev-file" accept="image/*" hidden>
+    </div>
+    <div id="dev-cam" hidden>
+      <video id="dev-video" playsinline muted style="width:100%;border-radius:12px;margin-top:10px;background:#000"></video>
+      <p class="muted" id="dev-cam-hint">Đưa mã QR trên tem vào khung hình…</p>
+    </div>
+    <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Hoặc dán chuỗi QR từ tem thiết bị"></textarea></label>
     <div class="row">
       <button type="button" id="dev-add-go" class="primary">Thêm</button>
       <button type="button" id="dev-modal-close" class="fit">Huỷ</button>
