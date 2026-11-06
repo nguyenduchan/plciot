@@ -8,8 +8,9 @@ import {
 } from '@plciot/security';
 import {
   uiSchemaPublic, listDeviceTypes, getDeviceType, resolveDeviceTypeId,
-  resolveDashboard, UI_CONTRACT_VERSION,
+  resolveDashboard, deviceToUiNode, UI_CONTRACT_VERSION,
 } from './uiContract.js';
+import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
 import { rateLimit } from '@plciot/security';
 
@@ -31,6 +32,8 @@ export function migrateUserDevices(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id);
   `);
+  const cols = db.prepare("PRAGMA table_info('user_devices')").all().map((c) => c.name);
+  if (!cols.includes('critical_keys')) db.exec('ALTER TABLE user_devices ADD COLUMN critical_keys TEXT');
 }
 
 function parseUiMeta(raw) {
@@ -39,9 +42,26 @@ function parseUiMeta(raw) {
 }
 
 function listRows(db, userId) {
-  return db.prepare(
-    'SELECT id, user_id AS userId, site, gateway_device AS gatewayDevice, child_id AS childId, type, title, binds, created_at AS createdAt FROM user_devices WHERE user_id = ? ORDER BY created_at',
+  const rows = db.prepare(
+    'SELECT id, user_id AS userId, site, gateway_device AS gatewayDevice, child_id AS childId, type, title, binds, critical_keys AS criticalKeys, created_at AS createdAt FROM user_devices WHERE user_id = ? ORDER BY created_at',
   ).all(userId);
+  // limits/critical do tem đặt (hardware.ui_meta) đi kèm từng dòng để dựng dashboard và kiểm lệnh
+  return rows.map((r) => ({ ...r, spec: specFor(db, r), userCritical: parseUserKeys(r.criticalKeys) }));
+}
+
+/** Người dùng đánh dấu/bỏ đánh dấu một lệnh là nguy hiểm. Lệnh do tem đặt thì không bỏ được. */
+export function setCriticalKey(db, user, id, key, critical) {
+  const row = db.prepare('SELECT * FROM user_devices WHERE id = ? AND user_id = ?').get(id, user.id);
+  if (!row) return { error: 'not_found', status: 404 };
+  const node = deviceToUiNode({ ...row, childId: row.child_id });
+  if (!node.widgets.some((w) => w.cmd && w.cmd.key === key)) return { error: 'unknown_key', status: 400 };
+  const spec = specFor(db, { site: row.site, gatewayDevice: row.gateway_device, childId: row.child_id });
+  if (!critical && spec.critical.includes(key)) return { error: 'locked_by_provisioning', status: 409 };
+  const keys = new Set(parseUserKeys(row.critical_keys));
+  if (critical) keys.add(key); else keys.delete(key);
+  db.prepare('UPDATE user_devices SET critical_keys = ? WHERE id = ?').run(JSON.stringify([...keys]), id);
+  audit(db, critical ? 'control_critical_marked' : 'control_critical_unmarked', { userId: user.id, detail: `${row.child_id}.${key}` });
+  return { ok: true, dashboard: getDashboardFor(db, user, 'simple') };
 }
 
 function upsertDevice(db, {
@@ -51,8 +71,9 @@ function upsertDevice(db, {
     'SELECT id FROM user_devices WHERE user_id = ? AND site = ? AND child_id = ?',
   ).get(userId, site, childId);
   if (existing) {
-    db.prepare('UPDATE user_devices SET type = ?, title = ? WHERE id = ?')
-      .run(type, title || null, existing.id);
+    // quét lại tem của gateway khác: thiết bị con chuyển về gateway mới (limits/critical lấy theo tem đó)
+    db.prepare('UPDATE user_devices SET type = ?, title = ?, gateway_device = ? WHERE id = ?')
+      .run(type, title || null, gatewayDevice, existing.id);
     return { id: existing.id, already: true };
   }
   const id = `ud_${crypto.randomBytes(6).toString('hex')}`;
@@ -174,7 +195,7 @@ export function getDashboardFor(db, user, mode) {
   });
 }
 
-export function mountUserDevices(app, { db, requireAuth, sensitiveStrict }) {
+export function mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize }) {
   migrateUserDevices(db);
   const send = (res, result) => res.status(result?.error ? result.status || 400 : 200).json(result);
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve().then(() => handler(req, res)).catch(next);
@@ -210,6 +231,16 @@ export function mountUserDevices(app, { db, requireAuth, sensitiveStrict }) {
 
   app.get('/api/devices', requireAuth, (req, res) => {
     res.json({ ok: true, devices: listUserDevices(db, req.user) });
+  });
+
+  // Đánh dấu lệnh nguy hiểm. Bỏ dấu = hạ mức bảo vệ → phải qua step-up như một lệnh điều khiển (nếu server bật).
+  app.post('/api/devices/:id/critical', requireAuth, (req, res) => {
+    const critical = Boolean(req.body?.critical);
+    if (!critical && authorize) {
+      const a = authorize(req);
+      if (a.error) return res.status(a.status || 401).json(a);
+    }
+    send(res, setCriticalKey(db, req.user, req.params.id, String(req.body?.key || ''), critical));
   });
 
   app.post('/api/devices', requireAuth, sensitiveStrict, addLimit, asyncRoute(async (req, res) => {

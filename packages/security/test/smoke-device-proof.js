@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { migrateSecurity } from '../src/schema.js';
 import { canonicalDeviceKey, verifyDeviceProof } from '../src/deviceProof.js';
-import { canBindVerifiedContact } from '../src/accounts.js';
 
 const require = createRequire(new URL('../../../cloud/app/package.json', import.meta.url));
 const Database = require('better-sqlite3');
@@ -28,12 +27,5 @@ assert.equal(verifyDeviceProof(db, { ...input, action: 'different-action', proof
 assert.equal(verifyDeviceProof(db, { ...input, deviceId: 'other-device-bbbbbbbbbbbbbbbb', proof: proofFor(7, input.action) }), false);
 assert.equal(canonicalDeviceKey({ ...publicKey, d: 'private-key' }), null);
 assert.equal(canonicalDeviceKey({ kty: 'RSA' }), null);
-const contact = { actorId: 7, contactOwnerId: 7, isPrivate: true, newContact: 7 };
-assert.ok(canBindVerifiedContact(contact));
-assert.equal(canBindVerifiedContact({ ...contact, contactOwnerId: undefined }), false);
-assert.equal(canBindVerifiedContact({ ...contact, contactOwnerId: 8 }), false);
-assert.equal(canBindVerifiedContact({ ...contact, isPrivate: false }), false);
-assert.equal(canBindVerifiedContact({ ...contact, currentContact: 9 }), false);
-assert.ok(canBindVerifiedContact({ ...contact, currentContact: '7' }));
 db.close();
 console.log('Device proof: key binding, account/action/device binding and replay protection passed');

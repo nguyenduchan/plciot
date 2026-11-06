@@ -32,7 +32,7 @@
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
-    return { ok: r.ok, data };
+    return { ok: r.ok, status: r.status, data };
   }
 
   function toast(msg, bad) {
@@ -70,8 +70,14 @@
     }
     if (w.kind === 'toggle') {
       const on = Number(v) === 1 || v === true;
-      return `<div class="dw ctlw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
-        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? '● Bật' : '○ Tắt'}</button></div>`;
+      const c = w.cmd || {};
+      // ★ = lệnh nguy hiểm: mỗi lần phải xác nhận (Face ID / Authenticator / mật khẩu). Tem có thể đặt sẵn (khoá, không bỏ được).
+      const star = c.key != null
+        ? `<button type="button" class="dw-star ${c.critical ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" data-key="${esc(c.key)}" data-crit="${c.critical ? 1 : 0}" ${c.criticalLocked ? 'disabled' : ''} title="${c.critical ? (c.criticalLocked ? 'Lệnh nguy hiểm do tem đặt' : 'Bỏ đánh dấu nguy hiểm') : 'Đánh dấu lệnh nguy hiểm'}">${c.critical ? '★' : '☆'}</button>`
+        : '';
+      const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : ''].filter(Boolean).join(' · ');
+      return `<div class="dw ctlw ${c.critical ? 'crit' : ''}" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)} ${star}</div>
+        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? '● Bật' : '○ Tắt'}</button>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'status' || w.kind === 'chip') {
       const on = Number(v) === 1 || v === true || (typeof v === 'number' && v > 0);
@@ -114,6 +120,18 @@
         await load();
       };
     });
+    host.querySelectorAll('.dw-star').forEach((b) => {
+      b.onclick = async () => {
+        const want = b.dataset.crit !== '1';
+        let r = await api('POST', `/api/devices/${b.dataset.dev}/critical`, { key: b.dataset.key, critical: want });
+        if (r.status === 401 && r.data?.error === 'step_up_required' && window.Ctl?.unlock && await window.Ctl.unlock(r.data)) {
+          r = await api('POST', `/api/devices/${b.dataset.dev}/critical`, { key: b.dataset.key, critical: want });
+        }
+        if (!r.ok) return toast({ locked_by_provisioning: 'Do tem đặt — không bỏ được.', step_up_required: 'Cần xác thực để bỏ đánh dấu.' }[r.data?.error] || r.data?.error || 'Lỗi', true);
+        dashboard = r.data.dashboard; render();
+        toast(want ? 'Đã đánh dấu lệnh nguy hiểm: mỗi lần sẽ phải xác nhận.' : 'Đã bỏ đánh dấu.');
+      };
+    });
     host.querySelectorAll('.dw-toggle').forEach((b) => {
       b.onclick = () => {
         const dev = dashboard.devices.find((x) => x.id === b.dataset.dev);
@@ -123,6 +141,20 @@
         const next = cur ? (w.cmd.off ?? 0) : (w.cmd.on ?? 1);
         if (typeof window.command === 'function' && w.cmd.a != null) {
           window.command(w.cmd.a, next);
+        } else if (w.cmd.key != null && window.Ctl?.send) {
+          // thiết bị con của hub: lệnh {child,key,v} đi /api/control/cmd (cùng xác thực bước hai), kết quả thật hiện qua telemetry
+          b.disabled = true;
+          // cập nhật lạc quan: nút đổi ngay, telemetry của PLC xác nhận (hoặc sửa lại) sau; lỗi thì trả về giá trị cũ
+          const prev = live[dev.childId]?.[w.bind];
+          live[dev.childId] = { ...live[dev.childId], [w.bind]: next };
+          render();
+          window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next }).then((r) => {
+            if (r?.ok) return toast('Đã gửi lệnh tới thiết bị.');
+            live[dev.childId] = { ...live[dev.childId], [w.bind]: prev };
+            render();
+            const msg = { cancelled: 'Đã huỷ.', app_locked: 'Ứng dụng đang khoá.', session_expired: 'Phiên hết hạn — đăng nhập lại.', enroll_required: 'Cần bật vân tay / Authenticator trong tab Điều khiển.' }[r?.error] || r?.error || 'Gửi lệnh lỗi';
+            toast(msg, true);
+          }).finally(() => { b.disabled = false; });
         } else {
           live[dev.childId] = { ...live[dev.childId], [w.bind]: next };
           render();
@@ -157,8 +189,97 @@
     $('#dev-qr')?.focus();
   }
   function closeModal() {
+    stopCamera();
     const m = $('#dev-modal');
     if (m) m.hidden = true;
+  }
+
+  // ---- Đọc QR từ ảnh / camera ------------------------------------------------------------
+  // Dùng BarcodeDetector (Chrome/Edge/Android). Nếu có thêm vendor/jsQR.js (tuỳ chọn) thì dùng làm dự phòng cho Safari/Firefox.
+  let camStream = null; let camTimer = null;
+
+  async function loadJsQr() {
+    if (window.jsQR) return window.jsQR;
+    await new Promise((ok) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/jsQR.js'; s.onload = ok; s.onerror = ok;
+      document.head.appendChild(s);
+    });
+    return window.jsQR || null;
+  }
+
+  /** source: ImageBitmap | HTMLVideoElement | HTMLImageElement → chuỗi QR hoặc null. */
+  async function decodeQr(source) {
+    if ('BarcodeDetector' in window) {
+      try {
+        const det = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const r = await det.detect(source);
+        if (r[0]?.rawValue) return r[0].rawValue;
+        return null;
+      } catch { /* thử jsQR */ }
+    }
+    const jsqr = await loadJsQr();
+    if (!jsqr) throw new Error('no_decoder');
+    const w = source.videoWidth || source.width; const h = source.videoHeight || source.height;
+    if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0, w, h);
+    const img = ctx.getImageData(0, 0, w, h);
+    return jsqr(img.data, w, h)?.data || null;
+  }
+
+  function gotQr(text) {
+    const ta = $('#dev-qr');
+    if (ta) ta.value = text.trim();
+    submitQr();
+  }
+
+  async function pickImage(file) {
+    if (!file) return;
+    try {
+      const bmp = await createImageBitmap(file);
+      const text = await decodeQr(bmp);
+      if (bmp.close) bmp.close();
+      if (!text) return toast('Không đọc được mã QR trong ảnh.', true);
+      gotQr(text);
+    } catch (e) {
+      toast(e.message === 'no_decoder' ? 'Trình duyệt này chưa hỗ trợ đọc QR từ ảnh — hãy dán chuỗi QR.' : 'Không đọc được ảnh.', true);
+    }
+  }
+
+  function stopCamera() {
+    if (camTimer) { clearInterval(camTimer); camTimer = null; }
+    if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
+    const v = $('#dev-video'); if (v) v.srcObject = null;
+    const box = $('#dev-cam'); if (box) box.hidden = true;
+    const b = $('#dev-scan'); if (b) b.textContent = '📷 Quét camera';
+  }
+
+  async function toggleCamera() {
+    if (camStream) return stopCamera();
+    if (!navigator.mediaDevices?.getUserMedia) return toast('Trình duyệt không hỗ trợ camera (cần HTTPS).', true);
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    } catch {
+      return toast('Không mở được camera — hãy cho phép quyền camera cho trang này.', true);
+    }
+    const v = $('#dev-video');
+    v.srcObject = camStream;
+    await v.play().catch(() => {});
+    $('#dev-cam').hidden = false;
+    $('#dev-scan').textContent = '✕ Tắt camera';
+    let busy = false;
+    camTimer = setInterval(async () => {
+      if (busy || !camStream) return;
+      busy = true;
+      try {
+        const text = await decodeQr(v);
+        if (text) { stopCamera(); gotQr(text); }
+      } catch (e) {
+        if (e.message === 'no_decoder') { stopCamera(); toast('Trình duyệt này chưa hỗ trợ quét QR — hãy chọn ảnh hoặc dán chuỗi QR.', true); }
+      } finally { busy = false; }
+    }, 300);
   }
 
   async function submitQr() {
@@ -244,6 +365,9 @@
     $('#dev-add')?.addEventListener('click', openModal);
     $('#dev-modal-close')?.addEventListener('click', closeModal);
     $('#dev-add-go')?.addEventListener('click', submitQr);
+    $('#dev-scan')?.addEventListener('click', toggleCamera);
+    $('#dev-pick')?.addEventListener('click', () => $('#dev-file')?.click());
+    $('#dev-file')?.addEventListener('change', (e) => { pickImage(e.target.files?.[0]); e.target.value = ''; });
     $('#dev-modal')?.addEventListener('click', (e) => { if (e.target.id === 'dev-modal') closeModal(); });
     load();
   });

@@ -2,6 +2,8 @@
  * UI contract chuẩn hóa — webapp và C# cùng consume.
  * GET /api/v1/ui/schema | /types | /dashboard
  */
+import { applyControlSpec } from './childControl.js';
+
 export const UI_CONTRACT_VERSION = '2026-11-05';
 export const UI_SCHEMA = 1;
 
@@ -193,7 +195,7 @@ export function deviceToUiNode(row) {
     type: type.id,
     title: row.title || type.title,
     source: sourceFor(type, childId),
-    widgets: cloneWidgets(type, childId),
+    widgets: applyControlSpec(cloneWidgets(type, childId), { spec: row.spec, userCritical: row.userCritical }),
   };
 }
 

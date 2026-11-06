@@ -65,7 +65,6 @@ upsertUser(db, {
   passwordHash: hashPassword('x'),
   folderPath: 'u1',
   version: 'old',
-  phone: '84909990001',
   notifySite: 's',
   notifyDevice: 'd',
 });

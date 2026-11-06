@@ -50,7 +50,7 @@
           const { target, command: requested } = r.body;
           const confirmed = await new Promise((resolve) => {
             const m = modal(`<h3>Xác nhận lệnh PLC</h3><p>${S.escHtml(target.site)} / ${S.escHtml(target.device)}</p>
-              <p>Ghi D${requested.a} = <b>${requested.v}</b></p>
+              <p>⚠ Lệnh nguy hiểm: ${requested.key ? `${S.escHtml(requested.child)}.${S.escHtml(requested.key)} = <b>${requested.v}</b>` : `Ghi D${requested.a} = <b>${requested.v}</b>`}</p>
               <div class="row"><button class="primary ctl-confirm">Xác nhận</button><button class="fit ctl-cancel">Huỷ</button></div>`);
             m.q('.ctl-confirm').onclick = () => { m.close(); resolve(true); };
             m.q('.ctl-cancel').onclick = () => { m.close(); resolve(false); };

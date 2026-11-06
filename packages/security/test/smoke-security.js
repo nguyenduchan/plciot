@@ -23,13 +23,12 @@ const S = await import('../src/index.js');
 let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
 
-/* ---- adapter giả: app đồ chơi tự quyết cách báo tin, email, quyền ---- */
+/* ---- adapter giả: app đồ chơi tự quyết cách báo tin và quyền ---- */
 const notes = [];
 S.configure({
   secret: () => 'toy-app-secret-toy-app-secret',
   publicUrl: () => 'https://toy.example.com',
   notify: async (_db, user, msg) => { notes.push({ user: user.id, subject: msg.subject }); return { delivered: true }; },
-  email: { available: () => false, send: async () => { throw new Error('no email'); } },
   canControl: (u) => u.role === 'staff',
   brand: { rpName: 'Toy' },
 });
@@ -44,7 +43,7 @@ const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 ok(['totp_secret', 'totp_enabled', 'totp_pending', 'enroll_deadline', 'token_version'].every((c) => cols.includes(c)), 'migrateSecurity thêm cột vào users của app');
 const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((t) => t.name);
 ok(['passkeys', 'control_sessions', 'device_requests', 'known_devices', 'pair_codes', 'stations', 'recovery_codes', 'audit_log'].every((t) => tables.includes(t)), 'đủ bảng của lõi');
-ok(['login_attempts', 'app_sessions', 'otp_challenges', 'email_challenges', 'phone_changes'].every((table) => tables.includes(table)), 'core owns login, registration and account recovery tables');
+ok(['login_attempts', 'app_sessions'].every((table) => tables.includes(table)), 'lõi sở hữu bảng đăng nhập/đăng ký (không còn OTP/email/SĐT)');
 const mk = (name, role = 'staff') => Number(db.prepare('INSERT INTO users (username, role) VALUES (?, ?)').run(name, role).lastInsertRowid);
 
 /* ---- app đồ chơi: một route "mở két" được bảo vệ bằng step-up của lõi ---- */

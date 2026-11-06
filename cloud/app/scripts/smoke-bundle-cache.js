@@ -52,9 +52,9 @@ const bundle = {
 
 await login(bundle);
 assert.equal(downloads.length, 3, 'First login downloads the bundle');
-await login({ ...bundle, token: 'new-otp-token' });
-assert.equal(downloads.length, 3, 'Repeated OTP login reuses the same source version');
-assert.equal(JSON.parse(storage.get('session')).token, 'new-otp-token');
+await login({ ...bundle, token: 'new-login-token' });
+assert.equal(downloads.length, 3, 'Repeated login reuses the same source version');
+assert.equal(JSON.parse(storage.get('session')).token, 'new-login-token');
 
 stores.get('plc-user-a-source-v1').delete(`${origin}/app.js`);
 await login(bundle);

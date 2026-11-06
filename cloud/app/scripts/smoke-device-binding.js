@@ -24,7 +24,7 @@ ok(resolveSubscriber(db, { site: 'x', device: 'y', tenant: 'default' }).reason =
 
 const u = upsertUser(db, {
   username: '84905556677', passwordHash: hashPassword('x'), folderPath: 's', version: '1',
-  phone: '84905556677', notifySite: 'plantA', notifyDevice: 'plc01',
+  notifySite: 'plantA', notifyDevice: 'plc01',
 });
 ok(resolveSubscriber(db, { site: 'plantA', device: 'plc01' }).ok, 'user site accepted');
 grantPlan(db, u.id, 'pro', { expiresAt: '2020-01-01' });

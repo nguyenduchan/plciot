@@ -199,7 +199,7 @@ mountPartnerRoutes(app, { db, requireAuth, reauth });
 /* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */
 mountGatewayEnroll(app, { db });
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
-mountUserDevices(app, { db, requireAuth, sensitiveStrict });
+mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,

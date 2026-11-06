@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Gói đăng ký theo username (không SĐT).
+ * Gói đăng ký theo username (chỉ username).
  *   node scripts/plan.js grant <username> <monitor|pro|factory> [date|never]
  */
 import path from 'path';

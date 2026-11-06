@@ -902,7 +902,9 @@
           if (methods.password) passwordPrompt(m, done, pendingSession.src === 'resume' ? 'Mở khoá ứng dụng' : 'Nhập mật khẩu để hoàn tất đăng nhập'); else loginSetup(m, canPk && canPlatform, done);
           return;
         }
-        if (!methods.enrolled) { enrollChoice(m, canPk, done, info.title || 'Thiết lập bảo mật'); return; }
+        // lệnh nguy hiểm cho phép xác nhận bằng mật khẩu đăng nhập kể cả khi chưa bật Face ID / Authenticator
+        const pwOnly = Boolean(info.commandChallenge && methods.password);
+        if (!methods.enrolled && !pwOnly) { enrollChoice(m, canPk, done, info.title || 'Thiết lập bảo mật'); return; }
         body.innerHTML = `
           <h3>${escHtml(info.title || 'Xác nhận để điều khiển')}</h3>
           ${reason ? `<p class="muted">${reason}</p>` : ''}
@@ -910,8 +912,24 @@
           ${methods.passkey && canPk ? '<div class="row"><button class="primary ctl-pk">Dùng vân tay / Face ID</button></div>' : ''}
           ${methods.totp ? `<label>Mã Authenticator<input class="ctl-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
             <div class="row"><button class="${methods.passkey && canPk ? 'fit' : 'primary'} ctl-go">Xác nhận</button></div>` : ''}
+          ${info.commandChallenge && methods.password ? '<label>Hoặc mật khẩu đăng nhập<input type="password" class="ctl-cpw" autocomplete="current-password" placeholder="Mật khẩu"></label><div class="row"><button class="fit ctl-cpwgo">Xác nhận lệnh bằng mật khẩu</button></div>' : ''}
           ${pendingSession && methods.password ? '<label>Hoặc nhập mật khẩu<input type="password" class="ctl-pw" autocomplete="current-password" placeholder="Mật khẩu"></label><div class="row"><button class="fit ctl-pwgo">Xác nhận bằng mật khẩu</button></div>' : ''}
           <div class="row"><button class="fit ctl-newdev">Máy mới / mất máy cũ?</button><button class="fit ctl-cancel">Huỷ</button></div>`;
+        const cpwgo = m.q('.ctl-cpwgo');
+        if (cpwgo) {
+          const cpw = m.q('.ctl-cpw');
+          const goPw = async () => {
+            if (cpwgo.disabled || finished) return;
+            if (!cpw.value) { err('Nhập mật khẩu.'); return; }
+            cpwgo.disabled = true; err('');
+            try {
+              const r = await api('POST', '/api/control/unlock-password', { password: cpw.value }, extra);
+              if (r.ok) { saveToken(r.body); done(true); } else err(errText(r.body?.error));
+            } finally { cpwgo.disabled = false; }
+          };
+          cpwgo.onclick = goPw;
+          cpw.onkeydown = (e) => { if (e.key === 'Enter') goPw(); };
+        }
         const pwgo = m.q('.ctl-pwgo');
         if (pwgo) pwgo.onclick = () => { const v = m.q('.ctl-pw').value; if (!v) { err('Nhập mật khẩu.'); return; } done({ basic: true, password: v }); };
         const err = (t) => { if (!finished && m.q('.ctl-err')) m.q('.ctl-err').textContent = t || ''; };

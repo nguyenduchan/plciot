@@ -20,7 +20,7 @@ const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else conso
 
 process.env.SUBSCRIBE_REQUIRE_ACTIVATION = 'true';
 const u = upsertUser(db, {
-  username: '84901112233', passwordHash: hashPassword('x'), folderPath: 's', version: '1', phone: '84901112233',
+  username: 'ent_user', passwordHash: hashPassword('x'), folderPath: 's', version: '1',
 });
 ok(mayRemoteControl(u, { ip: '1.2.3.4' }).reason === 'pending_activation', 'chưa gói: chờ kích hoạt');
 

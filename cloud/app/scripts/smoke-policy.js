@@ -26,7 +26,7 @@ const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else conso
 
 upsertUser(db, {
   username: '84901110001', passwordHash: hashPassword('x'), folderPath: 's', version: '1',
-  phone: '84901110001', notifySite: 'p', notifyDevice: 'd1',
+  notifySite: 'p', notifyDevice: 'd1',
 });
 
 const tele = Buffer.from(JSON.stringify({ schema: 1, r: Array.from({ length: 40 }, (_, i) => i) }));
@@ -52,7 +52,7 @@ ok(!v.allow && v.reason === 'manual_block', 'manual block');
 // flood on another device
 upsertUser(db, {
   username: '84901110002', passwordHash: hashPassword('x'), folderPath: 's2', version: '1',
-  phone: '84901110002', notifySite: 'p', notifyDevice: 'd2',
+  notifySite: 'p', notifyDevice: 'd2',
 });
 const t2 = 'plc/p/d2/telemetry';
 const p2 = parseTopic(t2);

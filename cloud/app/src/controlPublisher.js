@@ -18,7 +18,10 @@ function ensure() {
     username: process.env.MQTT_CONTROL_USER || 'ctl',
     password: process.env.MQTT_CONTROL_PASS || '',
     clientId: `plciot-ctl-${Math.random().toString(16).slice(2, 8)}`,
-    reconnectPeriod: 3000,
+    // Kết nối giữ nóng: rớt thì nối lại sau 0,5 s (không để lệnh chờ 3 s), keepalive ngắn để phát hiện rớt sớm
+    reconnectPeriod: 500,
+    connectTimeout: 3000,
+    keepalive: 15,
   });
   client.on('error', (e) => console.error('control mqtt', e.message));
   return client;
@@ -46,7 +49,8 @@ function whenConnected(c) {
  * @param {{ tenant?: string, ns?: string }} [opts]
  */
 export async function publishCmd(site, device, cmd, opts = {}) {
-  const payload = withSchema(cmd);
+  // ts = lúc server phát lệnh (ms epoch): gateway dùng để đo thời gian server → gateway
+  const payload = withSchema({ ...cmd, ts: Date.now() });
   if (override) return override(site, device, payload, opts);
   const c = ensure();
   await whenConnected(c);

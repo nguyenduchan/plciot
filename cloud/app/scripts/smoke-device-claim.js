@@ -23,7 +23,6 @@ db.exec(`
     password_hash TEXT NOT NULL,
     folder_path TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '1',
-    phone TEXT,
     notify_site TEXT NOT NULL DEFAULT 'factory1',
     notify_device TEXT NOT NULL DEFAULT 'plc01',
     site_owner INTEGER NOT NULL DEFAULT 0,
