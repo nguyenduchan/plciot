@@ -17,6 +17,8 @@ public sealed class ScadaHost : IAsyncDisposable
     readonly ScadaConfig _cfg;
     readonly CloudBridge _bridge;
     readonly object _rate = new();
+    readonly Dictionary<string, long> _seenCmdIds = new();       // id lệnh đã xử lý → thời điểm (ms): chặn phát lại
+    const int SeenCmdWindowMs = 5 * 60_000, SeenCmdMax = 512;
     long _rateSec;
     int _rateCount;
     LocalBroker? _broker;
@@ -113,6 +115,7 @@ public sealed class ScadaHost : IAsyncDisposable
     void OnCorePublish(string kind, byte[] payload, bool retain)
     {
         var topic = $"{_cfg.BaseTopic}/{kind}";
+        if (_cfg.CloudEnabled) Core.Trace(_bridge.State == CloudState.Connected ? "GW→Cloud" : "GW→Cloud (chưa nối)", topic, Encoding.UTF8.GetString(payload));
         _bridge.Forward(topic, payload, retain);
         _broker?.PublishAsync(topic, payload, retain, CoreSender);   // HMI MQTT trong LAN thấy cùng dữ liệu
     }
@@ -140,17 +143,107 @@ public sealed class ScadaHost : IAsyncDisposable
     /// <summary>Lệnh từ cloud: whitelist + công tắc điều khiển từ xa + giới hạn tốc độ, rồi đi thẳng vào lõi.</summary>
     async Task OnCloudCommandAsync(byte[] payload)
     {
+        var replay = CheckReplay(payload);
+        if (replay != null) { await RejectAsync(IdOf(payload), replay); return; }
+        var rx = System.Diagnostics.Stopwatch.GetTimestamp();
+        Core.Trace("Cloud→GW", _cfg.BaseTopic + "/cmd", Encoding.UTF8.GetString(payload) + TransitNote(payload));
+        _bridge.Expedite();                                  // trạng thái PLC sau lệnh phải lên webapp ngay, không chờ khoảng chống dồn
+        if (IsKeyCommand(payload))
+        {
+            // lệnh theo thiết bị con: cùng công tắc điều khiển từ xa + giới hạn tốc độ như lệnh thanh ghi
+            if (!_cfg.AllowRemoteControl) { await RejectAsync(null, "remote_disabled"); return; }
+            if (!TakeToken()) { await RejectAsync(null, "rate_limited"); return; }
+            var kack = await Core.ExecuteKeyAsync(payload, ControlSource.Mobile, "mobile");
+            Core.Trace("GW→PLC", "latency", $"lệnh đã xử lý tại gateway sau {System.Diagnostics.Stopwatch.GetElapsedTime(rx).TotalMilliseconds:F0} ms");
+            if (kack != null)
+            {
+                Core.Trace("GW→Cloud", _cfg.BaseTopic + "/ack", kack);
+                await _bridge.PublishAckAsync(kack);
+            }
+            return;
+        }
         var (cmd, err, id) = CommandPolicy.Parse(payload);
         if (cmd == null) { await RejectAsync(id, err!); return; }
         if (!cmd.IsRead && !_cfg.AllowRemoteControl) { await RejectAsync(id, "remote_disabled"); return; }
         if (!TakeToken()) { await RejectAsync(id, "rate_limited"); return; }
         var ack = await Core.ExecuteAsync(payload, ControlSource.Mobile, "mobile");
-        if (ack != null) await _bridge.PublishAckAsync(ack);
+        Core.Trace("GW→PLC", "latency", $"lệnh đã xử lý tại gateway sau {System.Diagnostics.Stopwatch.GetElapsedTime(rx).TotalMilliseconds:F0} ms");
+        if (ack != null)
+        {
+            Core.Trace("GW→Cloud", _cfg.BaseTopic + "/ack", ack);
+            await _bridge.PublishAckAsync(ack);
+        }
+    }
+
+    /// <summary>Lệnh có "ts" (ms epoch lúc server phát): ước lượng thời gian server → gateway (chính xác tới độ lệch đồng hồ hai máy).</summary>
+    static string TransitNote(byte[] payload)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            if (doc.RootElement.TryGetProperty("ts", out var ts) && ts.TryGetInt64(out var t))
+                return $"  [server→gateway ≈ {DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - t} ms]";
+        }
+        catch { /* không phải JSON: bỏ qua */ }
+        return "";
+    }
+
+    static string? IdOf(byte[] payload)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty("id", out var i) ? (i.ValueKind == System.Text.Json.JsonValueKind.String ? i.GetString() : i.ToString()) : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// <summary>Chống phát lại: id đã thấy → "replayed_cmd"; "ts" quá cũ/quá mới so với CmdMaxAgeSec → "stale_cmd"; còn lại null.</summary>
+    string? CheckReplay(byte[] payload)
+    {
+        long? ts = null; string? id = null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            var r = doc.RootElement;
+            if (r.ValueKind != System.Text.Json.JsonValueKind.Object) return null;      // để CommandPolicy báo lỗi định dạng
+            if (r.TryGetProperty("ts", out var t) && t.TryGetInt64(out var tv)) ts = tv;
+            if (r.TryGetProperty("id", out var i)) id = i.ValueKind == System.Text.Json.JsonValueKind.String ? i.GetString() : i.ToString();
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (_cfg.CmdMaxAgeSec > 0 && ts.HasValue && Math.Abs(now - ts.Value) > _cfg.CmdMaxAgeSec * 1000L)
+        {
+            Core.Emit($"Từ chối lệnh cũ/lệch đồng hồ: ts lệch {(now - ts.Value) / 1000} s (giới hạn {_cfg.CmdMaxAgeSec} s)");
+            return "stale_cmd";
+        }
+        if (string.IsNullOrEmpty(id)) return null;
+        lock (_seenCmdIds)
+        {
+            if (_seenCmdIds.Count >= SeenCmdMax || _seenCmdIds.Count > 0)
+                foreach (var k in _seenCmdIds.Where(kv => now - kv.Value > SeenCmdWindowMs).Select(kv => kv.Key).ToList()) _seenCmdIds.Remove(k);
+            if (_seenCmdIds.ContainsKey(id)) { Core.Emit($"Từ chối lệnh phát lại (id {id})"); return "replayed_cmd"; }
+            if (_seenCmdIds.Count >= SeenCmdMax) return "rate_limited";
+            _seenCmdIds[id] = now;
+        }
+        return null;
+    }
+
+    static bool IsKeyCommand(byte[] payload)
+    {
+        if (payload.Length is 0 or > CommandPolicy.MaxPayload) return false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && doc.RootElement.TryGetProperty("key", out _);
+        }
+        catch (System.Text.Json.JsonException) { return false; }
     }
 
     Task RejectAsync(string? id, string err)
     {
         Core.Emit($"Từ chối lệnh từ cloud: {err}");
+        Core.Trace("GW→Cloud", _cfg.BaseTopic + "/ack", CommandPolicy.AckJson(id, false, err));
         return _bridge.PublishAckAsync(CommandPolicy.AckJson(id, false, err));
     }
 
