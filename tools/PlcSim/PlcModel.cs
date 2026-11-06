@@ -1,0 +1,163 @@
+using System.Globalization;
+
+namespace PlcSim;
+
+/// <summary>
+/// Trạng thái của PLC giả: ảnh thanh ghi D0–D299 (map theo docs/PROTOCOL.md) + các thiết bị con
+/// <c>d.&lt;childId&gt;.&lt;field&gt;</c> (telemetry schema:2). Mọi giao thức dùng chung một model này.
+/// </summary>
+public sealed class PlcModel
+{
+    public const int Size = 300, TelemetryRegs = 40;
+
+    readonly object _gate = new();
+    readonly ushort[] _regs = new ushort[Size];
+    // childId -> field -> value (giữ thứ tự thêm vào để JSON ổn định)
+    readonly Dictionary<string, Dictionary<string, double>> _children = new();
+    // (child, field) -> thanh ghi D mà gateway Modbus/MC/FINS/... đọc để đóng gói d.<child>.<field> = D[addr] / scale
+    readonly Dictionary<(string, string), (int Addr, double Scale)> _maps = new();
+
+    /// <summary>Ghi từ xa (gateway/webapp) hoặc từ UI. origin = "gateway" | "ui" | "sim".</summary>
+    public event Action<string, string>? Changed;      // (mô tả, origin)
+
+    public PlcModel()
+    {
+        _regs[0] = 0b101; _regs[3] = 0; _regs[7] = 0;
+    }
+
+    public ushort Get(int a) { lock (_gate) return a is >= 0 and < Size ? _regs[a] : (ushort)0; }
+
+    public ushort[] Read(int a, int n)
+    {
+        var r = new ushort[n];
+        lock (_gate) for (var i = 0; i < n; i++) r[i] = a + i < Size ? _regs[a + i] : (ushort)0;
+        return r;
+    }
+
+    public bool InRange(int a, int n) => a >= 0 && n >= 1 && a + n <= Size;
+
+    public void Set(int a, ushort v, string origin)
+    {
+        if (a is < 0 or >= Size) return;
+        lock (_gate)
+        {
+            if (_regs[a] == v) return;
+            _regs[a] = v;
+            if (origin == "gateway") ApplyRegisterRules(a, v);
+            foreach (var (k, m) in _maps)                  // thanh ghi đổi → field thiết bị con tương ứng đổi theo
+                if (m.Addr == a && _children.TryGetValue(k.Item1, out var f)) f[k.Item2] = Math.Round(v / m.Scale, 3);
+        }
+        Changed?.Invoke($"D{a} = {v}", origin);
+    }
+
+    /// <summary>Phản ứng tối thiểu của PLC khi nhận lệnh: yêu cầu chạy → băng tải chạy, D9=1 xoá số đếm.</summary>
+    void ApplyRegisterRules(int a, ushort v)
+    {
+        if (a == 6) _regs[8] = (ushort)((_regs[2] & 1) != 0 ? 3 : v == 1 ? 1 : 0);   // E-stop (D2 bit0) giữ băng tải ở trạng thái 3
+        if (a == 9 && v == 1) { _regs[14] = 0; _regs[15] = 0; _regs[9] = 0; }
+    }
+
+    // ---- thiết bị con -------------------------------------------------------------------------
+    public void SetField(string child, string field, double v, string origin)
+    {
+        if (string.IsNullOrWhiteSpace(child) || string.IsNullOrWhiteSpace(field)) return;
+        lock (_gate)
+        {
+            if (!_children.TryGetValue(child, out var f)) _children[child] = f = new();
+            f[field] = v;
+            if (_maps.TryGetValue((child, field), out var m) && m.Addr is >= 0 and < Size)
+                _regs[m.Addr] = (ushort)Math.Clamp(Math.Round(v * m.Scale), 0, 65535);   // scale ở đây = hệ số gateway chia (D = v × scale)
+        }
+        Changed?.Invoke($"d.{child}.{field} = {v.ToString(CultureInfo.InvariantCulture)}", origin);
+    }
+
+    /// <summary>Gắn field với thanh ghi D (addr &lt; 0 = bỏ gắn). Gateway đóng gói d = D[addr] / scale.</summary>
+    public void MapField(string child, string field, int addr, double scale)
+    {
+        lock (_gate)
+        {
+            if (addr < 0 || scale <= 0) _maps.Remove((child, field));
+            else
+            {
+                _maps[(child, field)] = (addr, scale);
+                if (_children.TryGetValue(child, out var f) && f.TryGetValue(field, out var v))
+                    _regs[addr] = (ushort)Math.Clamp(Math.Round(v * scale), 0, 65535);
+            }
+        }
+    }
+
+    public (int Addr, double Scale)? MapOf(string child, string field)
+    {
+        lock (_gate) return _maps.TryGetValue((child, field), out var m) ? m : null;
+    }
+
+    public void RemoveField(string child, string field)
+    {
+        lock (_gate)
+        {
+            if (!_children.TryGetValue(child, out var f)) return;
+            f.Remove(field);
+            _maps.Remove((child, field));
+            if (f.Count == 0) _children.Remove(child);
+        }
+    }
+
+    public void ClearChildren() { lock (_gate) { _children.Clear(); _maps.Clear(); } }
+
+    public (string Child, string Field, double Value)[] Fields()
+    {
+        lock (_gate) return _children.SelectMany(c => c.Value.Select(f => (c.Key, f.Key, f.Value))).ToArray();
+    }
+
+    /// <summary>Tìm field theo key (bỏ qua hoa/thường); child rỗng = bất kỳ thiết bị con nào có field đó.</summary>
+    public int ApplyKeyCommand(string? child, string key, double v, string origin)
+    {
+        var hit = new List<(string, string)>();
+        lock (_gate)
+        {
+            foreach (var (cid, fields) in _children)
+            {
+                if (!string.IsNullOrEmpty(child) && !string.Equals(cid, child, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var fk in fields.Keys)
+                    if (string.Equals(fk, key, StringComparison.OrdinalIgnoreCase)) hit.Add((cid, fk));
+            }
+            // thiết bị con chưa có field đó nhưng chỉ định rõ child: tạo mới
+            if (hit.Count == 0 && !string.IsNullOrEmpty(child)) hit.Add((child, key));
+        }
+        foreach (var (c, f) in hit) SetField(c, f, v, origin);
+        return hit.Count;
+    }
+
+    /// <summary>Payload telemetry duy nhất của hệ thống: {"schema":2,"r":[...],"d":{...}} (r để gateway C# + conveyor legacy).</summary>
+    public string TelemetryJson()
+    {
+        ushort[] r; Dictionary<string, Dictionary<string, double>> d;
+        lock (_gate)
+        {
+            r = _regs[..TelemetryRegs];
+            d = _children.ToDictionary(c => c.Key, c => new Dictionary<string, double>(c.Value));
+        }
+        var o = new Dictionary<string, object> { ["schema"] = 2, ["r"] = r };
+        if (d.Count > 0) o["d"] = d;
+        return System.Text.Json.JsonSerializer.Serialize(o);
+    }
+
+    /// <summary>Mô phỏng băng tải đơn giản: đang chạy thì đếm sản phẩm, đủ D7 thì dừng.</summary>
+    public void SimTick()
+    {
+        bool changed = false;
+        lock (_gate)
+        {
+            if (_regs[8] != 1) return;
+            var cnt = _regs[14] + _regs[15] * 65536L + 1;
+            var tot = _regs[16] + _regs[17] * 65536L + 1;
+            _regs[14] = (ushort)cnt; _regs[15] = (ushort)(cnt >> 16);
+            _regs[16] = (ushort)tot; _regs[17] = (ushort)(tot >> 16);
+            var run = _regs[10] + _regs[11] * 65536L + 1;
+            _regs[10] = (ushort)run; _regs[11] = (ushort)(run >> 16);
+            if (_regs[7] != 0 && cnt >= _regs[7]) { _regs[8] = 2; _regs[6] = 0; }
+            changed = true;
+        }
+        if (changed) Changed?.Invoke("sim tick", "sim");
+    }
+}
