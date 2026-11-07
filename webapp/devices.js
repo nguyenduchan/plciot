@@ -7,6 +7,7 @@
   const $ = (s, r = document) => r.querySelector(s);
   const LS = {
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* đầy bộ nhớ */ } },
   };
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -184,6 +185,51 @@
 
   const TYPE_VI = { env: 'Môi trường', pump: 'Bơm', switch: 'Công tắc', relay: 'Rơ-le', energy: 'Điện năng', tank: 'Bồn chứa', motor: 'Động cơ', conveyor: 'Băng tải', sensor: 'Cảm biến', valve: 'Van', light: 'Đèn', fan: 'Quạt' };
 
+  // ---- Mã QR của tôi: lưu chính mã QR đã nạp (trên máy này) và hiển thị lại ----------------------
+  function qrInfo(qr) {
+    try {
+      const b = qr.replace(/-/g, '+').replace(/_/g, '/');
+      const j = JSON.parse(decodeURIComponent(escape(atob(b + '='.repeat((4 - (b.length % 4)) % 4)))));
+      return { site: j.site || '', device: j.device || '' };
+    } catch { return { site: '', device: '' }; }
+  }
+  function myQrs() { const v = LS.get('myQrs', []); return Array.isArray(v) ? v : []; }
+  function rememberQr(qr) {
+    const i = qrInfo(qr);
+    const list = myQrs().filter((x) => x.qr !== qr);
+    list.unshift({ qr, site: i.site, device: i.device, at: Date.now() });
+    LS.set('myQrs', list.slice(0, 20));
+  }
+  let mqIdx = 0;
+  function renderMyQr() {
+    const list = myQrs();
+    mqIdx = Math.min(Math.max(mqIdx, 0), Math.max(0, list.length - 1));
+    const cur = list[mqIdx];
+    $('#mq-empty').hidden = Boolean(cur);
+    $('#mq-canvas').parentElement.hidden = !cur;
+    $('#mq-copy').disabled = $('#mq-save').disabled = !cur;
+    $('#mq-name').textContent = cur ? (cur.device || 'Thiết bị') : '';
+    $('#mq-sub').textContent = cur ? (cur.site ? `Nhà máy ${cur.site}` : '') : '';
+    $('#mq-dots').innerHTML = list.length > 1 ? list.map((_, i) => `<i class="${i === mqIdx ? 'on' : ''}" data-i="${i}"></i>`).join('') : '';
+    if (cur && window.QRCode) window.QRCode.toCanvas($('#mq-canvas'), cur.qr, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
+  }
+  function openMyQr() {
+    stopCamera();
+    const m = $('#dev-modal'); if (m) m.hidden = true;
+    mqIdx = 0; renderMyQr(); $('#mq').hidden = false;
+  }
+  function closeMyQr() { $('#mq').hidden = true; }
+  async function copyMyQr() {
+    const cur = myQrs()[mqIdx]; if (!cur) return;
+    try { await navigator.clipboard.writeText(cur.qr); toast('Đã sao chép mã QR.'); } catch { toast('Không sao chép được.', true); }
+  }
+  function saveMyQr() {
+    const cur = myQrs()[mqIdx]; if (!cur) return;
+    const a = document.createElement('a');
+    a.href = $('#mq-canvas').toDataURL('image/png'); a.download = `qr-${cur.device || 'thiet-bi'}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   /** manual=true: hiện ô nhập mã/chọn ảnh. Mặc định "+ Thêm" mở thẳng màn quét camera. */
   function openModal(manual) {
     if (manual !== true) return toggleCamera();
@@ -325,6 +371,7 @@
         toast(err, true);
         return openModal(true);
       }
+      rememberQr(qr);
       closeModal();
       if ($('#dev-qr')) $('#dev-qr').value = '';
       const n = r.data.added?.length || 0;
@@ -395,6 +442,12 @@
     $('#qs-back')?.addEventListener('click', stopCamera);
     $('#qs-torch')?.addEventListener('click', toggleTorch);
     $('#qs-gallery')?.addEventListener('click', () => $('#dev-file')?.click());
+    $('#nav-qr')?.addEventListener('click', () => openModal());
+    $('#qs-mine')?.addEventListener('click', openMyQr);
+    $('#mq-back')?.addEventListener('click', closeMyQr);
+    $('#mq-copy')?.addEventListener('click', copyMyQr);
+    $('#mq-save')?.addEventListener('click', saveMyQr);
+    $('#mq-dots')?.addEventListener('click', (e) => { const i = e.target.dataset?.i; if (i != null) { mqIdx = +i; renderMyQr(); } });
     $('#qs-manual')?.addEventListener('click', () => { stopCamera(); openModal(true); });
     $('#dev-pick')?.addEventListener('click', () => $('#dev-file')?.click());
     $('#dev-file')?.addEventListener('change', (e) => { pickImage(e.target.files?.[0]); e.target.value = ''; });

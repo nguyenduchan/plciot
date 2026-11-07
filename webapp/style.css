@@ -382,3 +382,30 @@ input[type=file][hidden]{display:none!important}
 #dev-modal .row{display:flex;gap:10px;flex-wrap:wrap}
 #dev-modal textarea{width:100%;box-sizing:border-box;margin-top:6px}
 #dev-modal textarea{background:#0f1623;color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:10px;font-size:13px}
+
+/* ---- Nút QR tròn giữa thanh dưới (kiểu VCB) ---- */
+nav button.nav-qr{flex:none;width:64px;height:64px;margin:-26px 6px 0;padding:0;border-radius:50%;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,#2fa84f,#117a2e);box-shadow:0 6px 16px #117a2e66,0 0 0 5px var(--card,#fff)}
+nav button.nav-qr svg{width:32px;height:32px;stroke:#fff;fill:none}
+@media (min-width:900px){nav button.nav-qr{display:none}}
+.qs-note{position:absolute;z-index:2;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 118px);margin:0;padding:10px 24px;text-align:center;font-size:14px;background:#5a5a5ca6;backdrop-filter:blur(8px)}
+.qs-note u{color:#7ee08f}
+.qs-bottom{gap:4px}
+.qs-act{min-width:0;flex:1;font-size:14px}
+/* ---- Mã QR của tôi ---- */
+.mq{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;color:#fff;background:linear-gradient(#1f9a42,#0f6e29 60%,#0b5a20)}
+.mq[hidden]{display:none}
+.mq-top{width:100%;display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px}
+.mq-card{width:min(86vw,360px);margin-top:3vh;background:#fff;color:#111;border-radius:22px;padding:22px 20px 16px;text-align:center;box-shadow:0 12px 30px #0005}
+.mq-name{font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.mq-sub{font-size:14px;color:#556;margin-top:4px;min-height:18px}
+.mq-img{margin:14px auto 4px;display:grid;place-items:center}
+.mq-img canvas{width:min(66vw,280px);height:auto;image-rendering:pixelated}
+.mq-empty{padding:40px 8px;color:#556;font-size:15px;line-height:1.5}
+.mq-dots{display:flex;justify-content:center;gap:7px;margin-top:10px}
+.mq-dots i{width:8px;height:8px;border-radius:50%;background:#cfd6dd;cursor:pointer}
+.mq-dots i.on{width:22px;border-radius:6px;background:#1f9a42}
+.mq-actions{display:flex;gap:44px;margin-top:26px}
+.mq-act{background:none;border:0;color:#fff;font-size:14px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
+.mq-act svg{box-sizing:content-box;padding:13px;border-radius:50%;background:#ffffff2e}
+.mq-act:disabled{opacity:.4}
+.mq-warn{margin:auto 0 calc(env(safe-area-inset-bottom,0px) + 18px);padding:0 28px;font-size:13px;text-align:center;opacity:.85}

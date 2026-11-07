@@ -26,6 +26,7 @@
     <button data-tab="dash" class="on"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span>Tổng quan</span></button>
     <button data-tab="conv"><svg viewBox="0 0 24 24"><rect x="2" y="12" width="20" height="6" rx="3"/><circle cx="6" cy="15" r="1"/><circle cx="18" cy="15" r="1"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="7" width="4" height="4" rx="1"/></svg><span>Băng tải</span></button>
     <button data-tab="ctrl"><svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="9" r="2" class="f"/><circle cx="12" cy="15" r="2" class="f"/><circle cx="19" cy="8" r="2" class="f"/></svg><span>Điều khiển</span></button>
+    <button id="nav-qr" class="nav-qr" type="button" aria-label="Quét mã QR"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"/></svg></button>
     <button data-tab="rep"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Báo cáo</span></button>
     <button data-tab="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Cài đặt</span></button>
   </nav>
@@ -242,13 +243,37 @@
   </div>
   <div class="qs-frame" aria-hidden="true"><b></b></div>
   <p class="qs-hint" id="qs-hint">Đưa mã QR vào trong khung để quét</p>
+  <div class="qs-note">Thiết bị mới sẽ hiện ngay ở màn hình <u>Thiết bị</u> sau khi thêm</div>
   <div class="qs-bottom">
     <button type="button" id="qs-gallery" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="m4 17 5-5 4 4 2-2 5 5"/><path d="M18 8V2m0 0-3 3m3-3 3 3"/></svg>Chọn ảnh<br>mã QR</button>
-    <button type="button" id="qs-manual" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg>Nhập mã<br>thủ công</button>
+    <button type="button" id="qs-mine" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg>Mã QR<br>của tôi</button>
+    <button type="button" id="qs-manual" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Nhập mã<br>thủ công</button>
   </div>
 </div>
 
+<!-- Mã QR của tôi: hiện đúng mã QR đã nạp -->
+<div id="mq" class="mq" hidden role="dialog" aria-label="Mã QR của tôi">
+  <div class="mq-top">
+    <button type="button" id="mq-back" class="qs-icon" aria-label="Quay lại"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <div class="qs-title">Mã QR của tôi</div>
+  </div>
+  <div class="mq-card">
+    <div class="mq-name" id="mq-name"></div>
+    <div class="mq-sub" id="mq-sub"></div>
+    <div class="mq-img"><canvas id="mq-canvas"></canvas></div>
+    <div class="mq-empty" id="mq-empty" hidden>Chưa có mã QR nào được nạp trên máy này.<br>Hãy quét tem thiết bị để thêm.</div>
+    <div class="mq-dots" id="mq-dots"></div>
+  </div>
+  <div class="mq-actions">
+    <button type="button" id="mq-copy" class="mq-act"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>Sao chép mã</button>
+    <button type="button" id="mq-save" class="mq-act"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Lưu ảnh</button>
+  </div>
+  <p class="mq-warn">Mã này là chìa khoá thêm thiết bị — đừng gửi cho người lạ.</p>
+</div>
+
 <script src="vendor/uPlot.iife.min.js"></script>
+<script src="vendor/qrcode-generator.js"></script>
+<script src="vendor/qr-canvas.js"></script>
 <script src="vendor/gridstack-all.js"></script>
 <script src="mqtt-lite.js"></script>
 <script src="db.js"></script>
