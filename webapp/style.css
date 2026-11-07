@@ -361,23 +361,24 @@ body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}
 .dw-star{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;padding:0 4px;color:var(--muted,#888)}.dw-star.on{color:#d97706}.dw-star:disabled{cursor:default;opacity:.85}
 .ctlw.crit{outline:1px solid #d9770655;border-radius:12px}.dw-info{font-size:12px;margin-top:4px}
 
-/* ---- Màn quét QR toàn màn hình ---- */
-.qs{position:fixed;inset:0;z-index:1000;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center}
+/* ---- Màn quét QR toàn màn hình (kiểu VCB Digibank) ---- */
+.qs{position:fixed;inset:0;z-index:1000;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;font-family:inherit}
 .qs[hidden]{display:none}
 .qs video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.qs-top{position:relative;z-index:2;width:100%;display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;background:linear-gradient(#000a,#0000)}
-.qs-title{font-size:18px;font-weight:600}
-.qs-icon{background:none;border:0;color:#fff;font-size:30px;line-height:1;width:44px;height:44px;border-radius:50%;cursor:pointer}
-.qs-icon[hidden]{visibility:hidden;display:block}
-.qs-frame{position:absolute;z-index:1;top:50%;left:50%;width:min(68vw,300px);aspect-ratio:1;transform:translate(-50%,-56%);border-radius:18px;box-shadow:0 0 0 100vmax #0009;overflow:hidden}
-.qs-frame i{position:absolute;width:38px;height:38px;border:4px solid #2fd16f}
-.qs-frame i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0;border-top-left-radius:18px}
-.qs-frame i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0;border-top-right-radius:18px}
-.qs-frame i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0;border-bottom-left-radius:18px}
-.qs-frame i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0;border-bottom-right-radius:18px}
-.qs-frame b{position:absolute;left:8%;right:8%;height:2px;background:linear-gradient(90deg,#0000,#2fd16f,#0000);box-shadow:0 0 10px #2fd16f;animation:qs-scan 2.2s ease-in-out infinite}
-@keyframes qs-scan{0%,100%{top:8%}50%{top:92%}}
-.qs-hint{position:absolute;z-index:2;left:0;right:0;top:calc(50% + min(34vw,150px) + 6%);margin:0;padding:0 28px;text-align:center;font-size:15px;text-shadow:0 1px 4px #000}
-.qs-bottom{position:absolute;z-index:2;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:36px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(#0000,#000b)}
-.qs-act{background:none;border:0;color:#fff;font-size:14px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
-.qs-act span{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#ffffff26;font-size:24px}
+.qs-top{position:relative;z-index:2;width:100%;display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px}
+.qs-title{flex:1;font-size:22px;font-weight:600}
+.qs-icon{background:none;border:0;color:#fff;width:44px;height:44px;border-radius:50%;cursor:pointer;display:grid;place-items:center;padding:0}
+.qs-icon[hidden]{display:grid;visibility:hidden}
+.qs-head{position:relative;z-index:2;text-align:center;padding:4vh 28px 0}
+.qs-brand{font-size:30px;font-weight:700;letter-spacing:-.5px}
+.qs-head p{margin:8px 0 0;font-size:16px;line-height:1.4;text-shadow:0 1px 4px #0008}
+.qs-frame{position:absolute;z-index:1;left:50%;top:50%;width:min(80vw,340px);aspect-ratio:1;transform:translate(-50%,-38%);border-radius:22px;box-shadow:0 0 0 100vmax #00000073;overflow:hidden}
+.qs-frame b{position:absolute;left:0;right:0;height:14px;background:linear-gradient(#2fd16f00,#2fd16f99 70%,#33e07a);border-bottom:3px solid #3ee27f;animation:qs-scan 2.4s ease-in-out infinite}
+@keyframes qs-scan{0%{top:-14px;opacity:.2}15%{opacity:1}100%{top:calc(100% - 14px);opacity:1}}
+.qs-hint{position:absolute;z-index:2;left:0;right:0;top:calc(62% + min(40vw,170px) - 14vw);margin:0;padding:0 28px;text-align:center;font-size:15px;text-shadow:0 1px 4px #000}
+.qs-bottom{position:absolute;z-index:2;left:0;right:0;bottom:0;display:flex;justify-content:space-around;padding:18px 24px calc(env(safe-area-inset-bottom,0px) + 20px);background:#3a3a3ccc;backdrop-filter:blur(10px);border-radius:18px 18px 0 0}
+.qs-act{background:none;border:0;color:#fff;font-size:15px;line-height:1.3;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;text-align:center;min-width:110px}
+input[type=file][hidden]{display:none!important}
+#dev-modal .row{display:flex;gap:10px;flex-wrap:wrap}
+#dev-modal textarea{width:100%;box-sizing:border-box;margin-top:6px}
+#dev-modal textarea{background:#0f1623;color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:10px;font-size:13px}

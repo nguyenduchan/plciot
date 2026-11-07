@@ -213,11 +213,11 @@
 
 <div id="dev-modal" class="ctl-modal" hidden>
   <div class="ctl-box">
-    <h3>Thêm thiết bị</h3>
-    <p class="muted">Dán mã QR trên tem — máy chủ đã biết loại thiết bị, giao diện tự dựng. Không cần chọn widget.</p>
+    <h3>Nhập mã thiết bị</h3>
+    <p class="muted">Dán chuỗi mã QR trên tem, hoặc quét lại bằng camera. Giao diện thiết bị sẽ tự dựng.</p>
     <div class="row">
-      <button type="button" id="dev-scan" class="fit">📷 Quét camera</button>
-      <button type="button" id="dev-pick" class="fit">🖼 Chọn ảnh QR</button>
+      <button type="button" id="dev-scan" class="fit">Quét bằng camera</button>
+      <button type="button" id="dev-pick" class="fit">Chọn ảnh QR</button>
       <input type="file" id="dev-file" accept="image/*" hidden>
     </div>
     <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Hoặc dán chuỗi QR từ tem thiết bị"></textarea></label>
@@ -228,19 +228,23 @@
   </div>
 </div>
 
-<!-- Màn quét QR toàn màn hình (kiểu app ngân hàng) -->
+<!-- Màn quét QR toàn màn hình (kiểu VCB Digibank) -->
 <div id="qs" class="qs" hidden role="dialog" aria-label="Quét mã QR">
   <video id="qs-video" playsinline muted></video>
   <div class="qs-top">
-    <button type="button" id="qs-back" class="qs-icon" aria-label="Quay lại">‹</button>
+    <button type="button" id="qs-back" class="qs-icon" aria-label="Quay lại"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
     <div class="qs-title">Quét mã QR</div>
-    <button type="button" id="qs-torch" class="qs-icon" aria-label="Bật đèn flash" hidden>🔦</button>
+    <button type="button" id="qs-torch" class="qs-icon" aria-label="Bật đèn flash" hidden><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></button>
   </div>
-  <div class="qs-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
-  <p class="qs-hint" id="qs-hint">Di chuyển camera đến vùng chứa mã QR trên tem thiết bị</p>
+  <div class="qs-head">
+    <div class="qs-brand">Thêm thiết bị</div>
+    <p>Quét mã QR trên tem để thêm thiết bị vào hệ thống giám sát và điều khiển</p>
+  </div>
+  <div class="qs-frame" aria-hidden="true"><b></b></div>
+  <p class="qs-hint" id="qs-hint">Đưa mã QR vào trong khung để quét</p>
   <div class="qs-bottom">
-    <button type="button" id="qs-gallery" class="qs-act"><span>🖼</span>Ảnh trong máy</button>
-    <button type="button" id="qs-manual" class="qs-act"><span>⌨</span>Nhập mã</button>
+    <button type="button" id="qs-gallery" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="m4 17 5-5 4 4 2-2 5 5"/><path d="M18 8V2m0 0-3 3m3-3 3 3"/></svg>Chọn ảnh<br>mã QR</button>
+    <button type="button" id="qs-manual" class="qs-act"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg>Nhập mã<br>thủ công</button>
   </div>
 </div>
 
