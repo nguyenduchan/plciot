@@ -13,10 +13,10 @@
     step_up_required: 'Cần xác nhận vân tay / Authenticator.',
     reauth_required: 'Đăng nhập lại trước khi thao tác.',
     unknown_plan: 'Gói không hợp lệ.',
-    tenant_exists: 'Tenant đã tồn tại.',
+    tenant_exists: 'Đơn vị đã tồn tại.',
     invalid_tenant_id: 'Id tenant không hợp lệ.',
     tenant_required: 'Cần tenant id.',
-    invalid_site_or_device: 'Site/device chỉ chữ số _ -',
+    invalid_site_or_device: 'Nhà máy/thiết bị chỉ gồm chữ, số, _ và -',
     device_not_found: 'Không thấy thiết bị.',
     rate_limited: 'Thao tác quá nhanh.',
     admin_network_denied: 'Chưa mở từ PC nhà / IP allow / CF Access. Đánh dấu PC nhà trên Tổng quan, hoặc SSH tunnel.',
@@ -108,7 +108,7 @@
         ['users', j.users, 'Tài khoản'],
         ['active', j.activeUsers, 'Đang mở'],
         ['devices', j.devices, 'Thiết bị IoT'],
-        ['tenants', j.tenants, 'Tenant'],
+        ['tenants', j.tenants, 'Đơn vị'],
         ['exp', j.expiredPlans, 'Gói hết hạn'],
         ['ev', j.history?.total ?? 0, 'Sự kiện MQTT'],
       ].map(([, n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${esc(l)}</span></div>`).join('');
@@ -174,9 +174,9 @@
       const s = j.server || {};
       const pulse = j.live?.ingestOpen ? 'pulse' : 'pulse bad';
       $('#mon-stats').innerHTML = [
-        [c.users, 'Users'],
-        [c.activeUsers, 'Active'],
-        [c.devices, 'Devices'],
+        [c.users, 'Người dùng'],
+        [c.activeUsers, 'Đang hoạt động'],
+        [c.devices, 'Thiết bị'],
         [c.activeBlocks, 'Blocks'],
         [c.denies1h, 'Deny/1h'],
         [c.securityFails24h, 'Fail/24h'],
@@ -209,8 +209,8 @@
         [c.denies24h, 'MQTT deny 24h'],
         [c.denies1h, 'MQTT deny 1h'],
         [c.securityFails24h, 'Auth/control fail'],
-        [c.blockedDevices, 'Device blocked'],
-        [c.disabledUsers, 'User khoá'],
+        [c.blockedDevices, 'Thiết bị bị chặn'],
+        [c.disabledUsers, 'Người dùng bị khoá'],
       ].map(([n, l]) => `<div class="stat"><b>${esc(n ?? 0)}</b><span>${esc(l)}</span></div>`).join('');
       const ips = j.security?.topIps || [];
       $('#mon-top-ips').innerHTML = ips.length
@@ -225,7 +225,7 @@
         }</table>`
         : '<p class="help">Chưa có deny MQTT 24h.</p>';
       const audits = j.security?.recentAudit || [];
-      $('#mon-audit').innerHTML = `<table><tr><th>Thời gian</th><th>Sự kiện</th><th>User</th><th>IP</th><th>Chi tiết</th></tr>${
+      $('#mon-audit').innerHTML = `<table><tr><th>Thời gian</th><th>Sự kiện</th><th>Người dùng</th><th>IP</th><th>Chi tiết</th></tr>${
         audits.map((e) => {
           const bad = /fail|denied|unauthorised|rate_limited|pair_fail/.test(e.event);
           return `<tr>
@@ -294,7 +294,7 @@
 
   async function runDeploy(mode) {
     const label = mode === 'full' ? 'pull + rebuild container app' : 'git pull + sync bundle';
-    if (!confirm(`Chạy ${label}?\nCần Passkey. User sẽ nhận bản mới khi refresh.`)) return;
+    if (!confirm(`Chạy ${label}?\nCần Passkey. Người dùng sẽ nhận bản mới khi tải lại.`)) return;
     try {
       msg('Đang đồng bộ…', '');
       const r = await api('/api/admin/ops/deploy', 'POST', { mode });
@@ -479,7 +479,7 @@
       const c = $('#t-cred');
       c.classList.add('show');
       c.textContent = `API key (một lần):\n${r.apiKey}`;
-      msg('Đã tạo tenant.', 'ok'); loadTenants();
+      msg('Đã tạo đơn vị.', 'ok'); loadTenants();
     } catch (e) { msg(e.message, 'err'); }
   });
 
@@ -494,7 +494,7 @@
         if (!plan) return msg('Chọn gói', 'err');
         const expiresAt = row.querySelector('[data-texp]').value || 'never';
         await api(`/api/admin/ops/tenants/${encodeURIComponent(id)}/plan`, 'POST', { plan, expiresAt });
-        msg('Đã gán gói tenant.', 'ok'); loadTenants();
+        msg('Đã gán gói cho đơn vị.', 'ok'); loadTenants();
       } else if (act === 'trot') {
         const r = await api(`/api/admin/ops/tenants/${encodeURIComponent(id)}/rotate-key`, 'POST', {});
         const c = $('#t-cred');
@@ -567,7 +567,7 @@
       $('#db-kinds').innerHTML = `<table><tr><th>Kind</th><th>Số</th><th>Cuối</th></tr>${
         (j.byKind || []).map((k) => `<tr><td>${esc(k.kind)}</td><td>${esc(k.n)}</td><td>${k.lastTs ? new Date(k.lastTs).toLocaleString() : ''}</td></tr>`).join('')
       }</table>`;
-      $('#db-top').innerHTML = `<table><tr><th>Site</th><th>Device</th><th>Msgs</th><th>Cuối</th></tr>${
+      $('#db-top').innerHTML = `<table><tr><th>Nhà máy</th><th>Thiết bị</th><th>Số tin</th><th>Cuối</th></tr>${
         (j.topDevices || []).map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.device)}</td><td>${esc(d.n)}</td><td>${d.lastTs ? new Date(d.lastTs).toLocaleString() : ''}</td></tr>`).join('')
       }</table>`;
     } catch (e) { msg(e.message, 'err'); }

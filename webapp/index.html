@@ -220,15 +220,27 @@
       <button type="button" id="dev-pick" class="fit">🖼 Chọn ảnh QR</button>
       <input type="file" id="dev-file" accept="image/*" hidden>
     </div>
-    <div id="dev-cam" hidden>
-      <video id="dev-video" playsinline muted style="width:100%;border-radius:12px;margin-top:10px;background:#000"></video>
-      <p class="muted" id="dev-cam-hint">Đưa mã QR trên tem vào khung hình…</p>
-    </div>
     <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Hoặc dán chuỗi QR từ tem thiết bị"></textarea></label>
     <div class="row">
       <button type="button" id="dev-add-go" class="primary">Thêm</button>
       <button type="button" id="dev-modal-close" class="fit">Huỷ</button>
     </div>
+  </div>
+</div>
+
+<!-- Màn quét QR toàn màn hình (kiểu app ngân hàng) -->
+<div id="qs" class="qs" hidden role="dialog" aria-label="Quét mã QR">
+  <video id="qs-video" playsinline muted></video>
+  <div class="qs-top">
+    <button type="button" id="qs-back" class="qs-icon" aria-label="Quay lại">‹</button>
+    <div class="qs-title">Quét mã QR</div>
+    <button type="button" id="qs-torch" class="qs-icon" aria-label="Bật đèn flash" hidden>🔦</button>
+  </div>
+  <div class="qs-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+  <p class="qs-hint" id="qs-hint">Di chuyển camera đến vùng chứa mã QR trên tem thiết bị</p>
+  <div class="qs-bottom">
+    <button type="button" id="qs-gallery" class="qs-act"><span>🖼</span>Ảnh trong máy</button>
+    <button type="button" id="qs-manual" class="qs-act"><span>⌨</span>Nhập mã</button>
   </div>
 </div>
 

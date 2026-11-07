@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<title>Console IoT — Quản lý dịch vụ</title>
+<title>Bảng điều khiển IoT — Quản lý dịch vụ</title>
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -56,10 +56,10 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
 <p id="msg"></p>
 <div class="tabs" id="tabs">
   <button type="button" data-tab="overview" class="on">Tổng quan</button>
-  <button type="button" data-tab="monitor">Monitor</button>
+  <button type="button" data-tab="monitor">Giám sát</button>
   <button type="button" data-tab="subs">Gói / Subscribe</button>
   <button type="button" data-tab="devices">Thiết bị</button>
-  <button type="button" data-tab="tenants">Tenant</button>
+  <button type="button" data-tab="tenants">Đơn vị</button>
   <button type="button" data-tab="policy">Chặn / Policy</button>
   <button type="button" data-tab="db">Database</button>
 </div>
@@ -101,7 +101,7 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
       <button type="button" id="deploy-refresh" class="fit">Kiểm tra</button>
     </div>
     <pre class="cred" id="deploy-log" style="margin-top:10px;max-height:180px;overflow:auto"></pre>
-    <p class="help">Sau đồng bộ: user <b>refresh</b> trang / mở lại app → tự tải bundle mới (version đổi). Cần <code>DEPLOY_ENABLED=true</code> trên VPS. Rebuild cần docker.sock + vài phút.</p>
+    <p class="help">Sau đồng bộ: user <b>tải lại</b> trang / mở lại app → tự tải bundle mới (version đổi). Cần <code>DEPLOY_ENABLED=true</code> trên VPS. Rebuild cần docker.sock + vài phút.</p>
   </div>
   <div class="panel">
     <h2>Kill switch (bật / tắt thủ công)</h2>
@@ -138,9 +138,9 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
 <section id="tab-devices" class="hidden">
   <div class="panel form">
     <h2>Cấp thiết bị MQTTS (tương thích IoT chuẩn)</h2>
-    <label>Tenant id<input id="d-tenant" placeholder="acme hoặc default" value="default"></label>
-    <label>Site<input id="d-site" placeholder="plant1"></label>
-    <label>Device id<input id="d-dev" placeholder="gw01"></label>
+    <label>Mã đơn vị<input id="d-tenant" placeholder="acme hoặc default" value="default"></label>
+    <label>Nhà máy<input id="d-site" placeholder="plant1"></label>
+    <label>Mã thiết bị<input id="d-dev" placeholder="gw01"></label>
     <label>Profile
       <select id="d-profile" style="display:block;width:100%;margin-top:6px;padding:12px;border-radius:12px">
         <option value="conveyor-v1">conveyor-v1</option>
@@ -173,7 +173,7 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
     <div class="cred" id="t-cred"></div>
   </div>
   <div class="panel">
-    <h2>Tenants</h2>
+    <h2>Đơn vị thuê</h2>
     <div id="ten-list">Đang tải…</div>
   </div>
 </section>
@@ -190,13 +190,13 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
         <option value="device">device (site+device)</option>
         <option value="site">site</option>
         <option value="tenant">tenant</option>
-        <option value="topic">topic prefix</option>
+        <option value="topic">tiền tố chủ đề</option>
       </select>
     </label>
-    <label>Tenant<input id="p-tenant" placeholder="acme (nếu cần)"></label>
-    <label>Site<input id="p-site" placeholder="plant1"></label>
-    <label>Device<input id="p-dev" placeholder="gw01"></label>
-    <label>Topic prefix<input id="p-topic" placeholder="iot/acme/bad/"></label>
+    <label>Đơn vị<input id="p-tenant" placeholder="acme (nếu cần)"></label>
+    <label>Nhà máy<input id="p-site" placeholder="plant1"></label>
+    <label>Thiết bị<input id="p-dev" placeholder="gw01"></label>
+    <label>Tiền tố chủ đề<input id="p-topic" placeholder="iot/acme/bad/"></label>
     <label>Lý do<input id="p-reason" placeholder="spam / nghi ngờ giả mạo"></label>
     <label class="check"><input type="checkbox" id="p-hard"> Hard block thiết bị (thu hồi MQTT + status blocked)</label>
     <div class="row"><button type="button" id="p-add" class="danger">Thêm chặn</button></div>

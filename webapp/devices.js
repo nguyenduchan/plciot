@@ -106,7 +106,7 @@
       const d = byId[id];
       if (!d) return '';
       return `<article class="dev-card" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
-        <header><h3>${esc(d.title)}</h3><span class="muted">${esc(d.type)}</span>
+        <header><h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
           <button type="button" class="fit danger dw-rm" data-id="${esc(d.id)}" title="Gỡ">×</button></header>
         <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
       </article>`;
@@ -182,7 +182,11 @@
     render();
   }
 
-  function openModal() {
+  const TYPE_VI = { env: 'Môi trường', pump: 'Bơm', switch: 'Công tắc', relay: 'Rơ-le', energy: 'Điện năng', tank: 'Bồn chứa', motor: 'Động cơ', conveyor: 'Băng tải', sensor: 'Cảm biến', valve: 'Van', light: 'Đèn', fan: 'Quạt' };
+
+  /** manual=true: hiện ô nhập mã/chọn ảnh. Mặc định "+ Thêm" mở thẳng màn quét camera. */
+  function openModal(manual) {
+    if (manual !== true) return toggleCamera();
     const m = $('#dev-modal');
     if (!m) return;
     m.hidden = false;
@@ -242,33 +246,43 @@
       const text = await decodeQr(bmp);
       if (bmp.close) bmp.close();
       if (!text) return toast('Không đọc được mã QR trong ảnh.', true);
+      stopCamera();
       gotQr(text);
     } catch (e) {
       toast(e.message === 'no_decoder' ? 'Trình duyệt này chưa hỗ trợ đọc QR từ ảnh — hãy dán chuỗi QR.' : 'Không đọc được ảnh.', true);
     }
   }
 
+  // Màn quét toàn màn hình (#qs): camera sau, khung quét, đèn flash, ảnh trong máy, nhập mã tay.
+  let torchOn = false;
+
   function stopCamera() {
     if (camTimer) { clearInterval(camTimer); camTimer = null; }
     if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
-    const v = $('#dev-video'); if (v) v.srcObject = null;
-    const box = $('#dev-cam'); if (box) box.hidden = true;
-    const b = $('#dev-scan'); if (b) b.textContent = '📷 Quét camera';
+    torchOn = false;
+    const v = $('#qs-video'); if (v) v.srcObject = null;
+    const box = $('#qs'); if (box) box.hidden = true;
   }
 
   async function toggleCamera() {
     if (camStream) return stopCamera();
-    if (!navigator.mediaDevices?.getUserMedia) return toast('Trình duyệt không hỗ trợ camera (cần HTTPS).', true);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast('Trình duyệt không hỗ trợ camera (cần HTTPS) — hãy nhập mã hoặc chọn ảnh QR.', true);
+      return openModal(true);
+    }
     try {
       camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
     } catch {
-      return toast('Không mở được camera — hãy cho phép quyền camera cho trang này.', true);
+      toast('Không mở được camera — hãy cho phép quyền camera cho trang này, hoặc nhập mã.', true);
+      return openModal(true);
     }
-    const v = $('#dev-video');
+    const m = $('#dev-modal'); if (m) m.hidden = true;
+    const v = $('#qs-video');
     v.srcObject = camStream;
+    $('#qs').hidden = false;
     await v.play().catch(() => {});
-    $('#dev-cam').hidden = false;
-    $('#dev-scan').textContent = '✕ Tắt camera';
+    const caps = camStream.getVideoTracks()[0]?.getCapabilities?.() || {};
+    $('#qs-torch').hidden = !caps.torch;
     let busy = false;
     camTimer = setInterval(async () => {
       if (busy || !camStream) return;
@@ -277,9 +291,20 @@
         const text = await decodeQr(v);
         if (text) { stopCamera(); gotQr(text); }
       } catch (e) {
-        if (e.message === 'no_decoder') { stopCamera(); toast('Trình duyệt này chưa hỗ trợ quét QR — hãy chọn ảnh hoặc dán chuỗi QR.', true); }
+        if (e.message === 'no_decoder') {
+          stopCamera();
+          toast('Trình duyệt này chưa hỗ trợ quét QR — hãy chọn ảnh hoặc dán chuỗi QR.', true);
+          openModal(true);
+        }
       } finally { busy = false; }
-    }, 300);
+    }, 250);
+  }
+
+  async function toggleTorch() {
+    const t = camStream?.getVideoTracks()[0]; if (!t) return;
+    torchOn = !torchOn;
+    try { await t.applyConstraints({ advanced: [{ torch: torchOn }] }); } catch { torchOn = false; }
+    $('#qs-torch').setAttribute('aria-label', torchOn ? 'Tắt đèn flash' : 'Bật đèn flash');
   }
 
   async function submitQr() {
@@ -297,7 +322,8 @@
           unknown_device: 'Tem chưa đăng ký trên máy chủ.',
           invalid_claim_signature: 'Mã QR không xác thực được.',
         }[r.data.error] || r.data.error || 'Không thêm được';
-        return toast(err, true);
+        toast(err, true);
+        return openModal(true);
       }
       closeModal();
       if ($('#dev-qr')) $('#dev-qr').value = '';
@@ -366,6 +392,10 @@
     $('#dev-modal-close')?.addEventListener('click', closeModal);
     $('#dev-add-go')?.addEventListener('click', submitQr);
     $('#dev-scan')?.addEventListener('click', toggleCamera);
+    $('#qs-back')?.addEventListener('click', stopCamera);
+    $('#qs-torch')?.addEventListener('click', toggleTorch);
+    $('#qs-gallery')?.addEventListener('click', () => $('#dev-file')?.click());
+    $('#qs-manual')?.addEventListener('click', () => { stopCamera(); openModal(true); });
     $('#dev-pick')?.addEventListener('click', () => $('#dev-file')?.click());
     $('#dev-file')?.addEventListener('change', (e) => { pickImage(e.target.files?.[0]); e.target.value = ''; });
     $('#dev-modal')?.addEventListener('click', (e) => { if (e.target.id === 'dev-modal') closeModal(); });

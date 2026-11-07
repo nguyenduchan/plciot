@@ -83,7 +83,7 @@ self.addEventListener('fetch', (e) => {
           if (idx) return idx;
         }
       }
-      return new Response('Offline', { status: 503, statusText: 'Offline' });
+      return new Response('Không có kết nối mạng', { status: 503, statusText: 'Offline' });
     }
   })());
 });

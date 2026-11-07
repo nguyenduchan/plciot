@@ -12,16 +12,16 @@
     unauthorized: 'Phiên hết hạn, đăng nhập lại.',
     session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.',
     account_disabled: 'Tài khoản đã bị khoá.',
-    invalid_username: 'Username 3–48 ký tự (chữ, số, _).',
+    invalid_username: 'Tên đăng nhập 3–48 ký tự (chữ, số, _).',
     invalid_role: 'Vai trò không hợp lệ.',
-    username_in_use: 'Username đã có tài khoản.',
-    invalid_site_or_device: 'Site/thiết bị chỉ gồm chữ, số, "_" và "-" (tối đa 48 ký tự).',
+    username_in_use: 'Tên đăng nhập đã có tài khoản.',
+    invalid_site_or_device: 'Nhà máy/thiết bị chỉ gồm chữ, số, "_" và "-" (tối đa 48 ký tự).',
     last_admin: 'Không thể hạ quyền/khoá/xoá admin cuối cùng (hoặc chính bạn).',
     user_not_found: 'Không tìm thấy người dùng.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
     step_up_required: 'Cần xác nhận bằng vân tay / Authenticator.',
     reauth_required: 'Hãy đăng xuất rồi đăng nhập lại trước khi thao tác quản trị.',
-    admin_not_allowlisted: 'Username không nằm trong ADMIN_USERNAMES.',
+    admin_not_allowlisted: 'Tên đăng nhập không nằm trong ADMIN_USERNAMES.',
     claim_root_private_key_missing: 'Thiếu CLAIM_ROOT_PRIVATE_KEY trên server.',
     claim_root_public_key_missing: 'Thiếu CLAIM_ROOT_PUBLIC_KEY trên server.',
     claim_secret_unavailable: 'Không lấy lại được QR (thiết bị cũ). Hãy phát hành lại tem.',
@@ -33,7 +33,7 @@
   let lastQr = null;
   /** Catalog type từ API — không hard-code trong file admin. */
   let typeCatalog = [
-    { id: 'iot-hub', title: 'Gateway (nhiều device con)' },
+    { id: 'iot-hub', title: 'Cổng kết nối (nhiều thiết bị con)' },
     { id: 'pump', title: 'Bơm' },
     { id: 'env', title: 'Môi trường' },
     { id: 'switch', title: 'Công tắc' },
@@ -99,7 +99,7 @@
       if (!childId || !type) return;
       seed.push({ childId, type, title: title || undefined });
     });
-    if (!seed.length) throw new Error('Gateway cần ít nhất một device con (nút + Thêm device con).');
+    if (!seed.length) throw new Error('Cổng kết nối cần ít nhất một thiết bị con (nút + Thêm thiết bị con).');
     return { seed };
   }
 
@@ -403,7 +403,7 @@
     } else if (b.dataset.act === 'logout') {
       if (confirm(`Đăng xuất ${u.username} khỏi mọi thiết bị?`)) run(() => api(`/api/admin/users/${id}`, 'PATCH', { revokeSessions: true }), 'Đã đăng xuất mọi máy.');
     } else if (b.dataset.act === 'site') {
-      const site = prompt('Site mới:', u.site); if (!site) return;
+      const site = prompt('Nhà máy mới:', u.site); if (!site) return;
       const device = prompt('Thiết bị mới:', u.device); if (!device) return;
       run(() => api(`/api/admin/users/${id}`, 'PATCH', { site, device }), 'Đã đổi site/thiết bị.');
     } else if (b.dataset.act === 'del') {
