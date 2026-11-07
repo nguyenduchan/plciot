@@ -308,7 +308,7 @@
         render();
       } else await load();
       // Đồng bộ site/dev cfg nếu server đổi gateway
-      if (r.data.site && window.applySiteFromDevices) window.applySiteFromDevices(r.data.site, r.data.gateway);
+      if (window.applySiteFromDevices) await window.applySiteFromDevices(r.data.site, r.data.gateway);
     } finally {
       if (btn) btn.disabled = false;
     }

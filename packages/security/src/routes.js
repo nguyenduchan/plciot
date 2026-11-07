@@ -147,6 +147,8 @@ export function mountSecurityRoutes(app, { db, requireAuth, adminOnly = [], logi
   // Vừa khôi phục bằng 2 yếu tố khác nhóm (token có rec): được đặt lại mật khẩu ngay.
   const RECOVERED_OK = new Set(['/api/account/password']);
   function reauth(req, res, next) {
+    // PHASE TEST: REAUTH_DISABLED=true bỏ bước xác thực lại (token đăng nhập + quyền vẫn phải hợp lệ). PRODUCTION: để false.
+    if (String(process.env.REAUTH_DISABLED || 'false').toLowerCase() === 'true') { req.reauthed = true; return next(); }
     if (req.tokenPayload?.rec && Date.now() - req.tokenPayload.rec < FRESH_LOGIN_MS && RECOVERED_OK.has(req.path)) { req.reauthed = true; return next(); }
     const gate = enrollGate(req);
     if (gate) return out(res, gate.status, { ...gate, methods: methodsFor(req.user) });

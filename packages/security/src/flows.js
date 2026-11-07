@@ -30,6 +30,9 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
   const send = (res, result) => res.status(result.error ? result.status || 400 : 200).json(result);
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve().then(() => handler(req, res)).catch(next);
   const registrationOpen = () => String(process.env.REGISTRATION_OPEN || 'true').toLowerCase() !== 'false';
+  // PHASE TEST: ALLOW_NEW_DEVICE_PASSWORD_LOGIN=true -> mật khẩu + deviceProof là đủ trên máy mới (không đòi passkey máy cũ / mã khôi phục). PRODUCTION: để false.
+  const newDevicePasswordOk = () => String(process.env.ALLOW_NEW_DEVICE_PASSWORD_LOGIN || "false").toLowerCase() === "true";
+  const deviceOk = (userId, deviceId) => newDevicePasswordOk() || isDeviceTrusted(db, userId, deviceId);
   const pendingLogin = (user, req, src = 'claim') => {
     const challenge = createLoginChallenge(db, user, String(req.headers['x-device-id'] || ''), secret, req.body || {}, src);
     const factors = factorSummary(db, user.id);
@@ -250,12 +253,12 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     const username = String(req.body?.username || '').trim();
     if (!username) return send(res, { passkeyOnly: true });
     const user = findUserByUsername(db, username);
-    if (user && !user.disabled && user.setup_complete !== 0 && isDeviceTrusted(db, user.id, req.headers['x-device-id'])) {
+    if (user && !user.disabled && user.setup_complete !== 0 && deviceOk(user.id, req.headers["x-device-id"])) {
       const f = factorSummary(db, user.id);
       return send(res, { hasPasskey: f.passkeys > 0, hasPassword: Boolean(user.login_password_hash), username: user.username });
     }
     // Không lộ tồn tại tài khoản
-    send(res, { hasPasskey: false, hasPassword: Boolean(user?.login_password_hash && isDeviceTrusted(db, user.id, req.headers['x-device-id'])) });
+    send(res, { hasPasskey: false, hasPassword: Boolean(user?.login_password_hash && deviceOk(user.id, req.headers["x-device-id"])) });
   }));
 
   app.post('/api/login/password', authStrict, pwStrict, asyncRoute(async (req, res) => {
@@ -273,7 +276,7 @@ export function mountAuthentication(app, { db, appPayload = () => ({}), registra
     if (!verifyDeviceProof(db, { subject: identitySubject(user), deviceId, action: 'password-login', publicKey: req.body?.publicKey, proof: req.body?.deviceProof })) {
       return send(res, { error: 'device_proof_required', status: 401 });
     }
-    if (!isDeviceTrusted(db, user.id, deviceId)) {
+    if (!deviceOk(user.id, deviceId)) {
       const { cid, credential } = req.body || {};
       if (!credential) {
         audit(db, 'pw_new_device', { userId: user.id, ip: clientIp(req) });

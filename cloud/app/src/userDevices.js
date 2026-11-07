@@ -17,6 +17,12 @@ import { rateLimit } from '@plciot/security';
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
 export function migrateUserDevices(db) {
+  // Bảng cùng tên từ schema cũ (user_id/site/device/role…) không có cột id: CREATE IF NOT EXISTS sẽ bỏ qua
+  // và mọi truy vấn lỗi "no such column: id". Đổi tên (giữ dữ liệu) để tạo bảng đúng schema.
+  const old = db.prepare("PRAGMA table_info('user_devices')").all();
+  if (old.length && !old.some((c) => c.name === 'id')) {
+    db.exec('ALTER TABLE user_devices RENAME TO user_devices_legacy_old');
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_devices (
       id TEXT PRIMARY KEY,

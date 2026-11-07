@@ -93,8 +93,10 @@ export function createSessionAuth(db, secret) {
     } else {
       const session = db.prepare('SELECT * FROM app_sessions WHERE id = ? AND user_id = ?').get(payload.sid || '', user.id);
       if (!session) return res.status(401).json({ error: 'unauthorized' });
-      const locked = session.locked || now - session.last_seen >= 300_000
-        || (session.background_at && now - session.background_at >= 60_000);
+      // PHASE TEST: APP_LOCK_DISABLED=true bỏ khoá idle/nền (token vẫn phải hợp lệ). PRODUCTION: false.
+      const lockOff = String(process.env.APP_LOCK_DISABLED || "false").toLowerCase() === "true";
+      const locked = !lockOff && (session.locked || now - session.last_seen >= 300_000
+        || (session.background_at && now - session.background_at >= 60_000));
       if (locked) {
         db.prepare('UPDATE app_sessions SET locked = 1 WHERE id = ?').run(session.id);
         if (!['/api/login/lock', '/api/login/resume', '/api/logout'].includes(req.path)) {

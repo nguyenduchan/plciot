@@ -91,6 +91,16 @@ public sealed class PlcModel
         lock (_gate) return _maps.TryGetValue((child, field), out var m) ? m : null;
     }
 
+    /// <summary>Thanh ghi D → "child.field" của thiết bị con đang map vào nó (null nếu không có).</summary>
+    public string? FieldAt(int addr)
+    {
+        lock (_gate)
+        {
+            foreach (var (k, m) in _maps) if (m.Addr == addr) return $"{k.Item1}.{k.Item2}";
+            return null;
+        }
+    }
+
     public void RemoveField(string child, string field)
     {
         lock (_gate)

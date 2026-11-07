@@ -23,6 +23,10 @@ Ba giao thức đầu: gateway **poll** D0..D39 và **ghi** lệnh (D3/D4/D6/D7/
 MQTT: simulator **đẩy** `plc/<site>/<device>/telemetry` = `{"schema":2,"r":[..],"d":{child:{field:v}}}`, `status`, nghe `cmd`, trả `ack`.
 Gateway chuyển tiếp lên cloud → webapp. Lệnh từ webapp đi ngược lại đúng đường đó.
 
+Tab **Lệnh từ webapp / cloud** (tab đầu): mỗi lệnh ghi từ gateway/Modbus master hiện một dòng — giờ (ms), nguồn, thanh ghi D, thiết bị con tương ứng (`pump1.run`…) và giá trị. Dùng để đối chiếu thời điểm bấm trên webapp với lúc PLC nhận lệnh.
+
+**Độ trễ** (đo trên VPS thật): giám sát PLC→webapp ≈ 0,2 s và điều khiển webapp→PLC ≈ 0,2 s khi gateway đặt `PollMs=200`, `CloudTelemetryFastMs=150` (mặc định `PollMs=1000` cho ≈ 0,5 s). Giữ `CloudTelemetryMinMs≥1000` để không vượt giới hạn ingest ~120 tin/phút.
+
 ## Dữ liệu nhập
 
 - Giao thức, địa chỉ/cổng, Site, Device, MQTT user/password, chu kỳ gửi.

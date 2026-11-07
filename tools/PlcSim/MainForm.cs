@@ -66,6 +66,7 @@ public sealed class MainForm : Form
 
     readonly DataGridView _regs = new();
     readonly DataGridView _fields = new();
+    readonly DataGridView _actions = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect };
     readonly NumericUpDown _wAddr = new() { Minimum = 0, Maximum = PlcModel.Size - 1 };
     readonly NumericUpDown _wVal = new() { Minimum = 0, Maximum = 65535 };
     readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new Font("Consolas", 9f) };
@@ -126,11 +127,15 @@ public sealed class MainForm : Form
         wBtn.Click += (_, _) => { _model.Set((int)_wAddr.Value, (ushort)_wVal.Value, "ui"); AppendLog($"UI: D{(int)_wAddr.Value} = {(int)_wVal.Value}"); };
         wr.Controls.AddRange(new Control[] { L("Địa chỉ D"), _wAddr, L("Giá trị"), _wVal, wBtn });
         tReg.Controls.Add(_regs); tReg.Controls.Add(wr);
+        var tAct = new TabPage("Lệnh từ webapp / cloud");
+        foreach (var h in new[] { "Thời gian", "Nguồn", "Thanh ghi", "Thiết bị con", "Giá trị" }) _actions.Columns.Add(h, h);
+        tAct.Controls.Add(_actions);
+        _model.Changed += OnModelChanged;
         var tFld = new TabPage("Thiết bị con (d.<childId>.<field>)");
         var fNote = new Label { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(4), ForeColor = Color.DimGray,
             Text = "childId/field phải trùng tem QR/pack của thiết bị trên server. MQTT gửi thẳng d.<child>.<field>. Giao thức khác: điền cột D + scale, gateway đọc D rồi đóng gói d = D / scale (cùng bảng Pack trong gateway). Thêm dòng ở hàng cuối." };
         tFld.Controls.Add(_fields); tFld.Controls.Add(fNote);
-        tabs.TabPages.Add(tReg); tabs.TabPages.Add(tFld);
+        tabs.TabPages.Add(tAct); tabs.TabPages.Add(tReg); tabs.TabPages.Add(tFld);
 
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 360 };
         split.Panel1.Controls.Add(tabs);
@@ -318,6 +323,19 @@ public sealed class MainForm : Form
         try { _commitAll(); await _ep.PushAsync(); }
         catch (Exception ex) { AppendLog($"Gửi lỗi: {ex.Message}"); }
         finally { _busy = false; }
+    }
+
+    // Mọi ghi từ gateway (gốc là webapp/cloud hoặc HMI) hiện thành một dòng trong tab "Lệnh từ webapp / cloud".
+    void OnModelChanged(string desc, string origin)
+    {
+        if (origin != "gateway") return;
+        if (InvokeRequired) { try { BeginInvoke(() => OnModelChanged(desc, origin)); } catch { } return; }
+        string reg = "", child = "", val = desc;
+        var m = System.Text.RegularExpressions.Regex.Match(desc, @"^D(\d+) = (-?\d+)$");
+        if (m.Success) { var a = int.Parse(m.Groups[1].Value); reg = "D" + a; child = _model.FieldAt(a) ?? ""; val = m.Groups[2].Value; }
+        else { var f = System.Text.RegularExpressions.Regex.Match(desc, @"^(d\.\S+) = (.+)$"); if (f.Success) { child = f.Groups[1].Value; val = f.Groups[2].Value; } }
+        _actions.Rows.Insert(0, DateTime.Now.ToString("HH:mm:ss.fff"), "Modbus/MQTT master (gateway ← cloud)", reg, child, val);
+        while (_actions.Rows.Count > 500) _actions.Rows.RemoveAt(_actions.Rows.Count - 1);
     }
 
     void AppendLog(string s)

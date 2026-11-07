@@ -623,11 +623,13 @@ function lockTenantFields(locked) {
 }
 
 window.applySiteFromDevices = (site, gateway) => {
-  if (!site) return;
-  let changed = false;
-  if (cfg.site !== site) { cfg.site = site; changed = true; }
-  if (gateway && cfg.dev !== gateway) { cfg.dev = gateway; changed = true; }
-  if (changed) { LS.set('cfg', cfg); loadSettings(); }
+  // Thêm thiết bị (có thể là gateway khác) → lấy lại user/topicBase/topicBases từ server rồi nối lại MQTT, không cần tải lại trang.
+  const before = JSON.stringify([cfg.site, cfg.dev, cfg.topicBase, cfg.topicBases]);
+  if (site && cfg.site !== site) cfg.site = site;
+  if (gateway && cfg.dev !== gateway) cfg.dev = gateway;
+  return alignSiteDevFromSession().then(() => {
+    if (before !== JSON.stringify([cfg.site, cfg.dev, cfg.topicBase, cfg.topicBases])) { LS.set('cfg', cfg); connect(); }
+  });
 };
 
 async function alignSiteDevFromSession() {

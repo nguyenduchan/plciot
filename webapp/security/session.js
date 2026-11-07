@@ -8,6 +8,9 @@
   const orig = window.fetch;
   const readSession = () => { try { return JSON.parse(localStorage.getItem('session')); } catch { return null; } };
   const isApp = location.pathname.endsWith('/index.html') || location.pathname === '/';
+  // PHASE TEST: server báo appLockDisabled=true -> không khoá lại khi tải trang / ở nền / idle (đăng nhập vẫn bắt buộc). PRODUCTION: để false.
+  let lockOff = false;
+  try { const x = new XMLHttpRequest(); x.open("GET", "/api/health", false); x.send(); lockOff = JSON.parse(x.responseText).appLockDisabled === true; } catch {}
   let locked = false;
   let navigating = false;
   let lastActivity = Date.now();
@@ -29,7 +32,7 @@
 
   function lock(notify = true) {
     const session = readSession();
-    if (locked || !isApp || session?.demo) return;
+    if (lockOff || locked || !isApp || session?.demo) return;
     locked = true;
     document.documentElement.style.visibility = 'hidden';
     let token = '';
@@ -74,7 +77,7 @@
     return res;
   };
 
-  if (!isApp || readSession()?.demo) return;
+  if (!isApp || lockOff || readSession()?.demo) return;
   let entry = null;
   try { entry = sessionStorage.getItem('app-entry'); sessionStorage.removeItem('app-entry'); } catch {}
   if (!entry || entry !== readSession()?.token) { lock(); return; }

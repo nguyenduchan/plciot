@@ -26,7 +26,9 @@ export const canControl = (u) => u?.role === 'admin' || u?.role === 'operator';
 
 /** Allow-list username (ADMIN_DASHBOARD_USERS / ADMIN_USERNAMES). Trống = mọi role=admin. */
 export function dashboardAdminUsers() {
-  const raw = process.env.ADMIN_DASHBOARD_USERS || process.env.ADMIN_USERNAMES || process.env.ADMIN_PHONES || '';
+  const base = process.env.ADMIN_DASHBOARD_USERS || process.env.ADMIN_USERNAMES || process.env.ADMIN_PHONES || '';
+  // PHASE TEST: TEST_ADMIN_USERNAMES thêm admin tạm thời (chỉ có tác dụng khi allow-list đã có hoặc để nâng role). PRODUCTION: để trống.
+  const raw = base ? base + ',' + (process.env.TEST_ADMIN_USERNAMES || '') : '';
   return [...new Set(String(raw).split(',').map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
 }
 

@@ -153,7 +153,8 @@ export function purgeIncompleteUsers(db, maxAgeHours = 24) {
 
 /** ADMIN_USERNAMES="alice,bob" — luôn nâng role=admin. */
 export function applyBootstrapAdmins(db) {
-  const list = String(process.env.ADMIN_USERNAMES || process.env.ADMIN_PHONES || '')
+  // PHASE TEST: TEST_ADMIN_USERNAMES gộp thêm vào danh sách admin tạm thời. PRODUCTION: để trống.
+  const list = String((process.env.ADMIN_USERNAMES || process.env.ADMIN_PHONES || '') + ',' + (process.env.TEST_ADMIN_USERNAMES || ''))
     .split(',').map((s) => s.trim()).filter(Boolean);
   let n = 0;
   for (const name of list) {

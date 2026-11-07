@@ -32,6 +32,8 @@ foreach ($p in $paths) {
 $excludes = @(
   '--exclude=cloud/.env',
   '--exclude=cloud/config/passwd',
+  '--exclude=cloud/config/acl',
+  '--exclude=cloud/config/acl-monitor',
   '--exclude=cloud/app/data',
   '--exclude=cloud/app/node_modules',
   '--exclude=packages/security/node_modules',
@@ -58,6 +60,7 @@ try {
   $remoteSh = @"
 #!/bin/bash
 set -euo pipefail
+export COMPOSE_BAKE=false   # VPS chưa có buildx: Bake làm build lỗi và để container app ở trạng thái Created
 mkdir -p '$RemotePath'
 cd '$RemotePath'
 tar xzf /tmp/plciot-sync.tgz
@@ -80,7 +83,10 @@ rm -f /tmp/plciot-sync.tgz /tmp/plciot-sync.sh
   if ($LASTEXITCODE -ne 0) { throw "scp sh that bai ($LASTEXITCODE)" }
 
   Write-Host '==> ssh update...'
-  & ssh -o BatchMode=yes $Target 'bash /tmp/plciot-sync.sh'
+  # Docker ghi cảnh báo ra stderr; với 'Stop' PowerShell 5.1 coi đó là lỗi và ngắt ssh giữa lúc build → chỉ xét mã thoát.
+  $ErrorActionPreference = 'Continue'
+  & ssh -o BatchMode=yes $Target 'bash /tmp/plciot-sync.sh' 2>&1 | ForEach-Object { "$_" }
+  $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE -ne 0) { throw "ssh update that bai ($LASTEXITCODE)" }
   Write-Host '==> Xong.'
 }

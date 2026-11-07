@@ -90,6 +90,12 @@ services:
       CONTROL_BIND_NET: ${CONTROL_BIND_NET:-false}
       FIRST_DEVICE_ONLY: ${FIRST_DEVICE_ONLY:-false}
       DEVICE_TRUST_DAYS: ${DEVICE_TRUST_DAYS:-30}
+      # PHASE TEST: true = đăng nhập mật khẩu trên máy mới không đòi passkey máy cũ / mã khôi phục. PRODUCTION: false.
+      ALLOW_NEW_DEVICE_PASSWORD_LOGIN: ${ALLOW_NEW_DEVICE_PASSWORD_LOGIN:-false}
+      # PHASE TEST: true = không khoá lại phiên khi tải trang/ở nền/idle (vẫn phải đăng nhập). PRODUCTION: đặt false.
+      APP_LOCK_DISABLED: ${APP_LOCK_DISABLED:-false}
+      # PHASE TEST: true = thao tác nhạy cảm (admin ghi, đổi cài đặt) không đòi xác thực lại. PRODUCTION: đặt false.
+      REAUTH_DISABLED: ${REAUTH_DISABLED:-false}
       CONTROL_LAN_CIDRS: ${CONTROL_LAN_CIDRS:-}
       CONTROL_CRITICAL_ADDRS: ${CONTROL_CRITICAL_ADDRS:-4,6}
       CONTROL_PHYSICAL_BIT: ${CONTROL_PHYSICAL_BIT:-}
@@ -103,6 +109,8 @@ services:
       HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-3}
       HISTORY_OPEN_ACCESS: ${HISTORY_OPEN_ACCESS:-false}
       ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
+      # PHASE TEST: nâng tạm tài khoản test lên admin. PRODUCTION: đặt rỗng.
+      TEST_ADMIN_USERNAMES: ${TEST_ADMIN_USERNAMES:-}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       RATE_LIMIT_API: ${RATE_LIMIT_API:-120}
@@ -120,6 +128,8 @@ services:
       DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
       # Khoá công khai xác minh chữ ký tem QR (khoá riêng KHÔNG để trên server; ký bằng máy provision)
       CLAIM_ROOT_PUBLIC_KEY: ${CLAIM_ROOT_PUBLIC_KEY:-}
+      # PHASE TEST: khoá riêng nằm trên VPS để trang admin tự ký QR mỗi lần (Thêm & tạo QR / reissue). PRODUCTION: bỏ biến này.
+      CLAIM_ROOT_PRIVATE_KEY: ${CLAIM_ROOT_PRIVATE_KEY:-}
       DEBUG_TRACE_TOKEN: ${DEBUG_TRACE_TOKEN:-}
       DEBUG_TRACE_USERS: ${DEBUG_TRACE_USERS:-}
     extra_hosts:

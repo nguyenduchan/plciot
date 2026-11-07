@@ -128,7 +128,7 @@ const send = (res, result) => res.status(result.error ? result.status || 400 : 2
 const ipOf = clientIp;
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, contract: contractInfo(), debugTrace: debugTraceEnabled() });
+  res.json({ ok: true, contract: contractInfo(), debugTrace: debugTraceEnabled(), appLockDisabled: String(process.env.APP_LOCK_DISABLED || "false").toLowerCase() === "true" });
 });
 
 app.post('/api/account/data/wipe', requireAuth, sensitiveStrict, reauth, (req, res) => {

@@ -19,7 +19,11 @@ let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
 
 const db = openDb(tmp);
+// DB cũ có bảng user_devices khác schema: migrate phải đổi tên nó và tạo bảng đúng
+db.exec('DROP TABLE IF EXISTS user_devices');
+db.exec('CREATE TABLE user_devices (user_id INTEGER NOT NULL, site TEXT NOT NULL, device TEXT NOT NULL, role TEXT NOT NULL, PRIMARY KEY (user_id, site, device))');
 migrateUserDevices(db);
+ok(db.prepare("PRAGMA table_info('user_devices')").all().some((c) => c.name === 'id'), 'migrate: bảng schema cũ được thay bằng bảng có cột id');
 const meta = {
   seed: [
     { childId: 'pump1', type: 'pump', limits: { run: { min: 0, max: 1 } }, critical: ['run'] },
