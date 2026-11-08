@@ -13,6 +13,7 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
         var form = new MainForm();
+        if (args.Contains("--autodemo")) form.Shown += async (_, _) => await form.AutoDemoAsync();
         var i = Array.IndexOf(args, "--shot");
         if (i >= 0 && i + 1 < args.Length) form.Shown += async (_, _) => await form.ScreenshotsAsync(args[i + 1]);
         var j = Array.IndexOf(args, "--selftest");

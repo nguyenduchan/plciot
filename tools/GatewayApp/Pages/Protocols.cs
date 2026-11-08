@@ -41,9 +41,6 @@ public sealed record ProtocolInfo(PlcSource Source, string Name, string Desc, st
 /// <summary>Trang Giao thức: chọn giao thức nối PLC, nhập thông số, kiểm tra kết nối, áp dụng.</summary>
 sealed class ProtocolsPage : UserControl
 {
-    static readonly string[] S7Cpus = { "S7200", "S7300", "S7400", "S71200", "S71500" };
-    static readonly string[] McTypes = { "Q", "L", "QnA", "iQ-R", "iQ-L" };
-
     public static readonly ProtocolInfo[] All =
     {
         new(PlcSource.ModbusTcp, "Modbus TCP", "PLC/biến tần có cổng Ethernet (Xinje, Delta, Schneider…)", "M", Theme.Accent, new[] { "PlcHost", "PlcPort", "ModbusUnit", "PollMs" }),
@@ -55,15 +52,6 @@ sealed class ProtocolsPage : UserControl
         new(PlcSource.BeckhoffAds, "Beckhoff ADS", "TwinCAT qua router ADS", "A", Color.FromArgb(184, 119, 217), new[] { "PlcHost", "AdsNetId", "AdsPort", "AdsSymbol", "PollMs" }),
         new(PlcSource.OpcUa, "OPC UA", "Máy chủ OPC UA bất kỳ", "U", Color.FromArgb(87, 148, 242), new[] { "OpcUaEndpoint", "OpcUaImageNode", "OpcUaWriteNode", "PollMs" }),
         new(PlcSource.Gateway, "Gateway ESP32 (MQTT)", "Gateway phần cứng nối vào broker LAN của máy này", "G", Theme.Muted, new[] { "LocalPort" }),
-    };
-
-    static readonly Dictionary<string, string> Labels = new()
-    {
-        ["PlcHost"] = "Địa chỉ / cổng COM", ["PlcPort"] = "Cổng (0 = mặc định) / baud", ["ModbusUnit"] = "Địa chỉ trạm (unit)", ["PollMs"] = "Chu kỳ đọc (ms)",
-        ["SerialParity"] = "Parity", ["S7Cpu"] = "Loại CPU", ["S7Rack"] = "Rack", ["S7Slot"] = "Slot", ["S7Db"] = "Số DB", ["EipTag"] = "Tên tag", ["EipSlot"] = "Slot",
-        ["McPlcType"] = "Dòng PLC", ["FinsProtocol"] = "Giao vận", ["FinsDestNode"] = "Node đích (0 = octet cuối IP)", ["FinsSourceNode"] = "Node nguồn",
-        ["AdsNetId"] = "AMS NetId", ["AdsPort"] = "Cổng ADS", ["AdsSymbol"] = "Symbol", ["OpcUaEndpoint"] = "Endpoint", ["OpcUaImageNode"] = "Node ảnh thanh ghi",
-        ["OpcUaWriteNode"] = "Node ghi ({a} = số D)", ["LocalPort"] = "Cổng broker LAN",
     };
 
     readonly IGatewayApp _app;
@@ -80,7 +68,7 @@ sealed class ProtocolsPage : UserControl
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
         var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, BackColor = Theme.Bg, Padding = new Padding(0, 4, 0, 6) };
         var add = new FlatButton { Caption = "＋  Thêm giao thức", Primary = true, Width = 190 };
-        var hint = new Label { Text = "Gateway nối một nguồn PLC mỗi lần; chọn giao thức rồi Áp dụng để chuyển.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = true, Margin = new Padding(14, 10, 0, 0) };
+        var hint = new Label { Text = "Mỗi giao thức có một kết nối (địa chỉ, cổng, tuỳ chọn). Thiết bị chọn giao thức + thông số riêng ở trang Thiết bị; nhiều giao thức chạy cùng lúc.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = true, Margin = new Padding(14, 10, 0, 0) };
         add.Click += (_, _) =>
         {
             var m = new ContextMenuStrip { BackColor = Theme.Panel2, ForeColor = Theme.Text, Font = Theme.Normal, ShowImageMargin = false };
@@ -104,46 +92,72 @@ sealed class ProtocolsPage : UserControl
         _form.Controls.Add(_fields); _form.Controls.Add(_result); _form.Controls.Add(buttons);
         _fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); _fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(_form); Controls.Add(_tiles); Controls.Add(bar);
-        Select(All.FirstOrDefault(p => p.Source == app.Config.Source) ?? All[0]);
+        Select(All.FirstOrDefault(p => app.Config.Pack.Any(x => x.Source == p.Source)) ?? All.FirstOrDefault(p => p.Source == app.Config.Source) ?? All[0]);
+    }
+
+    bool IsActive(PlcSource src) => _app.Config.Pack.Any(x => x.Source == src) || (!_app.Config.PackBound && src == _app.Config.Source);
+
+    void AddRow(string key, string label, string value, string[]? choices = null)
+    {
+        Control c;
+        if (choices != null) { var cb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }; cb.Items.AddRange(choices); cb.SelectedItem = value; if (cb.SelectedIndex < 0) cb.SelectedIndex = 0; c = cb; }
+        else c = new TextBox { Text = value };
+        Skin.Input(c); c.Dock = DockStyle.Fill; c.Margin = new Padding(0, 4, 0, 4);
+        _fields.Controls.Add(Skin.Lbl(label)); _fields.Controls.Add(c);
+        _fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        _inputs[key] = c;
     }
 
     public void Select(ProtocolInfo p)
     {
         _sel = p; _result.Text = ""; _result.ForeColor = Theme.Muted;
-        foreach (var t in _tileList) { t.Selected = t.Info == p; t.Active = t.Info.Source == _app.Config.Source; t.Invalidate(); }
-        _form.Title = $"Thông số kết nối — {p.Name}"; _form.Sub = p.Source == _app.Config.Source ? "đang dùng" : "chưa áp dụng";
+        foreach (var t in _tileList) { t.Selected = t.Info == p; t.Active = IsActive(t.Info.Source); t.Invalidate(); }
+        _form.Title = $"Kết nối — {p.Name}"; _form.Sub = IsActive(p.Source) ? "đang dùng" : "chưa có thiết bị dùng";
         _fields.SuspendLayout(); _fields.Controls.Clear(); _fields.RowStyles.Clear(); _inputs.Clear();
-        foreach (var key in p.Fields)
+        if (p.Source == PlcSource.Gateway) AddRow("LocalPort", "Cổng broker LAN", _app.Config.LocalPort.ToString());
+        else
         {
-            var prop = typeof(ScadaConfig).GetProperty(key)!;
-            var cur = prop.GetValue(_app.Config);
-            Control c;
-            string[]? choices = key switch { "S7Cpu" => S7Cpus, "McPlcType" => McTypes, "FinsProtocol" => new[] { "udp", "tcp" }, "SerialParity" => new[] { "Even", "None", "Odd" }, _ => null };
-            if (choices != null) { var cb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }; cb.Items.AddRange(choices); cb.SelectedItem = Convert.ToString(cur); if (cb.SelectedIndex < 0) cb.SelectedIndex = 0; c = cb; }
-            else c = new TextBox { Text = Convert.ToString(cur, CultureInfo.InvariantCulture) };
-            Skin.Input(c); c.Dock = DockStyle.Fill; c.Margin = new Padding(0, 4, 0, 4);
-            _fields.Controls.Add(Skin.Lbl(Labels.GetValueOrDefault(key, key))); _fields.Controls.Add(c);
-            _fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            _inputs[key] = c;
+            var src = p.Source; var conn = _app.Config.ConnectionFor(src); var rtu = src == PlcSource.ModbusRtu;
+            if (ProtocolSpec.UsesHostPort(src))
+            {
+                AddRow("host", rtu ? "Cổng COM" : "Địa chỉ PLC (IP/tên máy)", conn?.Host ?? "");
+                AddRow("port", rtu ? "Baud" : "Cổng", (conn?.Port > 0 ? conn.Port : ProtocolSpec.SuggestPort(src)).ToString());
+            }
+            else _fields.Controls.Add(new Label { Text = "Beckhoff ADS đi qua router ADS: AmsNetId, port và symbol khai báo ở từng thiết bị.", ForeColor = Theme.Muted, AutoSize = true, Margin = new Padding(0, 8, 0, 8) });
+            foreach (var d in ProtocolSpec.ConnOptions(src)) AddRow("opt:" + d.Key, d.Label, conn?.Opt(d.Key) is { Length: > 0 } ov ? ov : d.Default, d.Choices);
+            AddRow("PollMs", "Chu kỳ đọc (ms)", _app.Config.PollMs.ToString());
         }
         _fields.ResumeLayout();
     }
 
+    static string Val(Control c) => c is ComboBox cb ? Convert.ToString(cb.SelectedItem) ?? "" : c.Text.Trim();
+
     /// <summary>Ghi các ô nhập vào cấu hình (hoặc bản sao); trả về lỗi nếu giá trị sai.</summary>
     string? WriteTo(ScadaConfig cfg)
     {
-        foreach (var (key, c) in _inputs)
+        if (_sel.Source == PlcSource.Gateway)
         {
-            var prop = typeof(ScadaConfig).GetProperty(key)!;
-            var txt = c is ComboBox cb ? Convert.ToString(cb.SelectedItem) ?? "" : c.Text.Trim();
-            try
-            {
-                if (prop.PropertyType == typeof(int)) prop.SetValue(cfg, int.Parse(txt, CultureInfo.InvariantCulture));
-                else prop.SetValue(cfg, txt);
-            }
-            catch (FormatException) { return $"\"{Labels.GetValueOrDefault(key, key)}\" phải là số."; }
+            if (!int.TryParse(Val(_inputs["LocalPort"]), out var lp)) return "Cổng broker LAN phải là số.";
+            cfg.LocalPort = lp; cfg.Source = PlcSource.Gateway;
+            return cfg.Validate();
         }
-        cfg.Source = _sel.Source;
+        var src = _sel.Source;
+        var conn = new PlcConnection { Protocol = src };
+        if (ProtocolSpec.UsesHostPort(src))
+        {
+            conn.Host = Val(_inputs["host"]);
+            if (conn.Host.Length == 0) return "Nhập địa chỉ PLC (hoặc cổng COM).";
+            if (!int.TryParse(Val(_inputs["port"]), out var port) || port is < 1 or > 65535) return "Cổng không hợp lệ (1–65535).";
+            conn.Port = port;
+        }
+        foreach (var d in ProtocolSpec.ConnOptions(src)) conn.Options[d.Key] = Val(_inputs["opt:" + d.Key]);
+        var oe = ProtocolSpec.ValidateParams(src, conn.Options, "Kết nối", ProtocolSpec.ConnOptions(src));
+        if (oe != null) return oe;
+        if (!int.TryParse(Val(_inputs["PollMs"]), out var poll)) return "Chu kỳ đọc phải là số.";
+        cfg.PollMs = poll;
+        cfg.Connections.RemoveAll(c => c.Protocol == src);
+        cfg.Connections.Add(conn);
+        if (!cfg.PackBound) { cfg.Source = src; cfg.PlcHost = conn.Host; cfg.PlcPort = conn.Port; }   // chế độ cũ (field chưa gán giao thức) vẫn theo nguồn chung
         return cfg.Validate();
     }
 
@@ -153,14 +167,17 @@ sealed class ProtocolsPage : UserControl
         var copy = JsonSerializer.Deserialize<ScadaConfig>(JsonSerializer.Serialize(_app.Config))!;
         var err = WriteTo(copy);
         if (err != null) { Say("✖ " + err, Theme.Red); return; }
+        // thử bằng chính một field đã khai báo (đủ thông số: unit, DB, tag…), không đoán thanh ghi
+        var probe = copy.Pack.FirstOrDefault(x => x.Source == _sel.Source && x.Address >= 0 && x.Access != PackAccess.Write);
+        if (probe == null) { Say("Chưa có thiết bị nào dùng giao thức này để thử: thêm thiết bị (trang Thiết bị) rồi thử lại.", Theme.Muted); return; }
         Say("Đang thử kết nối…", Theme.Muted);
         try
         {
-            using var drv = DriverFactory.Create(copy);
-            if (drv == null) { Say("✖ Không tạo được driver.", Theme.Red); return; }
+            using var drv = DriverFactory.CreateFor(copy.ConnectionFor(_sel.Source)!, probe);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var r = await drv.ReadAsync(0, 8, cts.Token);
-            Say($"✔ Kết nối được. D0..D7 = {string.Join(", ", r)}", Theme.Green);
+            var r = await drv.ReadAsync(probe.Address, probe.Words, cts.Token);
+            var v = Math.Round(PackCodec.Decode(r, probe.DataType, probe.WordSwap) / probe.Scale, 3);
+            Say($"✔ Kết nối được. {probe.Child}.{probe.Field} (D{probe.Address}, {probe.DataType}) = {v.ToString(CultureInfo.InvariantCulture)}", Theme.Green);
         }
         catch (OperationCanceledException) { Say("✖ Hết thời gian chờ (5 giây). Kiểm tra địa chỉ, cổng, dây mạng.", Theme.Red); }
         catch (Exception e) { Say("✖ " + e.Message, Theme.Red); }
@@ -171,7 +188,7 @@ sealed class ProtocolsPage : UserControl
         var err = WriteTo(_app.Config);
         if (err != null) { Say("✖ " + err, Theme.Red); return; }
         Select(_sel);
-        await _app.ApplyAsync($"Đã chuyển sang {_sel.Name}");
+        await _app.ApplyAsync($"Đã lưu kết nối {_sel.Name}");
     }
 
     void Say(string s, Color c) { _result.Text = s; _result.ForeColor = c; }

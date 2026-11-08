@@ -41,7 +41,7 @@ public sealed partial class MainForm : Form, IGatewayApp
 
     static ScadaConfig Defaults() => new()
     {
-        Site = "factory1", Device = "plc01", Source = PlcSource.ModbusTcp, PlcHost = "127.0.0.1", PollMs = 300,
+        Site = "factory1", Device = "plc01", Source = PlcSource.ModbusTcp, PlcHost = "", PollMs = 300,
         Mobile = MobileAccess.Off, LocalBrokerEnabled = false, LocalBind = "0.0.0.0", WebEnabled = false,
         LocalUsers = new() { new LocalUser { User = "gw", Password = "", Role = LocalRole.Device } },
         CloudTelemetryMinMs = 2000,
@@ -200,6 +200,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (_host != null) return;
         _meta.Persist = !_demo;
         if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
+        if (!_demo && _cfg.Pack.Count == 0 && _cfg.Source != PlcSource.Gateway) { Toast("Chưa có thiết bị nào: thêm thiết bị ở trang Thiết bị (chọn giao thức, kiểu, thanh ghi) rồi chạy.", true); return; }
         var err = _cfg.Validate();
         if (err != null) { Toast("Cấu hình chưa hợp lệ: " + err, true); return; }
         try { SaveCfg(); } catch (IOException) { }
@@ -216,7 +217,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (LicenseRequiredException e) { await Abort(); Toast(e.Message, true); return; }
         catch (Exception e) { await Abort(); Toast("Không chạy được: " + e.Message, true); return; }
         _start.Caption = "■  Dừng"; _start.Danger = true; _start.Primary = false; _start.Invalidate();
-        Toast(_demo ? "Gateway đang chạy với PLC giả (demo)." : $"Gateway đang chạy: {_cfg.Source} {_cfg.PlcHost}");
+        Toast(_demo ? "Gateway đang chạy với PLC giả (demo)." : $"Gateway đang chạy: {_host!.Core.InfoLine}");
     }
 
     async Task Abort()
@@ -262,17 +263,18 @@ public sealed partial class MainForm : Form, IGatewayApp
                 _cfg.CloudPassword = kit.Mqtt.Password ?? _cfg.CloudPassword;
                 if (Uri.TryCreate(kit.Mqtt.Mqtts, UriKind.Absolute, out var u)) { _cfg.CloudHost = u.Host; _cfg.CloudPort = u.Port; _cfg.CloudTransport = "mqtts"; }
             }
-            // Pack: mỗi field một thanh ghi D liên tiếp từ D50 (PlcSim dùng cùng quy ước). Boolean-like → hệ số 1, còn lại 10.
-            var addr = 50; var pack = new List<PackMap>();
+            // Pack: tem chỉ cho biết thiết bị/field/giới hạn. Giao thức, kiểu, quyền, thanh ghi D và hệ số KHÔNG đoán:
+            // để trống (Address = -1, Scale = 0) và người dùng khai báo ở trang Thiết bị trước khi chạy.
+            var pack = new List<PackMap>();
             foreach (var c in kit.Pack ?? new())
                 foreach (var f in c.Fields ?? new())
                 {
                     var lim = c.Limits != null && c.Limits.TryGetValue(f, out var l) ? l : null;
-                    pack.Add(new PackMap { Child = c.Id ?? "", Field = f, Address = addr++, Scale = f is "run" or "on" or "v" ? 1 : 10, Min = lim?.Min, Max = lim?.Max });
+                    pack.Add(new PackMap { Child = c.Id ?? "", Field = f, Address = -1, Scale = 0, Min = lim?.Min, Max = lim?.Max });
                 }
             _cfg.Pack = pack; _cfg.Mobile = MobileAccess.Control;
             _log.Add("INFO", "enroll", $"site={_cfg.Site} device={_cfg.Device} cloud={_cfg.CloudHost}:{_cfg.CloudPort} user={_cfg.CloudUser} pack={pack.Count} field");
-            await ApplyAsync($"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field");
+            await ApplyAsync($"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field — khai báo giao thức/thanh ghi ở trang Thiết bị");
         }
         catch (Exception ex) { Toast("Enroll lỗi: " + ex.Message, true); }
     }
