@@ -1,0 +1,150 @@
+[
+  {
+    "id": "plcsim-test",
+    "type": "tab",
+    "label": "PlcSim test",
+    "disabled": false,
+    "info": "Kiểm tra PlcSim qua Modbus TCP và OPC UA. Kết quả ghi vào /data/result.ndjson."
+  },
+  {
+    "id": "inj",
+    "type": "inject",
+    "z": "plcsim-test",
+    "name": "▶ Chạy bộ test (tự chạy sau 6 giây khi khởi động)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "6",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 190,
+    "y": 100,
+    "wires": [
+      [
+        "modbus"
+      ]
+    ]
+  },
+  {
+    "id": "modbus",
+    "type": "function",
+    "z": "plcsim-test",
+    "name": "Test Modbus TCP",
+    "func": "// Node-RED function node: kiểm tra PlcSim qua Modbus TCP (jsmodbus). Cấu hình bằng biến môi trường PLC_HOST, PLC_MODBUS_PORT.\nconst net = global.get('net'), Modbus = global.get('jsmodbus');\nconst host = env.get('PLC_HOST') || '127.0.0.1', port = Number(env.get('PLC_MODBUS_PORT') || 1502);\nconst results = [];\nconst check = (name, ok, detail) => results.push({ name, ok: !!ok, detail: String(detail) });\nconst sleep = ms => new Promise(r => setTimeout(r, ms));\n\nconst sock = new net.Socket();\nconst client = new Modbus.client.TCP(sock, 1, 3000);\ntry {\n    await new Promise((res, rej) => { sock.once('error', rej); sock.connect({ host, port }, res); });\n    const rd = async (a, n) => Buffer.from((await client.readHoldingRegisters(a, n)).response.body.valuesAsArray.flatMap(v => [v >> 8, v & 255]));\n    const u16 = async a => (await rd(a, 1)).readUInt16BE(0);\n    const wr = async (a, v) => { try { await client.writeSingleRegister(a, v); return 'ok'; } catch (e) { return 'exception'; } };\n\n    // 1. kiểu 16-bit: UINT, INT (có dấu), hệ số 1\n    let b = await rd(10, 5);\n    check('UINT D10 = 123', b.readUInt16BE(0) === 123, b.readUInt16BE(0));\n    check('INT D11 = -5', b.readInt16BE(2) === -5, b.readInt16BE(2));\n    check('Chỉ đọc D12 = 77', b.readUInt16BE(4) === 77, b.readUInt16BE(4));\n    check('Chỉ ghi D13 khởi tạo 0', b.readUInt16BE(6) === 0, b.readUInt16BE(6));\n\n    // 2. struct: REAL (2 word), DINT (2 word), BOOL (1 word) nằm liền nhau từ D20\n    b = await rd(20, 5);\n    check('Struct S1.temp REAL D20-21 = 12.5', b.readFloatBE(0) === 12.5, b.readFloatBE(0));\n    check('Struct S1.count DINT D22-23 = -70000', b.readInt32BE(4) === -70000, b.readInt32BE(4));\n    check('Struct S1.on BOOL D24 = 1', b.readUInt16BE(8) === 1, b.readUInt16BE(8));\n    b = await rd(26, 2);\n    check('Kiểu REAL đảo word (CD AB) D26-27 = 3.25', Buffer.from([b[2], b[3], b[0], b[1]]).readFloatBE(0) === 3.25, Buffer.from([b[2], b[3], b[0], b[1]]).readFloatBE(0));\n\n    // 3. quyền truy cập\n    await wr(10, 456);\n    check('Đọc/ghi: ghi D10=456 được chấp nhận', (await u16(10)) === 456, await u16(10));\n    await wr(12, 1);\n    check('Chỉ đọc: ghi D12 bị từ chối (vẫn 77)', (await u16(12)) === 77, await u16(12));\n    await wr(13, 9);\n    check('Chỉ ghi: ghi D13=9 được giữ lại', (await u16(13)) === 9, await u16(13));\n    await client.writeMultipleRegisters(22, Buffer.from([0xFF, 0xFF, 0xFF, 0xFE]));   // DINT = -2\n    b = await rd(22, 2);\n    check('Gateway ghi DINT 2 word = -2', b.readInt32BE(0) === -2, b.readInt32BE(0));\n\n    // 4. giả lập giá trị: ngẫu nhiên 10..20 (D14) và sóng sin 0..100 (D30) phải đổi theo thời gian\n    const rnd = [], sin = [];\n    for (let i = 0; i < 5; i++) { rnd.push(await u16(14)); sin.push(await u16(30)); await sleep(1500); }\n    check('Ngẫu nhiên nằm trong 10..20', rnd.every(v => v >= 10 && v <= 20), rnd.join(','));\n    check('Ngẫu nhiên thay đổi theo thời gian', new Set(rnd).size > 1, rnd.join(','));\n    check('Sóng sin nằm trong 0..100', sin.every(v => v >= 0 && v <= 100), sin.join(','));\n    check('Sóng sin thay đổi theo thời gian', new Set(sin).size > 1, sin.join(','));\n} catch (e) {\n    check('Kết nối/giao tiếp Modbus', false, e.message || e);\n} finally { sock.destroy(); }\nmsg.payload = { suite: 'modbus-tcp', host, port, passed: results.filter(r => r.ok).length, total: results.length, results };\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 100,
+    "wires": [
+      [
+        "dbg1",
+        "json1",
+        "opcua"
+      ]
+    ]
+  },
+  {
+    "id": "opcua",
+    "type": "function",
+    "z": "plcsim-test",
+    "name": "Test OPC UA + chéo Modbus",
+    "func": "// Node-RED function node: kiểm tra PlcSim qua OPC UA (node-opcua) + đối chiếu chéo với Modbus. PLC_HOST, PLC_OPCUA_PORT, PLC_MODBUS_PORT.\nconst O = global.get('opcua'), net = global.get('net'), Modbus = global.get('jsmodbus');\nconst host = env.get('PLC_HOST') || '127.0.0.1', port = Number(env.get('PLC_OPCUA_PORT') || 4841), mport = Number(env.get('PLC_MODBUS_PORT') || 1502);\nconst results = [];\nconst check = (name, ok, detail) => results.push({ name, ok: !!ok, detail: String(detail) });\n\nconst client = O.OPCUAClient.create({\n    applicationName: 'nodered-plcsim-test', endpointMustExist: false,\n    securityMode: O.MessageSecurityMode.None, securityPolicy: O.SecurityPolicy.None,\n    connectionStrategy: { initialDelay: 200, maxRetry: 3, maxDelay: 1000 },\n});\nconst sock = new net.Socket(); const mb = new Modbus.client.TCP(sock, 1, 3000);\nlet session;\ntry {\n    await new Promise((res, rej) => { sock.once('error', rej); sock.connect({ host, port: mport }, res); });\n    const mu16 = async a => (await mb.readHoldingRegisters(a, 1)).response.body.valuesAsArray[0];\n    await client.connect(`opc.tcp://${host}:${port}/plcsim`);\n    session = await client.createSession();\n    const ns = (await session.readNamespaceArray()).indexOf('urn:plciot:plcsim');\n    check('Namespace urn:plciot:plcsim có trong server', ns > 0, 'ns=' + ns);\n    const rd = async id => (await session.read({ nodeId: `ns=${ns};s=${id}`, attributeId: O.AttributeIds.Value })).value.value;\n    const wr = (id, dt, v) => session.write({ nodeId: `ns=${ns};s=${id}`, attributeId: O.AttributeIds.Value, value: { value: { dataType: dt, value: v } } });\n\n    // 1. đọc\n    const img = await rd('PLC_D');\n    check('PLC_D là mảng 300 thanh ghi', img.length === 300, img.length);\n    check('PLC_D[40] = 321 (luồng OPC UA o1.val)', img[40] === 321, img[40]);\n    check('PLC_W40 = 321', (await rd('PLC_W40')) === 321, await rd('PLC_W40'));\n    check('Field d.o1.val (Double) = 321', (await rd('d.o1.val')) === 321, await rd('d.o1.val'));\n    check('Struct S1.temp qua OPC UA d.dev2.temp = 12.5 (REAL đã giải mã)', (await rd('d.dev2.temp')) === 12.5, await rd('d.dev2.temp'));\n    check('Struct S1.count qua OPC UA d.dev2.count = -2 (DINT, do bài Modbus ghi)', (await rd('d.dev2.count')) === -2, await rd('d.dev2.count'));\n\n    // 2. ghi qua OPC UA → Modbus thấy cùng giá trị (một ảnh D dùng chung)\n    let sc = await wr('PLC_W41', O.DataType.UInt16, 999);\n    check('Ghi PLC_W41=999 trả Good', sc.isGood(), sc.toString());\n    check('Modbus đọc D41 = 999 (đồng bộ chéo giao thức)', (await mu16(41)) === 999, await mu16(41));\n    sc = await wr('d.o1.val', O.DataType.Double, 555);\n    check('Ghi d.o1.val=555 trả Good', sc.isGood(), sc.toString());\n    check('Modbus đọc D40 = 555 (field → thanh ghi D)', (await mu16(40)) === 555, await mu16(40));\n\n    // 3. ngược lại: ghi Modbus → OPC UA thấy\n    await mb.writeSingleRegister(40, 777);\n    check('Ghi Modbus D40=777 → OPC UA d.o1.val = 777', (await rd('d.o1.val')) === 777, await rd('d.o1.val'));\n\n    // 4. luồng chỉ đọc: gateway ghi vào bị bỏ qua dù OPC UA báo Good\n    await wr('PLC_W12', O.DataType.UInt16, 5);\n    check('Chỉ đọc D12: ghi qua OPC UA không đổi giá trị (vẫn 77)', (await rd('PLC_W12')) === 77, await rd('PLC_W12'));\n} catch (e) {\n    check('Kết nối/giao tiếp OPC UA', false, e.message || e);\n} finally {\n    try { if (session) await session.close(); await client.disconnect(); } catch (e) { /* bỏ qua */ }\n    sock.destroy();\n}\nmsg.payload = { suite: 'opc-ua', host, port, passed: results.filter(r => r.ok).length, total: results.length, results };\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 200,
+    "wires": [
+      [
+        "dbg2",
+        "json2"
+      ]
+    ]
+  },
+  {
+    "id": "json1",
+    "type": "json",
+    "z": "plcsim-test",
+    "name": "",
+    "property": "payload",
+    "action": "str",
+    "pretty": false,
+    "x": 650,
+    "y": 60,
+    "wires": [
+      [
+        "file"
+      ]
+    ]
+  },
+  {
+    "id": "json2",
+    "type": "json",
+    "z": "plcsim-test",
+    "name": "",
+    "property": "payload",
+    "action": "str",
+    "pretty": false,
+    "x": 650,
+    "y": 240,
+    "wires": [
+      [
+        "file"
+      ]
+    ]
+  },
+  {
+    "id": "file",
+    "type": "file",
+    "z": "plcsim-test",
+    "name": "result.ndjson",
+    "filename": "/data/result.ndjson",
+    "filenameType": "str",
+    "appendNewline": true,
+    "createDir": false,
+    "overwriteFile": "false",
+    "encoding": "none",
+    "x": 840,
+    "y": 150,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "dbg1",
+    "type": "debug",
+    "z": "plcsim-test",
+    "name": "Modbus",
+    "active": true,
+    "tosidebar": true,
+    "complete": "payload",
+    "x": 650,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "dbg2",
+    "type": "debug",
+    "z": "plcsim-test",
+    "name": "OPC UA",
+    "active": true,
+    "tosidebar": true,
+    "complete": "payload",
+    "x": 650,
+    "y": 200,
+    "wires": []
+  }
+]

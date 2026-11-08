@@ -8,6 +8,7 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
         var form = new MainForm();
+        if (args.Contains("--autodemo")) form.Shown += async (_, _) => await form.AutoDemoAsync();
         var i = Array.IndexOf(args, "--selftest");
         if (i >= 0 && i + 1 < args.Length) form.Shown += async (_, _) => await form.SelfTestAsync(args[i + 1]);
         Application.Run(form);

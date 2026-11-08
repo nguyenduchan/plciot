@@ -25,6 +25,78 @@ public sealed class PlcModel
         _regs[0] = 0b101; _regs[3] = 0; _regs[7] = 0;
     }
 
+    // ---- giao thức + quyền truy cập của từng luồng ----------------------------------------------
+    public enum Access { Read, Write, ReadWrite }
+
+    /// <summary>Kind = mã giao thức (modbus, mc, s7…), Param = thông số riêng của giao thức (Unit ID, số DB, tên tag…).</summary>
+    /// <summary>Kiểu dữ liệu của luồng trong thanh ghi D: số word chiếm = <see cref="Words"/>. Group = tên struct (rỗng nếu là luồng đơn).</summary>
+    public enum DataType { UInt16, Int16, Bool, UInt32, Int32, Float32, Float64 }
+
+    public static int Words(DataType t) => t switch { DataType.UInt32 or DataType.Int32 or DataType.Float32 => 2, DataType.Float64 => 4, _ => 1 };
+
+    public readonly record struct Meta(string Kind, Access Access, string Param, DataType Type = DataType.UInt16, bool WordSwap = false, string Group = "");
+
+    // ---- mã hoá / giải mã giá trị vào các word liền nhau (word cao trước, hoặc thấp trước nếu WordSwap) ----
+    static ushort[] Encode(double x, DataType t, bool swap)
+    {
+        ushort[] w;
+        switch (t)
+        {
+            case DataType.UInt16: w = new[] { (ushort)Math.Clamp(Math.Round(x), 0, 65535) }; break;
+            case DataType.Int16: w = new[] { unchecked((ushort)(short)Math.Clamp(Math.Round(x), short.MinValue, short.MaxValue)) }; break;
+            case DataType.Bool: w = new ushort[] { (ushort)(x != 0 ? 1 : 0) }; break;
+            case DataType.UInt32: { var u = (uint)Math.Clamp(Math.Round(x), 0, uint.MaxValue); w = new[] { (ushort)(u >> 16), (ushort)u }; break; }
+            case DataType.Int32: { var u = unchecked((uint)(int)Math.Clamp(Math.Round(x), int.MinValue, int.MaxValue)); w = new[] { (ushort)(u >> 16), (ushort)u }; break; }
+            case DataType.Float32: { var u = BitConverter.SingleToUInt32Bits((float)x); w = new[] { (ushort)(u >> 16), (ushort)u }; break; }
+            default: { var u = BitConverter.DoubleToUInt64Bits(x); w = new[] { (ushort)(u >> 48), (ushort)(u >> 32), (ushort)(u >> 16), (ushort)u }; break; }
+        }
+        if (swap && w.Length > 1) Array.Reverse(w);
+        return w;
+    }
+
+    double Decode(int addr, DataType t, bool swap)
+    {
+        var n = Words(t);
+        var w = new ushort[n];
+        for (var i = 0; i < n; i++) w[i] = addr + i < Size ? _regs[addr + i] : (ushort)0;
+        if (swap && n > 1) Array.Reverse(w);
+        switch (t)
+        {
+            case DataType.UInt16: case DataType.Bool: return w[0];
+            case DataType.Int16: return unchecked((short)w[0]);
+            case DataType.UInt32: return ((uint)w[0] << 16) | w[1];
+            case DataType.Int32: return unchecked((int)(((uint)w[0] << 16) | w[1]));
+            case DataType.Float32: { var f = BitConverter.UInt32BitsToSingle(((uint)w[0] << 16) | w[1]); return float.IsFinite(f) ? f : 0; }
+            default: { var d = BitConverter.UInt64BitsToDouble(((ulong)w[0] << 48) | ((ulong)w[1] << 32) | ((ulong)w[2] << 16) | w[3]); return double.IsFinite(d) ? d : 0; }
+        }
+    }
+
+    /// <summary>Ghi giá trị field vào các thanh ghi D đã gắn (khi đang giữ khoá).</summary>
+    void StoreLocked(string child, string field, double v)
+    {
+        if (!_maps.TryGetValue((child, field), out var m) || m.Addr < 0) return;
+        _meta.TryGetValue((child, field), out var mt);
+        var w = Encode(v * m.Scale, mt.Kind == null ? DataType.UInt16 : mt.Type, mt.WordSwap);
+        if (m.Addr + w.Length > Size) return;
+        for (var i = 0; i < w.Length; i++) _regs[m.Addr + i] = w[i];
+    }
+
+    (DataType Type, bool Swap) TypeOf((string, string) k) => _meta.TryGetValue(k, out var mt) && mt.Kind != null ? (mt.Type, mt.WordSwap) : (DataType.UInt16, false);
+
+    readonly Dictionary<(string, string), Meta> _meta = new();
+
+    public void SetMeta(string child, string field, Meta m) { lock (_gate) _meta[(child, field)] = m; }
+
+    public Meta? MetaOf(string child, string field) { lock (_gate) return _meta.TryGetValue((child, field), out var m) ? m : null; }
+
+    /// <summary>Thanh ghi D thuộc một luồng "chỉ đọc": gateway/HMI không được ghi vào.</summary>
+    bool ReadOnlyAddr(int a)
+    {
+        foreach (var (k, m) in _maps)
+            if (a >= m.Addr && a < m.Addr + Words(TypeOf(k).Type) && _meta.TryGetValue(k, out var mt) && mt.Access == Access.Read) return true;
+        return false;
+    }
+
     public ushort Get(int a) { lock (_gate) return a is >= 0 and < Size ? _regs[a] : (ushort)0; }
 
     public ushort[] Read(int a, int n)
@@ -39,14 +111,23 @@ public sealed class PlcModel
     public void Set(int a, ushort v, string origin)
     {
         if (a is < 0 or >= Size) return;
+        var denied = false;
         lock (_gate)
         {
+            if (origin == "gateway" && ReadOnlyAddr(a)) { denied = true; }
+            else
+            {
             if (_regs[a] == v) return;
             _regs[a] = v;
             if (origin == "gateway") ApplyRegisterRules(a, v);
             foreach (var (k, m) in _maps)                  // thanh ghi đổi → field thiết bị con tương ứng đổi theo
-                if (m.Addr == a && _children.TryGetValue(k.Item1, out var f)) f[k.Item2] = Math.Round(v / m.Scale, 3);
+            {
+                var (ty, sw) = TypeOf(k);
+                if (a >= m.Addr && a < m.Addr + Words(ty) && _children.TryGetValue(k.Item1, out var f)) f[k.Item2] = Math.Round(Decode(m.Addr, ty, sw) / m.Scale, 3);
+            }
+            }
         }
+        if (denied) { Changed?.Invoke($"D{a} bị từ chối: luồng chỉ đọc", "denied"); return; }
         Changed?.Invoke($"D{a} = {v}", origin);
     }
 
@@ -63,10 +144,14 @@ public sealed class PlcModel
         if (string.IsNullOrWhiteSpace(child) || string.IsNullOrWhiteSpace(field)) return;
         lock (_gate)
         {
+            if (origin == "gateway" && _meta.TryGetValue((child, field), out var mt) && mt.Access == Access.Read)
+            {
+                Changed?.Invoke($"d.{child}.{field} bị từ chối: luồng chỉ đọc", "denied");
+                return;
+            }
             if (!_children.TryGetValue(child, out var f)) _children[child] = f = new();
             f[field] = v;
-            if (_maps.TryGetValue((child, field), out var m) && m.Addr is >= 0 and < Size)
-                _regs[m.Addr] = (ushort)Math.Clamp(Math.Round(v * m.Scale), 0, 65535);   // scale ở đây = hệ số gateway chia (D = v × scale)
+            StoreLocked(child, field, v);   // hệ số = gateway chia (D = v × hệ số)
         }
         Changed?.Invoke($"d.{child}.{field} = {v.ToString(CultureInfo.InvariantCulture)}", origin);
     }
@@ -80,8 +165,7 @@ public sealed class PlcModel
             else
             {
                 _maps[(child, field)] = (addr, scale);
-                if (_children.TryGetValue(child, out var f) && f.TryGetValue(field, out var v))
-                    _regs[addr] = (ushort)Math.Clamp(Math.Round(v * scale), 0, 65535);
+                if (_children.TryGetValue(child, out var f) && f.TryGetValue(field, out var v)) StoreLocked(child, field, v);
             }
         }
     }
@@ -96,7 +180,7 @@ public sealed class PlcModel
     {
         lock (_gate)
         {
-            foreach (var (k, m) in _maps) if (m.Addr == addr) return $"{k.Item1}.{k.Item2}";
+            foreach (var (k, m) in _maps) if (addr >= m.Addr && addr < m.Addr + Words(TypeOf(k).Type)) return $"{k.Item1}.{k.Item2}";
             return null;
         }
     }
@@ -109,11 +193,12 @@ public sealed class PlcModel
             f.Remove(field);
             _maps.Remove((child, field));
             _modes.Remove((child, field));
+            _meta.Remove((child, field));
             if (f.Count == 0) _children.Remove(child);
         }
     }
 
-    public void ClearChildren() { lock (_gate) { _children.Clear(); _maps.Clear(); _modes.Clear(); } }
+    public void ClearChildren() { lock (_gate) { _children.Clear(); _maps.Clear(); _modes.Clear(); _meta.Clear(); } }
 
     public (string Child, string Field, double Value)[] Fields()
     {
@@ -153,8 +238,8 @@ public sealed class PlcModel
         return System.Text.Json.JsonSerializer.Serialize(o);
     }
 
-    // ---- cách sinh giá trị của từng field: cố định / ngẫu nhiên / sóng sin / tăng dần / mô phỏng bồn nước ----------
-    public enum FieldMode { Fixed, Random, Sim, Sine, Ramp }
+    // ---- cách sinh giá trị của từng field: cố định / ngẫu nhiên / sóng sin / tăng dần----------
+    public enum FieldMode { Fixed, Random, Sine, Ramp }
 
     /// <summary>Cài đặt sinh giá trị: khoảng Min–Max, chu kỳ sóng sin (giây), bước tăng mỗi giây (Ramp).</summary>
     public readonly record struct Gen(FieldMode Mode, double Min, double Max, double Period = 60, double Step = 1);
@@ -169,15 +254,10 @@ public sealed class PlcModel
         lock (_gate) _modes[(child, field)] = g;
     }
 
-    /// <summary>Chưa đặt: level/flow/hours chạy theo mô phỏng bồn khi có đủ level + speed; còn lại cố định.</summary>
+    /// <summary>Chưa đặt: cố định.</summary>
     public Gen ModeOf(string child, string field)
     {
-        lock (_gate)
-        {
-            if (_modes.TryGetValue((child, field), out var m)) return m;
-            var water = field is "level" or "flow" or "hours" && ChildWith("level") != null && ChildWith("speed") != null;
-            return new Gen(water ? FieldMode.Sim : FieldMode.Fixed, 0, 100);
-        }
+        lock (_gate) return _modes.TryGetValue((child, field), out var m) ? m : new Gen(FieldMode.Fixed, 0, 100);
     }
 
     /// <summary>Mỗi giây: sinh giá trị cho field ở chế độ Ngẫu nhiên / Sóng sin / Tăng dần.</summary>
@@ -189,7 +269,7 @@ public sealed class PlcModel
             _genT += 1;
             foreach (var ((c, f), g) in _modes.ToArray())
             {
-                if (g.Mode is FieldMode.Fixed or FieldMode.Sim || !_children.TryGetValue(c, out var fl) || !fl.TryGetValue(f, out var cur)) continue;
+                if (g.Mode == FieldMode.Fixed || !_children.TryGetValue(c, out var fl) || !fl.TryGetValue(f, out var cur)) continue;
                 double v;
                 switch (g.Mode)
                 {
@@ -209,8 +289,6 @@ public sealed class PlcModel
         if (changed) Changed?.Invoke("sim gen", "sim");
     }
 
-    // ---- mô phỏng bồn nước + bơm -----------------------------------------------------------------
-    double _waterT;
     readonly Random _rnd = new(7);
 
     /// <summary>Ghi giá trị field (và thanh ghi D đã gắn) khi đang giữ khoá.</summary>
@@ -218,49 +296,12 @@ public sealed class PlcModel
     {
         if (!_children.TryGetValue(child, out var f)) _children[child] = f = new();
         f[field] = v;
-        if (_maps.TryGetValue((child, field), out var m) && m.Addr is >= 0 and < Size)
-            _regs[m.Addr] = (ushort)Math.Clamp(Math.Round(v * m.Scale), 0, 65535);
-    }
-
-    string? ChildWith(string field)
-    {
-        foreach (var (cid, fields) in _children) if (fields.ContainsKey(field)) return cid;
-        return null;
-    }
-
-    /// <summary>
-    /// Bồn nước: nước vào dao động quanh 0,9 %/s, bơm hút ra theo tốc độ (0–100 % → tối đa 2,5 %/s) và chỉ chạy khi run = 1 (nếu có).
-    /// Cân bằng quanh tốc độ 35–45 %. Tốc độ bơm là field "speed" do webapp/gateway ghi; mức là field "level".
-    /// Chạy mỗi giây từ SimTick khi bật "Mô phỏng". Không có child có field level + speed thì không làm gì.
-    /// </summary>
-    public void WaterTick()
-    {
-        bool changed = false;
-        lock (_gate)
-        {
-            var tank = ChildWith("level"); var pump = ChildWith("speed");
-            if (tank == null || pump == null) return;
-            _waterT += 1;
-            var speed = Math.Clamp(_children[pump]["speed"], 0, 100);
-            var running = !_children[pump].TryGetValue("run", out var run) || run >= 1;
-            var eff = running ? speed : 0;
-            var level = _children[tank]["level"];
-            var inflow = 0.9 + 0.3 * Math.Sin(_waterT / 15.0) + (_rnd.NextDouble() - 0.5) * 0.1;
-            var outflow = level > 0.5 ? eff * 0.025 : 0;
-            level = Math.Round(Math.Clamp(level + inflow - outflow, 0, 100), 2);
-            bool Sim(string c, string f) => !_modes.TryGetValue((c, f), out var m) || m.Mode == FieldMode.Sim;   // đang giữ khoá: không gọi ModeOf
-            if (Sim(tank, "level")) PutLocked(tank, "level", level);
-            if (_children[pump].ContainsKey("flow") && Sim(pump, "flow")) PutLocked(pump, "flow", Math.Round(level > 0.5 ? eff * 0.8 : 0, 1));
-            if (_children[pump].TryGetValue("hours", out var h) && eff > 0 && Sim(pump, "hours")) PutLocked(pump, "hours", Math.Round(h + 1.0 / 3600, 3));
-            changed = true;
-        }
-        if (changed) Changed?.Invoke("sim water", "sim");
+        StoreLocked(child, field, v);
     }
 
     /// <summary>Mô phỏng băng tải đơn giản: đang chạy thì đếm sản phẩm, đủ D7 thì dừng.</summary>
     public void SimTick()
     {
-        WaterTick();
         GenTick();
         bool changed = false;
         lock (_gate)
