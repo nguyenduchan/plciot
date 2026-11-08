@@ -17,6 +17,36 @@ function isLoopback(ip) {
   return s === '127.0.0.1' || s === '::1';
 }
 
+/**
+ * Khoá TRANG admin + toàn bộ /api/admin: chỉ loopback (đường hầm SSH) hoặc IP trong ADMIN_ONLY_CIDRS vào được.
+ * Còn lại nhận 404 như thể trang không tồn tại. ADMIN_ONLY_CIDRS trống = không giới hạn (hành vi cũ).
+ * Đặt ADMIN_ONLY_CIDRS=127.0.0.1/32 để chỉ cho đường hầm SSH.
+ */
+const ADMIN_PATHS = new Set(['/admin.html', '/admin.js']);
+export function adminLocalOnly(req, res, next) {
+  const raw = String(process.env.ADMIN_ONLY_CIDRS || '').trim();
+  if (!raw) return next();
+  const p = req.path;
+  if (!ADMIN_PATHS.has(p) && p !== '/api/admin' && !p.startsWith('/api/admin/')) return next();
+  const ip = clientIp(req);
+  if (isLoopbackIp(ip) || isDirectLocal(req) || ipInCidrs(ip, raw.split(',').map((s) => s.trim()).filter(Boolean))) return next();
+  return res.status(404).type('text/plain').send('Not found');
+}
+
+/** Đường hầm SSH tới 127.0.0.1:3080 đi qua cầu Docker nên nguồn là IP riêng, nhưng KHÔNG có header của Cloudflare/proxy.
+ *  Mọi truy cập Internet đều qua Cloudflare Tunnel và luôn mang CF-Connecting-IP, nên không giả được trường hợp này từ ngoài
+ *  (cổng 3080 chỉ mở trên loopback của VPS). */
+export function isDirectLocal(req) {
+  if (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.headers['forwarded']) return false;
+  const remote = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  return ipInCidrs(remote, ['127.0.0.0/8', '172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16']);
+}
+
+function isLoopbackIp(ip) {
+  const s = String(ip || '').replace(/^::ffff:/, '');
+  return s === '127.0.0.1' || s === '::1';
+}
+
 export function adminOpsStrict() {
   return String(process.env.ADMIN_OPS_STRICT || 'false').toLowerCase() === 'true';
 }

@@ -2,6 +2,7 @@
  * API vận hành: gói subscribe, thiết bị IoT, thống kê DB.
  * Chỉ admin; ghi cần reauth (caller gắn middleware).
  */
+import { buildLicenseFile } from './gatewayKinds.js';
 import { publicUser } from './adminUsers.js';
 import { findUserById } from './db.js';
 import {
@@ -17,9 +18,11 @@ import {
   audit, clientIp,
   listHardwareDevices, provisionHardwareDevice, getHardwareDeviceQr,
   reissueHardwareDeviceQr, updateHardwareDeviceMeta, deleteHardwareDevice,
+  issueActivationCode, deriveDeviceKey, releaseGatewayHardware,
 } from '@plciot/security';
 import { attachGatewayBundle, bumpConfigRev, ensureMqttForHardware } from './gatewayEnroll.js';
 import { retentionInfo } from './retention.js';
+import { revokeDeviceBinding } from './sites.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
   listPolicyEvents, policyConfigPublic, peekRejectStats,
@@ -440,6 +443,13 @@ export function mountAdminOps(app, {
     if (uiMeta != null && typeof uiMeta === 'object' && uiMeta.configRev == null) {
       uiMeta = { ...uiMeta, configRev: 1 };
     }
+    // Mọi điều kiện: tem đã được dùng thì thu hồi (gỡ khỏi chủ cũ) rồi cấp QR mới, không bị kẹt site_taken
+    let revoked = null;
+    const prev = db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?')
+      .get(String(req.body?.site || '').trim(), String(req.body?.device || 'plc01').trim());
+    if (prev?.claimed_by) {
+      revoked = revokeDeviceBinding(db, String(req.body.site).trim(), String(req.body?.device || 'plc01').trim(), { ip: clientIp(req), adminId: req.user.id });
+    }
     const r = provisionHardwareDevice(db, {
       site: req.body?.site,
       device: req.body?.device,
@@ -454,7 +464,9 @@ export function mountAdminOps(app, {
       });
     }
     // Một lần nhập seed → tự cấp MQTT; gateway enroll bằng cùng QR (không copy pass tay)
-    sendHw(res, attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false }));
+    const out = attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false });
+    if (!out.error && revoked) out.revoked = revoked;
+    sendHw(res, out);
   });
 
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {
@@ -477,7 +489,54 @@ export function mountAdminOps(app, {
     sendHw(res, bundled);
   });
 
+  /** Thu hồi tem đã dùng + cấp QR mới (QR cũ, kit gateway cũ và mọi liên kết webapp đều mất hiệu lực). */
+  app.post('/api/admin/hardware/:site/:device/revoke', ...writeGate, (req, res) => {
+    const { site, device } = req.params;
+    const row = db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
+    if (!row) return sendHw(res, { error: 'not_found', status: 404 });
+    const revoked = revokeDeviceBinding(db, site, device, { ip: clientIp(req), adminId: req.user.id });
+    const r = reissueHardwareDeviceQr(db, { site, device, unclaim: true });
+    if (!r.error) {
+      audit(db, 'hardware_revoke', { userId: req.user.id, ip: clientIp(req), detail: `${site}/${device}` });
+    }
+    const out = attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false });
+    if (!out.error) out.revoked = revoked;
+    sendHw(res, out);
+  });
+
+  /** Kích hoạt gateway (kể cả offline): admin dán ID từ gateway → trả mã kích hoạt để nhập vào gateway. */
+  app.post('/api/admin/hardware/:site/:device/activate', ...writeGate, (req, res) => {
+    const { site, device } = req.params;
+    const r = issueActivationCode(db, {
+      site, device, request: req.body?.request, days: req.body?.days, force: Boolean(req.body?.force),
+      mode: req.body?.mode === 'license' ? 'license' : 'challenge',
+    });
+    if (!r.error) {
+      audit(db, 'hardware_activate', {
+        userId: req.user.id, ip: clientIp(req),
+        detail: `${site}/${device} hw=${r.hw.slice(0, 16)} lần=${r.activations}${r.rebound ? ' rebound' : ''}`,
+      });
+    }
+    sendHw(res, r.ok && r.mode === 'license' ? { ...r, licenseFile: buildLicenseFile(r, { site, device }) } : r);
+  });
+
+  /** Gỡ ràng buộc máy (gateway có internet đã gắn máy) để tem dùng cho máy khác. */
+  app.post('/api/admin/hardware/:site/:device/unbind', ...writeGate, (req, res) => {
+    const r = releaseGatewayHardware(db, req.params);
+    if (!r.error) audit(db, 'hardware_unbind', { userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}` });
+    sendHw(res, r);
+  });
+
+  /** Sản xuất: khoá riêng của máy (suy từ ID máy) để nạp vào gateway. Bí mật — không lưu, chỉ hiện cho admin. */
+  app.post('/api/admin/gateway-key', ...writeGate, (req, res) => {
+    const hw = String(req.body?.hw || '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+    if (!/^[0-9A-HJKMNP-TV-Z]{4,40}$/.test(hw)) return sendHw(res, { error: 'invalid_activation_request', status: 400 });
+    audit(db, 'gateway_key_issued', { userId: req.user.id, ip: clientIp(req), detail: `hw=${hw}` });
+    res.json({ ok: true, hw, key: deriveDeviceKey(hw) });
+  });
+
   app.post('/api/admin/hardware/:site/:device/reissue', ...writeGate, (req, res) => {
+    if (req.body?.unclaim) revokeDeviceBinding(db, req.params.site, req.params.device, { ip: clientIp(req), adminId: req.user.id });
     const r = reissueHardwareDeviceQr(db, {
       site: req.params.site,
       device: req.params.device,
@@ -518,6 +577,9 @@ export function mountAdminOps(app, {
   });
 
   app.delete('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
+    if (req.query?.force === '1' || req.body?.force) {
+      revokeDeviceBinding(db, req.params.site, req.params.device, { ip: clientIp(req), adminId: req.user.id });
+    }
     const r = deleteHardwareDevice(db, {
       site: req.params.site,
       device: req.params.device,

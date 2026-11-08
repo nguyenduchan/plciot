@@ -148,9 +148,16 @@ class DemoLink {
 /* ------------------------------------------------------------- commands */
 const pending = {};
 const pendDesc = {};
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2000);
+/** Thông báo nổi: lỗi (bad=true) đỏ, ở lại lâu hơn và có thể chạm để tắt; tin thường tự tắt sau vài giây. */
+function toast(msg, bad) {
+  const t = $('#toast');
+  t.textContent = (bad ? '✕  ' : '') + msg;
+  t.classList.toggle('err', Boolean(bad));
+  t.setAttribute('role', bad ? 'alert' : 'status');
+  t.classList.add('show');
+  t.onclick = () => t.classList.remove('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove('show'), (bad ? 6500 : 3000) + String(msg).length * 30);
 }
 function applyRole(role) {
   S.role = role || 'operator';
@@ -177,28 +184,28 @@ function applySubscription(sub) {
 const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
 const CTL_ERR = (e) => (e === 'cancelled' ? '' : window.Ctl.errText(e));
 function sendReg(a, v, desc) {
-  if (S.role === 'viewer') return toast('Tài khoản chỉ xem — không được điều khiển');
+  if (S.role === 'viewer') return toast('Tài khoản này chỉ được xem, không điều khiển được. Nhờ quản trị viên cấp quyền vận hành.', true);
   if (viaServer()) {
-    if (S.status !== 'online') return toast('Không có kết nối tới PLC');
+    if (S.status !== 'online') return toast('Chưa gửi được lệnh vì đang mất kết nối tới thiết bị. Kiểm tra mạng và nguồn thiết bị rồi thử lại.', true);
     const id = Date.now().toString(36);
     Ctl.send({ id, a, v }).then((r) => {
-      if (r.error) return CTL_ERR(r.error) && toast(CTL_ERR(r.error));
+      if (r.error) return CTL_ERR(r.error) && toast(`Lệnh chưa được gửi. ${CTL_ERR(r.error)}`, true);
       armPending(id, desc);
     });
     return;
   }
-  if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kênh không mã hoá (ws://) chỉ xem được. Dùng wss:// để điều khiển');
+  if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kết nối này không được mã hoá (ws://) nên chỉ xem được. Hãy dùng địa chỉ wss:// để điều khiển.', true);
   const id = Date.now().toString(36);
-  if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Không có kết nối tới PLC');
+  if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Chưa gửi được lệnh vì đang mất kết nối tới thiết bị. Kiểm tra mạng và nguồn thiết bị rồi thử lại.', true);
   armPending(id, desc);
 }
 /** Sau khi gửi: "Đã gửi, chờ PLC xác nhận…" → "PLC đã xác nhận" / "PLC từ chối" / "PLC không phản hồi"; mọi kết quả đều vào sự kiện gần nhất. */
 function armPending(id, desc) {
   pendDesc[id] = desc || '';
-  if (desc) toast('Đã gửi lệnh, chờ PLC xác nhận…');
+  if (desc) toast('Đã gửi lệnh, đang chờ thiết bị xác nhận…');
   pending[id] = setTimeout(() => {
     delete pending[id];
-    toast('PLC không phản hồi');
+    toast('Thiết bị không phản hồi sau 4 giây. Lệnh có thể chưa được thực hiện, hãy kiểm tra lại trạng thái.', true);
     if (pendDesc[id]) logEvent(`PLC không phản hồi: ${pendDesc[id]}`, 'warn');
     delete pendDesc[id];
   }, 4000);
@@ -256,7 +263,7 @@ function onAck(a) {
   if (!pending[a.id]) return;
   clearTimeout(pending[a.id]); delete pending[a.id];
   const d = pendDesc[a.id]; delete pendDesc[a.id];
-  toast(a.ok ? 'PLC đã xác nhận' + (d ? ': ' + d : '') : 'PLC từ chối lệnh');
+  toast(a.ok ? 'Thiết bị đã thực hiện' + (d ? ': ' + d : '') : 'Thiết bị từ chối lệnh (đang ở chế độ khác, ngoài phạm vi hoặc bị khoá). Lệnh chưa được thực hiện.', !a.ok);
   if (d) logEvent(a.ok ? d : `PLC từ chối: ${d}`, a.ok ? 'info' : 'warn');
 }
 
@@ -716,7 +723,7 @@ document.addEventListener('click', (e) => {   // machine control: same buttons o
 $('#cum-range').onclick = (e) => { if (e.target.dataset.h) { cumH = +e.target.dataset.h; LS.set('cumH', cumH); render(); } };
 $('#c-start').onclick = () => command('Chạy máy', R.RUN_REQ, 1, RUN_CF);
 $('#c-stop').onclick = () => command('Dừng máy', R.RUN_REQ, 0, STOP_CF);
-$('#c-set').onclick = () => { const v = parseInt($('#target').value || '0', 10); if (v >= 0 && v <= 65535) sendReg(R.TARGET, v); else toast('Giá trị 0–65535'); };
+$('#c-set').onclick = () => { const v = parseInt($('#target').value || '0', 10); if (v >= 0 && v <= 65535) sendReg(R.TARGET, v); else toast('Giá trị không hợp lệ. Hãy nhập số từ 0 đến 65535.', true); };
 $('#c-reset').onclick = () => { if (confirm('Xoá số đếm hiện tại về 0?')) sendReg(R.RESET, 1); };
 $('#save').onclick = () => {
   cfg.demo = $('#demo').checked;
@@ -738,22 +745,21 @@ $('#storage-clear').onclick = async () => {
   await DB.clearAll(); hist = []; showStorage(); toast('Đã xoá dữ liệu trên thiết bị');
 };
 $('#logout').onclick = async () => {
-  if (!confirm('Đăng xuất? Ứng dụng đã tải trên máy vẫn giữ lại đến khi bạn đăng nhập tài khoản khác.')) return;
+  // Hộp xác nhận trong trang (không dùng confirm() của trình duyệt: ở một số app/PWA nó bị chặn và nút "không làm gì")
+  if (!(await confirmAction('Đăng xuất?', 'Bạn sẽ phải đăng nhập lại để xem và điều khiển thiết bị.', 'Đăng xuất'))) return;
+  toast('Đang đăng xuất…');
   const session = LS.get('session', null);
+  // Gọi máy chủ tối đa 3 giây mỗi bước: mạng chậm/mất mạng vẫn đăng xuất được trên máy này, không bị treo.
+  const post = (path, headers) => Promise.race([
+    fetch(`${session.apiBase || location.origin}${path}`, { method: 'POST', headers, keepalive: true }).catch(() => {}),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]);
   try {
     if (session?.token) {
       const ctl = LS.get('ctl', null);
       // thu hồi phiên điều khiển phía server rồi mới đăng xuất
-      if (ctl?.token) {
-        await fetch(`${session.apiBase || location.origin}/api/control/lock`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session.token}`, 'X-Control-Token': ctl.token },
-        });
-      }
-      await fetch(`${session.apiBase || location.origin}/api/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.token}` },
-      });
+      if (ctl?.token) await post('/api/control/lock', { Authorization: `Bearer ${session.token}`, 'X-Control-Token': ctl.token });
+      await post('/api/logout', { Authorization: `Bearer ${session.token}` });
     }
   } catch {}
   LS.set('session', null);

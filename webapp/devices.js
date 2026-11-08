@@ -80,6 +80,16 @@
       return `<div class="dw ctlw ${c.critical ? 'crit' : ''}" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)} ${star}</div>
         <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? '● Bật' : '○ Tắt'}</button>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
+    if (w.kind === 'slider') {
+      // thanh trượt đặt giá trị (vd tốc độ bơm): thả tay mới gửi lệnh {child,key,v}, giá trị thật hiện qua telemetry
+      const min = Number(w.min ?? 0); const max = Number(w.max ?? 100); const step = Number(w.step ?? 1);
+      const n = Number(v);
+      const cur = Number.isFinite(n) ? n : min;
+      const lim = w.cmd?.limits;
+      return `<div class="dw ctlw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
+        <input type="range" class="dw-slider" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" min="${min}" max="${max}" step="${step}" value="${cur}" aria-label="${esc(w.label)}">
+        <div class="v"><output>${esc(show)}</output>${unit}</div>${lim ? `<div class="d muted dw-info">Giới hạn ${lim.min}–${lim.max}</div>` : ''}</div>`;
+    }
     if (w.kind === 'status' || w.kind === 'chip') {
       const on = Number(v) === 1 || v === true || (typeof v === 'number' && v > 0);
       return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
@@ -117,7 +127,7 @@
       b.onclick = async () => {
         if (!confirm('Gỡ thiết bị khỏi dashboard?')) return;
         const r = await api('DELETE', `/api/devices/${b.dataset.id}`);
-        if (!r.ok) return toast(r.data.error || 'Lỗi', true);
+        if (!r.ok) return toast(`Không gỡ được thiết bị. ${window.ErrText(r.data?.error, r.status)}`, true);
         await load();
       };
     });
@@ -128,9 +138,29 @@
         if (r.status === 401 && r.data?.error === 'step_up_required' && window.Ctl?.unlock && await window.Ctl.unlock(r.data)) {
           r = await api('POST', `/api/devices/${b.dataset.dev}/critical`, { key: b.dataset.key, critical: want });
         }
-        if (!r.ok) return toast({ locked_by_provisioning: 'Do tem đặt — không bỏ được.', step_up_required: 'Cần xác thực để bỏ đánh dấu.' }[r.data?.error] || r.data?.error || 'Lỗi', true);
+        if (!r.ok) return toast(`Chưa đổi được đánh dấu. ${window.ErrText(r.data?.error, r.status)}`, true);
         dashboard = r.data.dashboard; render();
         toast(want ? 'Đã đánh dấu lệnh nguy hiểm: mỗi lần sẽ phải xác nhận.' : 'Đã bỏ đánh dấu.');
+      };
+    });
+    host.querySelectorAll('.dw-slider').forEach((sl) => {
+      const out = sl.parentElement.querySelector('output');
+      sl.oninput = () => { if (out) out.textContent = sl.value; };
+      sl.onchange = () => {
+        const dev = dashboard.devices.find((x) => x.id === sl.dataset.dev);
+        const w = dev?.widgets?.find((x) => x.id === sl.dataset.wid);
+        if (!w?.cmd?.key || !window.Ctl?.send) return;
+        const prev = live[dev.childId]?.[w.bind];
+        const next = Number(sl.value);
+        live[dev.childId] = { ...live[dev.childId], [w.bind]: next };
+        sl.disabled = true;
+        window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next }).then((r) => {
+          if (r?.ok) return toast('Đã gửi lệnh tới thiết bị.');
+          live[dev.childId] = { ...live[dev.childId], [w.bind]: prev };
+          render();
+          if (r?.error === 'cancelled') return toast('Đã huỷ lệnh, thiết bị không thay đổi.');
+          toast(`Lệnh chưa được gửi, thiết bị không thay đổi. ${window.ErrText(r?.error || 'network', r?.status)}`, true);
+        }).finally(() => { sl.disabled = false; });
       };
     });
     host.querySelectorAll('.dw-toggle').forEach((b) => {
@@ -153,8 +183,8 @@
             if (r?.ok) return toast('Đã gửi lệnh tới thiết bị.');
             live[dev.childId] = { ...live[dev.childId], [w.bind]: prev };
             render();
-            const msg = { cancelled: 'Đã huỷ.', app_locked: 'Ứng dụng đang khoá.', session_expired: 'Phiên hết hạn — đăng nhập lại.', enroll_required: 'Cần bật vân tay / Authenticator trong tab Điều khiển.' }[r?.error] || r?.error || 'Gửi lệnh lỗi';
-            toast(msg, true);
+            if (r?.error === 'cancelled') return toast('Đã huỷ lệnh, thiết bị không thay đổi.');
+            toast(`Lệnh chưa được gửi, thiết bị không thay đổi. ${window.ErrText(r?.error || 'network', r?.status)}`, true);
           }).finally(() => { b.disabled = false; });
         } else {
           live[dev.childId] = { ...live[dev.childId], [w.bind]: next };
@@ -221,7 +251,7 @@
   function closeMyQr() { $('#mq').hidden = true; }
   async function copyMyQr() {
     const cur = myQrs()[mqIdx]; if (!cur) return;
-    try { await navigator.clipboard.writeText(cur.qr); toast('Đã sao chép mã QR.'); } catch { toast('Không sao chép được.', true); }
+    try { await navigator.clipboard.writeText(cur.qr); toast('Đã sao chép mã QR. Dán vào ô "Nhập mã thủ công" để thêm thiết bị.'); } catch { toast('Không sao chép được vì trình duyệt không cho phép. Hãy dùng "Lưu ảnh" thay thế.', true); }
   }
   function saveMyQr() {
     const cur = myQrs()[mqIdx]; if (!cur) return;
@@ -291,11 +321,11 @@
       const bmp = await createImageBitmap(file);
       const text = await decodeQr(bmp);
       if (bmp.close) bmp.close();
-      if (!text) return toast('Không đọc được mã QR trong ảnh.', true);
+      if (!text) return toast('Không tìm thấy mã QR trong ảnh. Hãy chọn ảnh rõ nét, thấy đủ cả mã, không bị cắt hoặc mờ.', true);
       stopCamera();
       gotQr(text);
     } catch (e) {
-      toast(e.message === 'no_decoder' ? 'Trình duyệt này chưa hỗ trợ đọc QR từ ảnh — hãy dán chuỗi QR.' : 'Không đọc được ảnh.', true);
+      toast(e.message === 'no_decoder' ? 'Trình duyệt này chưa hỗ trợ đọc QR từ ảnh. Hãy dùng "Nhập mã thủ công" và dán chuỗi QR.' : 'Không mở được ảnh này. Hãy chọn ảnh định dạng PNG hoặc JPG.', true);
     }
   }
 
@@ -313,13 +343,17 @@
   async function toggleCamera() {
     if (camStream) return stopCamera();
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast('Trình duyệt không hỗ trợ camera (cần HTTPS) — hãy nhập mã hoặc chọn ảnh QR.', true);
+      toast('Trình duyệt hoặc thiết bị này không dùng được camera (cần mở bằng HTTPS). Hãy chọn ảnh QR hoặc nhập mã thủ công.', true);
       return openModal(true);
     }
     try {
-      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      // QR tem dài (~240 ký tự) khá dày: xin khung 720p để jsQR đọc được khi QR nhỏ trong khung
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
     } catch {
-      toast('Không mở được camera — hãy cho phép quyền camera cho trang này, hoặc nhập mã.', true);
+      toast('Không mở được camera. Hãy bấm "Cho phép" khi trình duyệt hỏi quyền camera (hoặc bật lại trong cài đặt trang web), hoặc chọn ảnh QR / nhập mã thủ công.', true);
       return openModal(true);
     }
     const m = $('#dev-modal'); if (m) m.hidden = true;
@@ -339,7 +373,7 @@
       } catch (e) {
         if (e.message === 'no_decoder') {
           stopCamera();
-          toast('Trình duyệt này chưa hỗ trợ quét QR — hãy chọn ảnh hoặc dán chuỗi QR.', true);
+          toast('Trình duyệt này chưa hỗ trợ quét QR bằng camera. Hãy chọn ảnh QR hoặc nhập mã thủ công.', true);
           openModal(true);
         }
       } finally { busy = false; }
@@ -353,29 +387,62 @@
     $('#qs-torch').setAttribute('aria-label', torchOn ? 'Tắt đèn flash' : 'Bật đèn flash');
   }
 
+  // Lý do thất bại viết cho người dùng phổ thông (bảng dùng chung ở errors.js): chuyện gì xảy ra + nên làm gì.
+  function explainAddError(r) {
+    const s = session();
+    if (!s?.token || s.demo) {
+      return {
+        ok: false, title: 'Không thêm được thiết bị', code: 'unauthorized',
+        reason: 'Bạn đang ở chế độ dùng thử hoặc chưa đăng nhập nên chưa thể thêm thiết bị.',
+        hint: 'Đăng xuất, đăng nhập bằng tài khoản thật rồi thêm lại.',
+      };
+    }
+    const i = window.ErrInfo(r.data?.error, r.status);
+    return { ok: false, title: 'Không thêm được thiết bị', ...i };
+  }
+
+  /** Hộp kết quả giữa màn hình: giữ đến khi người dùng bấm, không tự tắt như toast. */
+  function showResult({ ok, title, reason, hint = '', code = '' }) {
+    const box = $('#qr-res'); if (!box) return toast(`${title}. ${reason}`, !ok);
+    box.className = `qr-res ${ok ? 'ok' : 'bad'}`;
+    $('#qr-res-icon').textContent = ok ? '✓' : '✕';
+    $('#qr-res-title').textContent = title;
+    $('#qr-res-reason').textContent = reason;
+    $('#qr-res-hint').textContent = hint;
+    $('#qr-res-code').textContent = !ok && code ? `Mã lỗi: ${code}` : '';
+    $('#qr-res-retry').hidden = ok;
+    $('#qr-res-close').textContent = ok ? 'Xong' : 'Đóng';
+    box.hidden = false;
+    $(ok ? '#qr-res-close' : '#qr-res-retry')?.focus();
+  }
+
+  function hideResult(retry) {
+    const box = $('#qr-res'); if (box) box.hidden = true;
+    if (retry) openModal(true);
+  }
+
   async function submitQr() {
     const qr = ($('#dev-qr')?.value || '').trim();
-    if (!qr) return toast('Dán chuỗi QR từ tem thiết bị.', true);
+    if (!qr) return toast('Chưa có mã QR. Hãy dán chuỗi mã in trên tem hoặc do quản trị viên cấp vào ô trống.', true);
     const btn = $('#dev-add-go');
     if (btn) btn.disabled = true;
     try {
-      const r = await api('POST', '/api/devices', { qr });
-      if (!r.ok) {
-        const err = {
-          unknown_profile: 'Tem chưa gắn loại thiết bị trên máy chủ.',
-          site_mismatch: 'Tem thuộc nhà máy khác.',
-          device_already_claimed: 'Tem đã có chủ khác.',
-          unknown_device: 'Tem chưa đăng ký trên máy chủ.',
-          invalid_claim_signature: 'Mã QR không xác thực được.',
-        }[r.data.error] || r.data.error || 'Không thêm được';
-        toast(err, true);
-        return openModal(true);
+      let r;
+      try {
+        r = await api('POST', '/api/devices', { qr });
+      } catch {
+        return showResult(explainAddError({ ok: false, data: { error: 'network' } }));
       }
+      if (!r.ok) return showResult(explainAddError(r));
       rememberQr(qr);
       closeModal();
       if ($('#dev-qr')) $('#dev-qr').value = '';
-      const n = r.data.added?.length || 0;
-      toast(n ? `Đã thêm ${n} thiết bị — giao diện tự dựng.` : 'Đã cập nhật.');
+      const added = r.data.added || [];
+      const fresh = added.filter((a) => !a.already);
+      const names = (fresh.length ? fresh : added).map((a) => TYPE_VI[a.type] || a.childId).join(', ');
+      showResult(fresh.length
+        ? { ok: true, title: 'Thêm thiết bị thành công', reason: `Đã thêm ${fresh.length} thiết bị: ${names}.`, hint: 'Dữ liệu sẽ hiện ngay ở màn hình Thiết bị.' }
+        : { ok: true, title: 'Thiết bị đã có sẵn', reason: added.length ? `Tài khoản của bạn đã có: ${names}.` : 'Không có thay đổi nào.', hint: 'Bạn không cần thêm lại.' });
       if (r.data.dashboard) {
         dashboard = r.data.dashboard;
         render();
@@ -439,10 +506,11 @@
     $('#dev-modal-close')?.addEventListener('click', closeModal);
     $('#dev-add-go')?.addEventListener('click', submitQr);
     $('#dev-scan')?.addEventListener('click', toggleCamera);
+    $('#qr-res-retry')?.addEventListener('click', () => hideResult(true));
+    $('#qr-res-close')?.addEventListener('click', () => hideResult(false));
     $('#qs-back')?.addEventListener('click', stopCamera);
     $('#qs-torch')?.addEventListener('click', toggleTorch);
     $('#qs-gallery')?.addEventListener('click', () => $('#dev-file')?.click());
-    $('#nav-qr')?.addEventListener('click', () => openModal());
     $('#qs-mine')?.addEventListener('click', openMyQr);
     $('#mq-back')?.addEventListener('click', closeMyQr);
     $('#mq-copy')?.addEventListener('click', copyMyQr);
@@ -452,6 +520,18 @@
     $('#dev-pick')?.addEventListener('click', () => $('#dev-file')?.click());
     $('#dev-file')?.addEventListener('change', (e) => { pickImage(e.target.files?.[0]); e.target.value = ''; });
     $('#dev-modal')?.addEventListener('click', (e) => { if (e.target.id === 'dev-modal') closeModal(); });
+    // Laptop: dán ảnh (Ctrl+V) hoặc kéo-thả ảnh QR vào màn quét / khung nhập mã
+    const scanOpen = () => !$('#qs')?.hidden || !$('#dev-modal')?.hidden;
+    const imgOf = (dt) => [...(dt?.files || [])].find((f) => f.type.startsWith('image/'));
+    document.addEventListener('paste', (e) => {
+      const f = scanOpen() && imgOf(e.clipboardData);
+      if (f) { e.preventDefault(); pickImage(f); }
+    });
+    document.addEventListener('dragover', (e) => { if (scanOpen()) e.preventDefault(); });
+    document.addEventListener('drop', (e) => {
+      const f = scanOpen() && imgOf(e.dataTransfer);
+      if (f) { e.preventDefault(); pickImage(f); }
+    });
     load();
   });
 }());

@@ -8,12 +8,18 @@
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="style.css">
 <style>
-body{padding:16px;max-width:760px;margin:auto}
+body{padding:24px 40px;max-width:1700px;margin:auto}
+.cols{display:grid;grid-template-columns:minmax(420px,5fr) minmax(560px,7fr);gap:20px;align-items:start}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.col>.panel{margin:0!important}
+.hw-grid{display:grid}
+@media(max-width:1000px){body{padding:16px;max-width:760px}.cols{grid-template-columns:1fr}}
 .top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
 .top h1{font-size:20px;margin:0}
 .top a{color:var(--acc);text-decoration:none;font-weight:600}
 .u{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
 .u:last-child{border:0}
+@media(min-width:1400px){#list{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}}
 .u b{font-size:15px}
 .u small{color:var(--mut);display:block;font-size:12.5px}
 .u .acts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
@@ -45,6 +51,8 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <div class="top"><h1>Quản trị</h1><div style="display:flex;gap:12px"><a href="console.html">Bảng điều khiển IoT</a><a href="index.html">← Về ứng dụng</a></div></div>
 <p id="msg"></p>
 
+<div class="cols">
+<div class="col">
 <div class="panel form" style="max-width:none;margin-bottom:14px">
   <h2>Thêm thiết bị (QR in tem)</h2>
   <p class="help">Nhập <b>một lần</b> tại đây (site / mã tem / seed). Server tự cấp MQTT. Gateway MCU/C# gọi <code>POST /api/v1/gateway/enroll</code> với cùng QR — không hard-code broker/pass/danh sách con. User điện thoại vẫn quét QR để claim.</p>
@@ -68,12 +76,75 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 
   <div class="row" style="margin-top:12px"><button id="hw-add" class="primary">Thêm &amp; tạo QR</button></div>
 </div>
-
+<div class="panel form" style="max-width:none;margin-bottom:14px">
+  <h2>Kích hoạt gateway</h2>
+  <p class="help"><b>Có internet (phổ biến):</b> không cần làm gì ở đây. Gateway gửi ID máy khi nạp cấu hình (<code>enroll</code> kèm <code>hw</code>); server tự gắn tem với máy đó ở lần đầu, máy khác dùng lại tem sẽ bị từ chối. Muốn chuyển sang máy mới: bấm "Gỡ máy đã gắn" ở danh sách thiết bị bên dưới.<br>
+  <b>Không internet (chỉ có mạng LAN):</b> gateway có ô nhập khoá như phần mềm thông thường. Chọn thiết bị, nhập ID máy, bấm tạo — gửi <b>khoá 20 ký tự</b> cho khách gõ vào. Khoá chỉ đúng cho máy có ID đó.</p>
+  <label>Thiết bị<select id="act-dev" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select></label>
+  <label>Kiểu khoá
+    <select id="act-mode" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px">
+      <option value="license" selected>Khoá bản quyền — chỉ cần ID máy (như phần mềm thông thường)</option>
+      <option value="challenge">Theo thử thách — gateway hiện mã yêu cầu, mỗi mã dùng một lần (chặt hơn)</option>
+    </select>
+  </label>
+  <label id="act-req-label">ID máy của gateway<input id="act-req" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="GW7K2M9X"></label>
+  <label>Thời hạn
+    <select id="act-days" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px">
+      <option value="0">Không hết hạn</option>
+      <option value="365">1 năm</option>
+      <option value="90">90 ngày</option>
+      <option value="30">30 ngày</option>
+    </select>
+  </label>
+  <div class="row" style="margin-top:12px"><button id="act-go" class="primary">Tạo mã kích hoạt</button></div>
+  <div id="act-out" hidden style="margin-top:12px">
+    <label>Khoá kích hoạt — gõ vào gateway<input id="act-code" readonly spellcheck="false" style="font:600 22px/1.4 ui-monospace,Consolas,monospace;letter-spacing:2px;text-align:center"></label>
+    <div class="row" style="margin-top:8px"><button id="act-copy">Sao chép mã</button><button id="act-lic" type="button" hidden>Tải file giấy phép (gateway PC)</button></div>
+  </div>
+  <details style="margin-top:14px"><summary>Sản xuất: lấy khoá nạp cho máy mới</summary>
+    <p class="help">Mỗi gateway cần một khoá riêng, nạp vào chip lúc sản xuất (không để lộ). Nhập ID máy (4–40 chữ và số) rồi lấy khoá; bấm "Tạo ID mới" nếu chưa có.</p>
+    <label>ID máy<input id="gk-hw" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="GW7K2M9X"></label>
+    <div class="row" style="margin-top:8px"><button id="gk-new" type="button">Tạo ID mới</button><button id="gk-go" type="button" class="primary">Lấy khoá nạp</button><button id="gk-file" type="button" hidden>Tải file khoá cho khách</button></div>
+    <label style="margin-top:8px">Khoá riêng của máy (bí mật)<input id="gk-key" readonly spellcheck="false" style="font-family:ui-monospace,Consolas,monospace;font-size:12px"></label>
+  </details>
+</div>
+<div class="panel form" style="max-width:none;margin-bottom:14px">
+  <h2>Token cho tool nạp gateway</h2>
+  <p class="help">Tool <b>GatewayProvisioner</b> trên PC sản xuất dùng token này để gọi VPS. Token chỉ hiện <b>một lần</b> khi tạo — hãy chép ngay vào tool. Mất máy hoặc nghỉ việc thì thu hồi token tại đây.</p>
+  <div class="row"><input id="ft-label" autocomplete="off" placeholder="Tên PC / người dùng, ví dụ: PC xưởng 1"><button id="ft-add" class="primary fit">Tạo token</button></div>
+  <label id="ft-out" hidden style="margin-top:10px">Token mới (chỉ hiện một lần)<input id="ft-token" readonly spellcheck="false" style="font-family:ui-monospace,Consolas,monospace;font-size:12px"></label>
+  <div id="ft-list" style="margin-top:10px"></div>
+</div>
+<div class="panel form" style="max-width:none;margin-bottom:14px">
+  <h2>Thêm người dùng (tuỳ chọn)</h2>
+  <p class="help">Thường user tự tạo bằng quét QR thiết bị. Form này chỉ tạo sẵn tài khoản gắn site (không SĐT/Telegram).</p>
+  <label>Tên đăng nhập (để trống = tự sinh)<input id="n-phone" autocomplete="off" placeholder="u_operator1"></label>
+  <label>Vai trò
+    <select id="n-role" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
+  </label>
+  <label>Mã nhà máy (site)<input id="n-site" autocapitalize="off" autocomplete="off" placeholder="factory1"></label>
+  <label>Mã thiết bị<input id="n-dev" value="plc01" autocapitalize="off" autocomplete="off"></label>
+  <div class="help" style="margin:0">Được xem (monitor)</div>
+  <div id="n-scopes" class="scopes" style="margin-bottom:14px"></div>
+  <div class="row"><button id="n-add" class="primary">Thêm người dùng</button></div>
+</div>
+</div>
+<div class="col">
+<div class="panel" id="dup-panel" style="max-width:none;margin-bottom:14px" hidden>
+  <h2>⚠ Nghi gateway bị chép (hai máy cùng ID)</h2>
+  <p class="help">Thiết bị liên tục đổi trạng thái online/offline: thường do hai máy cùng dùng một tài khoản MQTT. Kiểm tra máy, nếu đúng thì dùng "Thu hồi &amp; cấp QR mới".</p>
+  <div id="dup-list"></div>
+</div>
 <div class="panel" style="max-width:none;margin-bottom:14px">
   <h2>Thiết bị đã đăng ký (<span id="hw-count">0</span>)</h2>
   <div id="hw-list">Đang tải…</div>
 </div>
-
+<div class="panel" style="max-width:none">
+  <h2>Danh sách (<span id="count">0</span>)</h2>
+  <div id="list">Đang tải…</div>
+</div>
+</div>
+</div>
 <div id="qr-modal" role="dialog" aria-modal="true">
   <div id="qr-sheet">
     <h2 id="qr-title" style="margin:0 0 4px;font-size:18px">Tem thiết bị</h2>
@@ -90,25 +161,7 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
     </div>
   </div>
 </div>
-
-<div class="panel form" style="max-width:none;margin-bottom:14px">
-  <h2>Thêm người dùng (tuỳ chọn)</h2>
-  <p class="help">Thường user tự tạo bằng quét QR thiết bị. Form này chỉ tạo sẵn tài khoản gắn site (không SĐT/Telegram).</p>
-  <label>Tên đăng nhập (để trống = tự sinh)<input id="n-phone" autocomplete="off" placeholder="u_operator1"></label>
-  <label>Vai trò
-    <select id="n-role" style="display:block;width:100%;margin-top:6px;padding:13px;border-radius:12px"></select>
-  </label>
-  <label>Mã nhà máy (site)<input id="n-site" autocapitalize="off" autocomplete="off" placeholder="factory1"></label>
-  <label>Mã thiết bị<input id="n-dev" value="plc01" autocapitalize="off" autocomplete="off"></label>
-  <div class="help" style="margin:0">Được xem (monitor)</div>
-  <div id="n-scopes" class="scopes" style="margin-bottom:14px"></div>
-  <div class="row"><button id="n-add" class="primary">Thêm người dùng</button></div>
-</div>
-
-<div class="panel" style="max-width:none">
-  <h2>Danh sách (<span id="count">0</span>)</h2>
-  <div id="list">Đang tải…</div>
-</div>
+<script src="errors.js"></script>
 <script src="vendor/qrcode-generator.js"></script>
 <script src="vendor/qr-canvas.js"></script>
 <script src="security/session.js"></script>

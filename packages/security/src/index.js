@@ -42,6 +42,7 @@ export {
   encodeClaimQr, decodeClaimQr, signClaimPayload, verifyClaimSignature, identitySubject,
   listHardwareDevices, getHardwareDeviceQr, reissueHardwareDeviceQr,
   updateHardwareDeviceMeta, deleteHardwareDevice, hashClaimSecret,
+  issueActivationCode, verifyActivationCode, verifyLicenseKey, bindGatewayHardware, releaseGatewayHardware, parseHardwareId, parseActivationRequest, deriveDeviceKey,
 } from './deviceClaim.js';
 export {
   PRIVACY_NOTICE_VERSION, privacyPublicConfig, requirePrivacyConsent, recordPrivacyConsent,

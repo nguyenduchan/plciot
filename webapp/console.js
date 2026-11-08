@@ -77,7 +77,7 @@
       try { localStorage.removeItem('ctl'); } catch {}
       if (await window.Ctl.unlock(data)) return api(path, method, body, true);
     }
-    if (!r.ok) throw new Error(ERR[data.error] || data.error || `Lỗi ${r.status}`);
+    if (!r.ok) throw new Error(ERR[data.error] || (window.ErrText ? window.ErrText(data.error, r.status) : (data.error || `Lỗi ${r.status}`)));
     return data;
   }
 

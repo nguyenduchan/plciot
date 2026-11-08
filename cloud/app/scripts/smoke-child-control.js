@@ -52,6 +52,9 @@ ok(validateChildCmd({ child: 'pump1', key: 'run', v: 5 }, nodes()).error === 'va
 ok(validateChildCmd({ child: 'relay1', key: 'on', v: 1 }, nodes()).error === 'value_out_of_range', 'giới hạn tem hẹp hơn nút: v=1 bị từ chối');
 ok(validateChildCmd({ child: 'relay1', key: 'on', v: 0 }, nodes()).cmd, 'v=0 trong giới hạn được nhận');
 ok(validateChildCmd({ child: 'env1', key: 't', v: 1 }, nodes()).error === 'bad_command', 'cảm biến không có nút điều khiển');
+ok(validateChildCmd({ child: 'pump1', key: 'speed', v: 55 }, nodes()).cmd?.v === 55, 'thanh trượt tốc độ bơm nhận số trong 0–100');
+ok(validateChildCmd({ child: 'pump1', key: 'speed', v: 150 }, nodes()).error === 'value_out_of_range', 'tốc độ ngoài khoảng bị từ chối');
+ok(validateChildCmd({ child: 'pump1', key: 'speed', v: 'abc' }, nodes()).error === 'value_out_of_range', 'tốc độ không phải số bị từ chối');
 
 // dấu sao của người dùng
 let r = setCriticalKey(db, user, 'ud2', 'on', true);

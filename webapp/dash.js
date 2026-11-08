@@ -205,7 +205,7 @@ const Dash = (() => {
       save('﻿' + [head, ...rows].join('\n'), `plc-${cfg.site}-${cfg.dev}.csv`, 'text/csv');
     } else if (id === 'db-rs') {
       const f = document.createElement('input'); f.type = 'file'; f.accept = '.json,application/json';
-      f.onchange = async () => { try { const n = await DB.importAll(JSON.parse(await f.files[0].text())); toast(`Đã khôi phục ${n} bản ghi`); refresh(true); } catch (err) { toast(err.message || 'Không đọc được tệp'); } };
+      f.onchange = async () => { try { const n = await DB.importAll(JSON.parse(await f.files[0].text())); toast(`Đã khôi phục ${n} bản ghi`); refresh(true); } catch (err) { toast('Không đọc được tệp sao lưu. Hãy chọn đúng tệp .json đã xuất từ ứng dụng này.', true); } };
       f.click();
     } else if (id === 'db-keep') DB.persist().then((r) => toast(r === true ? 'Đã yêu cầu giữ dữ liệu bền vững' : r === false ? 'Trình duyệt chưa cho phép; hãy cài app vào Màn hình chính' : 'Trình duyệt không hỗ trợ'));
     else if (id === 'db-clr' && confirm('Xoá toàn bộ lịch sử lưu trên thiết bị này? (Không ảnh hưởng PLC)')) {

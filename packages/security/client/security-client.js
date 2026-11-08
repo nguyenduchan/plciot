@@ -79,7 +79,7 @@
     privacy_version_mismatch: 'Thông báo bảo vệ dữ liệu đã cập nhật. Tải lại trang rồi đồng ý phiên bản mới.',
     last_admin: 'Không thể xoá admin cuối cùng của hệ thống.',
   };
-  const errText = (e) => ERR[e] || e || 'Lỗi';
+  const errText = (e) => ERR[e] || (window.ErrText ? window.ErrText(e) : (e || 'Lỗi'));
   /** App thêm thông báo lỗi riêng (vd. lệnh PLC) mà không sửa lõi. */
   const addErrors = (m) => Object.assign(ERR, m);
   const dbg = (action, message, detail, level) => {

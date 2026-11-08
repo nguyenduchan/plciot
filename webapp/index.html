@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
 <link rel="stylesheet" href="style.css">
+<script src="errors.js"></script>
 <script src="security/session.js"></script>
 <script src="security/boot.js"></script>
 </head>
@@ -26,7 +27,6 @@
     <button data-tab="dash" class="on"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span>Tổng quan</span></button>
     <button data-tab="conv"><svg viewBox="0 0 24 24"><rect x="2" y="12" width="20" height="6" rx="3"/><circle cx="6" cy="15" r="1"/><circle cx="18" cy="15" r="1"/><rect x="6" y="6" width="5" height="5" rx="1"/><rect x="13" y="7" width="4" height="4" rx="1"/></svg><span>Băng tải</span></button>
     <button data-tab="ctrl"><svg viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16"/><circle cx="5" cy="9" r="2" class="f"/><circle cx="12" cy="15" r="2" class="f"/><circle cx="19" cy="8" r="2" class="f"/></svg><span>Điều khiển</span></button>
-    <button id="nav-qr" class="nav-qr" type="button" aria-label="Quét mã QR"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"/></svg></button>
     <button data-tab="rep"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Báo cáo</span></button>
     <button data-tab="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Cài đặt</span></button>
   </nav>
@@ -45,7 +45,7 @@
         <div class="panel span phone-flush" id="dev-panel">
           <div class="dev-head">
             <h2>Thiết bị</h2>
-            <button type="button" id="dev-add" class="primary">+ Thêm</button>
+            <button type="button" id="dev-add" class="primary dev-add-btn" aria-label="Thêm thiết bị bằng mã QR"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"/></svg><span>Thêm</span></button>
           </div>
           <div id="dev-grid" class="dev-grid"></div>
         </div>
@@ -230,6 +230,19 @@
 </div>
 
 <!-- Màn quét QR toàn màn hình (kiểu VCB Digibank) -->
+<div id="qr-res" class="qr-res" hidden role="alertdialog" aria-live="assertive" aria-labelledby="qr-res-title">
+  <div class="qr-res-card">
+    <div id="qr-res-icon" class="qr-res-icon" aria-hidden="true"></div>
+    <h2 id="qr-res-title"></h2>
+    <p id="qr-res-reason" class="qr-res-reason"></p>
+    <p id="qr-res-hint" class="qr-res-hint"></p>
+    <p id="qr-res-code" class="qr-res-code"></p>
+    <div class="qr-res-actions">
+      <button type="button" id="qr-res-retry" class="primary">Thử lại</button>
+      <button type="button" id="qr-res-close">Đóng</button>
+    </div>
+  </div>
+</div>
 <div id="qs" class="qs" hidden role="dialog" aria-label="Quét mã QR">
   <video id="qs-video" playsinline muted></video>
   <div class="qs-top">

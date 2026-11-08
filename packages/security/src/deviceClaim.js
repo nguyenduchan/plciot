@@ -150,6 +150,9 @@ export function provisionHardwareDevice(db, {
       ui_meta = COALESCE(excluded.ui_meta, hardware_devices.ui_meta),
       claimed_by = NULL,
       claimed_at = NULL,
+      activated_hw = NULL,
+      activated_at = NULL,
+      activations = 0,
       created_at = excluded.created_at
   `).run(s, d, hashClaimSecret(secret), sealed, lab || null, nt || null, prof || null, metaJson, now);
 
@@ -162,6 +165,7 @@ export function provisionHardwareDevice(db, {
 export function listHardwareDevices(db) {
   const rows = db.prepare(`
     SELECT h.site, h.device, h.label, h.note, h.profile, h.ui_meta, h.claimed_by, h.claimed_at, h.created_at,
+           h.activated_hw, h.activated_at, h.activations,
            u.username AS claimed_username
     FROM hardware_devices h
     LEFT JOIN users u ON u.id = h.claimed_by
@@ -178,8 +182,185 @@ export function listHardwareDevices(db) {
     claimedBy: r.claimed_by || null,
     claimedUsername: r.claimed_username || null,
     claimedAt: r.claimed_at || null,
+    activated: Boolean(r.activated_hw),
+    activatedHw: r.activated_hw || null,
+    activatedAt: r.activated_at || null,
+    activations: r.activations || 0,
     createdAt: r.created_at,
   }));
+}
+
+/* ---------- Kích hoạt gateway offline bằng mã gõ tay (thử thách – đáp trả) ----------
+ * Gateway có khoá riêng của máy K_dev (nạp lúc sản xuất, cất trong chip/eFuse).
+ * K_dev = HMAC-SHA256(master, "plciot-act-key|" + HW) — server suy ra lại bất cứ lúc nào, không lưu.
+ *  1. Gateway hiển thị YÊU CẦU = HW + NONCE (nonce 8 ký tự ngẫu nhiên mỗi lần).
+ *  2. Admin dán yêu cầu → server trả MÃ 20 ký tự: EXP(3) + MAC(16) + CHECK(1), hiển thị nhóm 5.
+ *     MAC = 80 bit đầu của HMAC-SHA256(K_dev, "act2|HW|NONCE|EXP").
+ *  3. Gateway gõ mã, tự tính lại bằng K_dev → khớp là kích hoạt. Hoàn toàn offline.
+ * Mã gắn với NONCE đang hiển thị nên không dùng lại được; chép sang máy khác thì phải xin admin mã mới
+ * (mọi lần cấp đều qua admin → đếm được, phát hiện clone).
+ */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford, bỏ I L O U
+const ACT_EPOCH_DAYS = 18262; // 2020-01-01 tính theo ngày kể từ 1970
+
+function b32encode(buf) {
+  let bits = 0; let acc = 0; let out = '';
+  for (const byte of buf) {
+    acc = (acc << 8) | byte; bits += 8;
+    while (bits >= 5) { out += B32[(acc >> (bits - 5)) & 31]; bits -= 5; }
+    acc &= (1 << bits) - 1;
+  }
+  if (bits > 0) out += B32[(acc << (5 - bits)) & 31];
+  return out;
+}
+
+/** Chuẩn hoá chuỗi gõ tay: hoa, bỏ khoảng trắng/gạch, O→0, I/L→1. */
+function normalizeCode(raw) {
+  return String(raw || '').toUpperCase().replace(/[\s\-_.]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+}
+
+const b32check = (s) => {
+  let sum = 0;
+  for (let i = 0; i < s.length; i += 1) sum += B32.indexOf(s[i]) * (i + 1);
+  return B32[sum % 32];
+};
+
+function activationMaster() {
+  return process.env.ACTIVATION_MASTER_KEY || `fallback:${rawSecret()}`;
+}
+
+/** Khoá riêng của máy (hex). Dùng khi sản xuất để nạp vào gateway. */
+export function deriveDeviceKey(hw) {
+  return crypto.createHmac('sha256', activationMaster()).update(`plciot-act-key|${hw}`).digest('hex');
+}
+
+/** Tách yêu cầu từ gateway: 8 ký tự cuối là nonce, phần trước là ID máy (4–40 ký tự). */
+export function parseActivationRequest(raw) {
+  const s = normalizeCode(raw);
+  if (!/^[0-9A-HJKMNP-TV-Z]{12,48}$/.test(s)) return null;
+  return { hw: s.slice(0, -8), nonce: s.slice(-8) };
+}
+
+function activationMac(deviceKeyHex, hw, nonce, expChars) {
+  return b32encode(
+    crypto.createHmac('sha256', Buffer.from(deviceKeyHex, 'hex'))
+      .update(`act2|${hw}|${nonce}|${expChars}`).digest().subarray(0, 10),
+  );
+}
+
+const groupCode = (s) => s.match(/.{1,5}/g).join('-');
+
+/** ID máy đứng một mình (chế độ khoá bản quyền): 4–40 ký tự Crockford. */
+export function parseHardwareId(raw) {
+  const s = normalizeCode(raw);
+  return /^[0-9A-HJKMNP-TV-Z]{4,40}$/.test(s) ? s : null;
+}
+
+const licenseMac = (deviceKeyHex, hw, expChars) => b32encode(
+  crypto.createHmac('sha256', Buffer.from(deviceKeyHex, 'hex'))
+    .update(`lic1|${hw}|${expChars}`).digest().subarray(0, 10),
+);
+
+const expCharsOf = (days) => {
+  const n = Math.max(0, Math.min(3650, Math.floor(Number(days) || 0)));
+  const expDay = n ? Math.floor(Date.now() / 86400000) + n - ACT_EPOCH_DAYS : 0;
+  return { expDay, expChars: B32[(expDay >> 10) & 31] + B32[(expDay >> 5) & 31] + B32[expDay & 31] };
+};
+
+/**
+ * Cấp mã kích hoạt offline.
+ *  mode 'license'   : khoá bản quyền như phần mềm thường — chỉ cần ID máy (in trên tem / hiện trên màn hình),
+ *                     không cần máy hiện mã thử thách. Mã gắn ID máy + hạn dùng.
+ *  mode 'challenge' : gateway hiện ID+nonce, mã chỉ dùng được một lần cho đúng nonce đó (chặt hơn).
+ */
+export function issueActivationCode(db, {
+  site, device, request, days = 0, force = false, mode = 'challenge',
+}) {
+  const s = String(site || '').trim();
+  const d = String(device || '').trim();
+  const lic = mode === 'license';
+  const hwOnly = lic ? parseHardwareId(request) : null;
+  const req = lic ? (hwOnly && { hw: hwOnly, nonce: null }) : parseActivationRequest(request);
+  if (!req) return { error: 'invalid_activation_request', status: 400 };
+  const row = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(s, d);
+  if (!row) return { error: 'not_found', status: 404 };
+  const same = row.activated_hw === req.hw;
+  if (row.activated_hw && !same && !force) return { error: 'device_already_activated', status: 409 };
+  const { expDay, expChars } = expCharsOf(days);
+  const key = deriveDeviceKey(req.hw);
+  const mac = lic ? licenseMac(key, req.hw, expChars) : activationMac(key, req.hw, req.nonce, expChars);
+  const body = expChars + mac;
+  const code = groupCode(body + b32check(body));
+  const count = same ? (row.activations || 0) + 1 : 1;
+  db.prepare('UPDATE hardware_devices SET activated_hw = ?, activated_at = ?, activations = ? WHERE site = ? AND device = ?')
+    .run(req.hw, Date.now(), count, s, d);
+  return {
+    ok: true, site: s, device: d, hw: req.hw, nonce: req.nonce, code, mode: lic ? 'license' : 'challenge',
+    exp: expDay ? (expDay + ACT_EPOCH_DAYS + 1) * 86400 : 0,
+    activations: count,
+    rebound: Boolean(row.activated_hw && !same),
+  };
+}
+
+/**
+ * Gateway CÓ internet: gắn máy ngay lần enroll đầu (người đầu tiên thắng).
+ * Cùng hw → ok; hw khác → 409 cho tới khi admin gỡ ràng buộc. Không gửi hw → không ràng buộc (tương thích cũ).
+ */
+export function bindGatewayHardware(db, { site, device, hw, required = false }) {
+  const given = hw != null && hw !== '';
+  const id = given ? parseHardwareId(hw) : null;
+  if (given && !id) return { error: 'invalid_hw', status: 400 };
+  if (!id) return required ? { error: 'hw_required', status: 400 } : { ok: true, bound: false };
+  const row = db.prepare('SELECT activated_hw FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
+  if (!row) return { error: 'unknown_device', status: 404 };
+  if (row.activated_hw && row.activated_hw !== id) return { error: 'device_already_activated', status: 409 };
+  if (!row.activated_hw) {
+    db.prepare('UPDATE hardware_devices SET activated_hw = ?, activated_at = ?, activations = 1 WHERE site = ? AND device = ?')
+      .run(id, Date.now(), site, device);
+    return { ok: true, bound: true, first: true };
+  }
+  return { ok: true, bound: true, first: false };
+}
+
+/** Admin gỡ ràng buộc máy (chuyển sang máy khác), không đổi QR/MQTT. */
+export function releaseGatewayHardware(db, { site, device }) {
+  const r = db.prepare('UPDATE hardware_devices SET activated_hw = NULL, activated_at = NULL WHERE site = ? AND device = ?')
+    .run(String(site || '').trim(), String(device || '').trim());
+  return r.changes ? { ok: true } : { error: 'not_found', status: 404 };
+}
+
+/**
+ * Phía gateway (tham chiếu / test): kiểm mã với hw, nonce đang hiển thị và khoá riêng của máy.
+ * Trả error: activation_typo (gõ sai ký tự) | activation_wrong_device (sai mã/nonce/máy) | activation_expired.
+ */
+export function verifyActivationCode(code, { hw, nonce, deviceKey }, nowSec = Math.floor(Date.now() / 1000)) {
+  const s = normalizeCode(code);
+  if (!/^[0-9A-HJKMNP-TV-Z]{20}$/.test(s)) return { error: 'activation_typo' };
+  const body = s.slice(0, 19);
+  if (b32check(body) !== s[19]) return { error: 'activation_typo' };
+  const expChars = body.slice(0, 3);
+  const want = activationMac(deviceKey, normalizeCode(hw), normalizeCode(nonce), expChars);
+  const a = Buffer.from(want); const b = Buffer.from(body.slice(3));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return { error: 'activation_wrong_device' };
+  const v = B32.indexOf(expChars[0]) * 1024 + B32.indexOf(expChars[1]) * 32 + B32.indexOf(expChars[2]);
+  const expDay = v;
+  if (expDay && Math.floor(nowSec / 86400) > expDay + ACT_EPOCH_DAYS) return { error: 'activation_expired' };
+  return { ok: true, expDay: expDay || 0 };
+}
+
+/** Phía gateway (tham chiếu): kiểm khoá bản quyền theo ID máy + khoá riêng, không cần nonce. */
+export function verifyLicenseKey(code, { hw, deviceKey }, nowSec = Math.floor(Date.now() / 1000)) {
+  const s = normalizeCode(code);
+  if (!/^[0-9A-HJKMNP-TV-Z]{20}$/.test(s)) return { error: 'activation_typo' };
+  const body = s.slice(0, 19);
+  if (b32check(body) !== s[19]) return { error: 'activation_typo' };
+  const expChars = body.slice(0, 3);
+  const a = Buffer.from(licenseMac(deviceKey, normalizeCode(hw), expChars));
+  const b = Buffer.from(body.slice(3));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return { error: 'activation_wrong_device' };
+  const expDay = B32.indexOf(expChars[0]) * 1024 + B32.indexOf(expChars[1]) * 32 + B32.indexOf(expChars[2]);
+  if (expDay && Math.floor(nowSec / 86400) > expDay + ACT_EPOCH_DAYS) return { error: 'activation_expired' };
+  return { ok: true, expDay };
 }
 
 /** Lấy lại QR đã lưu (không xoay secret). */

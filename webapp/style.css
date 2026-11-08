@@ -71,8 +71,9 @@ body.viewer #switches .sw,body.viewer #m-auto,body.viewer #m-man,body.viewer #c-
 table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}td{padding:8px 0;border-bottom:1px solid var(--line)}tr:last-child td{border:0}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 canvas{width:100%;display:block;margin-bottom:6px}
 .al{color:var(--bad);font-weight:500;padding:3px 0}
-#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,10px);background:#1f2937ee;color:#fff;padding:11px 18px;border-radius:99px;font-size:14px;opacity:0;transition:.2s;pointer-events:none;z-index:1100}
-#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,10px);background:#1f2937f2;color:#fff;padding:13px 20px;border-radius:16px;font-size:15px;line-height:1.4;max-width:min(92vw,460px);text-align:center;white-space:normal;opacity:0;transition:.2s;pointer-events:none;z-index:1100;box-shadow:0 6px 24px #0005}
+#toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;cursor:pointer}
+#toast.err{background:#c62828f5;font-weight:600}
 .tab[hidden]{display:none}
 
 /* ---------- widgets ---------- */
@@ -383,10 +384,32 @@ input[type=file][hidden]{display:none!important}
 #dev-modal textarea{width:100%;box-sizing:border-box;margin-top:6px}
 #dev-modal textarea{background:#0f1623;color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:10px;font-size:13px}
 
-/* ---- Nút QR tròn giữa thanh dưới (kiểu VCB) ---- */
-nav button.nav-qr{flex:none;width:64px;height:64px;margin:-26px 6px 0;padding:0;border-radius:50%;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,#2fa84f,#117a2e);box-shadow:0 6px 16px #117a2e66,0 0 0 5px var(--card,#fff)}
-nav button.nav-qr svg{width:32px;height:32px;stroke:#fff;fill:none}
-@media (min-width:900px){nav button.nav-qr{display:none}}
+/* ---- Laptop / màn rộng: màn quét là hộp giữa màn hình (webcam ngang), không tràn toàn màn ---- */
+@media (min-width:900px){
+  .qs{inset:auto;left:50%;top:50%;width:560px;height:min(90vh,780px);transform:translate(-50%,-50%);border-radius:22px;overflow:hidden;box-shadow:0 0 0 100vmax #000b}
+  .qs-top{padding-top:14px}
+  .qs-frame{width:300px;transform:translate(-50%,-50%);top:46%}
+  .qs-hint{top:calc(46% + 165px)}
+  .qs-note{bottom:104px}
+  .qs-bottom{border-radius:0}
+}
+/* ---- Hộp kết quả thêm thiết bị (thành công / không thành công + lý do) ---- */
+.qr-res{position:fixed;inset:0;z-index:1200;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
+.qr-res[hidden]{display:none}
+.qr-res-card{width:min(420px,100%);background:var(--card,#fff);color:var(--fg,#111);border-radius:20px;padding:26px 22px 20px;text-align:center;box-shadow:0 12px 40px #0006}
+.qr-res-icon{width:68px;height:68px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;font-size:38px;font-weight:700;color:#fff;background:#d33}
+.qr-res.ok .qr-res-icon{background:#1a9c3f}
+.qr-res-card h2{margin:0 0 10px;font-size:21px}
+.qr-res.ok h2{color:#1a9c3f}.qr-res.bad h2{color:#d33}
+.qr-res-reason{margin:0 0 8px;font-size:16px;line-height:1.45}
+.qr-res-hint{margin:0 0 8px;font-size:15px;line-height:1.45;opacity:.8}
+.qr-res-code{margin:0 0 4px;font-size:12px;opacity:.5}
+.qr-res-code:empty,.qr-res-hint:empty{display:none}
+.qr-res-actions{display:flex;gap:10px;margin-top:16px}
+.qr-res-actions button{flex:1;padding:13px;font-size:16px;font-weight:600}
+/* ---- Nút "Thêm" có biểu tượng QR ---- */
+button.dev-add-btn{display:inline-flex;align-items:center;gap:6px}
+button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none}
 .qs-note{position:absolute;z-index:2;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 118px);margin:0;padding:10px 24px;text-align:center;font-size:14px;background:#5a5a5ca6;backdrop-filter:blur(8px)}
 .qs-note u{color:#7ee08f}
 .qs-bottom{gap:4px}

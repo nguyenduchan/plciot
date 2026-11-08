@@ -168,6 +168,52 @@ export function removeMember(db, owner, memberId, { ip }) {
   return { ok: true };
 }
 
+/**
+ * Người dùng xoá hết thiết bị của một nhà máy khỏi app → nhả tem (claimed_by = NULL) và đưa họ về vùng riêng,
+ * để bất kỳ ai có QR (sau khi reset thiết bị) đều thêm lại được.
+ * Không nhả khi còn thiết bị khác cùng nhà máy, hoặc còn thành viên khác dùng chung nhà máy.
+ */
+export function releaseSiteIfEmpty(db, userId, site, { ip } = {}) {
+  const me = getUser(db, userId);
+  if (!me) return { released: false };
+  if (me.notify_site === site && ownsOthers(db, me)) return { released: false };
+  // Thiết bị con luôn gắn với gateway hiện tại của người dùng (notify_device), nên đơn vị nhả là cả nhà máy:
+  // còn thiết bị nào cùng nhà máy thì giữ nguyên tem.
+  const left = db.prepare('SELECT COUNT(*) AS n FROM user_devices WHERE user_id = ? AND site = ?').get(userId, site).n;
+  if (left > 0) return { released: false };
+  const freed = db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND site = ?')
+    .run(userId, site).changes;
+  if (me.notify_site === site) moveUser(db, userId, `d_u${userId}`, 'plc01', { owner: true });
+  audit(db, 'device_released', { userId, ip, detail: `${site}/${me.notify_device} freed=${freed}` });
+  return { released: true, freed };
+}
+
+/**
+ * Admin thu hồi tem đã dùng: gỡ thiết bị khỏi mọi tài khoản đang dùng nó, đưa các tài khoản đó về vùng riêng
+ * (MQTT cấp lại, mất quyền theo topic cũ, thu hồi phiên điều khiển) và bỏ chủ (claimed_by = NULL).
+ * Gọi trước khi cấp QR mới để người tiếp theo thêm được mà không bị `site_taken`.
+ */
+export function revokeDeviceBinding(db, site, device, { ip, adminId } = {}) {
+  const ids = new Set(db.prepare('SELECT id FROM users WHERE notify_site = ? AND notify_device = ?').all(site, device).map((u) => u.id));
+  const owner = db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?').get(site, device)?.claimed_by;
+  if (owner) ids.add(owner);
+  const removed = db.prepare('DELETE FROM user_devices WHERE site = ? AND (gateway_device = ? OR child_id = ?)')
+    .run(site, device, device).changes;
+  let moved = 0;
+  for (const id of ids) {
+    const u = getUser(db, id);
+    if (!u) continue;
+    db.prepare('UPDATE control_sessions SET revoked = 1 WHERE user_id = ?').run(id);
+    if (u.notify_site === site && u.notify_device === device) {
+      moveUser(db, id, `d_u${id}`, 'plc01', { owner: true });
+      moved += 1;
+    }
+  }
+  db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ?').run(site, device);
+  audit(db, 'device_revoked', { userId: adminId, ip, detail: `${site}/${device} users=${ids.size} removed=${removed}` });
+  return { ok: true, users: ids.size, moved, removedDevices: removed };
+}
+
 export function sweepInvites(db) {
   db.prepare("UPDATE site_invites SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(Date.now());
 }

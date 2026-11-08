@@ -13,6 +13,7 @@ import {
 import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
 import { rateLimit } from '@plciot/security';
+import { releaseSiteIfEmpty } from './sites.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
@@ -185,12 +186,14 @@ export function listUserDevices(db, user) {
   return listRows(db, user.id);
 }
 
-export function deleteUserDevice(db, user, id) {
+export function deleteUserDevice(db, user, id, { ip } = {}) {
   const row = db.prepare('SELECT * FROM user_devices WHERE id = ? AND user_id = ?').get(id, user.id);
   if (!row) return { error: 'not_found', status: 404 };
   db.prepare('DELETE FROM user_devices WHERE id = ?').run(id);
   audit(db, 'user_device_removed', { userId: user.id, detail: id });
-  return { ok: true };
+  // Xoá thiết bị cuối của nhà máy → nhả tem: ai có QR (và đã reset thiết bị) thêm lại được
+  const rel = releaseSiteIfEmpty(db, user.id, row.site, { ip });
+  return { ok: true, released: rel.released };
 }
 
 export function getDashboardFor(db, user, mode) {
@@ -280,6 +283,6 @@ export function mountUserDevices(app, { db, requireAuth, sensitiveStrict, author
   }));
 
   app.delete('/api/devices/:id', requireAuth, sensitiveStrict, (req, res) => {
-    send(res, deleteUserDevice(db, req.user, req.params.id));
+    send(res, deleteUserDevice(db, req.user, req.params.id, { ip: clientIp(req) }));
   });
 }

@@ -183,5 +183,8 @@ export function migrateSecurity(db) {
     claim_sealed: 'claim_sealed TEXT',
     profile: 'profile TEXT',
     ui_meta: 'ui_meta TEXT',
+    activated_hw: 'activated_hw TEXT',
+    activated_at: 'activated_at INTEGER',
+    activations: 'activations INTEGER DEFAULT 0',
   });
 }

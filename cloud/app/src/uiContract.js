@@ -87,6 +87,7 @@ export const DEVICE_TYPES = Object.freeze({
     source: { path: 'd.{childId}' },
     widgets: [
       { id: 'run', kind: 'toggle', bind: 'run', label: 'Bơm', cmd: { key: 'run', on: 1, off: 0 } },
+      { id: 'speed', kind: 'slider', bind: 'speed', label: 'Tốc độ bơm', unit: '%', min: 0, max: 100, step: 5, cmd: { key: 'speed' } },
       { id: 'hours', kind: 'kpi', bind: 'hours', label: 'Giờ chạy', unit: 'h' },
       { id: 'flow', kind: 'gauge', bind: 'flow', label: 'Lưu lượng', unit: 'L/phút', min: 0, max: 100 },
     ],

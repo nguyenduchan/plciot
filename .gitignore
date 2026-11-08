@@ -24,3 +24,10 @@ tools/sample-qrs/_tmp.db
 tools/sample-qrs/e2e-session.json
 tools/CsUiQrE2e/bin/
 tools/CsUiQrE2e/obj/
+
+# Build output của các công cụ C#, khoá riêng và dữ liệu cục bộ — không commit
+tools/*/bin/
+tools/*/obj/
+broker-pack/
+cloud/app/data/vapid.json
+cloud/app/data/backups/

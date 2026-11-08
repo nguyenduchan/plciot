@@ -11,12 +11,13 @@ import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
 import { queryTelemetry, queryEvents, historyStats } from './historyStore.js';
 import {
   configure, mountAuthentication, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit,
-  purgeExpiredAudit,
+  purgeExpiredAudit, createAppSession, signToken,
 } from '@plciot/security';
 import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
 import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
+import { adminLocalOnly, isDirectLocal } from './adminGate.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
@@ -27,6 +28,7 @@ import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountUserDevices } from './userDevices.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
+import { mountFactoryApi } from './factoryApi.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
 import { loginGateMiddleware } from './opsFlags.js';
@@ -61,6 +63,7 @@ app.locals.db = db;
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
 app.use(securityHeaders);
+app.use(adminLocalOnly);   // ADMIN_ONLY_CIDRS: trang + API admin chỉ cho PC của chủ (hoặc đường hầm SSH)
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '64kb', verify: (req, _res, buf) => { req.rawBody = buf; } })); // rawBody: chữ ký của PC nhà máy
 app.use('/api/', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
@@ -167,6 +170,27 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 /* ---------- Admin: quản lý người dùng & phân quyền ---------- */
+/**
+ * ADMIN_SSH_LOGIN=true: vào trang admin qua đường hầm SSH (127.0.0.1) thì KHÔNG cần đăng nhập — server cấp phiên cho tài khoản
+ * admin đầu tiên trong danh sách. Chỉ chạy được khi kết nối đến trực tiếp (không có header Cloudflare/proxy); từ Internet luôn 404.
+ */
+app.get('/api/admin/local-session', (req, res) => {
+  if (String(process.env.ADMIN_SSH_LOGIN || 'false').toLowerCase() !== 'true' || !isDirectLocal(req)) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  const names = String(process.env.ADMIN_USERNAMES || '').split(',').map((x) => x.trim()).filter(Boolean);
+  let u = null;
+  for (const n of names) {
+    u = db.prepare("SELECT id, token_version, username FROM users WHERE username = ? COLLATE NOCASE AND role = 'admin' AND disabled = 0").get(n);
+    if (u) break;
+  }
+  if (!u) return res.status(409).json({ error: 'admin_account_missing' });
+  const sid = createAppSession(db, u.id, 'ssh-local');
+  const token = signToken({ uid: u.id, tv: u.token_version | 0, sid }, JWT_SECRET, 8 * 3600);
+  audit(db, 'admin_ssh_login', { userId: u.id, ip: clientIp(req) });
+  res.json({ token, username: u.username });
+});
+
 const adminOnly = [requireAuth, requireAdmin];
 const adminWrite = rateLimit({
   windowMs: 60_000,
@@ -198,6 +222,15 @@ mountSite(app, { db, requireAuth, reauth });
 mountPartnerRoutes(app, { db, requireAuth, reauth });
 /* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */
 mountGatewayEnroll(app, { db });
+/* ---------- Tool nạp gateway (token sản xuất do admin cấp) ---------- */
+mountFactoryApi(app, {
+  db, requireAuth, requireAdmin, reauth,
+  adminWrite: rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_ADMIN || 30),
+    keyFn: (req) => `${clientIp(req)}:factory-admin:${req.user?.id || 'na'}`,
+  }),
+});
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */

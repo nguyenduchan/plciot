@@ -52,7 +52,7 @@ export function validateCmd(body, cfg = plcControlConfig()) {
 
 /**
  * Lệnh điều khiển thiết bị con của hub: {child, key, v}. Chỉ nhận khi người dùng có thiết bị đó trên dashboard và
- * widget của loại thiết bị khai báo đúng `cmd.key`; v phải là giá trị `on` hoặc `off` của widget (không cho số tuỳ ý).
+ * widget của loại thiết bị khai báo đúng `cmd.key`; nút: v phải là `on` hoặc `off`; thanh trượt (kind 'slider'): v trong [min,max].
  * @param devices danh sách deviceToUiNode() của người dùng
  */
 export function validateChildCmd(body, devices) {
@@ -64,7 +64,12 @@ export function validateChildCmd(body, devices) {
   const w = dev?.widgets?.find((x) => x.cmd && x.cmd.key === key);
   if (!w) return { error: 'bad_command' };
   const v = Number(b.v);
-  if (!(v === Number(w.cmd.on ?? 1) || v === Number(w.cmd.off ?? 0))) return { error: 'value_out_of_range', min: w.cmd.off ?? 0, max: w.cmd.on ?? 1 };
+  if (w.kind === 'slider') {                                       // đặt giá trị liên tục (vd tốc độ bơm): trong [min,max] của widget
+    const lo = Number(w.min ?? 0); const hi = Number(w.max ?? 100);
+    if (!Number.isFinite(v) || b.v === '' || b.v === null || v < lo || v > hi) return { error: 'value_out_of_range', min: lo, max: hi };
+  } else if (!(v === Number(w.cmd.on ?? 1) || v === Number(w.cmd.off ?? 0))) {
+    return { error: 'value_out_of_range', min: w.cmd.off ?? 0, max: w.cmd.on ?? 1 };
+  }
   const lim = w.cmd.limits;                                        // khoảng do tem provisioning đặt (thu hẹp thêm)
   if (lim && (v < lim.min || v > lim.max)) return { error: 'value_out_of_range', min: lim.min, max: lim.max };
   const id = /^[a-z0-9]{1,16}$/i.test(String(b.id || '')) ? String(b.id) : crypto.randomBytes(5).toString('hex');

@@ -32,7 +32,7 @@
     unknown_device: 'Thiết bị chưa được đăng ký trên máy chủ.',
     invalid_claim_secret: 'Mã QR không khớp tem.',
   };
-  const err = (d) => ERR[d.error] || (window.Ctl ? window.Ctl.errText(d.error) : d.error) || 'Lỗi';
+  const err = (d) => ERR[d.error] || (window.Ctl ? window.Ctl.errText(d.error) : (window.ErrText ? window.ErrText(d.error) : d.error)) || 'Có lỗi xảy ra. Thử lại sau.';
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmt = (ms) => (ms ? new Date(ms).toLocaleString('vi-VN') : '—');
   const msg = (t, bad) => { const e = $('#site-msg'); e.textContent = t || ''; e.classList.toggle('err', Boolean(bad)); };

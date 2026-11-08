@@ -6,6 +6,8 @@ import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
 import { emitWebhook } from './webhooks.js';
 import { evaluateIngest, recordDeny, takeRejectStats } from './policy.js';
 import { isOpsOpen } from './opsFlags.js';
+import { audit } from '@plciot/security';
+import { noteStatusChange, dupConfig } from './dupDetect.js';
 
 function u32(r, i) {
   return (r[i] | 0) + (r[i + 1] | 0) * 65536;
@@ -123,6 +125,12 @@ export function startMqttIngest(db) {
           emitWebhook(db, {
             tenantId, site, device, event: 'status', data: { status: text, previous: was },
           });
+          const n = noteStatusChange(sk, now);
+          if (n) {
+            audit(db, 'device_duplicate_suspect', {
+              detail: `${site}/${device}: ${n} lần đổi trạng thái trong ${Math.round(dupConfig.WINDOW_MS / 60000)} phút — nghi hai máy cùng ID (gateway bị chép)`,
+            });
+          }
         }
       }
 

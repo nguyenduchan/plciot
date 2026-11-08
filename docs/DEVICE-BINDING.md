@@ -90,3 +90,27 @@ python tools/gw_sim.py --ns iot --tenant acme --site plant1 --dev gw01 \
   --user d_acme_plant1_gw01 --password '...' --host … --port 8883
 ```
 (Port MQTTS thật thường qua HAProxy; local Docker dùng 21883 plain monitor-only.)
+
+## Kích hoạt gateway: có internet / không internet
+
+| Trường hợp | Cách làm | Admin phải làm gì |
+|---|---|---|
+| **Có internet (phổ biến)** | Gateway gọi `POST /api/v1/gateway/enroll` `{ qr, hw }` (`hw` = ID máy / vân tay PC). Server gắn tem với `hw` ở lần đầu; `hw` khác → `409 device_already_activated`. Đặt `ENROLL_REQUIRE_HW=1` để bắt buộc gửi `hw`. | Không. Chuyển máy: nút **Gỡ máy đã gắn** (`POST /api/admin/hardware/:site/:device/unbind`). |
+| **Không internet (chỉ LAN)** | Khoá bản quyền 20 ký tự như phần mềm thường: admin nhập ID máy ở trang admin (kiểu *Khoá bản quyền*), khách gõ khoá vào gateway; gateway tự kiểm bằng khoá riêng của máy, không cần mạng. Thư viện kiểm: `tools/GatewayLicense` (`ActivationCode.VerifyLicense`). | Tạo khoá trên trang admin (có thể kèm hạn dùng). |
+
+Kiểu *theo thử thách* (gateway hiện mã yêu cầu, mã dùng một lần) vẫn có, chọn trong cùng ô. Thuật toán khoá bản quyền: `EXP(3)+MAC(16)+CHECK(1)`, `MAC = base32(HMAC-SHA256(K_dev, "lic1|ID|EXP")[0..10])`.
+
+## Quy trình theo loại gateway (bảng chuẩn)
+
+Server là nguồn duy nhất: **đăng ký trên server → gateway lấy về**. Bảng nằm ở `cloud/app/src/gatewayKinds.js` (`GET /api/v1/gateway/kinds`); tool nạp và trang admin theo đúng bảng này.
+
+| Loại | Có internet | Không internet (chỉ LAN) |
+|---|---|---|
+| **MCU** (firmware) | Tool nạp QR + MQTT + topic qua COM/TCP. Không kích hoạt. | Như bên trái, kèm mã kích hoạt theo thử thách (đọc mã yêu cầu từ MCU). |
+| **PC** (phần mềm khách) | Tool ghi kit ra file (`file:...`). Gateway enroll bằng QR kèm `hw`, server tự gắn máy. `LicenseMode=online` | Admin/tool tạo **giấy phép** theo ID máy (`*.license.json`) + kit có type/widget; khách chép vào máy, PC tự kiểm. `LicenseMode=offline` |
+| **Mua sẵn** (chỉ topic MQTT) | Tool nạp QR + topic. Không kích hoạt. | Không hỗ trợ (cần cloud). |
+
+- Tool: `GatewayProvisioner` chọn *Loại gateway* + *không internet*, hoặc headless `--kind mcu|pc|generic --offline true|false`. Link `file:C:\kit\gw01.json` ghi kit (và `gw01.license.json` nếu có giấy phép).
+- Server: `POST /api/v1/factory/provision` nhận `kind` + `connectivity`; trả `plan`, `licenseFile` (PC offline), `offline` (type/widget của thiết bị con).
+- Gateway PC (`scada/src/Plciot.Scada.Services/GatewayActivation.cs`): `ScadaConfig.LicenseMode` = `none` (mặc định, không đổi hành vi cũ) | `online` | `offline`; `ScadaHost.StartAsync` ném `LicenseRequiredException` (kèm ID máy) khi chưa được phép. ID máy = băm MachineGuid/`/etc/machine-id`, 12 ký tự.
+- Giấy phép có hạn: gateway lưu mốc chạy gần nhất (`license.json.seen`) để phát hiện chỉnh lùi đồng hồ.

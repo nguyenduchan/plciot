@@ -6,7 +6,7 @@
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
 import {
-  decodeClaimQr, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
+  decodeClaimQr, bindGatewayHardware, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
 } from '@plciot/security';
 import {
   DEFAULT_TENANT, LEGACY_NS, preferredNamespace, mqttPublicEndpoints, topicBase,
@@ -210,6 +210,13 @@ export function enrollGateway(db, body = {}, opts = {}) {
   const id = verifyGatewayIdentity(db, body);
   if (id.error) return id;
 
+  // Gateway có internet: gắn máy lần đầu (hw = ID máy / vân tay PC). Máy khác dùng lại tem → 409.
+  const bind = bindGatewayHardware(db, {
+    site: id.site, device: id.device, hw: body.hw,
+    required: process.env.ENROLL_REQUIRE_HW === '1',
+  });
+  if (bind.error) return bind;
+
   const rotateMqtt = Boolean(opts.rotateMqtt ?? body.rotateMqtt);
   const includePassword = opts.includePassword !== false;
 
@@ -222,7 +229,7 @@ export function enrollGateway(db, body = {}, opts = {}) {
   });
   if (mqttResult.error) return mqttResult;
 
-  return buildGatewayKit(db, id.hardware, mqttResult, { includePassword });
+  return { ...buildGatewayKit(db, id.hardware, mqttResult, { includePassword }), activated: bind.bound };
 }
 
 export function attachGatewayBundle(db, hwResult, { rotateMqtt = false, includePassword = false } = {}) {
