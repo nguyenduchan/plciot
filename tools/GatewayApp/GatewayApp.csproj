@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GatewayApp</RootNamespace>
+    <!-- Giao diện tự vẽ bằng pixel: chạy ở 96 DPI logic để bố cục không lệch trên màn hình scale 150–200% (Windows tự phóng to). -->
+    <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />

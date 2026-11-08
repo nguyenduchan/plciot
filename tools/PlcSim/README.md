@@ -23,16 +23,18 @@ Ba giao thức đầu: gateway **poll** D0..D39 và **ghi** lệnh (D3/D4/D6/D7/
 MQTT: simulator **đẩy** `plc/<site>/<device>/telemetry` = `{"schema":2,"r":[..],"d":{child:{field:v}}}`, `status`, nghe `cmd`, trả `ack`.
 Gateway chuyển tiếp lên cloud → webapp. Lệnh từ webapp đi ngược lại đúng đường đó.
 
-Tab **Lệnh từ webapp / cloud** (tab đầu): mỗi lệnh ghi từ gateway/Modbus master hiện một dòng — giờ (ms), nguồn, thanh ghi D, thiết bị con tương ứng (`pump1.run`…) và giá trị. Dùng để đối chiếu thời điểm bấm trên webapp với lúc PLC nhận lệnh.
+Tab **Lệnh nhận từ gateway / webapp**: mỗi lệnh ghi từ gateway/Modbus master hiện một dòng — giờ (ms), nguồn, thanh ghi D, thiết bị con tương ứng (`pump1.run`…) và giá trị. Dùng để đối chiếu thời điểm bấm trên webapp với lúc PLC nhận lệnh.
 
 **Độ trễ** (đo trên VPS thật): giám sát PLC→webapp ≈ 0,2 s và điều khiển webapp→PLC ≈ 0,2 s khi gateway đặt `PollMs=200`, `CloudTelemetryFastMs=150` (mặc định `PollMs=1000` cho ≈ 0,5 s). Giữ `CloudTelemetryMinMs≥1000` để không vượt giới hạn ingest ~120 tin/phút.
 
 ## Dữ liệu nhập
 
-- Giao thức, địa chỉ/cổng, Site, Device, MQTT user/password, chu kỳ gửi.
-- Tab **Thanh ghi D**: sửa giá trị D0..D39, hoặc ghi D bất kỳ (0–299).
-- Tab **Thiết bị con**: `childId` / `field` / số (chỉ đi qua MQTT; phải trùng tem QR/pack trên server).
-- *Mô phỏng băng tải*: D6=1 → D8=1 và đếm D14/D16 mỗi giây, dừng khi đủ D7.
+Mặc định **rỗng**. Chỉ có giao thức qua Ethernet (chưa có RS232/RS485 và digital).
 
-Thiết bị con với giao thức thanh ghi: điền cột **D** + **scale** (D = giá trị × scale); gateway có bảng `Pack` cùng quy ước (D = field × scale) để đóng gói `d.<child>.<field>`.
-Cấu hình lưu ở `%APPDATA%\PlcSim\settings.json` (không lưu mật khẩu).
+- **＋ Thêm luồng dữ liệu**: thiết bị (child), field, thanh ghi D, hệ số (D = giá trị × hệ số) và cách sinh giá trị: cố định, ngẫu nhiên trong khoảng Min–Max, sóng sin (chu kỳ), tăng dần (bước/giây), mô phỏng bồn nước (level/flow/hours theo tốc độ bơm). Trùng D bị từ chối. Sửa / **Xoá (có xác nhận, mặc định "Không")** hoặc phím Delete.
+- **⚙ Giao thức…**: giao thức, địa chỉ/cổng, Site, Device, MQTT user/password, chu kỳ gửi, tên tag (EtherNet/IP, ADS).
+- **Nạp mẫu bồn nước + bơm**: bộ luồng D50–D56 khớp mẫu thiết bị của GatewayApp.
+- Tab **Thanh ghi D**: sửa D0..D39, hoặc ghi D bất kỳ (0–299). Ô **Chạy mô phỏng giá trị** bật/tắt mọi bộ sinh giá trị.
+
+Thiết bị con với giao thức thanh ghi: gateway có bảng `Pack` cùng quy ước (D = field × hệ số) để đóng gói `d.<child>.<field>`; MQTT gửi thẳng `d.<child>.<field>`.
+Cấu hình lưu ở `%APPDATA%\PlcSim\settings.json` (không lưu mật khẩu); biến môi trường `PLCSIM_SETTINGS` đổi đường dẫn. `--selftest THƯ_MỤC` thêm luồng bằng hộp thoại thật, chạy Modbus TCP cổng 1502 và ghi `plcsim-result.txt`.

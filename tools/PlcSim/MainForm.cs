@@ -4,7 +4,11 @@ using PlcSim.Protocols;
 
 namespace PlcSim;
 
-public sealed class MainForm : Form
+/// <summary>
+/// PLC giả lập (giao thức qua Ethernet). Mặc định RỖNG: bấm "＋ Thêm luồng dữ liệu" để tạo từng luồng
+/// (thiết bị.field ↔ thanh ghi D, cách sinh giá trị), bấm "⚙ Giao thức…" để chọn giao thức và thông số kết nối.
+/// </summary>
+public sealed partial class MainForm : Form
 {
     sealed record ProtoInfo(string Label, string Kind, int Port, string HostLabel, string GatewayHint);
 
@@ -33,17 +37,14 @@ public sealed class MainForm : Form
     static readonly (int A, string Name)[] RegNames =
     {
         (0, "Đầu vào X0..X7 (bitmask)"), (1, "Đầu ra Y0..Y7 (bitmask)"), (2, "Cảnh báo (bit0 E-stop, bit1 mức)"),
-        (3, "Chế độ 0 tự động / 1 thủ công"), (4, "Mặt nạ đầu ra khi thủ công"), (5, "—"),
-        (6, "Yêu cầu băng tải 0/1"), (7, "Số lượng mục tiêu (0 = không giới hạn)"), (8, "Trạng thái băng tải 0 dừng/1 chạy/2 đủ/3 E-stop"),
-        (9, "Ghi 1 = xoá số đếm"), (10, "Thời gian chạy PLC (s) thấp"), (11, "Thời gian chạy PLC (s) cao"),
-        (12, "Số lần khởi động bơm thấp"), (13, "Số lần khởi động bơm cao"), (14, "Số đếm hiện tại thấp"), (15, "Số đếm hiện tại cao"),
-        (16, "Tổng số đếm thấp"), (17, "Tổng số đếm cao"),
+        (3, "Chế độ 0 tự động / 1 thủ công"), (4, "Mặt nạ đầu ra khi thủ công"), (6, "Yêu cầu băng tải 0/1"),
+        (7, "Số lượng mục tiêu (0 = không giới hạn)"), (8, "Trạng thái băng tải 0 dừng/1 chạy/2 đủ/3 E-stop"), (9, "Ghi 1 = xoá số đếm"),
     };
 
     readonly PlcModel _model = new();
     IEndpoint? _ep;
-    int _protoIdx;
 
+    // Trạng thái cấu hình giao thức (hộp thoại "Giao thức…" đọc/ghi các ô này; không hiện trực tiếp trên form chính)
     readonly ComboBox _proto = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     readonly TextBox _host = new() { Text = "0.0.0.0" };
     readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 502 };
@@ -52,100 +53,108 @@ public sealed class MainForm : Form
     readonly TextBox _user = new() { Text = "gw" };
     readonly TextBox _pass = new() { UseSystemPasswordChar = true };
     readonly TextBox _tag = new() { Text = "PLC_D" };
-    readonly Label _tagLbl = new() { Text = "Tag EIP / symbol ADS", AutoSize = true, Anchor = AnchorStyles.Left };
     readonly NumericUpDown _interval = new() { Minimum = 200, Maximum = 600000, Increment = 100, Value = 1000 };
-    readonly CheckBox _auto = new() { Text = "Tự động gửi theo chu kỳ", Checked = true, AutoSize = true };
-    readonly CheckBox _sim = new() { Text = "Mô phỏng băng tải (đếm khi chạy)", Checked = true, AutoSize = true };
-    readonly Button _start = new() { Text = "▶ Bắt đầu", AutoSize = true };
-    readonly Button _sendNow = new() { Text = "Gửi ngay", AutoSize = true, Enabled = false };
-    readonly Label _hint = new() { AutoSize = true, MaximumSize = new Size(900, 0), ForeColor = Color.DimGray };
-    readonly Label _status = new() { AutoSize = true, Text = "Đã dừng" };
-    readonly Label _hostLbl = new() { Text = "Địa chỉ", AutoSize = true, Anchor = AnchorStyles.Left };
-    readonly Label _userLbl = new() { Text = "MQTT user", AutoSize = true, Anchor = AnchorStyles.Left };
-    readonly Label _passLbl = new() { Text = "MQTT password", AutoSize = true, Anchor = AnchorStyles.Left };
 
+    readonly Button _start = new() { Text = "▶ Bắt đầu", AutoSize = true, Height = 32 };
+    readonly Button _sendNow = new() { Text = "Gửi ngay", AutoSize = true, Height = 32, Enabled = false };
+    readonly Button _protoBtn = new() { Text = "⚙ Giao thức…", AutoSize = true, Height = 32 };
+    readonly CheckBox _sim = new() { Text = "Chạy mô phỏng giá trị", Checked = true, AutoSize = true, Margin = new Padding(14, 8, 0, 0) };
+    readonly Label _status = new() { AutoSize = true, Text = "Đã dừng", Margin = new Padding(10, 8, 0, 0) };
+    readonly Label _summary = new() { AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(14, 8, 0, 0) };
+    readonly Label _empty = new() { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.DimGray, Font = new Font("Segoe UI", 11f),
+        Text = "Chưa có luồng dữ liệu nào.\r\nBấm  ＋ Thêm luồng dữ liệu  để tạo (ví dụ mực nước, tốc độ bơm, nhiệt độ…)." };
+
+    readonly DataGridView _streams = new();
     readonly DataGridView _regs = new();
-    readonly DataGridView _fields = new();
     readonly DataGridView _actions = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect };
-    readonly NumericUpDown _wAddr = new() { Minimum = 0, Maximum = PlcModel.Size - 1 };
-    readonly NumericUpDown _wVal = new() { Minimum = 0, Maximum = 65535 };
     readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Font = new Font("Consolas", 9f) };
 
     readonly System.Windows.Forms.Timer _sendTimer = new();
     readonly System.Windows.Forms.Timer _uiTimer = new() { Interval = 300 };
     readonly System.Windows.Forms.Timer _simTimer = new() { Interval = 1000 };
     bool _busy, _refreshing;
+    string _sig = "";
 
-    static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PlcSim", "settings.json");
+    static string SettingsPath => Environment.GetEnvironmentVariable("PLCSIM_SETTINGS") is { Length: > 0 } p ? p
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PlcSim", "settings.json");
+    string _protoKind => Protos[Math.Max(0, _proto.SelectedIndex)].Kind;
 
     public MainForm()
     {
-        Text = "PLC Simulator — giả lập PLC gửi tới gateway";
-        Width = 1180; Height = 780; MinimumSize = new Size(900, 600);
+        Text = "PLC Simulator — giả lập PLC qua Ethernet";
+        Width = 1100; Height = 720; MinimumSize = new Size(860, 560);
         StartPosition = FormStartPosition.CenterScreen;
 
         foreach (var p in Protos) _proto.Items.Add(p.Label);
         BuildLayout();
         BuildRegGrid();
-        BuildFieldGrid();
         LoadSettings();
         if (_proto.SelectedIndex < 0) _proto.SelectedIndex = 0;
         ApplyProtoDefaults(keepPort: true);
+        RefreshStreams();
 
-        _proto.SelectedIndexChanged += (_, _) => ApplyProtoDefaults(keepPort: false);
         _start.Click += async (_, _) => await ToggleAsync();
-        _sendNow.Click += async (_, _) => await PushAsync(manual: true);
-        _sendTimer.Tick += async (_, _) => { if (_auto.Checked && _protoKind == "mqtt") await PushAsync(manual: false); };
+        _sendNow.Click += async (_, _) => await PushAsync();
+        _protoBtn.Click += (_, _) => EditProtocol();
+        _sendTimer.Tick += async (_, _) => { if (_protoKind == "mqtt") await PushAsync(); };
         _uiTimer.Tick += (_, _) => RefreshGrids();
         _simTimer.Tick += (_, _) => { if (_sim.Checked && _ep != null) _model.SimTick(); };
-        _interval.ValueChanged += (_, _) => _sendTimer.Interval = (int)_interval.Value;
         _uiTimer.Start(); _simTimer.Start();
+        _model.Changed += OnModelChanged;
         FormClosing += async (_, _) => { SaveSettings(); await StopAsync(); };
         if (Environment.GetCommandLineArgs().Contains("--autostart")) Shown += async (_, _) => await ToggleAsync();
     }
 
-    string _protoKind => Protos[Math.Max(0, _proto.SelectedIndex)].Kind;
-
     // ------------------------------------------------------------------ giao diện
     void BuildLayout()
     {
-        var cfg = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 6, Padding = new Padding(8) };
-        for (var i = 0; i < 6; i++) cfg.ColumnStyles.Add(new ColumnStyle(i % 2 == 0 ? SizeType.AutoSize : SizeType.Percent, i % 2 == 0 ? 0 : 33f));
-        void Row(params Control[] cs) { foreach (var c in cs) { c.Dock = c is Label ? DockStyle.None : DockStyle.Fill; cfg.Controls.Add(c); } }
-        Row(L("Giao thức"), _proto, _hostLbl, _host, L("Cổng"), _port);
-        Row(L("Site"), _site, L("Device"), _device, L("Chu kỳ gửi (ms)"), _interval);
-        Row(_userLbl, _user, _passLbl, _pass, _tagLbl, _tag);
-        var opts = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
-        opts.Controls.AddRange(new Control[] { _start, _sendNow, _auto, _sim, _status });
-        cfg.Controls.Add(opts); cfg.SetColumnSpan(opts, 6);
-        cfg.Controls.Add(_hint); cfg.SetColumnSpan(_hint, 6);
+        var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 8, 8, 4) };
+        top.Controls.AddRange(new Control[] { _start, _sendNow, _protoBtn, _sim, _status, _summary });
 
-        var tabs = new TabControl { Dock = DockStyle.Fill };
-        var tReg = new TabPage("Thanh ghi D (r)");
-        var wr = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(4) };
-        var wBtn = new Button { Text = "Ghi D", AutoSize = true };
-        wBtn.Click += (_, _) => { _model.Set((int)_wAddr.Value, (ushort)_wVal.Value, "ui"); AppendLog($"UI: D{(int)_wAddr.Value} = {(int)_wVal.Value}"); };
-        wr.Controls.AddRange(new Control[] { L("Địa chỉ D"), _wAddr, L("Giá trị"), _wVal, wBtn });
-        tReg.Controls.Add(_regs); tReg.Controls.Add(wr);
-        var tAct = new TabPage("Lệnh từ webapp / cloud");
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 6) };
+        var add = new Button { Text = "＋ Thêm luồng dữ liệu", AutoSize = true, Height = 32, BackColor = Color.FromArgb(50, 116, 217), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+        var edit = new Button { Text = "Sửa", AutoSize = true, Height = 32 };
+        var del = new Button { Text = "Xoá", AutoSize = true, Height = 32 };
+        var sample = new Button { Text = "Nạp mẫu bồn nước + bơm", AutoSize = true, Height = 32 };
+        add.Click += (_, _) => AddOrEditStream(null);
+        edit.Click += (_, _) => AddOrEditStream(SelectedStream());
+        del.Click += (_, _) => DeleteStream();
+        sample.Click += (_, _) => LoadSample();
+        bar.Controls.AddRange(new Control[] { add, edit, del, sample });
+
+        _streams.Dock = DockStyle.Fill; _streams.AllowUserToAddRows = false; _streams.ReadOnly = true; _streams.RowHeadersVisible = false;
+        _streams.SelectionMode = DataGridViewSelectionMode.FullRowSelect; _streams.MultiSelect = false;
+        _streams.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        foreach (var (h, w) in new[] { ("Thiết bị", 14f), ("Field", 12f), ("D", 7f), ("Hệ số", 7f), ("Cách sinh giá trị", 18f), ("Cài đặt", 26f), ("Hiện tại", 12f) })
+            _streams.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = h, FillWeight = w });
+        _streams.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) AddOrEditStream(SelectedStream()); };
+        _streams.KeyDown += (_, e) => { if (e.KeyCode == Keys.Delete) { e.Handled = true; DeleteStream(); } };
+        var tStreams = new TabPage("Luồng dữ liệu");
+        tStreams.Controls.Add(_streams); tStreams.Controls.Add(_empty); _empty.BringToFront();
+
+        var tAct = new TabPage("Lệnh nhận từ gateway / webapp");
         foreach (var h in new[] { "Thời gian", "Nguồn", "Thanh ghi", "Thiết bị con", "Giá trị" }) _actions.Columns.Add(h, h);
         tAct.Controls.Add(_actions);
-        _model.Changed += OnModelChanged;
-        var tFld = new TabPage("Thiết bị con (d.<childId>.<field>)");
-        var fNote = new Label { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(4), ForeColor = Color.DimGray,
-            Text = "childId/field phải trùng tem QR/pack của thiết bị trên server. MQTT gửi thẳng d.<child>.<field>. Giao thức khác: điền cột D + scale, gateway đọc D rồi đóng gói d = D / scale (cùng bảng Pack trong gateway). Thêm dòng ở hàng cuối." };
-        tFld.Controls.Add(_fields); tFld.Controls.Add(fNote);
-        tabs.TabPages.Add(tAct); tabs.TabPages.Add(tReg); tabs.TabPages.Add(tFld);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 360 };
+        var tReg = new TabPage("Thanh ghi D");
+        var wr = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(4) };
+        var wAddr = new NumericUpDown { Minimum = 0, Maximum = PlcModel.Size - 1 };
+        var wVal = new NumericUpDown { Minimum = 0, Maximum = 65535 };
+        var wBtn = new Button { Text = "Ghi D", AutoSize = true };
+        wBtn.Click += (_, _) => { _model.Set((int)wAddr.Value, (ushort)wVal.Value, "ui"); AppendLog($"UI: D{(int)wAddr.Value} = {(int)wVal.Value}"); };
+        wr.Controls.AddRange(new Control[] { new Label { Text = "Địa chỉ D", AutoSize = true, Margin = new Padding(0, 6, 0, 0) }, wAddr, new Label { Text = "Giá trị", AutoSize = true, Margin = new Padding(8, 6, 0, 0) }, wVal, wBtn });
+        tReg.Controls.Add(_regs); tReg.Controls.Add(wr);
+
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(tStreams); tabs.TabPages.Add(tAct); tabs.TabPages.Add(tReg);
+
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 400 };
         split.Panel1.Controls.Add(tabs);
-        var logBox = new GroupBox { Text = "Nhật ký (gửi / nhận lệnh điều khiển)", Dock = DockStyle.Fill };
+        var logBox = new GroupBox { Text = "Nhật ký", Dock = DockStyle.Fill };
         logBox.Controls.Add(_log);
         split.Panel2.Controls.Add(logBox);
-        Controls.Add(split); Controls.Add(cfg);
+        Controls.Add(split); Controls.Add(bar); Controls.Add(top);
     }
-
-    static Label L(string t) => new() { Text = t, AutoSize = true, Anchor = AnchorStyles.Left };
 
     void BuildRegGrid()
     {
@@ -155,8 +164,7 @@ public sealed class MainForm : Form
         _regs.Columns[0].FillWeight = 10; _regs.Columns[1].FillWeight = 60; _regs.Columns[2].FillWeight = 30;
         _regs.Columns[0].ReadOnly = true; _regs.Columns[1].ReadOnly = true;
         var names = RegNames.ToDictionary(x => x.A, x => x.Name);
-        for (var i = 0; i < PlcModel.TelemetryRegs; i++)
-            _regs.Rows.Add(i, names.GetValueOrDefault(i, ""), _model.Get(i));
+        for (var i = 0; i < PlcModel.TelemetryRegs; i++) _regs.Rows.Add(i, names.GetValueOrDefault(i, ""), _model.Get(i));
         _regs.CellEndEdit += (_, e) =>
         {
             if (e.ColumnIndex != 2 || _refreshing) return;
@@ -166,101 +174,164 @@ public sealed class MainForm : Form
         };
     }
 
-    void BuildFieldGrid()
+    // ------------------------------------------------------------------ luồng dữ liệu
+    sealed record Stream(string Child, string Field, int Addr, double Scale);
+
+    IEnumerable<Stream> Streams() => _model.Fields().Select(f =>
     {
-        _fields.Dock = DockStyle.Fill; _fields.AllowUserToAddRows = true; _fields.AllowUserToDeleteRows = true;
-        _fields.RowHeadersVisible = false; _fields.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _fields.Columns.Add("c", "childId"); _fields.Columns.Add("f", "field"); _fields.Columns.Add("v", "Giá trị (số)");
-        _fields.Columns.Add("d", "D (Modbus/MC/FINS/S7/…)"); _fields.Columns.Add("s", "scale (D = giá trị × scale)");
-        if (_fields.Rows.Count <= 1 && _model.Fields().Length == 0)
-        {
-            foreach (var (c, f, v, d, sc) in new[] { ("env1", "t", 28.5, 50, 10), ("env1", "h", 62, 51, 10), ("pump1", "run", 0, 52, 1), ("pump1", "flow", 0, 53, 10) })
-            {
-                _fields.Rows.Add(c, f, v.ToString(CultureInfo.InvariantCulture), d, sc);
-                _model.MapField(c, f, d, sc);
-                _model.SetField(c, f, v, "ui");
-            }
-        }
-        _fields.CellEndEdit += (_, e) => CommitFieldRow(e.RowIndex);
-        _fields.UserDeletingRow += (_, e) =>
-        {
-            var r = e.Row;
-            var c = Convert.ToString(r.Cells[0].Value)?.Trim(); var f = Convert.ToString(r.Cells[1].Value)?.Trim();
-            if (!string.IsNullOrEmpty(c) && !string.IsNullOrEmpty(f)) _model.RemoveField(c, f);
-        };
+        var m = _model.MapOf(f.Child, f.Field);
+        return new Stream(f.Child, f.Field, m?.Addr ?? -1, m?.Scale ?? 1);
+    });
+
+    Stream? SelectedStream()
+    {
+        if (_streams.CurrentRow == null) return null;
+        var c = Convert.ToString(_streams.CurrentRow.Cells[0].Value); var f = Convert.ToString(_streams.CurrentRow.Cells[1].Value);
+        return Streams().FirstOrDefault(s => s.Child == c && s.Field == f);
     }
 
-    void CommitFieldRow(int row)
+    static string GenText(PlcModel.Gen g, double value) => g.Mode switch
     {
-        if (_refreshing || row < 0 || row >= _fields.Rows.Count || _fields.Rows[row].IsNewRow) return;
-        var c = Convert.ToString(_fields[0, row].Value)?.Trim();
-        var f = Convert.ToString(_fields[1, row].Value)?.Trim();
-        var raw = Convert.ToString(_fields[2, row].Value)?.Trim().Replace(',', '.');
-        if (string.IsNullOrEmpty(c) || string.IsNullOrEmpty(f)) return;
-        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) { _fields[2, row].Value = "0"; v = 0; }
-        var dRaw = Convert.ToString(_fields[3, row].Value)?.Trim();
-        var sRaw = Convert.ToString(_fields[4, row].Value)?.Trim().Replace(',', '.');
-        if (int.TryParse(dRaw, out var da) && da is >= 0 and < PlcModel.Size)
+        PlcModel.FieldMode.Fixed => $"= {value.ToString("0.###", CultureInfo.InvariantCulture)}",
+        PlcModel.FieldMode.Random => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)} mỗi giây",
+        PlcModel.FieldMode.Sine => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)}, chu kỳ {g.Period.ToString("0.#", CultureInfo.InvariantCulture)} s",
+        PlcModel.FieldMode.Ramp => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)}, bước {g.Step.ToString("0.###", CultureInfo.InvariantCulture)}/s",
+        _ => "bồn nước tự chạy theo tốc độ bơm",
+    };
+
+    static readonly string[] ModeNames = { "Cố định", "Ngẫu nhiên trong khoảng", "Mô phỏng bồn nước", "Sóng sin", "Tăng dần" };
+    static string ModeName(PlcModel.FieldMode m) => ModeNames[m switch { PlcModel.FieldMode.Fixed => 0, PlcModel.FieldMode.Random => 1, PlcModel.FieldMode.Sim => 2, PlcModel.FieldMode.Sine => 3, _ => 4 }];
+
+    string Sig() => string.Join("|", Streams().Select(s => $"{s.Child}.{s.Field}@{s.Addr}x{s.Scale}:{_model.ModeOf(s.Child, s.Field)}"));
+
+    void RefreshStreams()
+    {
+        _sig = Sig();
+        var keep = _streams.CurrentRow?.Index ?? -1;
+        _streams.Rows.Clear();
+        var vals = _model.Fields().ToDictionary(f => (f.Child, f.Field), f => f.Value);
+        foreach (var s in Streams())
         {
-            var sc = double.TryParse(sRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) && x > 0 ? x : 1;
-            _model.MapField(c, f, da, sc);
+            var g = _model.ModeOf(s.Child, s.Field);
+            _streams.Rows.Add(s.Child, s.Field, s.Addr >= 0 ? "D" + s.Addr : "—", s.Addr >= 0 ? s.Scale.ToString(CultureInfo.InvariantCulture) : "—", ModeName(g.Mode), GenText(g, vals[(s.Child, s.Field)]), "");
         }
-        else _model.MapField(c, f, -1, 1);
-        _model.SetField(c, f, v, "ui");
+        _empty.Visible = _streams.Rows.Count == 0;
+        if (keep >= 0 && keep < _streams.Rows.Count) _streams.CurrentCell = _streams.Rows[keep].Cells[0];
     }
 
-    /// <summary>Cập nhật lưới theo model (giá trị do gateway ghi hoặc mô phỏng thay đổi) khi không đang sửa ô.</summary>
+    void AddOrEditStream(Stream? edit)
+    {
+        using var d = NewStreamDialog(edit);
+        if (d.ShowDialog(this) != DialogResult.OK) return;
+        ApplyStream(d);
+    }
+
+    StreamDialog NewStreamDialog(Stream? edit)
+    {
+        var used = Streams().Where(s => edit == null || !(s.Child == edit.Child && s.Field == edit.Field)).Select(s => s.Addr).Where(a => a >= 0).ToHashSet();
+        var children = Streams().Select(s => s.Child).Distinct().ToArray();
+        var cur = edit == null ? 0 : _model.Fields().First(f => f.Child == edit.Child && f.Field == edit.Field).Value;
+        return new StreamDialog(edit?.Child, edit?.Field, edit?.Addr ?? -1, edit?.Scale ?? 10, edit == null ? new PlcModel.Gen(PlcModel.FieldMode.Fixed, 0, 100) : _model.ModeOf(edit.Child, edit.Field), cur, used, children, Streams().Select(s => (s.Child, s.Field)).ToHashSet(), edit != null);
+    }
+
+    void ApplyStream(StreamDialog d)
+    {
+        _model.MapField(d.Child, d.Field, d.Addr, d.Scale);
+        _model.SetMode(d.Child, d.Field, d.Gen);
+        _model.SetField(d.Child, d.Field, d.Value, "ui");
+        AppendLog($"UI: luồng {d.Child}.{d.Field} → D{d.Addr}, {ModeName(d.Gen.Mode)}");
+        RefreshStreams();
+    }
+
+    void DeleteStream()
+    {
+        var s = SelectedStream();
+        if (s == null) { AppendLog("Chọn một dòng luồng dữ liệu cần xoá."); return; }
+        if (!Ask.Yes(this, $"Xoá luồng {s.Child}.{s.Field} (D{s.Addr})?"+"\n\n"+"Gateway đang đọc luồng này sẽ nhận 0.", "Xác nhận xoá luồng dữ liệu")) return;
+        _model.RemoveField(s.Child, s.Field);
+        AppendLog($"UI: đã xoá luồng {s.Child}.{s.Field}");
+        RefreshStreams();
+    }
+
+    void LoadSample()
+    {
+        if (_model.Fields().Length > 0 && MessageBox.Show(this, "Thay toàn bộ luồng hiện có bằng bộ mẫu bồn nước + bơm + nhiệt độ?", "Nạp mẫu", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+        _model.ClearChildren();
+        foreach (var (c, f, v, a, sc, g) in new (string, string, double, int, double, PlcModel.Gen)[]
+        {
+            ("tank1", "level", 50, 50, 10, new(PlcModel.FieldMode.Sim, 0, 100)),
+            ("pump1", "run", 1, 51, 1, new(PlcModel.FieldMode.Fixed, 0, 1)),
+            ("pump1", "speed", 30, 52, 10, new(PlcModel.FieldMode.Fixed, 0, 100)),
+            ("pump1", "hours", 0, 53, 10, new(PlcModel.FieldMode.Sim, 0, 100)),
+            ("pump1", "flow", 0, 54, 10, new(PlcModel.FieldMode.Sim, 0, 100)),
+            ("env1", "t", 27, 55, 10, new(PlcModel.FieldMode.Sine, 22, 32, 90)),
+            ("env1", "h", 60, 56, 10, new(PlcModel.FieldMode.Random, 50, 70)),
+        })
+        {
+            _model.MapField(c, f, a, sc); _model.SetMode(c, f, g); _model.SetField(c, f, v, "ui");
+        }
+        RefreshStreams();
+    }
+
+    // ------------------------------------------------------------------ giao thức
+    void ApplyProtoDefaults(bool keepPort)
+    {
+        var p = Protos[Math.Max(0, _proto.SelectedIndex)];
+        if (!keepPort) { _port.Value = p.Port; _host.Text = p.Kind == "mqtt" ? "127.0.0.1" : "0.0.0.0"; }
+        if (p.Kind == "ads" && _tag.Text == "PLC_D") _tag.Text = "GVL_PLC.D";
+        if (p.Kind == "eip" && _tag.Text == "GVL_PLC.D") _tag.Text = "PLC_D";
+        UpdateSummary();
+    }
+
+    void UpdateSummary()
+    {
+        var p = Protos[Math.Max(0, _proto.SelectedIndex)];
+        _summary.Text = $"{p.Label} · {_host.Text.Trim()}:{(int)_port.Value}";
+    }
+
+    void EditProtocol()
+    {
+        if (_ep != null) { MessageBox.Show(this, "Dừng PLC trước khi đổi giao thức.", "Giao thức"); return; }
+        using var d = new ProtocolDialog(Protos.Select(p => (p.Label, p.Kind, p.Port, p.HostLabel, p.GatewayHint)).ToArray(), _proto.SelectedIndex, _host.Text, (int)_port.Value,
+            _site.Text, _device.Text, _user.Text, _pass.Text, _tag.Text, (int)_interval.Value);
+        if (d.ShowDialog(this) != DialogResult.OK) return;
+        _proto.SelectedIndex = d.ProtoIndex; _host.Text = d.Host; _port.Value = d.Port; _site.Text = d.Site; _device.Text = d.Device;
+        _user.Text = d.User; _pass.Text = d.Pass; _tag.Text = d.Tag; _interval.Value = d.IntervalMs;
+        UpdateSummary();
+    }
+
+    // ------------------------------------------------------------------ cập nhật lưới
     void RefreshGrids()
     {
         _refreshing = true;
         try
         {
+            if (Sig() != _sig) RefreshStreams();
+            var vals = _model.Fields().ToDictionary(f => (f.Child, f.Field), f => f.Value);
+            foreach (DataGridViewRow r in _streams.Rows)
+            {
+                var k = (Convert.ToString(r.Cells[0].Value) ?? "", Convert.ToString(r.Cells[1].Value) ?? "");
+                if (!vals.TryGetValue(k, out var v)) continue;
+                r.Cells[6].Value = v.ToString("0.###", CultureInfo.InvariantCulture);
+                var g = _model.ModeOf(k.Item1, k.Item2);
+                if (g.Mode == PlcModel.FieldMode.Fixed) r.Cells[5].Value = GenText(g, v);
+            }
             if (!_regs.IsCurrentCellInEditMode)
                 foreach (DataGridViewRow r in _regs.Rows)
                 {
                     var v = _model.Get(Convert.ToInt32(r.Cells[0].Value));
-                    if (!Equals(r.Cells[2].Value, (object)(int)v) && Convert.ToString(r.Cells[2].Value) != v.ToString()) r.Cells[2].Value = v.ToString();
+                    if (Convert.ToString(r.Cells[2].Value) != v.ToString()) r.Cells[2].Value = v.ToString();
                 }
-            if (!_fields.IsCurrentCellInEditMode)
-            {
-                foreach (var (c, f, v) in _model.Fields())
-                {
-                    var row = _fields.Rows.Cast<DataGridViewRow>().FirstOrDefault(r =>
-                        !r.IsNewRow && Convert.ToString(r.Cells[0].Value)?.Trim() == c && Convert.ToString(r.Cells[1].Value)?.Trim() == f);
-                    var s = v.ToString(CultureInfo.InvariantCulture);
-                    if (row == null) _fields.Rows.Add(c, f, s, _model.MapOf(c, f)?.Addr.ToString() ?? "", _model.MapOf(c, f)?.Scale.ToString(CultureInfo.InvariantCulture) ?? "");
-                    else if (Convert.ToString(row.Cells[2].Value) != s) row.Cells[2].Value = s;
-                }
-            }
         }
         finally { _refreshing = false; }
         _status.Text = _ep == null ? "Đã dừng" : $"● Đang chạy: {_ep.Name} — {(_protoKind == "mqtt" ? (_ep.Peers > 0 ? "đã nối gateway" : "chưa nối gateway") : $"{_ep.Peers} gateway đang kết nối")}";
         _status.ForeColor = _ep == null ? Color.Gray : _ep.Peers > 0 ? Color.ForestGreen : Color.DarkOrange;
     }
 
-    // ------------------------------------------------------------------ điều khiển
-    void ApplyProtoDefaults(bool keepPort)
-    {
-        _protoIdx = Math.Max(0, _proto.SelectedIndex);
-        var p = Protos[_protoIdx];
-        var mqtt = p.Kind == "mqtt";
-        _hostLbl.Text = p.HostLabel;
-        if (!keepPort)
-        {
-            _port.Value = p.Port;
-            _host.Text = mqtt ? "127.0.0.1" : "0.0.0.0";
-        }
-        _user.Enabled = _pass.Enabled = mqtt;
-        _userLbl.Enabled = _passLbl.Enabled = mqtt;
-        if (p.Kind == "ads" && _tag.Text == "PLC_D") _tag.Text = "GVL_PLC.D";
-        if (p.Kind == "eip" && _tag.Text == "GVL_PLC.D") _tag.Text = "PLC_D";
-        _hint.Text = p.GatewayHint;
-    }
-
+    // ------------------------------------------------------------------ chạy / dừng
     async Task ToggleAsync()
     {
         if (_ep != null) { await StopAsync(); return; }
-        _commitAll();
         var p = Protos[_proto.SelectedIndex];
         void Log(string s) => AppendLog(s);
         try
@@ -290,20 +361,14 @@ public sealed class MainForm : Form
         SetRunning(true);
         _sendTimer.Interval = (int)_interval.Value;
         _sendTimer.Start();
-        if (p.Kind == "mqtt") await PushAsync(manual: false);
-    }
-
-    void _commitAll()
-    {
-        _regs.EndEdit(); _fields.EndEdit();
-        for (var i = 0; i < _fields.Rows.Count; i++) CommitFieldRow(i);
+        if (p.Kind == "mqtt") await PushAsync();
     }
 
     async Task StopAsync()
     {
         _sendTimer.Stop();
         var ep = _ep; _ep = null;
-        if (ep != null) { try { await ep.DisposeAsync(); } catch { /* ignore */ } AppendLog("Đã dừng."); }
+        if (ep != null) { try { await ep.DisposeAsync(); } catch (Exception) { /* bỏ qua */ } AppendLog("Đã dừng."); }
         SetRunning(false);
     }
 
@@ -311,37 +376,34 @@ public sealed class MainForm : Form
     {
         _start.Text = run ? "■ Dừng" : "▶ Bắt đầu";
         _sendNow.Enabled = run;
-        _proto.Enabled = _host.Enabled = _port.Enabled = _site.Enabled = _device.Enabled = !run;
-        var mqtt = _protoKind == "mqtt";
-        _user.Enabled = _pass.Enabled = !run && mqtt;
+        _protoBtn.Enabled = !run;
     }
 
-    async Task PushAsync(bool manual)
+    async Task PushAsync()
     {
         if (_ep == null || _busy) return;
         _busy = true;
-        try { _commitAll(); await _ep.PushAsync(); }
+        try { await _ep.PushAsync(); }
         catch (Exception ex) { AppendLog($"Gửi lỗi: {ex.Message}"); }
         finally { _busy = false; }
     }
 
-    // Mọi ghi từ gateway (gốc là webapp/cloud hoặc HMI) hiện thành một dòng trong tab "Lệnh từ webapp / cloud".
+    // Mọi ghi từ gateway (gốc là webapp/cloud hoặc HMI) hiện thành một dòng trong tab "Lệnh nhận từ gateway".
     void OnModelChanged(string desc, string origin)
     {
         if (origin != "gateway") return;
-        if (InvokeRequired) { try { BeginInvoke(() => OnModelChanged(desc, origin)); } catch { } return; }
+        if (InvokeRequired) { try { BeginInvoke(() => OnModelChanged(desc, origin)); } catch (InvalidOperationException) { } return; }
         string reg = "", child = "", val = desc;
         var m = System.Text.RegularExpressions.Regex.Match(desc, @"^D(\d+) = (-?\d+)$");
         if (m.Success) { var a = int.Parse(m.Groups[1].Value); reg = "D" + a; child = _model.FieldAt(a) ?? ""; val = m.Groups[2].Value; }
         else { var f = System.Text.RegularExpressions.Regex.Match(desc, @"^(d\.\S+) = (.+)$"); if (f.Success) { child = f.Groups[1].Value; val = f.Groups[2].Value; } }
-        _actions.Rows.Insert(0, DateTime.Now.ToString("HH:mm:ss.fff"), "Modbus/MQTT master (gateway ← cloud)", reg, child, val);
+        _actions.Rows.Insert(0, DateTime.Now.ToString("HH:mm:ss.fff"), "gateway ← cloud/webapp", reg, child, val);
         while (_actions.Rows.Count > 500) _actions.Rows.RemoveAt(_actions.Rows.Count - 1);
     }
 
     void AppendLog(string s)
     {
-        if (IsDisposed) return;
-        if (InvokeRequired) { try { BeginInvoke(() => AppendLog(s)); } catch { /* đang đóng */ } return; }
+        if (InvokeRequired) { try { BeginInvoke(() => AppendLog(s)); } catch (InvalidOperationException) { } return; }
         _log.AppendText($"{DateTime.Now:HH:mm:ss}  {s}{Environment.NewLine}");
         if (_log.TextLength > 60000) _log.Text = _log.Text[^40000..];
     }
@@ -356,6 +418,8 @@ public sealed class MainForm : Form
         public string Device { get; set; } = "plc01";
         public string User { get; set; } = "gw";
         public int Interval { get; set; } = 1000;
+        public string Tag { get; set; } = "";
+        /// <summary>Mỗi dòng: child, field, giá trị, D, hệ số, chế độ (tên enum), min, max, chu kỳ, bước.</summary>
         public List<string[]> Fields { get; set; } = new();
     }
 
@@ -366,14 +430,18 @@ public sealed class MainForm : Form
             var s = new Saved
             {
                 Proto = _proto.SelectedIndex, Host = _host.Text, Port = (int)_port.Value, Site = _site.Text, Device = _device.Text,
-                User = _user.Text, Interval = (int)_interval.Value,
-                Fields = _model.Fields().Select(f => new[] { f.Child, f.Field, f.Value.ToString(CultureInfo.InvariantCulture),
-                    _model.MapOf(f.Child, f.Field)?.Addr.ToString() ?? "", _model.MapOf(f.Child, f.Field)?.Scale.ToString(CultureInfo.InvariantCulture) ?? "" }).ToList(),
+                User = _user.Text, Interval = (int)_interval.Value, Tag = _tag.Text,
+                Fields = _model.Fields().Select(f =>
+                {
+                    var m = _model.MapOf(f.Child, f.Field); var g = _model.ModeOf(f.Child, f.Field);
+                    string N(double d) => d.ToString(CultureInfo.InvariantCulture);
+                    return new[] { f.Child, f.Field, N(f.Value), m?.Addr.ToString() ?? "", m == null ? "" : N(m.Value.Scale), g.Mode.ToString(), N(g.Min), N(g.Max), N(g.Period), N(g.Step) };
+                }).ToList(),
             };
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch { /* không quan trọng */ }
+        catch (IOException) { /* không quan trọng */ }
     }
 
     void LoadSettings()
@@ -387,22 +455,21 @@ public sealed class MainForm : Form
             if (s.Host.Length > 0) _host.Text = s.Host;
             if (s.Port is >= 1 and <= 65535) _port.Value = s.Port;
             _site.Text = s.Site; _device.Text = s.Device; _user.Text = s.User;
+            if (s.Tag.Length > 0) _tag.Text = s.Tag;
             if (s.Interval is >= 200 and <= 600000) _interval.Value = s.Interval;
-            if (s.Fields.Count > 0)
+            double D(string[] r, int i, double dflt) => r.Length > i && double.TryParse(r[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ? x : dflt;
+            foreach (var f in s.Fields.Where(f => f.Length >= 3))
             {
-                _model.ClearChildren();
-                _fields.Rows.Clear();
-                foreach (var f in s.Fields.Where(f => f.Length >= 3))
-                    if (double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
-                    {
-                        var da = f.Length >= 5 && int.TryParse(f[3], out var a0) ? a0 : -1;
-                        var sc = f.Length >= 5 && double.TryParse(f[4], NumberStyles.Float, CultureInfo.InvariantCulture, out var s0) ? s0 : 1;
-                        _model.MapField(f[0], f[1], da, sc);
-                        _model.SetField(f[0], f[1], v, "ui");
-                        _fields.Rows.Add(f[0], f[1], f[2], da >= 0 ? da.ToString() : "", da >= 0 ? sc.ToString(CultureInfo.InvariantCulture) : "");
-                    }
+                if (!double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) continue;
+                var da = f.Length >= 5 && int.TryParse(f[3], out var a0) ? a0 : -1;
+                var sc = D(f, 4, 1);
+                _model.MapField(f[0], f[1], da, sc);
+                // file cũ (5 cột) không có chế độ: mặc định cố định; chế độ đặt sau khi đã có đủ field nên level/flow vẫn suy ra Sim
+                if (f.Length >= 8 && Enum.TryParse<PlcModel.FieldMode>(f[5], out var mode))
+                    _model.SetMode(f[0], f[1], new PlcModel.Gen(mode, D(f, 6, 0), D(f, 7, 100), D(f, 8, 60), D(f, 9, 1)));
+                _model.SetField(f[0], f[1], v, "ui");
             }
         }
-        catch { /* file hỏng: dùng mặc định */ }
+        catch (Exception e) when (e is IOException or JsonException) { /* file hỏng: dùng mặc định rỗng */ }
     }
 }

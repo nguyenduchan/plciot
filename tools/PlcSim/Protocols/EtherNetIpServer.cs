@@ -105,7 +105,7 @@ public sealed class EtherNetIpServer : IEndpoint
             case 0x0070:                                              // SendUnitData: address item (conn id) + data item (seq + CIP)
             {
                 if (d.Length < 16) return null;
-                var (item, _) = ParseItems(d, 6, connected: true);
+                var (item, _) = ParseItems(d, 6);
                 if (item == null || item.Length < 2) return null;
                 var reply = Cip(item[2..], conn);
                 var o = new List<byte>(new byte[] { 0, 0, 0, 0, 0, 0, 2, 0, 0xA1, 0, 4, 0 });
@@ -122,7 +122,7 @@ public sealed class EtherNetIpServer : IEndpoint
     }
 
     /// <summary>Lấy mục dữ liệu (0xB2 hoặc 0xB1) trong danh sách item bắt đầu từ vị trí off+... (đã bỏ interface+timeout).</summary>
-    static (byte[]? Data, int End) ParseItems(byte[] d, int off, bool connected = false)
+    static (byte[]? Data, int End) ParseItems(byte[] d, int off)
     {
         var n = BinaryPrimitives.ReadUInt16LittleEndian(d.AsSpan(off));
         var p = off + 2;
