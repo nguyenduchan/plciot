@@ -19,11 +19,13 @@ public sealed class GatewayEnrollClient
 
     public GatewayEnrollClient(HttpClient http) => _http = http;
 
-    public Task<GatewayProvisionKit?> EnrollAsync(string qr, bool rotateMqtt = false, CancellationToken ct = default)
-        => PostAsync("/api/v1/gateway/enroll", new { qr, rotateMqtt }, ct);
+    /// <param name="hw">ID máy (vân tay PC). Có internet: server gắn tem với máy này ở lần enroll đầu và
+    /// từ chối máy khác (lỗi device_already_activated). Null = không ràng buộc.</param>
+    public Task<GatewayProvisionKit?> EnrollAsync(string qr, bool rotateMqtt = false, string? hw = null, CancellationToken ct = default)
+        => PostAsync("/api/v1/gateway/enroll", new { qr, rotateMqtt, hw }, ct);
 
-    public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, bool includeCredentials = false, CancellationToken ct = default)
-        => PostAsync("/api/v1/gateway/config", new { qr, includeCredentials }, ct);
+    public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, bool includeCredentials = false, string? hw = null, CancellationToken ct = default)
+        => PostAsync("/api/v1/gateway/config", new { qr, includeCredentials, hw }, ct);
 
     async Task<GatewayProvisionKit?> PostAsync(string path, object body, CancellationToken ct)
     {

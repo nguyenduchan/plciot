@@ -16,7 +16,6 @@ public sealed class RemoteScreenClient : IScadaView, IAsyncDisposable
     readonly string _user, _password;
     readonly HttpClient _http;
     readonly CookieContainer _jar = new();
-    readonly DeviceState _state = new();
     readonly Queue<string> _log = new();
     readonly CancellationTokenSource _cts = new();
     Task? _loop;

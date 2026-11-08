@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Plciot.Scada.Core\Plciot.Scada.Core.csproj" />
+    <ProjectReference Include="..\..\..\tools\GatewayLicense\GatewayLicense.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,4 @@
 using libplctag;
-using libplctag.DataTypes;
 
 namespace Plciot.Scada;
 

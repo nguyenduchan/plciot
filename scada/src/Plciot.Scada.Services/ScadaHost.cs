@@ -53,6 +53,7 @@ public sealed class ScadaHost : IAsyncDisposable
     public async Task StartAsync()
     {
         _cts = new CancellationTokenSource();
+        await GatewayActivation.EnsureAsync(_cfg, Core.Emit, _cts.Token);   // LicenseMode != none: chưa kích hoạt thì ném LicenseRequiredException
         var needBroker = _cfg.LocalBrokerEnabled || !Core.Direct;          // gateway ESP32 buộc phải có broker
         if (needBroker)
         {

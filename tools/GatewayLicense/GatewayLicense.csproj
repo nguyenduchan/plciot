@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Thư viện tham chiếu cho gateway PC: tạo mã yêu cầu + kiểm mã kích hoạt offline (cùng thuật toán với server). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GatewayLicense</RootNamespace>
+  </PropertyGroup>
+</Project>

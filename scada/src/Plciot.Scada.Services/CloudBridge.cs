@@ -146,7 +146,7 @@ public sealed class CloudBridge : IAsyncDisposable
         {
             var now = Stopwatch.GetTimestamp();
             var last = _lastTele.GetOrAdd(topic, 0);
-            if (last != 0 && Stopwatch.GetElapsedTime(last, now).TotalMilliseconds < RequiredGapMs(topic, payload, now))
+            if (last != 0 && Stopwatch.GetElapsedTime(last, now).TotalMilliseconds < RequiredGapMs(topic, payload))
             {
                 _pendingTele[topic] = (payload, retain);
                 return;
@@ -159,7 +159,7 @@ public sealed class CloudBridge : IAsyncDisposable
     }
 
     /// <summary>Dữ liệu đổi → chỉ cần cách nhau CloudTelemetryFastMs; không đổi → nhịp tim CloudTelemetryMinMs; vừa có lệnh điều khiển → gửi ngay.</summary>
-    double RequiredGapMs(string topic, byte[] payload, long now)
+    double RequiredGapMs(string topic, byte[] payload)
     {
         if (Stopwatch.GetTimestamp() < Interlocked.Read(ref _expediteUntil)) return 0;
         var changed = !_lastSent.TryGetValue(topic, out var prev) || !prev.AsSpan().SequenceEqual(payload);
@@ -196,7 +196,7 @@ public sealed class CloudBridge : IAsyncDisposable
             {
                 var last = _lastTele.GetOrAdd(topic, 0);
                 if (!_pendingTele.TryGetValue(topic, out var pend)) continue;
-                if (last != 0 && Stopwatch.GetElapsedTime(last).TotalMilliseconds < RequiredGapMs(topic, pend.Payload, Stopwatch.GetTimestamp())) continue;
+                if (last != 0 && Stopwatch.GetElapsedTime(last).TotalMilliseconds < RequiredGapMs(topic, pend.Payload)) continue;
                 if (_pendingTele.TryRemove(topic, out var v) && State == CloudState.Connected)
                 {
                     _lastTele[topic] = Stopwatch.GetTimestamp();

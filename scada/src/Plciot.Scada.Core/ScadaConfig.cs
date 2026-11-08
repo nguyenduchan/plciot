@@ -155,6 +155,14 @@ public sealed class ScadaConfig
     public int CloudTelemetryMinMs { get; set; } = 1000;
     /// <summary>Telemetry ĐỔI được gửi ngay, cách nhau tối thiểu khoảng này (chống dồn; server ingest giới hạn ~120 tin/phút/thiết bị).</summary>
     public int CloudTelemetryFastMs { get; set; } = 300;
+    // ---- Kích hoạt gateway PC (xem GatewayActivation). "none" = không yêu cầu (mặc định, giữ nguyên hành vi cũ).
+    /// <summary>"none" | "online" (server gắn máy khi enroll bằng QR) | "offline" (file giấy phép theo ID máy, không cần mạng).</summary>
+    public string LicenseMode { get; set; } = "none";
+    /// <summary>offline: file giấy phép admin cấp; online: dấu "đã gắn" lưu cục bộ.</summary>
+    public string LicenseFile { get; set; } = "license.json";
+    public string LicenseServerUrl { get; set; } = "https://plc.dieukhientudong.net";
+    /// <summary>QR tem của thiết bị (chỉ dùng khi LicenseMode = online).</summary>
+    public string GatewayQr { get; set; } = "";
     public string ClientSuffix { get; set; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
 
     // ---- Giao diện web cục bộ (nhiều màn hình trong nhà máy). Dùng tài khoản LocalUsers vai trò Monitor/Operator.
