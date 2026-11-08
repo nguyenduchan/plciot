@@ -43,7 +43,7 @@ public sealed class ScadaHost : IAsyncDisposable
     public ScadaHost(ScadaConfig cfg, IRegisterDriver? driverOverride = null)
     {
         _cfg = cfg;
-        Core = new ScadaCore(cfg, driverOverride ?? DriverFactory.Create(cfg));
+        Core = new ScadaCore(cfg, driverOverride ?? (cfg.PackBound ? null : DriverFactory.Create(cfg)));
         _bridge = new CloudBridge(cfg);
         Core.Log += l => Log?.Invoke(l);
         _bridge.Log += Core.Emit;

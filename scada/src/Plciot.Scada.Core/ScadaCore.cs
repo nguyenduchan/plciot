@@ -16,6 +16,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
 {
     readonly ScadaConfig _cfg;
     readonly IRegisterDriver? _driver;
+    readonly PackDriverPool? _pool;
     readonly DeviceState _state = new();
     readonly SemaphoreSlim _pollNow = new(0, 1);
     readonly IReadOnlySet<int> _writable;
@@ -26,24 +27,28 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     DateTime _statusAt;
     int _fails;
 
-    public ScadaCore(ScadaConfig cfg, IRegisterDriver? driver)
+    /// <param name="pool">Chỉ dùng khi Pack có field đã gán giao thức: bộ driver theo field (mặc định tạo từ cấu hình; truyền vào để thử nghiệm).</param>
+    public ScadaCore(ScadaConfig cfg, IRegisterDriver? driver, PackDriverPool? pool = null)
     {
         var err = cfg.Validate();
         if (err != null) throw new ArgumentException(err);
         _cfg = cfg;
-        _driver = driver;
-        // địa chỉ khai báo trong Pack là các điểm điều khiển thiết bị con (cloud đã whitelist theo widget) nên được phép ghi
-        _writable = cfg.WritableRegisters.Concat(cfg.Pack.Select(x => x.Address)).ToHashSet();
+        // Pack đã gán giao thức → đọc/ghi theo từng field qua pool; nguồn chung (driver) bị bỏ qua
+        if (cfg.PackBound) { _pool = pool ?? new PackDriverPool(cfg); driver?.Dispose(); _driver = null; }
+        else _driver = driver;
+        // địa chỉ khai báo trong Pack là các điểm điều khiển thiết bị con (cloud đã whitelist theo widget) nên được phép ghi (trừ field "chỉ đọc")
+        _writable = cfg.WritableRegisters.Concat(cfg.Pack.Where(x => x.Access != PackAccess.Read).Select(x => x.Address)).ToHashSet();
     }
 
     public ScadaConfig Config => _cfg;
     public string Site => _cfg.Site;
     public string Device => _cfg.Device;
     public string BaseTopic => _cfg.BaseTopic;
-    public bool Direct => _driver != null;
+    public bool Direct => _driver != null || _pool != null;
     public bool CanControl => true;
     public DeviceState.Snapshot State => _state.Get();
-    public string InfoLine => Direct ? $"Nguồn: {_cfg.Source} {_cfg.PlcHost}" : "Nguồn: gateway";
+    public string InfoLine => _pool != null ? "Nguồn: " + string.Join(", ", _cfg.Pack.Select(p => p.Protocol).Distinct())
+        : Direct ? $"Nguồn: {_cfg.Source} {_cfg.PlcHost}" : "Nguồn: gateway";
     public string[] RecentLog { get { lock (_log) return _log.ToArray(); } }
 
     public event Action<string>? Log;
@@ -65,7 +70,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     public Task StartAsync()
     {
         _cts = new CancellationTokenSource();
-        if (_driver != null) _loop = Task.Run(() => PollLoopAsync(_cts.Token));
+        if (_pool != null) _loop = Task.Run(() => PollBoundAsync(_cts.Token));
+        else if (_driver != null) _loop = Task.Run(() => PollLoopAsync(_cts.Token));
         return Task.CompletedTask;
     }
 
@@ -111,6 +117,53 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             catch (OperationCanceledException) { break; }
         }
         SetStatus("offline", force: true);
+    }
+
+    /// <summary>
+    /// Chế độ field đã gán giao thức: mỗi chu kỳ chỉ đọc đúng các field đã khai báo (không đọc D0–D39 hay lịch sử ngầm định).
+    /// Telemetry: {"schema":2,"d":{child:{field:số}}}; field của PLC đang lỗi bị bỏ khỏi gói (không gửi giá trị cũ).
+    /// </summary>
+    async Task PollBoundAsync(CancellationToken ct)
+    {
+        var lastErr = "";
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var r = await _pool!.ReadAllAsync(ct);
+                if (r.Groups > 0 && r.FailedGroups == r.Groups)
+                {
+                    if (++_fails == 3) Emit("Mất liên lạc PLC: " + string.Join(" | ", r.Errors));
+                    if (_fails >= 3) SetStatus("plc_fault");
+                }
+                else
+                {
+                    _fails = 0;
+                    SetStatus("online");
+                    _state.SetTelemetry(new ushort[Contract.TelemetryRegs]);
+                    var msg = string.Join(" | ", r.Errors);
+                    if (msg != lastErr) { if (msg.Length > 0) Emit("Một số PLC không đọc được: " + msg); lastErr = msg; }
+                    Trace("PLC→GW", "pack", string.Join(", ", r.Values.Select(kv => $"{kv.Key.Child}.{kv.Key.Field}={kv.Value}")));
+                    if (Publish != null && r.Values.Count > 0) Publish("telemetry", BuildBoundTelemetry(r.Values), true);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex) { if (++_fails == 3) Emit("Lỗi đọc PLC: " + ex.Message); if (_fails >= 3) SetStatus("plc_fault"); }
+            try { await Task.WhenAny(Task.Delay(_cfg.PollMs, ct), _pollNow.WaitAsync(ct)); }
+            catch (OperationCanceledException) { break; }
+        }
+        SetStatus("offline", force: true);
+    }
+
+    static byte[] BuildBoundTelemetry(Dictionary<(string Child, string Field), double> values)
+    {
+        var d = new Dictionary<string, Dictionary<string, double>>();
+        foreach (var ((c, f), v) in values)
+        {
+            if (!d.TryGetValue(c, out var fl)) d[c] = fl = new();
+            fl[f] = v;
+        }
+        return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { schema = 2, d }));
     }
 
     /// <summary>Không có Pack: {"r":[..]} như cũ. Có Pack: {"schema":2,"r":[..],"d":{child:{field:số}}}.</summary>
@@ -174,6 +227,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
 
     async Task<string?> ExecuteAsync(PlcCommand cmd, string actor, byte[]? raw, CancellationToken ct)
     {
+        // field đã gán giao thức nằm trên nhiều PLC khác nhau: địa chỉ D trần không xác định được PLC nào → phải dùng lệnh theo field (child/key)
+        if (_pool != null) return CommandPolicy.AckJson(cmd.Id, false, "use_key_command");
         if (_driver == null)
         {
             if (ExternalCommandSink == null) return CommandPolicy.AckJson(cmd.Id, false, "no_link");
@@ -241,6 +296,32 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             Emit($"Từ chối lệnh {child}.{key} = {v}: ngoài khoảng {field.Min}–{field.Max}");
             return CommandPolicy.AckJson(id, false, "value_out_of_range");
         }
+        if (_pool != null)
+        {
+            if (field == null) return CommandPolicy.AckJson(id, false, "unknown_key");
+            if (field.Access == PackAccess.Read)
+            {
+                Emit($"Từ chối lệnh {field.Child}.{field.Field}: field chỉ đọc");
+                return CommandPolicy.AckJson(id, false, "read_only");
+            }
+            string ackB;
+            try
+            {
+                Trace("GW→PLC", field.Protocol, $"write {field.Child}.{field.Field} = {v} → D{field.Address} [{field.DataType}{(field.WordSwap ? ", đảo word" : "")}]");
+                await _pool.WriteAsync(field, v, ct);
+                Emit($"Điều khiển ({actor}): {field.Child}.{field.Field} = {v}");
+                ackB = CommandPolicy.AckJson(id, true);
+                if (_pollNow.CurrentCount == 0) { try { _pollNow.Release(); } catch (SemaphoreFullException) { } }
+            }
+            catch (ArgumentOutOfRangeException) { return CommandPolicy.AckJson(id, false, "bad_value"); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                Emit($"Lệnh PLC lỗi ({actor}): {ex.Message}");
+                ackB = CommandPolicy.AckJson(id, false, "plc_error");
+            }
+            _state.SetAck(ackB);
+            return ackB;
+        }
         if (_driver == null)
         {
             if (ExternalCommandSink == null) return CommandPolicy.AckJson(id, false, "no_link");
@@ -276,6 +357,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     {
         await StopAsync();
         _driver?.Dispose();
+        _pool?.Dispose();
         _cts?.Dispose();
     }
 }

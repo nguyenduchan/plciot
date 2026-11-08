@@ -50,6 +50,25 @@ public sealed class PackMap
     /// <summary>Khoảng giá trị (đơn vị kỹ thuật, trước khi nhân Scale) cho phép GHI xuống trường này; do tem provisioning đặt. null = không giới hạn.</summary>
     public double? Min { get; set; }
     public double? Max { get; set; }
+
+    // ---- Gán kết nối RÕ RÀNG cho field (Protocol rỗng = field cũ chưa gán, chạy theo nguồn chung ScadaConfig.Source như trước).
+    /// <summary>Tên <see cref="PlcSource"/> của giao thức dùng cho field này; rỗng = chưa gán.</summary>
+    public string Protocol { get; set; } = "";
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PackAccess Access { get; set; } = PackAccess.ReadWrite;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PlcDataType DataType { get; set; } = PlcDataType.UInt16;
+    /// <summary>Đảo thứ tự word cho kiểu ≥ 32-bit (CD AB thay vì AB CD).</summary>
+    public bool WordSwap { get; set; }
+    /// <summary>Thông số riêng của giao thức theo <see cref="ProtocolSpec.Params"/> (đủ mọi khoá).</summary>
+    public Dictionary<string, string> Params { get; set; } = new();
+    /// <summary>Tên struct nếu field thuộc một struct (chỉ để nhóm hiển thị; mọi field vẫn là field của thiết bị).</summary>
+    public string Group { get; set; } = "";
+
+    [JsonIgnore] public bool IsBound => Protocol.Length > 0;
+    [JsonIgnore] public PlcSource? Source => Enum.TryParse<PlcSource>(Protocol, out var s) ? s : null;
+    [JsonIgnore] public int Words => PackCodec.Words(DataType);
+    public string Param(string key) => Params.TryGetValue(key, out var v) ? v : "";
 }
 
 public enum PlcSource { Gateway, ModbusTcp, ModbusRtu, S7, EtherNetIp, MitsubishiMc, OmronFins, BeckhoffAds, OpcUa }
@@ -81,6 +100,11 @@ public sealed class ScadaConfig
     public List<int> WritableRegisters { get; set; } = new() { 3, 4, 6, 7, 9 };
     /// <summary>Đóng gói thiết bị con từ thanh ghi (rỗng = chỉ gửi r[] kiểu băng tải cũ).</summary>
     public List<PackMap> Pack { get; set; } = new();
+    /// <summary>Kết nối tới từng PLC theo giao thức, dùng cho các field đã gán giao thức (<see cref="PackMap.Protocol"/>).</summary>
+    public List<PlcConnection> Connections { get; set; } = new();
+    /// <summary>Có field đã gán giao thức → lõi đọc/ghi theo từng field (kiểu, quyền, thông số), không dùng nguồn chung và không đọc D0–D39 ngầm.</summary>
+    [JsonIgnore] public bool PackBound => Pack.Any(p => p.IsBound);
+    public PlcConnection? ConnectionFor(PlcSource s) => Connections.FirstOrDefault(c => c.Protocol == s);
 
     /// <summary>Quyền ghi theo nguồn lệnh (đọc luôn được phép).</summary>
     public bool AllowsControl(ControlSource s) => s switch
@@ -205,6 +229,46 @@ public sealed class ScadaConfig
     /// <summary>Web/màn hình phụ chỉ chạy ở topology nhiều màn hình (một màn hình thì không có client-server).</summary>
     [JsonIgnore] public bool WebActive => WebEnabled && Topology == Topology.MultiScreen;
 
+    /// <summary>Kiểm tra việc gán giao thức/kiểu/quyền/thông số của Pack và các kết nối; không gán gì thì bỏ qua (chế độ cũ).</summary>
+    string? ValidateBinding()
+    {
+        if (!PackBound) return null;
+        var unbound = Pack.FirstOrDefault(p => !p.IsBound);
+        if (unbound != null) return $"Pack: {unbound.Child}.{unbound.Field} chưa gán giao thức (đã có field khác được gán). Gán hoặc xoá field này.";
+        var seen = new Dictionary<string, string>();
+        foreach (var p in Pack)
+        {
+            var what = $"{p.Child}.{p.Field}";
+            if (p.Source is not { } src || Array.IndexOf(ProtocolSpec.Streamable, src) < 0) return $"{what}: giao thức \"{p.Protocol}\" không hợp lệ.";
+            var e = ProtocolSpec.ValidateParams(src, p.Params, what);
+            if (e != null) return e;
+            if (p.Address + p.Words > Contract.MaxRegister) return $"{what}: kiểu {p.DataType} chiếm {p.Words} word từ D{p.Address}, vượt quá D{Contract.MaxRegister - 1}.";
+            // hai field cùng một PLC (cùng giao thức + thông số) không được chồng lên nhau trên các word
+            var key = PackDriverPool.Key(p);
+            for (var i = 0; i < p.Words; i++)
+            {
+                var cell = key + "@" + (p.Address + i);
+                if (seen.TryGetValue(cell, out var other)) return $"{what} và {other} chồng nhau tại D{p.Address + i} (cùng PLC).";
+                seen[cell] = what;
+            }
+        }
+        foreach (var src in Pack.Select(p => p.Source!.Value).Distinct())
+        {
+            var c = ConnectionFor(src);
+            var name = ProtocolSpec.Name(src);
+            if (c == null) return $"Thiếu kết nối cho giao thức {name} (Connections).";
+            if (ProtocolSpec.UsesHostPort(src))
+            {
+                if (string.IsNullOrWhiteSpace(c.Host)) return $"Kết nối {name}: thiếu địa chỉ.";
+                if (c.Port is < 1 or > 65535) return $"Kết nối {name}: cổng không hợp lệ.";
+            }
+            var oe = ProtocolSpec.ValidateParams(src, c.Options, $"Kết nối {name}", ProtocolSpec.ConnOptions(src));
+            if (oe != null) return oe;
+        }
+        if (Connections.GroupBy(c => c.Protocol).Any(g => g.Count() > 1)) return "Mỗi giao thức chỉ có một kết nối.";
+        return null;
+    }
+
     public string? Validate()
     {
         var safe = new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_-]{1,48}$");
@@ -218,15 +282,20 @@ public sealed class ScadaConfig
         }
         if (LocalPort is < 1 or > 65535) return "Cổng broker nội bộ không hợp lệ.";
         if (WebActive && (WebPort is < 1 or > 65535 || WebPort == LocalPort)) return "Cổng web không hợp lệ hoặc trùng cổng broker.";
-        if (Source is not (PlcSource.Gateway or PlcSource.OpcUa) && string.IsNullOrWhiteSpace(PlcHost)) return "Thiếu địa chỉ PLC.";
-        if (Source == PlcSource.OpcUa && string.IsNullOrWhiteSpace(OpcUaEndpoint)) return "Thiếu OPC UA endpoint.";
+        var bound = PackBound;
+        if (!bound && Source is not (PlcSource.Gateway or PlcSource.OpcUa) && string.IsNullOrWhiteSpace(PlcHost)) return "Thiếu địa chỉ PLC.";
+        if (!bound && Source == PlcSource.OpcUa && string.IsNullOrWhiteSpace(OpcUaEndpoint)) return "Thiếu OPC UA endpoint.";
         if (ModbusServerEnabled && (ModbusServerPort is < 1 or > 65535)) return "Cổng Modbus server không hợp lệ.";
         if (OpcUaServerEnabled && (OpcUaServerPort is < 1 or > 65535)) return "Cổng OPC UA server không hợp lệ.";
         if (InfluxEnabled && (string.IsNullOrWhiteSpace(InfluxUrl) || string.IsNullOrWhiteSpace(InfluxToken))) return "Thiếu URL/token InfluxDB.";
         if (Source == PlcSource.ModbusRtu && !Enum.TryParse<System.IO.Ports.Parity>(SerialParity, true, out _)) return "SerialParity phải là None, Even hoặc Odd.";
         if (PollMs < 100) return "Chu kỳ đọc tối thiểu 100 ms.";
+        var unset = Pack.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Child) && !string.IsNullOrWhiteSpace(x.Field) && (x.Address < 0 || x.Scale <= 0));
+        if (unset != null) return $"Pack: {unset.Child}.{unset.Field} chưa khai báo thanh ghi D / hệ số (mở trang Thiết bị để khai báo).";
         if (Pack.Any(x => string.IsNullOrWhiteSpace(x.Child) || string.IsNullOrWhiteSpace(x.Field) || x.Address is < 0 or >= Contract.MaxRegister || x.Scale <= 0))
             return "Pack: child/field không được trống, địa chỉ D 0–299, scale > 0.";
+        var packErr = ValidateBinding();
+        if (packErr != null) return packErr;
         if (Pack.Any(x => x.Min.HasValue && x.Max.HasValue && x.Min > x.Max)) return "Pack: Min không được lớn hơn Max.";
         if (CmdMaxAgeSec < 0) return "CmdMaxAgeSec không được âm.";
         if (CloudEnabled)

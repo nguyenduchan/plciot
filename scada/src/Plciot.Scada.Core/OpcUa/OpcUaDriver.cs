@@ -8,19 +8,26 @@ namespace Plciot.Scada;
 /// </summary>
 public sealed class OpcUaDriver : IRegisterDriver
 {
-    readonly ScadaConfig _cfg;
+    readonly string _endpoint, _imageNode, _writeNode;
+    readonly bool _security, _acceptUntrusted;
     readonly SemaphoreSlim _lock = new(1, 1);
     ApplicationConfiguration? _app;
     ISession? _session;
 
-    public OpcUaDriver(ScadaConfig cfg) { _cfg = cfg; }
+    public OpcUaDriver(ScadaConfig cfg) : this(cfg.OpcUaEndpoint, cfg.OpcUaImageNode, cfg.OpcUaWriteNode, cfg.OpcUaSecurity, cfg.OpcUaAcceptUntrusted) { }
+
+    /// <summary>writeNode chứa {a} = số thanh ghi D.</summary>
+    public OpcUaDriver(string endpoint, string imageNode, string writeNode, bool security, bool acceptUntrusted)
+    {
+        _endpoint = endpoint; _imageNode = imageNode; _writeNode = writeNode; _security = security; _acceptUntrusted = acceptUntrusted;
+    }
 
     async Task<ISession> SessionAsync(CancellationToken ct)
     {
         if (_session is { Connected: true }) return _session;
         _session?.Dispose(); _session = null;
-        _app ??= await OpcUaSupport.CreateAsync("PlciotScadaClient", false, null, _cfg.OpcUaAcceptUntrusted);
-        var ep = CoreClientUtils.SelectEndpoint(_app, _cfg.OpcUaEndpoint, _cfg.OpcUaSecurity, 5000);
+        _app ??= await OpcUaSupport.CreateAsync("PlciotScadaClient", false, null, _acceptUntrusted);
+        var ep = CoreClientUtils.SelectEndpoint(_app, _endpoint, _security, 5000);
         var configured = new ConfiguredEndpoint(null, ep, EndpointConfiguration.Create(_app));
         _session = await Session.Create(_app, configured, false, "PlciotScada", 60000, new UserIdentity(), null, ct);
         return _session;
@@ -32,7 +39,7 @@ public sealed class OpcUaDriver : IRegisterDriver
         try
         {
             var s = await SessionAsync(ct);
-            var dv = await Task.Run(() => s.ReadValue(NodeId.Parse(_cfg.OpcUaImageNode)), ct);
+            var dv = await Task.Run(() => s.ReadValue(NodeId.Parse(_imageNode)), ct);
             if (StatusCode.IsBad(dv.StatusCode)) throw new IOException($"opcua_{dv.StatusCode}");
             var arr = dv.Value as ushort[] ?? (dv.Value as short[])?.Select(v => unchecked((ushort)v)).ToArray()
                       ?? (dv.Value as int[])?.Select(v => (ushort)v).ToArray() ?? throw new IOException("opcua_not_array");
@@ -49,7 +56,7 @@ public sealed class OpcUaDriver : IRegisterDriver
         try
         {
             var s = await SessionAsync(ct);
-            var node = NodeId.Parse(_cfg.OpcUaWriteNode.Replace("{a}", address.ToString()));
+            var node = NodeId.Parse(_writeNode.Replace("{a}", address.ToString()));
             var req = new WriteValueCollection { new WriteValue { NodeId = node, AttributeId = Attributes.Value, Value = new DataValue(new Variant(value)) } };
             var resp = await s.WriteAsync(null, req, ct);
             if (StatusCode.IsBad(resp.Results[0])) throw new IOException($"opcua_write_{resp.Results[0]}");
