@@ -116,6 +116,16 @@
   /** Mã biểu tượng gateway gửi trong config (icon) → emoji (không cần font/ảnh riêng, chạy trên điện thoại). */
   const DEV_ICON = { tank: '🛢', pump: '⛽', env: '🌡', valve: '🚰', motor: '⚙️', energy: '⚡', pressure: '🧭', conveyor: '📦', di: '⬇️', do: '⬆️', custom: '➕' };
 
+  /** HTML một thẻ thiết bị. readonly = xem thử: không nút gỡ, không điều khiển được. */
+  function cardHtml(d, readonly) {
+    const icon = DEV_ICON[d.icon] ? `<span class="dev-ic" aria-hidden="true">${DEV_ICON[d.icon]}</span>` : '';
+    return `<article class="dev-card${d.color ? ` acc-${esc(d.color)}` : ''}${readonly ? ' readonly' : ''}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
+      <header>${icon}<h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
+        ${readonly ? '' : `<button type="button" class="fit danger dw-rm" data-id="${esc(d.id)}" title="Gỡ">×</button>`}</header>
+      <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
+    </article>`;
+  }
+
   function render() {
     const host = $('#dev-grid');
     if (!host) return;
@@ -128,12 +138,7 @@
     host.innerHTML = order.map((id) => {
       const d = byId[id];
       if (!d) return '';
-      const icon = DEV_ICON[d.icon] ? `<span class="dev-ic" aria-hidden="true">${DEV_ICON[d.icon]}</span>` : '';
-      return `<article class="dev-card${d.color ? ` acc-${esc(d.color)}` : ''}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
-        <header>${icon}<h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
-          <button type="button" class="fit danger dw-rm" data-id="${esc(d.id)}" title="Gỡ">×</button></header>
-        <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
-      </article>`;
+      return cardHtml(d, false);
     }).join('');
 
     host.querySelectorAll('.dw-rm').forEach((b) => {
@@ -429,6 +434,23 @@
     $(ok ? '#qr-res-close' : '#qr-res-retry')?.focus();
   }
 
+  /** Admin quét QR: hiện đúng giao diện user sẽ thấy, chỉ xem (không điều khiển, không lưu vào tài khoản). */
+  function showReview(rv) {
+    showResult({
+      ok: true,
+      title: 'Xem thử (admin) — chưa gắn vào tài khoản',
+      reason: `${rv.label || `${rv.site}/${rv.device}`} · ${rv.devices.length} thiết bị${rv.claimed ? ' · tem đã có chủ' : ''}.`,
+      hint: 'Tài khoản admin chỉ xem giao diện, không trở thành chủ gateway. User thường quét QR này để dùng thật.',
+    });
+    const card = document.querySelector('#qr-res .qr-res-card');
+    card.querySelector('.qr-prev')?.remove();
+    const prev = document.createElement('div');
+    prev.className = 'qr-prev';
+    prev.innerHTML = rv.devices.map((d) => cardHtml(d, true)).join('') || '<p class="muted">Gateway chưa khai thiết bị con nào.</p>';
+    card.insertBefore(prev, card.querySelector('.qr-res-actions'));
+    $('#qr-res-close')?.addEventListener('click', () => prev.remove(), { once: true });
+  }
+
   function hideResult(retry) {
     const box = $('#qr-res'); if (box) box.hidden = true;
     if (retry) openModal(true);
@@ -447,6 +469,11 @@
         return showResult(explainAddError({ ok: false, data: { error: 'network' } }));
       }
       if (!r.ok) return showResult(explainAddError(r));
+      if (r.data.review) {   // tài khoản admin: chỉ xem thử, không gắn thiết bị / không thành chủ gateway
+        closeModal();
+        if ($('#dev-qr')) $('#dev-qr').value = '';
+        return showReview(r.data);
+      }
       rememberQr(qr);
       closeModal();
       if ($('#dev-qr')) $('#dev-qr').value = '';

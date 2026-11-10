@@ -443,3 +443,7 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .tank i{position:absolute;left:0;right:0;bottom:0;background:var(--acc);transition:height .4s}
 .tankw.low .tank i,.gauge.low .gauge-bar i{background:#f2cc0c}.tankw.high .tank i,.gauge.high .gauge-bar i{background:#f2495c}
 .lvl{font-size:11px;font-weight:700;margin-left:4px;color:#d97706}
+
+/* Xem thử (admin quét QR): chỉ đọc, cuộn trong hộp kết quả */
+.qr-prev{max-height:46vh;overflow:auto;margin:12px 0;text-align:left;display:flex;flex-direction:column;gap:10px}
+.dev-card.readonly{pointer-events:none;opacity:.96}

@@ -148,7 +148,60 @@ const GATEWAY_PROFILES = new Set(['iot-hub', 'conveyor', 'conveyor-v1']);
  * - Tem gateway (iot-hub / conveyor): claim site/device rồi seed widgets.
  * - Tem module (env/pump…): chỉ thêm child nếu user đã cùng site (hoặc claim luôn nếu chưa có nhà máy).
  */
+/** Chuỗi QR hoặc link login.html?claim=… → payload claim. */
+function claimPayloadOf(qr) {
+  let raw = String(qr ?? '').trim();
+  if (raw.includes('claim=')) {
+    try { raw = new URL(raw, 'http://local.invalid').searchParams.get('claim') || raw; } catch { /* giữ nguyên */ }
+  }
+  return decodeClaimQr(raw);
+}
+
+/**
+ * Xem thử QR (admin): dựng đúng giao diện user sẽ thấy, KHÔNG gắn thiết bị vào tài khoản, KHÔNG đổi chủ gateway,
+ * KHÔNG ghi user_devices / hardware_devices. Vẫn kiểm chữ ký + secret của tem nên không dò được cấu hình bằng cách đoán site/device.
+ */
+export function previewFromQr(db, { qr, ip, adminId }) {
+  const decoded = claimPayloadOf(qr);
+  if (!decoded) return { error: 'invalid_claim_payload', status: 400 };
+  const verified = verifyClaimSignature(decoded);
+  if (verified.error) return verified;
+  const hw = db.prepare('SELECT * FROM hardware_devices WHERE site = ? AND device = ?').get(verified.site, verified.device);
+  if (!hw) return { error: 'unknown_device', status: 404 };
+  if (hw.claim_hash !== hashClaimSecret(verified.claim)) return { error: 'invalid_claim_secret', status: 401 };
+
+  const meta = parseUiMeta(hw.ui_meta);
+  const site = String(hw.site);
+  const gatewayDevice = String(hw.device);
+  const seeds = Array.isArray(meta?.seed) ? meta.seed : null;
+  const typeId = resolveDeviceTypeId(hw.profile) || 'generic';
+  const children = seeds?.length
+    ? seeds.map((s) => ({ childId: String(s.childId || s.id || '').trim(), type: resolveDeviceTypeId(s.type || typeId) || 'generic', title: s.title }))
+      .filter((c) => SAFE.test(c.childId))
+    : (typeId === 'iot-hub' ? [] : [{ childId: gatewayDevice, type: typeId, title: hw.label }]);
+  const rows = children.map((c) => {
+    const row = {
+      id: `preview_${c.childId}`, site, gatewayDevice, childId: c.childId, type: c.type,
+      title: c.title || getDeviceType(c.type)?.title || c.childId, userCritical: [],
+    };
+    const dyn = c.type === 'dynamic' ? deviceOf(db, { site, gateway: gatewayDevice, childId: c.childId }) : null;
+    return {
+      ...row,
+      spec: specFor(db, row),
+      ...(c.type === 'dynamic' ? { fields: dyn?.fields || [], icon: dyn?.icon, color: dyn?.color } : {}),
+    };
+  });
+  const dash = resolveDashboard({ user: { notify_site: site, notify_device: gatewayDevice }, devices: rows, mode: 'simple' });
+  audit(db, 'admin_qr_preview', { userId: adminId ?? null, ip, detail: `${site}/${gatewayDevice}` });
+  return {
+    ok: true, review: true, site, device: gatewayDevice, label: hw.label || null, profile: hw.profile || null,
+    claimed: Boolean(hw.claimed_by), devices: dash.devices,
+  };
+}
+
 export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
+  // Admin quét QR nào cũng chỉ để xem thử: không bao giờ trở thành chủ gateway hay nhận thiết bị vào tài khoản.
+  if (String(user?.role || '') === 'admin') return previewFromQr(db, { qr, ip, adminId: user.id });
   const decoded = decodeClaimQr(qr);
   if (!decoded) return { error: 'invalid_claim_payload', status: 400 };
   const verified = verifyClaimSignature(decoded);

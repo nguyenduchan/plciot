@@ -54,7 +54,7 @@ configure({
 
 const { enrollGateway } = await import('../src/gatewayEnroll.js');
 const P = await import('../src/gatewayPairing.js');
-const { migrateUserDevices, addDeviceFromQr, getDashboardFor } = await import('../src/userDevices.js');
+const { migrateUserDevices, addDeviceFromQr, getDashboardFor, previewFromQr } = await import('../src/userDevices.js');
 
 let failed = 0;
 function ok(cond, msg) {
@@ -118,6 +118,20 @@ const bon = dash.devices.find((d) => d.childId === 'bon1');
 ok(bon && bon.icon === 'tank' && bon.color === 'blue', 'dashboard user: icon + màu từ bản khai');
 ok(bon?.widgets.find((w) => w.bind === 'level')?.kind === 'tank', 'dashboard user: bồn giữ kiểu tank');
 ok(bon?.widgets.find((w) => w.bind === 'q_run')?.cmd?.key === 'q_run' && bon.widgets.find((w) => w.bind === 'q_run').onText === 'Đang chạy', 'dashboard user: điều khiển + chữ Bật/Tắt theo khoá MQTT');
+
+// --- admin quét QR: chỉ xem thử, không thành chủ gateway, không ghi gì
+db.prepare("INSERT INTO users (id, username, role, notify_site, notify_device) VALUES (60, 'quantri', 'admin', 'admin_site', 'plc01')").run();
+const adminRow = () => db.prepare('SELECT * FROM users WHERE id = 60').get();
+const before2 = { ud: db.prepare('SELECT COUNT(*) AS n FROM user_devices').get().n, hw: db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?').get('tram_a', 'gw01') };
+const rv = await addDeviceFromQr(db, adminRow(), { qr: ap.qr, ip: '127.0.0.1', deviceId: 'dev-admin' });
+ok(rv.ok && rv.review === true && !rv.added, 'admin quét QR → chế độ xem thử (không "added")');
+ok(rv.devices.find((d) => d.childId === 'bon1')?.widgets.find((w) => w.bind === 'level')?.kind === 'tank', 'xem thử vẽ đúng UI gateway (bồn tank)');
+ok(db.prepare('SELECT COUNT(*) AS n FROM user_devices').get().n === before2.ud, 'xem thử không ghi user_devices');
+ok(adminRow().notify_site === 'admin_site' && !adminRow().site_owner, 'admin không đổi site và không thành chủ gateway');
+ok(db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?').get('tram_a', 'gw01').claimed_by === before2.hw.claimed_by, 'tem không bị claim bởi admin');
+const pv = previewFromQr(db, { qr: `https://plc.example/login.html?claim=${ap.qr}`, ip: '127.0.0.1', adminId: 60 });
+ok(pv.ok && pv.review && pv.claimed === true, 'xem thử nhận cả link login.html?claim=… và báo tem đã có chủ');
+ok(previewFromQr(db, { qr: 'khong-phai-qr' }).error === 'invalid_claim_payload', 'QR rác bị từ chối');
 
 // --- mã hết hạn
 const old = P.createPairing(db, { adminId: 11 });

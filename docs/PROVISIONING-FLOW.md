@@ -59,3 +59,10 @@ Gateway tự khai thiết bị + setting + UI (GatewayApp) nhưng **không tự 
 Chống spam: mã sai / hết hạn / đã dùng / đã khoá trả **cùng một lỗi** `invalid_pairing` (không ghi DB, không báo admin); giới hạn tốc độ theo IP (`RATE_LIMIT_GATEWAY_PAIR`) + toàn cục (`RATE_LIMIT_GATEWAY_PAIR_GLOBAL`); mỗi mã nhận tối đa 5 lần gửi; bản khai ≤ `POLICY_MAX_CONFIG_BYTES` và đi qua `sanitizeConfig`.
 
 Kiểm thử: `cloud/app/scripts/smoke-gateway-pairing.js`; GatewayApp `--pairtest <thư mục>` (thêm thiết bị bằng hộp thoại thật → gửi bản khai → enroll).
+
+## Admin quét QR: chỉ xem thử, không thành chủ gateway
+
+- Tài khoản **admin** quét/dán QR tem nào cũng chỉ vào **chế độ xem thử**: server dựng đúng giao diện user sẽ thấy nhưng **không** ghi `user_devices`, **không** đổi `notify_site/device`, **không** claim tem (không thành chủ).
+- Webapp (`+ Thêm` → QR) với tài khoản admin hiện hộp "Xem thử (admin) — chưa gắn vào tài khoản" kèm các thẻ chỉ đọc.
+- Trang admin có ô **Xem thử QR**: `POST /api/admin/qr-preview { qr }` (nhận chuỗi QR hoặc link `login.html?claim=…`), vẫn kiểm chữ ký + secret của tem nên không dò được cấu hình bằng cách đoán site/device.
+- Chủ gateway là **user thường quét QR đầu tiên** (cơ chế claim hiện có).

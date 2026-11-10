@@ -22,6 +22,7 @@ import {
 } from '@plciot/security';
 import { attachGatewayBundle, bumpConfigRev, ensureMqttForHardware } from './gatewayEnroll.js';
 import { createPairing, listPairings, getPairing, cancelPairing, approvePairing } from './gatewayPairing.js';
+import { previewFromQr } from './userDevices.js';
 import { retentionInfo } from './retention.js';
 import { revokeDeviceBinding } from './sites.js';
 import {
@@ -429,6 +430,12 @@ export function mountAdminOps(app, {
         }
       });
     res.json({ history: hist, byKind, topDevices, tables });
+  });
+
+  /** Admin quét/dán QR tem bất kỳ để xem giao diện (chỉ đọc): không gắn thiết bị, không thành chủ gateway. */
+  app.post('/api/admin/qr-preview', ...gate, (req, res) => {
+    const r = previewFromQr(db, { qr: req.body?.qr, ip: clientIp(req), adminId: req.user.id });
+    res.status(r.error ? r.status || 400 : 200).json(r);
   });
 
   /* ---------- Ghép cặp gateway: admin phát mã → gateway gửi bản khai → admin xem trước + duyệt → QR ---------- */

@@ -494,6 +494,15 @@
     }
   });
 
+  $('#qp-go')?.addEventListener('click', () => run(async () => {
+    const qr = $('#qp-qr').value.trim();
+    if (!qr) throw new Error('Dán QR hoặc link tem.');
+    const r = await api('/api/admin/qr-preview', 'POST', { qr });
+    $('#qp-out').innerHTML = `<p class="help" style="margin-top:0"><b>${esc(r.label || `${r.site}/${r.device}`)}</b> · <code>${esc(r.site)}/${esc(r.device)}</code>${r.profile ? ` · ${esc(r.profile)}` : ''} · ${r.claimed ? 'tem đã có chủ' : 'tem chưa có chủ'} — chỉ xem, không gắn vào tài khoản nào.</p>`
+      + (r.devices.map((d) => `<div style="margin:8px 0"><b>${PR_ICON[d.icon] || ''} ${esc(d.title)}</b> <code>${esc(d.childId)}</code>${d.color ? ` <span class="tag">${esc(d.color)}</span>` : ''}
+        <ul style="margin:4px 0 0 18px;padding:0">${d.widgets.map((w) => `<li>${esc(w.label)} <code>${esc(w.bind || '')}</code> · ${esc(w.kind)}${w.cmd ? ' · điều khiển' : ''}${w.onText || w.offText ? ` · ${esc(w.onText || '')}/${esc(w.offText || '')}` : ''}${w.low != null || w.high != null ? ` · ngưỡng ${w.low ?? '—'}…${w.high ?? '—'}` : ''}</li>`).join('')}</ul></div>`).join('') || '<p class="help">Gateway chưa khai thiết bị con nào.</p>');
+  }, 'Xem thử xong (không lưu gì).'));
+
   async function run(fn, okText) {
     msg('');
     try { await fn(); msg(okText, 'ok'); await load(); } catch (e) { msg(e.message, 'err'); }

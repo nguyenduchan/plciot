@@ -68,6 +68,13 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   <div id="pr-list">Đang tải…</div>
   <div id="pr-review" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px"></div>
 </div>
+<div class="panel form" id="qp-panel" style="max-width:none;margin-bottom:14px">
+  <h2>Xem thử QR (chỉ xem)</h2>
+  <p class="help">Dán QR/link của tem bất kỳ để xem giao diện user sẽ thấy. Admin <b>không</b> trở thành chủ gateway và không có gì được lưu vào tài khoản.</p>
+  <label>QR hoặc link tem<textarea id="qp-qr" rows="2" autocomplete="off" placeholder="https://…/login.html?claim=… hoặc chuỗi QR" style="display:block;width:100%;margin-top:6px"></textarea></label>
+  <div class="row" style="margin-top:8px"><button id="qp-go" class="primary">Xem thử</button></div>
+  <div id="qp-out" style="margin-top:10px"></div>
+</div>
 <div class="panel form" style="max-width:none;margin-bottom:14px">
   <h2>Thêm thiết bị (QR in tem)</h2>
   <p class="help">Nhập <b>một lần</b> tại đây (site / mã tem / seed). Server tự cấp MQTT. Gateway MCU/C# gọi <code>POST /api/v1/gateway/enroll</code> với cùng QR — không hard-code broker/pass/danh sách con. User điện thoại vẫn quét QR để claim.</p>
