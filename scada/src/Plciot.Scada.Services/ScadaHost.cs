@@ -98,6 +98,17 @@ public sealed class ScadaHost : IAsyncDisposable
             _bridgeTask = Task.Run(() => _bridge.RunAsync(_cts.Token));
         }
         await Core.StartAsync();
+        PublishConfig();
+    }
+
+    /// <summary>Hiển thị do giao diện gateway đặt (tên thiết bị, nhãn/đơn vị/kiểu field) để đưa vào bản tin config. null = suy từ tên.</summary>
+    public IConfigDescriber? Describer { get; set; }
+
+    /// <summary>Gateway khai báo danh sách thiết bị + field (đọc/ghi) lên &lt;base&gt;/config, retain. Gọi lúc khởi động (và mỗi lần áp cấu hình vì host được khởi động lại).</summary>
+    public void PublishConfig()
+    {
+        try { OnCorePublish("config", ConfigBuilder.Build(_cfg, Describer), true); }
+        catch (Exception ex) { Core.Emit("Không tạo được bản tin config: " + ex.Message); }
     }
 
     public async Task StopAsync()

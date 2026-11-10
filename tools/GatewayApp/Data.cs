@@ -247,3 +247,26 @@ public sealed class DemoDriver : IRegisterDriver
 
     public void Dispose() { }
 }
+
+/// <summary>
+/// Đưa nhãn/đơn vị/kiểu hiển thị mà người dùng nhập ở hộp thoại "Thêm thiết bị" vào bản tin MQTT config,
+/// để webapp tự dựng giao diện đúng như người dùng khai báo — không nhập lại ở đâu khác.
+/// </summary>
+public sealed class MetaDescriber : IConfigDescriber
+{
+    readonly UiMetaStore _meta;
+    readonly ScadaConfig _cfg;
+    public MetaDescriber(UiMetaStore meta, ScadaConfig cfg) { _meta = meta; _cfg = cfg; }
+
+    public string? DeviceTitle(string child) => _meta.Device(child)?.Title;
+
+    public FieldView? Field(string child, string field)
+    {
+        var p = _cfg.Pack.FirstOrDefault(x => x.Child == child && x.Field == field);
+        if (p == null) return null;
+        var r = FieldMeta.ResolveFull(p, _meta.Get(child, field));
+        var widget = r.Kind switch { "toggle" => "switch", "slider" => "slider", "number" => "kpi", _ => "gauge" };   // tank/gauge → gauge
+        var ranged = r.Kind is "tank" or "gauge" or "slider";
+        return new FieldView(r.Title, r.Unit, widget, ranged ? r.Min : null, ranged ? r.Max : null);
+    }
+}

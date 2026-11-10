@@ -9,10 +9,12 @@ export function normalizeTelemetryPayload(data) {
     return { error: 'not_object' };
   }
 
-  if (data.d && typeof data.d === 'object' && !Array.isArray(data.d)) {
+  // Giao thức Dynamic Discovery gửi `data`; `d` là tên canonical — chấp nhận cả hai.
+  const dd = data.d ?? data.data;
+  if (dd && typeof dd === 'object' && !Array.isArray(dd)) {
     return {
       schema: 2,
-      d: data.d,
+      d: dd,
       r: Array.isArray(data.r) ? data.r : undefined,
       adapted: false,
     };

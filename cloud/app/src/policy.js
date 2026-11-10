@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { resolveSubscriber, requireKnownDevice, requireActiveSubscription } from './deviceBinding.js';
 import { setMosquittoPassword, randomMqttPassword, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
 import { resolveTelemetryMessage } from './telemetryNormalize.js';
+import { MAX_CONFIG_BYTES } from './gatewayConfig.js';
 
 const floodBuckets = new Map(); // key -> { n, windowStart }
 let rejectStats = Object.create(null);
@@ -44,7 +45,8 @@ export function initPolicyTables(db) {
   `);
 }
 
-function maxPayloadBytes() {
+function maxPayloadBytes(kind) {
+  if (kind === 'config') return MAX_CONFIG_BYTES;
   const n = Number(process.env.POLICY_MAX_PAYLOAD_BYTES || 4096);
   return Number.isFinite(n) && n > 0 ? n : 4096;
 }
@@ -146,8 +148,8 @@ function maybeAutoBlock(db, { site, device, tenant, reason }) {
  * @param {{ canonical?: object } | null} resolved — đã normalize (schema:2 d hoặc legacy r[])
  */
 function validatePayload(kind, text, bufLen, resolved = null) {
-  if (bufLen > maxPayloadBytes()) {
-    return { reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes()}` };
+  if (bufLen > maxPayloadBytes(kind)) {
+    return { reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes(kind)}` };
   }
   if (kind === 'telemetry') {
     const data = resolved?.canonical;
@@ -201,8 +203,8 @@ export function evaluateIngest(db, {
   if (flood) return { allow: false, reason: flood.reason, detail: flood.detail };
 
   // Size trước parse — tránh lệch reason (invalid_json vs payload_too_large)
-  if (bufLen > maxPayloadBytes()) {
-    return { allow: false, reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes()}` };
+  if (bufLen > maxPayloadBytes(kind)) {
+    return { allow: false, reason: 'payload_too_large', detail: `${bufLen}>${maxPayloadBytes(kind)}` };
   }
 
   let resolved = null;

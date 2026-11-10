@@ -3,6 +3,7 @@
  * GET /api/v1/ui/schema | /types | /dashboard
  */
 import { applyControlSpec } from './childControl.js';
+import { GW_WIDGET_TO_KIND } from './gatewayConfig.js';
 
 export const UI_CONTRACT_VERSION = '2026-11-05';
 export const UI_SCHEMA = 1;
@@ -128,6 +129,13 @@ export const DEVICE_TYPES = Object.freeze({
       { id: 'online', kind: 'status', bind: 'online', label: 'Gateway' },
     ],
   },
+  /** Thiết bị do gateway tự khai báo qua <base>/config — widget dựng từ fields, không cố định ở server. */
+  dynamic: {
+    id: 'dynamic',
+    title: 'Thiết bị gateway',
+    source: { path: 'd.{childId}' },
+    widgets: [],
+  },
   generic: {
     id: 'generic',
     title: 'Tuỳ chọn',
@@ -175,7 +183,26 @@ export function uiSchemaPublic() {
   };
 }
 
-function cloneWidgets(type, childId) {
+/** fields (từ gateway config) → widgets. writable + switch/slider → có cmd; còn lại chỉ hiển thị. */
+export function widgetsFromFields(fields) {
+  const out = [];
+  for (const f of fields || []) {
+    let kind = GW_WIDGET_TO_KIND[f.widget] || 'kpi';
+    if (!f.writable && (kind === 'toggle' || kind === 'slider')) kind = kind === 'toggle' ? 'status' : 'kpi';
+    const w = { id: f.key, kind, bind: f.key, label: f.lbl || f.key };
+    if (f.unit) w.unit = f.unit;
+    if (kind === 'gauge') { w.min = f.min ?? 0; w.max = f.max ?? 100; }
+    if (kind === 'toggle') w.cmd = { key: f.key, on: 1, off: 0 };
+    if (kind === 'slider') {
+      w.min = f.min ?? 0; w.max = f.max ?? 100; w.step = f.step ?? 1; w.cmd = { key: f.key };
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+function cloneWidgets(type, childId, fields) {
+  if (type.id === 'dynamic') return widgetsFromFields(fields).map((w) => ({ ...w, id: `${childId}_${w.id}` }));
   return (type.widgets || []).map((w) => ({ ...w, id: `${childId}_${w.id}` }));
 }
 
@@ -196,7 +223,7 @@ export function deviceToUiNode(row) {
     type: type.id,
     title: row.title || type.title,
     source: sourceFor(type, childId),
-    widgets: applyControlSpec(cloneWidgets(type, childId), { spec: row.spec, userCritical: row.userCritical }),
+    widgets: applyControlSpec(cloneWidgets(type, childId, row.fields), { spec: row.spec, userCritical: row.userCritical }),
   };
 }
 

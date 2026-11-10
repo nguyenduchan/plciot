@@ -18,7 +18,8 @@ public enum CloudState { Disabled, Disconnected, Connecting, Connected }
 /// </summary>
 public sealed class CloudBridge : IAsyncDisposable
 {
-    const int MaxPayload = 4096;     // khớp max_packet_size của broker cloud
+    const int MaxPayload = 4096;     // khớp max_packet_size của broker cloud (telemetry/status/ack/history)
+    const int MaxConfigPayload = 16384;   // bản tin config (khai báo thiết bị) lớn hơn; broker cloud cho phép 16 KB
 
     readonly ScadaConfig _cfg;
     readonly IMqttClient _client;
@@ -139,7 +140,7 @@ public sealed class CloudBridge : IAsyncDisposable
     /// <summary>Gửi lên cloud (hoặc ghi nhớ để đồng bộ khi nối lại). Telemetry bị gộp theo CloudTelemetryMinMs.</summary>
     public void Forward(string topic, byte[] payload, bool retain)
     {
-        if (!_cfg.CloudEnabled || payload.Length > MaxPayload) return;
+        if (!_cfg.CloudEnabled || payload.Length > (topic.EndsWith("/config", StringComparison.Ordinal) ? MaxConfigPayload : MaxPayload)) return;
         if (retain) _latest[topic] = (payload, retain);
         if (State != CloudState.Connected) return;
         if (topic.EndsWith("/telemetry", StringComparison.Ordinal))

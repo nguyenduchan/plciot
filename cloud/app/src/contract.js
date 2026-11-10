@@ -6,7 +6,7 @@
  *   Legacy (gateway hiện tại):  plc/{site}/{device}/{kind}
  *   Chuẩn đa tenant:            iot/{tenant}/{site}/{device}/{kind}
  *
- * kind ∈ telemetry | status | history | cmd | ack
+ * kind ∈ telemetry | status | history | cmd | ack | config (gateway khai báo cấu trúc thiết bị)
  * Telemetry IoT: schema 2 + d.{childId}.{field}
  * Cmd / conveyor legacy: schema 1 (+ r[] khi băng tải)
  */
@@ -16,7 +16,7 @@ import crypto from 'crypto';
 export const SCHEMA_VERSION = 1;
 /** Schema telemetry IoT (monitor + UI bind). */
 export const TELEMETRY_SCHEMA = 2;
-export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack']);
+export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config']);
 export const LEGACY_NS = 'plc';
 export const PLATFORM_NS = 'iot';
 export const DEFAULT_TENANT = 'default';

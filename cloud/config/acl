@@ -4,11 +4,13 @@ topic write plc/+/+/telemetry
 topic write plc/+/+/status
 topic write plc/+/+/ack
 topic write plc/+/+/history
+topic write plc/+/+/config
 topic read plc/+/+/cmd
 topic write iot/+/+/+/telemetry
 topic write iot/+/+/+/status
 topic write iot/+/+/+/ack
 topic write iot/+/+/+/history
+topic write iot/+/+/+/config
 topic read iot/+/+/+/cmd
 
 user edge
@@ -16,11 +18,13 @@ topic write plc/+/+/telemetry
 topic write plc/+/+/status
 topic write plc/+/+/ack
 topic write plc/+/+/history
+topic write plc/+/+/config
 topic read plc/+/+/cmd
 topic write iot/+/+/+/telemetry
 topic write iot/+/+/+/status
 topic write iot/+/+/+/ack
 topic write iot/+/+/+/history
+topic write iot/+/+/+/config
 topic read iot/+/+/+/cmd
 
 user ctl
@@ -32,9 +36,11 @@ topic read plc/+/+/telemetry
 topic read plc/+/+/status
 topic read plc/+/+/ack
 topic read plc/+/+/history
+topic read plc/+/+/config
 topic read iot/+/+/+/telemetry
 topic read iot/+/+/+/status
 topic read iot/+/+/+/ack
 topic read iot/+/+/+/history
+topic read iot/+/+/+/config
 
 # MARKER_USER_ACL

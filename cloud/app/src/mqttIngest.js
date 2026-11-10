@@ -8,6 +8,7 @@ import { evaluateIngest, recordDeny, takeRejectStats } from './policy.js';
 import { isOpsOpen } from './opsFlags.js';
 import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
+import { applyGatewayConfig } from './gatewayConfig.js';
 
 function u32(r, i) {
   return (r[i] | 0) + (r[i + 1] | 0) * 65536;
@@ -61,7 +62,7 @@ export function startMqttIngest(db) {
       const parsed = parseTopic(t);
       if (!parsed) return;
       const { site, device, kind } = parsed;
-      if (!['telemetry', 'status', 'history', 'ack', 'cmd'].includes(kind)) return;
+      if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config'].includes(kind)) return;
 
       const verdict = evaluateIngest(db, { topic: t, parsed, payloadBuf: buf });
       if (!verdict.allow) {
@@ -83,6 +84,22 @@ export function startMqttIngest(db) {
       const tenantId = sub.tenantId || DEFAULT_TENANT;
       const now = Date.now();
       const text = buf.toString();
+
+      if (kind === 'config') {
+        // Gateway khai báo cấu trúc thiết bị: upsert + đồng bộ dashboard, không lưu vào lịch sử telemetry.
+        let payload;
+        try { payload = JSON.parse(text); } catch { recordDeny(db, { reason: 'invalid_json', detail: 'config', site, device, tenantId, kind }); return; }
+        const r = applyGatewayConfig(db, { tenantId, site, device, payload });
+        if (r.error) {
+          recordDeny(db, { reason: 'policy_config_shape', detail: r.error, site, device, tenantId, kind });
+          return;
+        }
+        if (r.changed) {
+          audit(db, 'gateway_config', { detail: `${site}/${device} rev ${r.rev}: ${r.devices} thiết bị (+${r.added || 0}/-${r.removed || 0})` });
+          console.log(`[config] ${site}/${device} rev ${r.rev}: ${r.devices} thiết bị`);
+        }
+        return;
+      }
 
       if (kind === 'telemetry') {
         const canonical = verdict.resolved?.canonical || JSON.parse(text);

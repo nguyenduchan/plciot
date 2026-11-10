@@ -14,6 +14,7 @@ const tests = [
   'scripts/smoke-device-claim.js',
   'scripts/smoke-admin-hardware.js',
   'scripts/smoke-ui-contract.js',
+  'scripts/smoke-gateway-config.js',
   'scripts/smoke-gateway-enroll.js',
   'scripts/smoke-control.js',
   'scripts/smoke-sites.js',

@@ -457,8 +457,9 @@
   /** MQTT: monitor từ d.*; conveyor legacy r[] vẫn đọc được. Type/UI từ dashboard server. */
   function onTelemetry(payload) {
     if (!payload || typeof payload !== 'object') return;
-    if (payload.d && typeof payload.d === 'object') {
-      for (const [childId, obj] of Object.entries(payload.d)) {
+    const dd = payload.d || payload.data;   // `data` = tên trong giao thức Dynamic Discovery
+    if (dd && typeof dd === 'object') {
+      for (const [childId, obj] of Object.entries(dd)) {
         if (obj && typeof obj === 'object') live[childId] = { ...live[childId], ...obj };
       }
     }
@@ -499,7 +500,14 @@
     render();
   }
 
-  window.DevicesUi = { load, onTelemetry, injectDemoLive, openModal, getDashboard: () => dashboard };
+  /** Gateway publish <base>/config: server đã upsert → tải lại dashboard (debounce vì ingest ghi DB trước khi UI hỏi). */
+  let cfgTimer = null;
+  function onConfig() {
+    clearTimeout(cfgTimer);
+    cfgTimer = setTimeout(() => { load().catch(() => {}); }, 1500);
+  }
+
+  window.DevicesUi = { load, onConfig, onTelemetry, injectDemoLive, openModal, getDashboard: () => dashboard };
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);

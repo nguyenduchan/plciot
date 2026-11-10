@@ -60,7 +60,7 @@ function staticHeader(secure) {
 }
 
 function deviceWriteAcl(ns) {
-  const kinds = ['telemetry', 'status', 'ack', 'history'];
+  const kinds = ['telemetry', 'status', 'ack', 'history', 'config'];
   if (ns === LEGACY_NS) {
     return [
       ...kinds.map((k) => `topic write ${LEGACY_NS}/+/+/${k}`),
@@ -74,7 +74,7 @@ function deviceWriteAcl(ns) {
 }
 
 function ingestReadAcl(ns) {
-  const kinds = ['telemetry', 'status', 'ack', 'history'];
+  const kinds = ['telemetry', 'status', 'ack', 'history', 'config'];
   if (ns === LEGACY_NS) return kinds.map((k) => `topic read ${LEGACY_NS}/+/+/${k}`);
   return kinds.map((k) => `topic read ${PLATFORM_NS}/+/+/+/${k}`);
 }
@@ -116,7 +116,7 @@ export function userAclBlock(mqttUser, site, device, role = 'operator', scopes =
   const bases = topicBases({ tenant, site, device, ns: preferredNamespace() });
   const control = secure && role !== 'viewer';
   const directWrite = control && !controlViaServer();
-  const readKinds = ['telemetry', 'status', 'ack', 'history'].filter((k) => scopes.includes(k) || (control && k === 'ack'));
+  const readKinds = ['telemetry', 'status', 'ack', 'history', 'config'].filter((k) => scopes.includes(k) || (control && k === 'ack') || (k === 'config' && scopes.includes('telemetry')));
   const lines = [`user ${u}`];
   for (const base of bases) {
     for (const k of readKinds) lines.push(`topic read ${base}/${k}`);
@@ -136,6 +136,7 @@ export function deviceAclBlock(mqttUser, { tenant, site, device, topicNs }) {
     `topic write ${base}/status`,
     `topic write ${base}/ack`,
     `topic write ${base}/history`,
+    `topic write ${base}/config`,
     `topic read ${base}/cmd`,
   ];
   // Dual: cho phép legacy song song nếu thiết bị khai báo iot (firmware cũ thử plc/)
@@ -146,6 +147,7 @@ export function deviceAclBlock(mqttUser, { tenant, site, device, topicNs }) {
       `topic write ${legacy}/status`,
       `topic write ${legacy}/ack`,
       `topic write ${legacy}/history`,
+      `topic write ${legacy}/config`,
       `topic read ${legacy}/cmd`,
     );
   }

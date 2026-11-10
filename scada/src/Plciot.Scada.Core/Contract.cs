@@ -5,10 +5,10 @@ namespace Plciot.Scada;
 /// <summary>Hợp đồng MQTT/thanh ghi dùng chung với gateway, webapp và cloud (xem docs/PROTOCOL.md).</summary>
 public static class Contract
 {
-    public static readonly string[] Kinds = { "telemetry", "status", "ack", "history", "cmd" };
+    public static readonly string[] Kinds = { "telemetry", "status", "ack", "history", "cmd", "config" };
 
     /// <summary>Nhóm topic đi từ thiết bị lên cloud (cmd thì chỉ đi chiều ngược lại).</summary>
-    public static bool IsUpstream(string kind) => kind is "telemetry" or "status" or "ack" or "history";
+    public static bool IsUpstream(string kind) => kind is "telemetry" or "status" or "ack" or "history" or "config";
 
     public static string Base(string site, string device) => $"plc/{site}/{device}";
 

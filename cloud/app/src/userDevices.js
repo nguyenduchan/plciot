@@ -14,10 +14,12 @@ import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
+import { fieldsOf, migrateGatewayConfigs } from './gatewayConfig.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
 export function migrateUserDevices(db) {
+  migrateGatewayConfigs(db);
   // Bảng cùng tên từ schema cũ (user_id/site/device/role…) không có cột id: CREATE IF NOT EXISTS sẽ bỏ qua
   // và mọi truy vấn lỗi "no such column: id". Đổi tên (giữ dữ liệu) để tạo bảng đúng schema.
   const old = db.prepare("PRAGMA table_info('user_devices')").all();
@@ -53,7 +55,12 @@ function listRows(db, userId) {
     'SELECT id, user_id AS userId, site, gateway_device AS gatewayDevice, child_id AS childId, type, title, binds, critical_keys AS criticalKeys, created_at AS createdAt FROM user_devices WHERE user_id = ? ORDER BY created_at',
   ).all(userId);
   // limits/critical do tem đặt (hardware.ui_meta) đi kèm từng dòng để dựng dashboard và kiểm lệnh
-  return rows.map((r) => ({ ...r, spec: specFor(db, r), userCritical: parseUserKeys(r.criticalKeys) }));
+  return rows.map((r) => ({
+    ...r,
+    spec: specFor(db, r),
+    userCritical: parseUserKeys(r.criticalKeys),
+    ...(r.type === 'dynamic' ? { fields: fieldsOf(db, { site: r.site, gateway: r.gatewayDevice, childId: r.childId }) } : {}),
+  }));
 }
 
 /** Người dùng đánh dấu/bỏ đánh dấu một lệnh là nguy hiểm. Lệnh do tem đặt thì không bỏ được. */

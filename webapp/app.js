@@ -49,7 +49,7 @@ class MqttLink {
       .on('error', () => h.status('offline'))
       .on('message', (t, p) => this.msg(t, p));
     this.bases.forEach((b) => {
-      ['telemetry', 'status', 'ack', 'history'].forEach((k) => this.c.subscribe(`${b}/${k}`));
+      ['telemetry', 'status', 'ack', 'history', 'config'].forEach((k) => this.c.subscribe(`${b}/${k}`));
     });
   }
   start() { this.h.status('offline'); this.c.connect(); }
@@ -66,6 +66,7 @@ class MqttLink {
       }
       else if (k === 'ack') this.h.ack(JSON.parse(p));
       else if (k === 'history') this.h.history(JSON.parse(p));
+      else if (k === 'config') window.DevicesUi?.onConfig?.(JSON.parse(p));   // gateway thêm/bớt thiết bị → dựng lại dashboard
     } catch {}
   }
   send(cmd) { return this.c.publish(`${this.base}/cmd`, JSON.stringify(cmd)); }

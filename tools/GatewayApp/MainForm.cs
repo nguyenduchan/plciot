@@ -208,6 +208,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             _values.Clear();
             var h = new ScadaHost(_cfg, _demo ? new DemoDriver(_cfg) : null);
+            h.Describer = new MetaDescriber(_meta, _cfg);   // nhãn/đơn vị/kiểu từ hộp thoại thêm thiết bị → bản tin config
             h.Log += l => _log.Add("LOG", "gateway", l);
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
             h.Core.Publish += OnPublish;

@@ -66,3 +66,27 @@ PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thự
 Webapp (đã đăng nhập) khi mở gọi `GET /api/history/telemetry?site=&dev=&since=` (Bearer JWT), ghi vào IndexedDB để xem offline / khi app từng đóng. Live vẫn qua MQTT trực tiếp.
 
 Dashboard widget (web + C#): [UI-CONTRACT.md](UI-CONTRACT.md) — `GET /api/v1/ui/dashboard`, thêm thiết bị bằng QR (`POST /api/devices`).
+
+## 3. Dynamic Discovery — gateway tự khai báo thiết bị (`<base>/config`)
+
+Gateway (Node-RED / GatewayApp) thêm/bớt thiết bị → publish **retain** một bản tin cấu trúc lên `<base>/config`
+(khi Deploy và khi khởi động lại). Server upsert vào `gateway_configs`, đồng bộ thiết bị con (type `dynamic`) cho
+chủ gateway, webapp nhận config qua MQTT và tự dựng lại dashboard — không sửa code backend/frontend.
+
+```json
+{ "gw": "GW01", "devices": [
+  { "id": "bien_ap_01", "name": "Biến áp", "fields": [
+    { "key": "temp", "lbl": "Nhiệt độ dầu", "unit": "°C", "widget": "gauge", "min": 0, "max": 120 },
+    { "key": "volt", "lbl": "Điện áp", "unit": "V", "widget": "chart" } ] },
+  { "id": "quat_hut_02", "name": "Quạt hút", "fields": [
+    { "key": "status",  "lbl": "Trạng thái", "widget": "led_status" },
+    { "key": "control", "lbl": "Điều khiển", "widget": "switch", "writable": true } ] } ] }
+```
+
+Telemetry vẫn là `<base>/telemetry`: `{"schema":2,"ts":…,"data":{"bien_ap_01":{"temp":75.2}}}` (`data` ≡ `d`).
+
+- `widget`: `gauge | chart(line) | bar | sparkline | ring | kpi | text | chip | led_status | switch | slider`; lạ → `kpi`.
+- Widget chỉ là gợi ý hiển thị. `switch/slider` chỉ điều khiển được khi `writable:true`; lệnh vẫn qua `/api/control/cmd` (step-up, limits/critical).
+- `id` `[A-Za-z0-9_-]{1,48}`, `key` `[A-Za-z0-9_]{1,32}`; tối đa 64 thiết bị × 32 field, 16 KB (khớp `max_packet_size` của broker) (`POLICY_MAX_CONFIG_BYTES`).
+- Config trùng bản cũ (hash) → bỏ qua; thiết bị `dynamic` vắng trong config mới → gỡ khỏi dashboard. Thiết bị gắn bằng QR giữ nguyên.
+- Topic `config` được ghi bởi `gw`/`edge`/thiết bị, đọc bởi ingest và user có scope `telemetry`.
