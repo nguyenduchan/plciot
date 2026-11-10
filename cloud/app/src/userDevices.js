@@ -14,7 +14,7 @@ import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
-import { fieldsOf, migrateGatewayConfigs } from './gatewayConfig.js';
+import { deviceOf, migrateGatewayConfigs } from './gatewayConfig.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
@@ -55,12 +55,15 @@ function listRows(db, userId) {
     'SELECT id, user_id AS userId, site, gateway_device AS gatewayDevice, child_id AS childId, type, title, binds, critical_keys AS criticalKeys, created_at AS createdAt FROM user_devices WHERE user_id = ? ORDER BY created_at',
   ).all(userId);
   // limits/critical do tem đặt (hardware.ui_meta) đi kèm từng dòng để dựng dashboard và kiểm lệnh
-  return rows.map((r) => ({
-    ...r,
-    spec: specFor(db, r),
-    userCritical: parseUserKeys(r.criticalKeys),
-    ...(r.type === 'dynamic' ? { fields: fieldsOf(db, { site: r.site, gateway: r.gatewayDevice, childId: r.childId }) } : {}),
-  }));
+  return rows.map((r) => {
+    const dyn = r.type === 'dynamic' ? deviceOf(db, { site: r.site, gateway: r.gatewayDevice, childId: r.childId }) : null;
+    return {
+      ...r,
+      spec: specFor(db, r),
+      userCritical: parseUserKeys(r.criticalKeys),
+      ...(r.type === 'dynamic' ? { fields: dyn?.fields || [], icon: dyn?.icon, color: dyn?.color } : {}),
+    };
+  });
 }
 
 /** Người dùng đánh dấu/bỏ đánh dấu một lệnh là nguy hiểm. Lệnh do tem đặt thì không bỏ được. */

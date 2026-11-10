@@ -53,6 +53,21 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 
 <div class="cols">
 <div class="col">
+<div class="panel form" id="pr-panel" style="max-width:none;margin-bottom:14px">
+  <h2>Ghép cặp gateway (mã do admin phát)</h2>
+  <p class="help">Tạo mã → đọc/gửi cho người lắp đặt → họ nhập vào GatewayApp (trang Cloud). Gateway gửi <b>toàn bộ thiết bị + setting + UI</b> lên đây; bạn xem trước, đặt site/mã tem rồi <b>Duyệt &amp; tạo QR</b>. Gateway không tự đăng ký được nếu thiếu mã.</p>
+  <div class="row" style="gap:8px;align-items:end">
+    <label style="flex:1">Ghi chú mã (tuỳ chọn)<input id="pr-label" autocomplete="off" placeholder="Trạm bơm Bình Dương"></label>
+    <button id="pr-new" class="primary fit">Tạo mã ghép cặp</button>
+  </div>
+  <div id="pr-code" hidden style="margin:12px 0;padding:14px;border:1px dashed var(--line);border-radius:12px;text-align:center">
+    <div class="help" style="margin:0">Mã ghép cặp (chỉ hiện một lần, dùng một lần)</div>
+    <div id="pr-code-val" style="font:700 2rem/1.3 ui-monospace,Consolas,monospace;letter-spacing:.12em"></div>
+    <div id="pr-code-exp" class="help" style="margin:0"></div>
+  </div>
+  <div id="pr-list">Đang tải…</div>
+  <div id="pr-review" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px"></div>
+</div>
 <div class="panel form" style="max-width:none;margin-bottom:14px">
   <h2>Thêm thiết bị (QR in tem)</h2>
   <p class="help">Nhập <b>một lần</b> tại đây (site / mã tem / seed). Server tự cấp MQTT. Gateway MCU/C# gọi <code>POST /api/v1/gateway/enroll</code> với cùng QR — không hard-code broker/pass/danh sách con. User điện thoại vẫn quét QR để claim.</p>

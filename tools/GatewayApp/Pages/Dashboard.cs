@@ -26,16 +26,21 @@ sealed class DeviceCard : Card
     readonly List<W> _w = new();
     public string Child { get; }
 
-    public DeviceCard(string child, IList<PackMap> fields, IGatewayApp app, Action<string> select, Action<string> edit)
+    public DeviceCard(string child, IList<PackMap> fields, IGatewayApp app, Action<string> select, Action<string>? edit)
     {
         Child = child;
         var dm = app.Meta.Device(child);
         Title = string.IsNullOrWhiteSpace(dm?.Title) ? child : dm!.Title;
         Sub = Title != child ? child : $"{fields.Count} field";
-        var gear = new FlatButton { Caption = "⚙", Width = 30, Height = 26, Font = Theme.Normal, Anchor = AnchorStyles.Top | AnchorStyles.Right };
-        gear.Click += (_, _) => edit(child);
-        Controls.Add(gear);
-        Resize += (_, _) => gear.Location = new Point(Width - gear.Width - 10, 6);
+        Icon = string.IsNullOrEmpty(dm?.Icon) ? (DeviceTemplate.Find(dm?.Template ?? "")?.Icon ?? "") : dm!.Icon;
+        Accent = DeviceStyle.Resolve(dm?.Color);
+        if (edit != null)
+        {
+            var gear = new FlatButton { Caption = "⚙", Width = 30, Height = 26, Font = Theme.Normal, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            gear.Click += (_, _) => edit(child);
+            Controls.Add(gear);
+            Resize += (_, _) => gear.Location = new Point(Width - gear.Width - 10, 6);
+        }
         var flow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, BackColor = Color.Transparent, Margin = Padding.Empty };
         foreach (var p in fields)
         {
@@ -165,7 +170,7 @@ sealed class DashboardPage : UserControl
 
     string Signature() => string.Join("|", _app.Config.Pack.Select(p => $"{p.Child}.{p.Field}@{p.Address}x{p.Scale}"))
         + "#" + string.Join("|", _app.Meta.Map.Select(kv => kv.Key + ":" + kv.Value.Kind + kv.Value.Unit + kv.Value.Title + kv.Value.Min + kv.Value.Max + kv.Value.OnText + kv.Value.OffText + kv.Value.Low + kv.Value.High))
-        + "#" + string.Join("|", _app.Meta.Devices.Select(kv => kv.Key + kv.Value.Title + kv.Value.Template));
+        + "#" + string.Join("|", _app.Meta.Devices.Select(kv => kv.Key + kv.Value.Title + kv.Value.Template + kv.Value.Icon + kv.Value.Color));
 
     public void Rebuild()
     {

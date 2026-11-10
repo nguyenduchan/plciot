@@ -54,15 +54,24 @@
 
   function widgetHtml(dev, w) {
     const v = val(dev.childId, w.bind);
-    const show = v == null || v === '' ? '—' : v;
+    const show = v == null || v === '' ? '—' : (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v);
     const unit = w.unit ? ` <small>${esc(w.unit)}</small>` : '';
     if (w.kind === 'gauge') {
       const min = Number(w.min ?? 0); const max = Number(w.max ?? 100);
       const n = Number(v);
       const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, ((n - min) / (max - min || 1)) * 100)) : 0;
-      return `<div class="dw gauge" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
+      const lvl = Number.isFinite(n) && w.low != null && n <= w.low ? 'low' : Number.isFinite(n) && w.high != null && n >= w.high ? 'high' : '';
+      return `<div class="dw gauge ${lvl}" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div>
         <div class="gauge-bar"><i style="width:${pct}%"></i></div>
         <div class="v">${esc(show)}${unit}</div></div>`;
+    }
+    if (w.kind === 'tank') {
+      // bồn nước: cột chứa dọc, đổi màu + chữ khi chạm ngưỡng thấp/cao (giống thẻ bồn của GatewayApp)
+      const min = Number(w.min ?? 0); const max = Number(w.max ?? 100); const n = Number(v);
+      const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, ((n - min) / (max - min || 1)) * 100)) : 0;
+      const lvl = Number.isFinite(n) && w.low != null && n <= w.low ? 'low' : Number.isFinite(n) && w.high != null && n >= w.high ? 'high' : '';
+      return `<div class="dw tankw ${lvl}" data-wid="${esc(w.id)}"><div class="tank"><i style="height:${pct}%"></i></div>
+        <div><div class="k">${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div><div class="v">${esc(show)}${unit}</div></div></div>`;
     }
     if (w.kind === 'ring') {
       const pct = Math.max(0, Math.min(100, Number(v) || 0));
@@ -78,7 +87,7 @@
         : '';
       const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : ''].filter(Boolean).join(' · ');
       return `<div class="dw ctlw ${c.critical ? 'crit' : ''}" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)} ${star}</div>
-        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? '● Bật' : '○ Tắt'}</button>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
+        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}</button>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'slider') {
       // thanh trượt đặt giá trị (vd tốc độ bơm): thả tay mới gửi lệnh {child,key,v}, giá trị thật hiện qua telemetry
@@ -93,7 +102,7 @@
     if (w.kind === 'status' || w.kind === 'chip') {
       const on = Number(v) === 1 || v === true || (typeof v === 'number' && v > 0);
       return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
-        <div class="chip ${on ? 'on' : ''}">${esc(String(show))}</div></div>`;
+        <div class="chip ${on ? 'on' : ''}">${esc(w.onText || w.offText ? (on ? (w.onText || 'Bật') : (w.offText || 'Tắt')) : String(show))}</div></div>`;
     }
     if (w.kind === 'sparkline' || w.kind === 'line' || w.kind === 'bar') {
       return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
@@ -103,6 +112,9 @@
     return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${esc(w.label)}</div>
       <div class="v">${esc(show)}${unit}</div></div>`;
   }
+
+  /** Mã biểu tượng gateway gửi trong config (icon) → emoji (không cần font/ảnh riêng, chạy trên điện thoại). */
+  const DEV_ICON = { tank: '🛢', pump: '⛽', env: '🌡', valve: '🚰', motor: '⚙️', energy: '⚡', pressure: '🧭', conveyor: '📦', di: '⬇️', do: '⬆️', custom: '➕' };
 
   function render() {
     const host = $('#dev-grid');
@@ -116,8 +128,9 @@
     host.innerHTML = order.map((id) => {
       const d = byId[id];
       if (!d) return '';
-      return `<article class="dev-card" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
-        <header><h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
+      const icon = DEV_ICON[d.icon] ? `<span class="dev-ic" aria-hidden="true">${DEV_ICON[d.icon]}</span>` : '';
+      return `<article class="dev-card${d.color ? ` acc-${esc(d.color)}` : ''}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
+        <header>${icon}<h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
           <button type="button" class="fit danger dw-rm" data-id="${esc(d.id)}" title="Gỡ">×</button></header>
         <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
       </article>`;

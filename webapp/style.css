@@ -432,3 +432,14 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .mq-act svg{box-sizing:content-box;padding:13px;border-radius:50%;background:#ffffff2e}
 .mq-act:disabled{opacity:.4}
 .mq-warn{margin:auto 0 calc(env(safe-area-inset-bottom,0px) + 18px);padding:0 28px;font-size:13px;text-align:center;opacity:.85}
+
+/* Kiểu thẻ thiết bị do gateway khai báo (icon + màu nhấn + bồn nước + ngưỡng) — cùng bảng màu với GatewayApp */
+.dev-card.acc-blue{--acc:#3274d9}.dev-card.acc-green{--acc:#73bf69}.dev-card.acc-yellow{--acc:#f2cc0c}
+.dev-card.acc-red{--acc:#f2495c}.dev-card.acc-purple{--acc:#a371f7}.dev-card.acc-orange{--acc:#ff9830}
+.dev-card[class*="acc-"]{border-top:3px solid var(--acc)}
+.dev-ic{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;font-size:16px;flex:none;align-self:center;background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.tankw{display:flex;align-items:center;gap:12px}
+.tank{width:44px;height:88px;flex:none;border:2px solid var(--line);border-radius:8px;position:relative;overflow:hidden;background:var(--bg)}
+.tank i{position:absolute;left:0;right:0;bottom:0;background:var(--acc);transition:height .4s}
+.tankw.low .tank i,.gauge.low .gauge-bar i{background:#f2cc0c}.tankw.high .tank i,.gauge.high .gauge-bar i{background:#f2495c}
+.lvl{font-size:11px;font-weight:700;margin-left:4px;color:#d97706}

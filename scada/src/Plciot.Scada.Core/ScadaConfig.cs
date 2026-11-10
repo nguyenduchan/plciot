@@ -45,6 +45,8 @@ public sealed class PackMap
 {
     public string Child { get; set; } = "";
     public string Field { get; set; } = "";
+    /// <summary>Khoá của field trong bản tin MQTT (telemetry d.&lt;child&gt;.&lt;khoá&gt;, config key, cmd key). Rỗng = dùng đúng tên <see cref="Field"/>.</summary>
+    public string MqttKey { get; set; } = "";
     public int Address { get; set; }
     public double Scale { get; set; } = 1;
     /// <summary>Khoảng giá trị (đơn vị kỹ thuật, trước khi nhân Scale) cho phép GHI xuống trường này; do tem provisioning đặt. null = không giới hạn.</summary>
@@ -65,6 +67,8 @@ public sealed class PackMap
     /// <summary>Tên struct nếu field thuộc một struct (chỉ để nhóm hiển thị; mọi field vẫn là field của thiết bị).</summary>
     public string Group { get; set; } = "";
 
+    /// <summary>Khoá thực sự đi trên MQTT.</summary>
+    [JsonIgnore] public string WireKey => string.IsNullOrWhiteSpace(MqttKey) ? Field : MqttKey.Trim();
     [JsonIgnore] public bool IsBound => Protocol.Length > 0;
     [JsonIgnore] public PlcSource? Source => Enum.TryParse<PlcSource>(Protocol, out var s) ? s : null;
     [JsonIgnore] public int Words => PackCodec.Words(DataType);
@@ -297,6 +301,12 @@ public sealed class ScadaConfig
         var packErr = ValidateBinding();
         if (packErr != null) return packErr;
         if (Pack.Any(x => x.Min.HasValue && x.Max.HasValue && x.Min > x.Max)) return "Pack: Min không được lớn hơn Max.";
+        // khoá MQTT: cloud chỉ nhận chữ/số/_ (≤32 ký tự), và không trùng nhau trong cùng một thiết bị
+        var wire = new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_]{1,32}$");
+        var badWire = Pack.FirstOrDefault(x => !wire.IsMatch(x.WireKey));
+        if (badWire != null) return $"Pack: khoá MQTT \"{badWire.WireKey}\" của {badWire.Child}.{badWire.Field} chỉ gồm chữ, số, '_' (tối đa 32 ký tự).";
+        var dupWire = Pack.GroupBy(x => (x.Child, x.WireKey)).FirstOrDefault(g => g.Count() > 1);
+        if (dupWire != null) return $"Pack: khoá MQTT \"{dupWire.Key.WireKey}\" bị trùng trong thiết bị {dupWire.Key.Child}.";
         if (CmdMaxAgeSec < 0) return "CmdMaxAgeSec không được âm.";
         if (CloudEnabled)
         {

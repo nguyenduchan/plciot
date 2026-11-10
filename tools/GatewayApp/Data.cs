@@ -63,6 +63,27 @@ public sealed class DeviceMeta
 {
     public string Title { get; set; } = "";
     public string Template { get; set; } = "";
+    /// <summary>Ký tự biểu tượng trên thẻ; rỗng = theo loại thiết bị (Template).</summary>
+    public string Icon { get; set; } = "";
+    /// <summary>Màu nhấn của thẻ (khoá trong <see cref="DeviceStyle.ColorKeys"/>); rỗng = mặc định.</summary>
+    public string Color { get; set; } = "";
+}
+
+/// <summary>Bảng màu nhấn người dùng chọn cho thẻ thiết bị.</summary>
+public static class DeviceStyle
+{
+    public static readonly string[] ColorKeys = { "", "blue", "green", "yellow", "red", "purple", "orange" };
+    public static readonly string[] ColorNames = { "Mặc định (xanh ngọc)", "Xanh dương", "Xanh lá", "Vàng", "Đỏ", "Tím", "Cam" };
+    public static Color Resolve(string? key) => key switch
+    {
+        "blue" => GatewayApp.Ui.Theme.Accent,
+        "green" => GatewayApp.Ui.Theme.Green,
+        "yellow" => GatewayApp.Ui.Theme.Yellow,
+        "red" => GatewayApp.Ui.Theme.Red,
+        "purple" => Color.FromArgb(163, 113, 247),
+        "orange" => Color.FromArgb(255, 152, 48),
+        _ => GatewayApp.Ui.Theme.Teal,
+    };
 }
 
 /// <summary>Lưu metadata hiển thị cạnh file cấu hình gateway.</summary>
@@ -265,8 +286,22 @@ public sealed class MetaDescriber : IConfigDescriber
         var p = _cfg.Pack.FirstOrDefault(x => x.Child == child && x.Field == field);
         if (p == null) return null;
         var r = FieldMeta.ResolveFull(p, _meta.Get(child, field));
-        var widget = r.Kind switch { "toggle" => "switch", "slider" => "slider", "number" => "kpi", _ => "gauge" };   // tank/gauge → gauge
+        var widget = r.Kind switch { "toggle" => "switch", "slider" => "slider", "number" => "kpi", "tank" => "tank", _ => "gauge" };   // giữ đúng kiểu GatewayApp: bồn → tank, đồng hồ → gauge
         var ranged = r.Kind is "tank" or "gauge" or "slider";
-        return new FieldView(r.Title, r.Unit, widget, ranged ? r.Min : null, ranged ? r.Max : null);
+        var m = _meta.Get(child, field);
+        var toggle = r.Kind == "toggle";
+        var thresholds = r.Kind is "tank" or "gauge";
+        return new FieldView(r.Title, r.Unit, widget, ranged ? r.Min : null, ranged ? r.Max : null,
+            toggle && !string.IsNullOrEmpty(m?.OnText) ? m!.OnText : null, toggle && !string.IsNullOrEmpty(m?.OffText) ? m!.OffText : null,
+            thresholds ? r.Low : null, thresholds ? r.High : null);
+    }
+
+    /// <summary>Biểu tượng (mã theo loại thiết bị) + màu nhấn người dùng chọn → webapp vẽ thẻ giống GatewayApp.</summary>
+    public DeviceView? Style(string child)
+    {
+        var dm = _meta.Device(child);
+        if (dm == null) return null;
+        var tpl = !string.IsNullOrEmpty(dm.Icon) ? DeviceTemplate.All.FirstOrDefault(t => t.Icon == dm.Icon) : DeviceTemplate.Find(dm.Template);
+        return new DeviceView(tpl?.Id, string.IsNullOrEmpty(dm.Color) ? null : dm.Color);
     }
 }

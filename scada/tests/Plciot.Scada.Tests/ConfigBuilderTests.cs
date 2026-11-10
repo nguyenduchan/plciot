@@ -65,4 +65,42 @@ public class ConfigBuilderTests
         Assert.True(Contract.IsUpstream("config"));
         Assert.Equal("config", Contract.KindOf("plc/s/GW01/config", "plc/s/GW01"));
     }
+
+    [Fact]
+    public void Mqtt_key_alias_is_used_in_config_and_must_be_unique()
+    {
+        var cfg = Cfg();
+        cfg.Pack.First(p => p.Field == "flow").MqttKey = "q_flow";
+        using var doc = JsonDocument.Parse(ConfigBuilder.Build(cfg, new Desc()));
+        var keys = doc.RootElement.GetProperty("devices")[0].GetProperty("fields").EnumerateArray().Select(f => f.GetProperty("key").GetString()).ToList();
+        Assert.Contains("q_flow", keys);
+        Assert.DoesNotContain("flow", keys);
+        Assert.Equal("q_flow", cfg.Pack.First(p => p.Field == "flow").WireKey);
+        Assert.Equal("run", cfg.Pack.First(p => p.Field == "run").WireKey);
+    }
+
+    sealed class StyledDesc : IConfigDescriber
+    {
+        public string? DeviceTitle(string child) => "Bơm nước";
+        public FieldView? Field(string child, string field) =>
+            field == "run" ? new FieldView("Bơm", "", "switch", On: "Đang chạy", Off: "Dừng")
+            : field == "flow" ? new FieldView("Lưu lượng", "L/phút", "tank", 0, 100, Low: 15, High: 90) : null;
+        public DeviceView? Style(string child) => new DeviceView("pump", "blue");
+    }
+
+    [Fact]
+    public void Config_carries_ui_style_icon_color_texts_and_thresholds()
+    {
+        using var doc = JsonDocument.Parse(ConfigBuilder.Build(Cfg(), new StyledDesc()));
+        var pump = doc.RootElement.GetProperty("devices")[0];
+        Assert.Equal("pump", pump.GetProperty("icon").GetString());
+        Assert.Equal("blue", pump.GetProperty("color").GetString());
+        var fields = pump.GetProperty("fields").EnumerateArray().ToList();
+        var run = fields.First(f => f.GetProperty("key").GetString() == "run");
+        Assert.Equal("Đang chạy", run.GetProperty("on").GetString());
+        var flow = fields.First(f => f.GetProperty("key").GetString() == "flow");
+        Assert.Equal("tank", flow.GetProperty("widget").GetString());
+        Assert.Equal(15, flow.GetProperty("low").GetDouble());
+        Assert.Equal(90, flow.GetProperty("high").GetDouble());
+    }
 }

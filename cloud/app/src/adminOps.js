@@ -21,6 +21,7 @@ import {
   issueActivationCode, deriveDeviceKey, releaseGatewayHardware,
 } from '@plciot/security';
 import { attachGatewayBundle, bumpConfigRev, ensureMqttForHardware } from './gatewayEnroll.js';
+import { createPairing, listPairings, getPairing, cancelPairing, approvePairing } from './gatewayPairing.js';
 import { retentionInfo } from './retention.js';
 import { revokeDeviceBinding } from './sites.js';
 import {
@@ -428,6 +429,28 @@ export function mountAdminOps(app, {
         }
       });
     res.json({ history: hist, byKind, topDevices, tables });
+  });
+
+  /* ---------- Ghép cặp gateway: admin phát mã → gateway gửi bản khai → admin xem trước + duyệt → QR ---------- */
+  app.post('/api/admin/pairings', ...writeGate, (req, res) => {
+    const r = createPairing(db, { adminId: req.user.id, label: req.body?.label, ttlMin: req.body?.ttlMin });
+    if (!r.error) audit(db, 'pairing_create', { userId: req.user.id, ip: clientIp(req), detail: r.id });
+    res.status(r.error ? r.status || 400 : 200).json(r);
+  });
+  app.get('/api/admin/pairings', ...gate, (_req, res) => res.json({ pairings: listPairings(db) }));
+  app.get('/api/admin/pairings/:id', ...gate, (req, res) => {
+    const r = getPairing(db, req.params.id);
+    res.status(r.error ? r.status || 400 : 200).json(r);
+  });
+  app.post('/api/admin/pairings/:id/approve', ...writeGate, (req, res) => {
+    const r = approvePairing(db, { id: req.params.id, site: req.body?.site, device: req.body?.device, label: req.body?.label });
+    if (!r.error) audit(db, 'pairing_approve', { userId: req.user.id, ip: clientIp(req), detail: `${r.pairingId} → ${r.site}/${r.device}` });
+    res.status(r.error ? r.status || 400 : 200).json(r);
+  });
+  app.delete('/api/admin/pairings/:id', ...writeGate, (req, res) => {
+    const r = cancelPairing(db, req.params.id);
+    if (!r.error) audit(db, 'pairing_cancel', { userId: req.user.id, ip: clientIp(req), detail: req.params.id });
+    res.status(r.error ? r.status || 400 : 200).json(r);
   });
 
   /* ---------- Thiết bị cứng (QR claim): chỉ device đã add mới được user quét ---------- */

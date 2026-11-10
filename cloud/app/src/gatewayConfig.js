@@ -24,6 +24,7 @@ const MAX_FIELDS = 32;
 /** Tên widget phía gateway → kind của UI contract. Lạ → kpi. */
 export const GW_WIDGET_TO_KIND = Object.freeze({
   gauge: 'gauge',
+  tank: 'tank',
   chart: 'line',
   line: 'line',
   bar: 'bar',
@@ -40,6 +41,10 @@ export const GW_WIDGET_TO_KIND = Object.freeze({
   toggle: 'toggle',
   slider: 'slider',
 });
+
+/** Màu nhấn + biểu tượng thẻ: danh sách trắng, lạ → bỏ (webapp dùng mặc định). */
+export const DEVICE_COLORS = Object.freeze(['blue', 'green', 'yellow', 'red', 'purple', 'orange']);
+const ICON = /^[a-z0-9_]{1,16}$/;
 
 const clip = (v, n) => String(v ?? '').trim().slice(0, n);
 const num = (v) => (Number.isFinite(Number(v)) && v !== '' && v !== null ? Number(v) : undefined);
@@ -70,13 +75,23 @@ export function sanitizeConfig(payload) {
       };
       if (f.unit) out.unit = clip(f.unit, 16);
       if (f.writable === true) out.writable = true;
+      if (f.on) out.on = clip(f.on, 24);
+      if (f.off) out.off = clip(f.off, 24);
+      const low = num(f.low); const high = num(f.high);
+      if (low !== undefined) out.low = low;
+      if (high !== undefined) out.high = high;
       const min = num(f.min); const max = num(f.max); const step = num(f.step);
       if (min !== undefined) out.min = min;
       if (max !== undefined) out.max = max;
       if (step !== undefined && step > 0) out.step = step;
       fields.push(out);
     }
-    devices.push({ id, name: clip(d.name, 120) || id, fields });
+    const dev = { id, name: clip(d.name, 120) || id, fields };
+    const icon = clip(d.icon, 16).toLowerCase();
+    if (ICON.test(icon)) dev.icon = icon;
+    const color = clip(d.color, 12).toLowerCase();
+    if (DEVICE_COLORS.includes(color)) dev.color = color;
+    devices.push(dev);
   }
   return { ok: true, devices };
 }
@@ -104,15 +119,20 @@ export function getGatewayConfig(db, { tenantId = 'default', site, device }) {
   return { site, device, rev: row.rev, updatedAt: row.updated_at, devices: JSON.parse(row.devices) };
 }
 
-/** Các field đã khai báo của một thiết bị con (nhà máy + gateway) — dùng dựng widget động. */
-export function fieldsOf(db, { site, gateway, childId }) {
+/** Thiết bị con đã khai báo (nhà máy + gateway): fields, icon, color — dùng dựng widget + kiểu thẻ động. */
+export function deviceOf(db, { site, gateway, childId }) {
   migrateGatewayConfigs(db);
   const rows = db.prepare('SELECT devices FROM gateway_configs WHERE site = ? AND device = ?').all(site, gateway);
   for (const r of rows) {
     const d = JSON.parse(r.devices).find((x) => x.id === childId);
-    if (d) return d.fields;
+    if (d) return d;
   }
-  return [];
+  return null;
+}
+
+/** Các field đã khai báo của một thiết bị con. */
+export function fieldsOf(db, args) {
+  return deviceOf(db, args)?.fields || [];
 }
 
 /**

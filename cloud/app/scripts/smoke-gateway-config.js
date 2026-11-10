@@ -60,5 +60,20 @@ db.prepare("INSERT INTO user_devices (id,user_id,site,gateway_device,child_id,ty
 applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap, quat]) });
 ok(db.prepare("SELECT 1 FROM user_devices WHERE id='ud_x'").get(), 'thiết bị QR giữ nguyên');
 
+// Kiểu UI do gateway khai báo (icon, màu, bồn, chữ Bật/Tắt, ngưỡng) phải tới dashboard nguyên vẹn
+const bon = { id: 'bon1', name: 'Bồn nước', icon: 'tank', color: 'blue', fields: [
+  { key: 'level', lbl: 'Mức nước', unit: '%', widget: 'tank', min: 0, max: 100, low: 15, high: 92 },
+  { key: 'run', lbl: 'Bơm', widget: 'switch', writable: true, on: 'Đang chạy', off: 'Dừng' }] };
+const san = sanitizeConfig({ devices: [{ ...bon, icon: 'bad icon!', color: 'pink' }] }).devices[0];
+ok(san.icon === undefined && san.color === undefined, 'icon/màu lạ bị bỏ');
+applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap, bon]) });
+dash = getDashboardFor(db, { id: 1, notify_site: 'tram1', notify_device: 'GW01' }, 'simple');
+const bn = dash.devices.find((d) => d.childId === 'bon1');
+ok(bn.icon === 'tank' && bn.color === 'blue', 'dashboard mang icon + màu của thiết bị');
+const lv = bn.widgets.find((w) => w.bind === 'level');
+ok(lv.kind === 'tank' && lv.low === 15 && lv.high === 92 && lv.max === 100, 'bồn giữ kiểu tank + ngưỡng thấp/cao');
+const rn = bn.widgets.find((w) => w.bind === 'run');
+ok(rn.kind === 'toggle' && rn.onText === 'Đang chạy' && rn.offText === 'Dừng', 'chữ Bật/Tắt do người dùng đặt');
+
 console.log(fails ? `FAILED ${fails}` : 'gateway-config smoke OK');
 process.exit(fails ? 1 : 0);

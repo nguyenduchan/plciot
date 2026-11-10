@@ -191,8 +191,11 @@ export function widgetsFromFields(fields) {
     if (!f.writable && (kind === 'toggle' || kind === 'slider')) kind = kind === 'toggle' ? 'status' : 'kpi';
     const w = { id: f.key, kind, bind: f.key, label: f.lbl || f.key };
     if (f.unit) w.unit = f.unit;
-    if (kind === 'gauge') { w.min = f.min ?? 0; w.max = f.max ?? 100; }
-    if (kind === 'toggle') w.cmd = { key: f.key, on: 1, off: 0 };
+    if (kind === 'gauge' || kind === 'tank') { w.min = f.min ?? 0; w.max = f.max ?? 100; }
+    if (kind === 'toggle') { w.cmd = { key: f.key, on: 1, off: 0 }; if (f.on) w.onText = f.on; if (f.off) w.offText = f.off; }
+    if (kind === 'status') { if (f.on) w.onText = f.on; if (f.off) w.offText = f.off; }
+    if (f.low !== undefined) w.low = f.low;
+    if (f.high !== undefined) w.high = f.high;
     if (kind === 'slider') {
       w.min = f.min ?? 0; w.max = f.max ?? 100; w.step = f.step ?? 1; w.cmd = { key: f.key };
     }
@@ -222,6 +225,8 @@ export function deviceToUiNode(row) {
     childId,
     type: type.id,
     title: row.title || type.title,
+    ...(row.icon ? { icon: row.icon } : {}),
+    ...(row.color ? { color: row.color } : {}),
     source: sourceFor(type, childId),
     widgets: applyControlSpec(cloneWidgets(type, childId, row.fields), { spec: row.spec, userCritical: row.userCritical }),
   };

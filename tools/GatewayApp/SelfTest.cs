@@ -20,7 +20,7 @@ public sealed partial class MainForm
     }
 
     /// <summary>Thêm một thiết bị qua hộp thoại thật. Trả về thông báo lỗi của hộp thoại (rỗng = thành công).</summary>
-    string AddDeviceViaDialog(string templateId, PlcSource src, string host, int port, Dictionary<string, string> opts, Dictionary<string, string> prm, Action<DataGridView>? tweak = null)
+    string AddDeviceViaDialog(string templateId, PlcSource src, string host, int port, Dictionary<string, string> opts, Dictionary<string, string> prm, Action<DataGridView>? tweak = null, Action<Form>? dlgTweak = null)
     {
         using var dlg = DeviceDialog.Preview(this, null);
         var t = dlg.GetType();
@@ -32,6 +32,7 @@ public sealed partial class MainForm
         foreach (var (k, v) in opts) Set(conn[k], v);
         foreach (var (k, v) in prm) Set(F<Dictionary<string, Control>>(dlg, "_paramInputs")[k], v);
         tweak?.Invoke(F<DataGridView>(dlg, "_g"));
+        dlgTweak?.Invoke(dlg);
         t.GetMethod("Commit", NP)!.Invoke(dlg, null);
         if (dlg.DialogResult == DialogResult.OK) return "";
         return F<Label>(dlg, "_err").Text is { Length: > 0 } e ? e : "không đóng với OK";

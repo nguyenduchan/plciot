@@ -155,13 +155,14 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         SetStatus("offline", force: true);
     }
 
-    static byte[] BuildBoundTelemetry(Dictionary<(string Child, string Field), double> values)
+    byte[] BuildBoundTelemetry(Dictionary<(string Child, string Field), double> values)
     {
         var d = new Dictionary<string, Dictionary<string, double>>();
         foreach (var ((c, f), v) in values)
         {
             if (!d.TryGetValue(c, out var fl)) d[c] = fl = new();
-            fl[f] = v;
+            // tên field nội bộ → khoá MQTT đã khai báo
+            fl[_cfg.Pack.FirstOrDefault(x => x.Child == c && x.Field == f)?.WireKey ?? f] = v;
         }
         return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { schema = 2, d }));
     }
@@ -174,7 +175,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         foreach (var x in _cfg.Pack)
         {
             if (!d.TryGetValue(x.Child, out var f)) d[x.Child] = f = new();
-            f[x.Field] = Math.Round(all[x.Address] / x.Scale, 3);
+            f[x.WireKey] = Math.Round(all[x.Address] / x.Scale, 3);
         }
         return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { schema = 2, r = regs, d }));
     }
@@ -289,7 +290,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             return CommandPolicy.AckJson(id, false, source == ControlSource.Mobile ? "remote_disabled" : "control_disabled");
         }
         // giới hạn do tem provisioning đặt cho trường này: gateway tự kiểm lại, không tin hoàn toàn vào cloud
-        var field = _cfg.Pack.FirstOrDefault(x => string.Equals(x.Field, key, StringComparison.OrdinalIgnoreCase)
+        var field = _cfg.Pack.FirstOrDefault(x => string.Equals(x.WireKey, key, StringComparison.OrdinalIgnoreCase)
             && (child == null || string.Equals(x.Child, child, StringComparison.OrdinalIgnoreCase)));
         if (field != null && ((field.Min.HasValue && v < field.Min) || (field.Max.HasValue && v > field.Max)))
         {
@@ -330,7 +331,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             await ExternalCommandSink(payload);
             return null;
         }
-        var map = _cfg.Pack.FirstOrDefault(x => string.Equals(x.Field, key, StringComparison.OrdinalIgnoreCase)
+        var map = _cfg.Pack.FirstOrDefault(x => string.Equals(x.WireKey, key, StringComparison.OrdinalIgnoreCase)
             && (child == null || string.Equals(x.Child, child, StringComparison.OrdinalIgnoreCase)));
         if (map == null) return CommandPolicy.AckJson(id, false, "unknown_key");
         var raw = Math.Round(v * map.Scale);

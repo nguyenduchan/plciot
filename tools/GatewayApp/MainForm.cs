@@ -77,9 +77,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         Toast(why + (Running ? "" : " (lưu rồi, bấm Chạy để áp dụng)"));
     }
 
+    /// <summary>Thông báo cuối cùng (kiểm thử đọc lại kết quả thao tác).</summary>
+    internal (string Text, bool Error) LastToast { get; private set; }
+
     public void Toast(string text, bool error = false)
     {
         if (InvokeRequired) { BeginInvoke(() => Toast(text, error)); return; }
+        LastToast = (text, error);
         _toast.Text = text; _toast.BackColor = error ? Theme.Red : Theme.Accent; _toast.Visible = true; _toast.BringToFront();
         PlaceToast(); _toastTimer.Stop(); _toastTimer.Start();
     }
@@ -108,6 +112,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _protos = new ProtocolsPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
         _cloud.EnrollRequested = EnrollAsync;
+        _cloud.PairRequested = PairAsync;
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
@@ -248,6 +253,24 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (JsonException) { /* bỏ qua gói hỏng */ }
     }
 
+    // ------------------------------------------------------------------ ghép cặp bằng mã admin (gateway chưa đăng ký)
+    async Task PairAsync()
+    {
+        var code = _cloud.Pair.Text.Trim();
+        if (code.Length == 0) { Toast("Nhập mã ghép cặp do admin phát.", true); return; }
+        if (_cfg.Pack.Count == 0) { Toast("Chưa có thiết bị nào để gửi — thêm thiết bị ở trang Thiết bị trước.", true); return; }
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(_cloud.Api.Text.Trim()), Timeout = TimeSpan.FromSeconds(20) };
+            var json = ConfigBuilder.Build(_cfg, new MetaDescriber(_meta, _cfg));   // đúng bản tin config sẽ publish sau khi đăng ký
+            var r = await new GatewayEnrollClient(http).PairAsync(code, Fingerprint.Of(_cfg), json);
+            _cloud.Pair.Text = "";
+            _log.Add("INFO", "pair", $"đã gửi bản khai {r.Devices} thiết bị ({json.Length} byte), vân tay {Fingerprint.Of(_cfg)} — chờ admin duyệt");
+            Toast($"Đã gửi {r.Devices} thiết bị cho admin (vân tay {Fingerprint.Of(_cfg)}). Chờ admin duyệt và đưa QR.");
+        }
+        catch (Exception ex) { Toast(ex.Message == "invalid_pairing" ? "Mã ghép cặp sai, hết hạn hoặc đã dùng." : "Gửi bản khai lỗi: " + ex.Message, true); }
+    }
+
     // ------------------------------------------------------------------ enroll từ QR (tuỳ chọn, cần Internet)
     async Task EnrollAsync()
     {
@@ -267,6 +290,14 @@ public sealed partial class MainForm : Form, IGatewayApp
             // Pack: tem chỉ cho biết thiết bị/field/giới hạn. Giao thức, kiểu, quyền, thanh ghi D và hệ số KHÔNG đoán:
             // để trống (Address = -1, Scale = 0) và người dùng khai báo ở trang Thiết bị trước khi chạy.
             var pack = new List<PackMap>();
+            if (_cfg.Pack.Count > 0 && _cfg.Pack.All(p => p.Address >= 0))
+            {
+                // Đã tự khai báo đầy đủ trước khi đăng ký (ghép cặp): giữ nguyên giao thức/thanh ghi/khoá MQTT, chỉ nhận site/MQTT từ server.
+                _log.Add("INFO", "enroll", $"giữ {_cfg.Pack.Count} field đã khai báo; site={kit.Site} device={kit.Device}");
+                _cfg.Mobile = MobileAccess.Control;
+                await ApplyAsync($"Đã đăng ký: {_cfg.Site}/{_cfg.Device} — giữ nguyên {_cfg.Pack.Count} field đã khai báo, gateway publish config lên cloud");
+                return;
+            }
             foreach (var c in kit.Pack ?? new())
                 foreach (var f in c.Fields ?? new())
                 {

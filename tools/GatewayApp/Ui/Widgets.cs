@@ -20,6 +20,11 @@ class Card : Panel
     string _title = "", _sub = "";
     public string Title { get => _title; set { _title = value; Invalidate(); } }
     public string Sub { get => _sub; set { _sub = value; Invalidate(); } }
+    string _icon = "";
+    Color _accent = Theme.Teal;
+    /// <summary>Biểu tượng hiện cạnh tiêu đề (rỗng = không hiện).</summary>
+    public string Icon { get => _icon; set { _icon = value; Invalidate(); } }
+    public Color Accent { get => _accent; set { _accent = value; Invalidate(); } }
 
     public Card()
     {
@@ -38,11 +43,20 @@ class Card : Panel
         using (var p = new Pen(Theme.Border)) g.DrawPath(p, path);
         if (_title.Length > 0)
         {
-            TextRenderer.DrawText(g, _title, Theme.Title, new Point(14, 9), Theme.Text, TextFormatFlags.NoPadding);
+            var x0 = 14;
+            if (_icon.Length > 0)
+            {
+                var ic = new RectangleF(12, 6, 28, 28);
+                using (var ip = Theme.Round(ic, 7)) { using var ib = new SolidBrush(Color.FromArgb(55, _accent)); g.FillPath(ib, ip); }
+                TextRenderer.DrawText(g, _icon, new Font("Segoe UI Symbol", 11f), Rectangle.Round(ic), _accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                x0 = 48;
+                using var bar = new SolidBrush(_accent); g.FillRectangle(bar, 1, 14, 3, 12);
+            }
+            TextRenderer.DrawText(g, _title, Theme.Title, new Point(x0, 9), Theme.Text, TextFormatFlags.NoPadding);
             if (_sub.Length > 0)
             {
                 var w = TextRenderer.MeasureText(g, _title, Theme.Title, new Size(9999, 99), TextFormatFlags.NoPadding).Width;
-                TextRenderer.DrawText(g, _sub, Theme.Small, new Point(22 + w, 13), Theme.Muted, TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, _sub, Theme.Small, new Point(x0 + 8 + w, 13), Theme.Muted, TextFormatFlags.NoPadding);
             }
         }
     }

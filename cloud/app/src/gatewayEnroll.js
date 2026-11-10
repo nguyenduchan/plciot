@@ -14,6 +14,7 @@ import {
 import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
+import { submitPairing } from './gatewayPairing.js';
 
 function parseUiMeta(raw) {
   if (!raw) return null;
@@ -99,7 +100,9 @@ export function seedFromHardware(hw) {
         id,
         type,
         title: s.title ? String(s.title).slice(0, 120) : null,
-        fields: childFields(type),
+        fields: type === 'dynamic' && Array.isArray(s.fields)
+          ? s.fields.map((k) => String(k)).filter((k) => /^[A-Za-z0-9_]{1,32}$/.test(k)).slice(0, 32)
+          : childFields(type),
         limits: normalizeLimits(s.limits),
       });
     }
@@ -285,6 +288,23 @@ export function mountGatewayEnroll(app, { db } = {}) {
         detail: `${r.site}/${r.device}`,
       });
     }
+    send(res, r);
+  });
+
+  // Ghép cặp bằng mã do admin phát. Giới hạn theo IP rồi toàn cục; mã sai trả lỗi chung, không ghi DB.
+  const pairIp = rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_GATEWAY_PAIR || 10),
+    keyFn: (req) => `${clientIp(req)}:gw-pair`,
+  });
+  const pairAll = rateLimit({
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_GATEWAY_PAIR_GLOBAL || 120),
+    keyFn: () => 'gw-pair:global',
+  });
+  app.post('/api/v1/gateway/pair', pairIp, pairAll, (req, res) => {
+    const r = submitPairing(db, req.body || {});
+    if (r.ok) audit(db, 'gateway_pair_submit', { ip: clientIp(req), detail: `${r.id} devices=${r.devices}` });
     send(res, r);
   });
 

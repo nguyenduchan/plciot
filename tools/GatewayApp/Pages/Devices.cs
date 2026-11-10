@@ -29,6 +29,26 @@ sealed class TemplateTile : Painted
     }
 }
 
+/// <summary>Cửa sổ ứng dụng giả cho khung xem trước: thẻ vẽ bằng metadata đang nhập, giá trị mẫu, không gửi lệnh nào.</summary>
+sealed class PreviewApp : IGatewayApp
+{
+    readonly IGatewayApp _real;
+    public PreviewApp(IGatewayApp real)
+    {
+        _real = real;
+        Meta = new UiMetaStore(Path.Combine(Path.GetTempPath(), "gw-preview.json")) { Persist = false };
+    }
+    public ScadaConfig Config { get; } = new();
+    public UiMetaStore Meta { get; }
+    public HistoryStore History => _real.History;
+    public bool Running => false;
+    public Dictionary<string, double> Sample { get; } = new();
+    public bool TryValue(string key, out double v) => Sample.TryGetValue(key, out v);
+    public Task<string?> WriteAsync(string child, string field, double value) => Task.FromResult<string?>(null);
+    public Task ApplyAsync(string why) => Task.CompletedTask;
+    public void Toast(string text, bool error = false) { }
+}
+
 /// <summary>
 /// Thêm / sửa MỘT thiết bị ngoại vi: chọn loại thiết bị vật lý (có sẵn nhãn, đơn vị, chữ trạng thái đúng loại) rồi chỉnh đầy đủ từng field
 /// (thanh ghi D, hệ số, giới hạn, kiểu hiển thị, chữ Bật/Tắt, ngưỡng cảnh báo). Kết quả là Pack + metadata hiển thị.
@@ -43,8 +63,13 @@ sealed class DeviceDialog : Form
     readonly Label _err = new() { ForeColor = Theme.Red, AutoSize = false, Height = 22, Font = Theme.Small, Dock = DockStyle.Bottom };
     DeviceTemplate _tpl = DeviceTemplate.All[1];
     bool _childTouched;
+    readonly ComboBox _icon = new() { DropDownStyle = ComboBoxStyle.DropDownList }, _color = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    static readonly DeviceTemplate[] IconChoices = DeviceTemplate.All.GroupBy(t => t.Icon).Select(g => g.First()).ToArray();
+    readonly Panel _prevHost = new() { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Theme.Bg };
+    readonly System.Windows.Forms.Timer _prevTimer = new() { Interval = 200 };
+    readonly PreviewApp _pa;
 
-    const int ColField = 0, ColTitle = 1, ColAccess = 2, ColType = 3, ColD = 4, ColScale = 5, ColUnit = 6, ColMin = 7, ColMax = 8, ColKind = 9, ColOn = 10, ColOff = 11, ColLow = 12, ColHigh = 13;
+    const int ColField = 0, ColMqtt = 1, ColTitle = 2, ColAccess = 3, ColType = 4, ColD = 5, ColScale = 6, ColUnit = 7, ColMin = 8, ColMax = 9, ColKind = 10, ColOn = 11, ColOff = 12, ColLow = 13, ColHigh = 14;
 
     // Kết nối + thông số giao thức + thứ tự word: khai báo rõ cho thiết bị, không có giá trị ngầm định (ô gợi ý có thể sửa)
     static readonly string[] AccessNames = { "Chỉ đọc", "Chỉ ghi", "Đọc/ghi" };
@@ -84,7 +109,8 @@ sealed class DeviceDialog : Form
         _app = app; _edit = edit;
         Text = edit == null ? "Thêm thiết bị ngoại vi" : $"Sửa thiết bị {edit}";
         FormBorderStyle = FormBorderStyle.Sizable; MinimizeBox = false; StartPosition = FormStartPosition.CenterParent;
-        BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; ClientSize = new Size(1400, 820); MinimumSize = new Size(1150, 700);
+        BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; ClientSize = new Size(1500, 820); MinimumSize = new Size(1250, 700);
+        _pa = new PreviewApp(app);
 
         // ----- trái: loại thiết bị
         var left = new Panel { Dock = DockStyle.Left, Width = 292, Padding = new Padding(14, 12, 6, 8), BackColor = Theme.Bg };
@@ -103,11 +129,17 @@ sealed class DeviceDialog : Form
         var right = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10, 12, 16, 8), BackColor = Theme.Bg };
         var rh = new Label { Text = edit == null ? "2. Thông số thiết bị" : "Thông số thiết bị", ForeColor = Theme.Text, Font = Theme.Title, AutoSize = false, Dock = DockStyle.Top, Height = 30 };
         Skin.Input(_child); Skin.Input(_title);
-        var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 44, ColumnCount = 4, BackColor = Theme.Bg };
+        var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 88, ColumnCount = 4, RowCount = 2, BackColor = Theme.Bg };
+        top.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); top.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130)); top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110)); top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
         top.Controls.Add(Skin.Lbl("Mã thiết bị (child)")); _child.Dock = DockStyle.Fill; _child.Margin = new Padding(0, 6, 12, 6); top.Controls.Add(_child);
         top.Controls.Add(Skin.Lbl("Tên hiển thị")); _title.Dock = DockStyle.Fill; _title.Margin = new Padding(0, 6, 0, 6); top.Controls.Add(_title);
+        Skin.Input(_icon); Skin.Input(_color);
+        _icon.Items.Add("Theo loại thiết bị"); foreach (var t in IconChoices) _icon.Items.Add($"{t.Icon}   {t.Name}");
+        _color.Items.AddRange(DeviceStyle.ColorNames); _icon.SelectedIndex = 0; _color.SelectedIndex = 0;
+        top.Controls.Add(Skin.Lbl("Biểu tượng thẻ")); _icon.Dock = DockStyle.Fill; _icon.Margin = new Padding(0, 6, 12, 6); top.Controls.Add(_icon);
+        top.Controls.Add(Skin.Lbl("Màu nhấn")); _color.Dock = DockStyle.Fill; _color.Margin = new Padding(0, 6, 0, 6); top.Controls.Add(_color);
         _child.TextChanged += (_, _) => { if (_child.Focused) _childTouched = true; };
         if (edit != null) _child.Enabled = false;
 
@@ -146,10 +178,52 @@ sealed class DeviceDialog : Form
 
         right.Controls.Add(_g); right.Controls.Add(_err); right.Controls.Add(buttons); right.Controls.Add(hint); right.Controls.Add(_addrHint);
         right.Controls.Add(_rowParam); right.Controls.Add(_rowConn); right.Controls.Add(rowProto); right.Controls.Add(top); right.Controls.Add(rh);
-        Controls.Add(right); Controls.Add(left);
+
+        // ----- phải: xem trước thẻ đúng như trên Tổng quan, cập nhật khi đổi bất kỳ thông tin hiển thị nào
+        var prev = new Panel { Dock = DockStyle.Right, Width = 404, Padding = new Padding(6, 12, 14, 8), BackColor = Theme.Bg };
+        var ph = new Label { Text = "Xem trước thẻ trên Tổng quan", ForeColor = Theme.Text, Font = Theme.Title, AutoSize = false, Dock = DockStyle.Top, Height = 30 };
+        var pn = new Label { Text = "Vẽ bằng nhãn, đơn vị, kiểu hiển thị, chữ Bật/Tắt, ngưỡng, biểu tượng và màu đang nhập. Giá trị mẫu ở giữa khoảng Min–Max; chỉ xem, không gửi lệnh.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 52 };
+        prev.Controls.Add(_prevHost); prev.Controls.Add(pn); prev.Controls.Add(ph);
+        _prevTimer.Tick += (_, _) => { _prevTimer.Stop(); RebuildPreview(); };
+        FormClosed += (_, _) => _prevTimer.Dispose();
+        void Queue(object? a, EventArgs b) { _prevTimer.Stop(); _prevTimer.Start(); }
+        _g.CellValueChanged += (_, _) => Queue(null, EventArgs.Empty);
+        _g.RowsAdded += (_, _) => Queue(null, EventArgs.Empty);
+        _g.RowsRemoved += (_, _) => Queue(null, EventArgs.Empty);
+        _title.TextChanged += Queue; _child.TextChanged += Queue; _icon.SelectedIndexChanged += Queue; _color.SelectedIndexChanged += Queue;
+        Controls.Add(right); Controls.Add(prev); Controls.Add(left);
 
         if (edit != null) LoadExisting(edit);
         else { _proto.SelectedIndex = 0; PickTemplate(DeviceTemplate.All[1], true); }
+    }
+
+    string IconValue() => _icon.SelectedIndex <= 0 ? "" : IconChoices[_icon.SelectedIndex - 1].Icon;
+
+    void RebuildPreview()
+    {
+        var child = _child.Text.Trim(); if (child.Length == 0) child = "device";
+        _pa.Meta.Map.Clear(); _pa.Meta.Devices.Clear(); _pa.Sample.Clear();
+        var fields = new List<PackMap>();
+        foreach (DataGridViewRow r in _g.Rows)
+        {
+            if (r.IsNewRow) continue;
+            var f = Cell(r, ColField); if (f.Length == 0 || fields.Any(x => x.Field == f)) continue;
+            TryNum(Cell(r, ColMin), out var mn); TryNum(Cell(r, ColMax), out var mx);
+            TryNum(Cell(r, ColLow), out var lo); TryNum(Cell(r, ColHigh), out var hi);
+            var ai = Array.IndexOf(AccessNames, Convert.ToString(r.Cells[ColAccess].Value));
+            var p = new PackMap { Child = child, Field = f, Min = mn, Max = mx, Access = ai >= 0 ? (PackAccess)ai : PackAccess.ReadWrite };
+            var ki = Array.IndexOf(FieldMeta.KindNames, Convert.ToString(r.Cells[ColKind].Value));
+            var m = new FieldMeta { Kind = FieldMeta.Kinds[Math.Max(0, ki)], Unit = Cell(r, ColUnit), Title = Cell(r, ColTitle), OnText = Cell(r, ColOn), OffText = Cell(r, ColOff), Low = lo, High = hi };
+            _pa.Meta.Set(child, f, m); fields.Add(p);
+            var rs = FieldMeta.ResolveFull(p, m);
+            _pa.Sample[UiMetaStore.Key(child, f)] = rs.Kind == "toggle" ? 1 : (rs.Min + rs.Max) / 2;
+        }
+        _pa.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id, Icon = IconValue(), Color = DeviceStyle.ColorKeys[Math.Max(0, _color.SelectedIndex)] });
+        foreach (var old in _prevHost.Controls.OfType<DeviceCard>().ToList()) { _prevHost.Controls.Remove(old); old.Dispose(); }
+        if (fields.Count == 0) return;
+        var card = new DeviceCard(child, fields, _pa, _ => { }, null) { Location = new Point(0, 4) };
+        card.Tick(_pa);
+        _prevHost.Controls.Add(card);
     }
 
     static Control Field(string label, Control c, int width)
@@ -203,7 +277,7 @@ sealed class DeviceDialog : Form
         _g.ReadOnly = false; _g.AllowUserToAddRows = true; _g.AllowUserToDeleteRows = true; _g.EditMode = DataGridViewEditMode.EditOnEnter;
         _g.SelectionMode = DataGridViewSelectionMode.CellSelect; _g.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
         void T(string h, int w) => _g.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = h, Width = w, SortMode = DataGridViewColumnSortMode.NotSortable });
-        T("Field", 80); T("Nhãn hiển thị", 120);
+        T("Field", 80); T("Khoá MQTT", 96); T("Nhãn hiển thị", 120);
         var acc = new DataGridViewComboBoxColumn { HeaderText = "Quyền", Width = 84, FlatStyle = FlatStyle.Flat, SortMode = DataGridViewColumnSortMode.NotSortable }; acc.Items.AddRange(AccessNames); _g.Columns.Add(acc);
         var ty = new DataGridViewComboBoxColumn { HeaderText = "Kiểu", Width = 80, FlatStyle = FlatStyle.Flat, SortMode = DataGridViewColumnSortMode.NotSortable }; ty.Items.AddRange(TypeNames); _g.Columns.Add(ty);
         T("D", 50); T("Hệ số", 60); T("Đơn vị", 64); T("Min ghi", 60); T("Max ghi", 60);
@@ -238,7 +312,7 @@ sealed class DeviceDialog : Form
             while (used.Contains(next) && next < Contract.MaxRegister - 1) next++;
             used.Add(next);
             var ki = Math.Max(0, Array.IndexOf(FieldMeta.Kinds, f.Kind));
-            _g.Rows.Add(f.Field, f.Label, f.Writable ? "Đọc/ghi" : "Chỉ đọc", "UINT", next.ToString(), Num(f.Scale), f.Unit, f.Writable ? Num(f.Min) : "", f.Writable ? Num(f.Max) : "",
+            _g.Rows.Add(f.Field, "", f.Label, f.Writable ? "Đọc/ghi" : "Chỉ đọc", "UINT", next.ToString(), Num(f.Scale), f.Unit, f.Writable ? Num(f.Min) : "", f.Writable ? Num(f.Max) : "",
                 FieldMeta.KindNames[ki], f.On, f.Off, f.Low is { } lo ? Num(lo) : "", f.High is { } hi ? Num(hi) : "");
         }
     }
@@ -258,6 +332,9 @@ sealed class DeviceDialog : Form
         _title.Text = string.IsNullOrWhiteSpace(dm?.Title) ? child : dm!.Title;
         var tpl = DeviceTemplate.Find(dm?.Template ?? "") ?? DeviceTemplate.All[^1];
         PickTemplate(tpl, false);
+        var ii = Array.FindIndex(IconChoices, t => t.Icon == dm?.Icon);
+        _icon.SelectedIndex = string.IsNullOrEmpty(dm?.Icon) || ii < 0 ? 0 : ii + 1;
+        _color.SelectedIndex = Math.Max(0, Array.IndexOf(DeviceStyle.ColorKeys, dm?.Color ?? ""));
         var first = _app.Config.Pack.First(x => x.Child == child);
         if (first.Source is { } fs) _proto.SelectedIndex = Math.Max(0, Array.IndexOf(ProtocolSpec.Streamable, fs));
         else _proto.SelectedIndex = Math.Max(0, Array.IndexOf(ProtocolSpec.Streamable, _app.Config.Source));
@@ -268,7 +345,7 @@ sealed class DeviceDialog : Form
             var m = _app.Meta.Get(child, p.Field);
             var r = FieldMeta.ResolveFull(p, m);
             var ki = Math.Max(0, Array.IndexOf(FieldMeta.Kinds, r.Kind));
-            _g.Rows.Add(p.Field, m?.Title ?? "", AccessNames[(int)p.Access], TypeNames[(int)p.DataType], p.Address >= 0 ? p.Address.ToString() : "", p.Scale > 0 ? Num(p.Scale) : "", r.Unit,
+            _g.Rows.Add(p.Field, p.MqttKey, m?.Title ?? "", AccessNames[(int)p.Access], TypeNames[(int)p.DataType], p.Address >= 0 ? p.Address.ToString() : "", p.Scale > 0 ? Num(p.Scale) : "", r.Unit,
                 p.Min is { } a ? Num(a) : "", p.Max is { } b ? Num(b) : "",
                 FieldMeta.KindNames[ki], m?.OnText ?? "", m?.OffText ?? "", m?.Low is { } lo ? Num(lo) : "", m?.High is { } hi ? Num(hi) : "");
         }
@@ -308,7 +385,7 @@ sealed class DeviceDialog : Form
         var oe = ProtocolSpec.ValidateParams(src, conn.Options, "Kết nối", ProtocolSpec.ConnOptions(src));
         if (oe != null) { _err.Text = oe; return; }
 
-        var used = UsedElsewhere(); var names = new HashSet<string>();
+        var used = UsedElsewhere(); var names = new HashSet<string>(); var wires = new HashSet<string>();
         var swap = _swap.SelectedIndex == 1;
         var packs = new List<(PackMap P, FieldMeta M)>();
         foreach (var r in rows)
@@ -316,6 +393,9 @@ sealed class DeviceDialog : Form
             var f = Cell(r, ColField); var line = r.Index + 1;
             if (!rx.IsMatch(f)) { _err.Text = $"Dòng {line}: field chỉ gồm chữ, số, _ và -."; return; }
             if (!names.Add(f)) { _err.Text = $"Dòng {line}: field \"{f}\" bị trùng."; return; }
+            var mk = Cell(r, ColMqtt);
+            if (mk.Length > 0 && !Regex.IsMatch(mk, "^[A-Za-z0-9_]{1,32}$")) { _err.Text = $"Dòng {line}: khoá MQTT chỉ gồm chữ, số, _ (tối đa 32 ký tự)."; return; }
+            if (!wires.Add(mk.Length > 0 ? mk : f)) { _err.Text = $"Dòng {line}: khoá MQTT \"{(mk.Length > 0 ? mk : f)}\" bị trùng trong thiết bị."; return; }
             var ai = Array.IndexOf(AccessNames, Convert.ToString(r.Cells[ColAccess].Value));
             var ti = Array.IndexOf(TypeNames, Convert.ToString(r.Cells[ColType].Value));
             if (ai < 0 || ti < 0) { _err.Text = $"Dòng {line}: chọn quyền và kiểu dữ liệu."; return; }
@@ -329,7 +409,7 @@ sealed class DeviceDialog : Form
             var kn = Convert.ToString(r.Cells[ColKind].Value); var ki = Array.IndexOf(FieldMeta.KindNames, kn);
             packs.Add((new PackMap
                 {
-                    Child = child, Field = f, Address = addr, Scale = sc!.Value, Min = mn, Max = mx,
+                    Child = child, Field = f, MqttKey = mk == f ? "" : mk, Address = addr, Scale = sc!.Value, Min = mn, Max = mx,
                     Protocol = src.ToString(), Access = (PackAccess)ai, DataType = type, WordSwap = swap, Params = new Dictionary<string, string>(prm),
                 },
                 new FieldMeta { Kind = FieldMeta.Kinds[Math.Max(0, ki)], Unit = Cell(r, ColUnit), Title = Cell(r, ColTitle), OnText = Cell(r, ColOn), OffText = Cell(r, ColOff), Low = lo, High = hi }));
@@ -340,7 +420,7 @@ sealed class DeviceDialog : Form
         foreach (var (p, m) in packs) { _app.Config.Pack.Add(p); _app.Meta.Set(child, p.Field, m); }
         _app.Config.Connections.RemoveAll(c => c.Protocol == src);
         _app.Config.Connections.Add(conn);
-        _app.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id });
+        _app.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id, Icon = IconValue(), Color = DeviceStyle.ColorKeys[Math.Max(0, _color.SelectedIndex)] });
         DialogResult = DialogResult.OK; Close();
     }
 

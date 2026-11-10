@@ -27,6 +27,22 @@ public sealed class GatewayEnrollClient
     public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, bool includeCredentials = false, string? hw = null, CancellationToken ct = default)
         => PostAsync("/api/v1/gateway/config", new { qr, includeCredentials, hw }, ct);
 
+    /// <summary>
+    /// Ghép cặp bằng mã do admin phát: gửi TOÀN BỘ bản khai (thiết bị, field, setting, UI — đúng bản tin &lt;base&gt;/config) lên server.
+    /// Server chỉ nhận khi mã còn hạn; admin xem trước rồi duyệt và cấp QR. <paramref name="fp"/> = vân tay ngắn của gateway để admin đối chiếu.
+    /// </summary>
+    public async Task<PairResult> PairAsync(string code, string fp, byte[] configJson, CancellationToken ct = default)
+    {
+        using var cfg = JsonDocument.Parse(configJson);
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/pair", new { code, fp, config = cfg.RootElement.Clone() }, JsonOpts, ct).ConfigureAwait(false);
+        var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+        var r = doc.RootElement;
+        if (!res.IsSuccessStatusCode)
+            throw new InvalidOperationException(r.TryGetProperty("error", out var e) ? e.GetString() : $"HTTP {(int)res.StatusCode}");
+        return new PairResult(r.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0);
+    }
+
     async Task<GatewayProvisionKit?> PostAsync(string path, object body, CancellationToken ct)
     {
         using var res = await _http.PostAsJsonAsync(path, body, JsonOpts, ct).ConfigureAwait(false);
@@ -40,6 +56,8 @@ public sealed class GatewayEnrollClient
         return JsonSerializer.Deserialize<GatewayProvisionKit>(json, JsonOpts);
     }
 }
+
+public sealed record PairResult(string Id, int Devices);
 
 public sealed class GatewayProvisionKit
 {
