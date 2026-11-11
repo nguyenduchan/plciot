@@ -66,25 +66,23 @@ public sealed partial class MainForm
         var api = Environment.GetEnvironmentVariable("GW_PAIR_API");
         var code = Environment.GetEnvironmentVariable("GW_PAIR_CODE");
         var qr = Environment.GetEnvironmentVariable("GW_QR");
-        if (!string.IsNullOrEmpty(api)) _cloud.Api.Text = api;
+        if (string.IsNullOrEmpty(api)) api = "https://plc.dieukhientudong.net";
         log.Add($"fingerprint={Fingerprint.Of(_cfg)}");
         log.Add("config_json=" + System.Text.Encoding.UTF8.GetString(ConfigBuilder.Build(_cfg, new MetaDescriber(_meta, _cfg))));
         if (!string.IsNullOrEmpty(code))
         {
-            _cloud.Pair.Text = code;
-            await PairAsync();
+            await PairAsync(api, code);
             log.Add($"pair: error={LastToast.Error} text={LastToast.Text}");
         }
         if (!string.IsNullOrEmpty(qr))
         {
             var before = _cfg.Pack.Count;
-            _cloud.Qr.Text = qr;
-            await EnrollAsync();
+            await EnrollAsync(api, qr);
             log.Add($"enroll_toast: error={LastToast.Error} text={LastToast.Text}");
             log.Add($"enroll: site={_cfg.Site} device={_cfg.Device} cloudHost={_cfg.CloudHost} pack_before={before} pack_after={_cfg.Pack.Count} keys_kept={_cfg.Pack.Any(p => p.MqttKey == "q_speed")}");
         }
-        _cloud.Refresh2(); Show(_cloud); Tick();
-        await Shot(Path.Combine(outDir, "gateway-cloud.png"));
+        Show(_dash); Tick();
+        await Shot(Path.Combine(outDir, "gateway-dashboard.png"));
         File.WriteAllLines(Path.Combine(outDir, "pairtest-result.txt"), log);
         await StopAsync();
         Close();

@@ -16,6 +16,12 @@ public interface IGatewayApp
     Task<string?> WriteAsync(string child, string field, double value);
     /// <summary>Lưu cấu hình; đang chạy thì khởi động lại để Pack/giao thức mới có hiệu lực.</summary>
     Task ApplyAsync(string why);
+    /// <summary>Chạy / tạm dừng MỘT thiết bị (đọc, ghi, gửi dữ liệu). Có hiệu lực ngay, không khởi động lại gateway. Trả về null nếu thành công.</summary>
+    Task<string?> SetDeviceEnabledAsync(string child, bool enabled);
+    /// <summary>Vân tay của gateway (để đối chiếu khi admin duyệt ghép cặp cloud).</summary>
+    string FingerprintText { get; }
+    /// <summary>Việc cloud do GATEWAY thực hiện (cần mạng của gateway): action = "pair" (value = mã ghép cặp) hoặc "enroll" (value = mã QR của tem).</summary>
+    Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value);
     void Toast(string text, bool error = false);
 }
 
@@ -31,7 +37,8 @@ sealed class DeviceCard : Card
         Child = child;
         var dm = app.Meta.Device(child);
         Title = string.IsNullOrWhiteSpace(dm?.Title) ? child : dm!.Title;
-        Sub = Title != child ? child : $"{fields.Count} field";
+        var paused = fields.Any(f => !f.Enabled);
+        Sub = paused ? "⏸ tạm dừng (bật lại ở trang Thiết bị)" : Title != child ? child : $"{fields.Count} field";
         Icon = string.IsNullOrEmpty(dm?.Icon) ? (DeviceTemplate.Find(dm?.Template ?? "")?.Icon ?? "") : dm!.Icon;
         Accent = DeviceStyle.Resolve(dm?.Color);
         if (edit != null)
@@ -170,7 +177,7 @@ sealed class DashboardPage : UserControl
     void AddDevice() { if (DeviceDialog.Run(_app, FindForm()!, null, out var c)) { Rebuild(); _ = _app.ApplyAsync($"Đã thêm thiết bị {c}"); } }
     void EditDevice(string child) { if (DeviceDialog.Run(_app, FindForm()!, child, out var c, out var del)) { Rebuild(); _ = _app.ApplyAsync(del ? $"Đã xoá thiết bị {c}" : $"Đã lưu thiết bị {c}"); } }
 
-    string Signature() => string.Join("|", _app.Config.Pack.Select(p => $"{p.Child}.{p.Field}@{p.Address}x{p.Scale}"))
+    string Signature() => string.Join("|", _app.Config.Pack.Select(p => $"{p.Child}.{p.Field}@{p.Address}x{p.Scale}{(p.Enabled ? "" : "!")}"))
         + "#" + string.Join("|", _app.Meta.Map.Select(kv => kv.Key + ":" + kv.Value.Kind + kv.Value.Unit + kv.Value.Title + kv.Value.Min + kv.Value.Max + kv.Value.OnText + kv.Value.OffText + kv.Value.Low + kv.Value.High))
         + "#" + string.Join("|", _app.Meta.Devices.Select(kv => kv.Key + kv.Value.Title + kv.Value.Template + kv.Value.Icon + kv.Value.Color));
 
@@ -183,7 +190,7 @@ sealed class DashboardPage : UserControl
         var groups = _app.Config.Pack.GroupBy(p => p.Child).ToList();
         _empty.Visible = groups.Count == 0;
         foreach (var b in _empty.Controls.OfType<FlatButton>()) b.Visible = !ReadOnly;
-        if (ReadOnly) foreach (var l in _empty.Controls.OfType<Label>().Where(x => x.Font != Theme.Big)) l.Text = "Quản trị viên sẽ cài đặt thiết bị cho gateway này.";
+        if (ReadOnly) foreach (var l in _empty.Controls.OfType<Label>().Where(x => x.Font != Theme.Big)) l.Text = "Thiết bị được cài đặt bằng tool Admin (kết nối ở trang Kết nối admin).";
         foreach (var g in groups)
         {
             var card = new DeviceCard(g.Key, g.ToList(), _app, k => { _selected = k; UpdateChart(); }, ReadOnly ? null : EditDevice);

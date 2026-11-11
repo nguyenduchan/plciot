@@ -7,21 +7,39 @@ namespace GatewayApp;
 
 /// <summary>
 /// Máy chủ HTTP tối giản (TcpListener, không cần quyền admin/urlacl) cho tool admin nối tới gateway bằng IP.
-/// Mọi yêu cầu cần "Authorization: Bearer &lt;token&gt;". Giao thức là HTTP thường: dùng trong LAN tin cậy hoặc VPN.
+/// Nối 2 bước: POST /api/login {Code} (mã kết nối 8 số, tự đổi mỗi phút) → nhận mã phiên; mọi yêu cầu sau cần "Authorization: Bearer &lt;mã phiên&gt;".
+/// Mã đổi không làm rớt phiên đang nối. Giao thức là HTTP thường: dùng trong LAN tin cậy hoặc VPN.
 /// </summary>
 public sealed class RemoteApi : IDisposable
 {
     public delegate Task<(int Status, string Json)> Handler(string method, string path, string body);
 
     readonly TcpListener _l;
-    readonly byte[] _token;
+    byte[] _code;
+    byte[] _prev = Array.Empty<byte>(); DateTime _prevAt = DateTime.MinValue;
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _sessions = new();
+    readonly object _cl = new();
     readonly Handler _h;
     readonly CancellationTokenSource _cts = new();
     public IPEndPoint Endpoint => (IPEndPoint)_l.LocalEndpoint;
 
     public RemoteApi(IPAddress bind, int port, string token, Handler h)
     {
-        _l = new TcpListener(bind, port); _token = Encoding.UTF8.GetBytes(token); _h = h;
+        _l = new TcpListener(bind, port); _code = Encoding.UTF8.GetBytes(token); _h = h;
+    }
+
+    /// <summary>Đổi mã kết nối. Mã cũ còn dùng được thêm vài giây (người đang gõ dở không bị hụt); phiên đã nối giữ nguyên.</summary>
+    public void Rotate(string code) { lock (_cl) { _prev = _code; _prevAt = DateTime.UtcNow; _code = Encoding.UTF8.GetBytes(code); } }
+
+    bool CodeOk(string given)
+    {
+        var g = Encoding.UTF8.GetBytes(given);
+        lock (_cl)
+        {
+            var ok = g.Length == _code.Length && CryptographicOperations.FixedTimeEquals(g, _code);
+            if (!ok && _prev.Length > 0 && (DateTime.UtcNow - _prevAt).TotalSeconds < 5) ok = g.Length == _prev.Length && CryptographicOperations.FixedTimeEquals(g, _prev);
+            return ok;
+        }
     }
 
     public void Start() { _l.Start(); _ = Task.Run(Loop); }
@@ -64,10 +82,22 @@ public sealed class RemoteApi : IDisposable
                     var n = await s.ReadAsync(tmp, cts.Token); if (n <= 0) return;
                     bodyBytes.AddRange(tmp.AsSpan(0, n).ToArray());
                 }
-                if (Locked()) { await Send(s, 429, "{\"ok\":false,\"err\":\"too_many_attempts\"}"); return; }
+                var path = rl[1].Split('?')[0];
+                if (rl[0].ToUpperInvariant() == "POST" && path == "/api/login")
+                {
+                    if (Locked()) { await Send(s, 429, "{\"ok\":false,\"err\":\"too_many_attempts\"}"); return; }
+                    var code = "";
+                    try { code = System.Text.Json.JsonSerializer.Deserialize<ApiLogin>(Encoding.UTF8.GetString(bodyBytes.Take(len).ToArray()), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })?.Code ?? ""; } catch (System.Text.Json.JsonException) { }
+                    if (!CodeOk(code)) { Fail(); await Send(s, 401, "{\"ok\":false,\"err\":\"unauthorized\"}"); return; }
+                    var tok = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+                    _sessions[tok] = 1;
+                    await Send(s, 200, System.Text.Json.JsonSerializer.Serialize(new ApiLoginResult { Ok = true, Token = tok }));
+                    return;
+                }
                 var auth = hdr.TryGetValue("authorization", out var a) ? a : "";
-                var given = Encoding.UTF8.GetBytes(auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..].Trim() : "");
-                if (given.Length != _token.Length || !CryptographicOperations.FixedTimeEquals(given, _token)) { Fail(); await Send(s, 401, "{\"ok\":false,\"err\":\"unauthorized\"}"); return; }
+                var given = auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..].Trim() : "";
+                // mã phiên là 128 bit ngẫu nhiên: sai thì chỉ từ chối (không tính vào khoá dò mã, tránh khoá nhầm admin có phiên cũ)
+                if (!_sessions.ContainsKey(given)) { await Send(s, 401, "{\"ok\":false,\"err\":\"unauthorized\"}"); return; }
                 var (st, json) = await _h(rl[0], rl[1], Encoding.UTF8.GetString(bodyBytes.Take(len).ToArray()));
                 await Send(s, st, json);
             }

@@ -46,6 +46,9 @@ sealed class PreviewApp : IGatewayApp
     public bool TryValue(string key, out double v) => Sample.TryGetValue(key, out v);
     public Task<string?> WriteAsync(string child, string field, double value) => Task.FromResult<string?>(null);
     public Task ApplyAsync(string why) => Task.CompletedTask;
+    public Task<string?> SetDeviceEnabledAsync(string child, bool enabled) => Task.FromResult<string?>(null);
+    public string FingerprintText => "";
+    public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
 }
 
@@ -362,6 +365,8 @@ sealed class DeviceDialog : Form
 
     void Commit()
     {
+        // ô bảng đang gõ dở (chưa Enter) phải được chốt trước khi đọc, nếu không giá trị mới (vd. thanh ghi D) bị bỏ sót và giữ giá trị cũ
+        _g.EndEdit();
         var rx = new Regex("^[A-Za-z0-9_-]{1,48}$");
         var child = _child.Text.Trim();
         if (!rx.IsMatch(child)) { _err.Text = "Mã thiết bị chỉ gồm chữ, số, _ và -, tối đa 48 ký tự."; return; }
@@ -446,13 +451,14 @@ sealed class DevicesPage : UserControl
     readonly IGatewayApp _app;
     readonly DataGridView _g = new() { Dock = DockStyle.Fill };
     FlatButton? _addBtn;
+    FlatButton? _runBtn;
     string _sig = "";
 
     public DevicesPage(IGatewayApp app)
     {
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
         Skin.Grid(_g);
-        foreach (var (n, h, w) in new[] { ("c", "Thiết bị", 160), ("f", "Field", 90), ("l", "Nhãn", 110), ("p", "Giao thức", 120), ("a", "Quyền", 70), ("t", "Kiểu", 60), ("d", "Thanh ghi", 90), ("s", "Hệ số", 50), ("lim", "Giới hạn ghi", 90), ("k", "Hiển thị", 90), ("u", "Đơn vị", 56), ("v", "Giá trị hiện tại", 110) })
+        foreach (var (n, h, w) in new[] { ("c", "Thiết bị", 160), ("f", "Field", 90), ("l", "Nhãn", 110), ("p", "Giao thức", 120), ("a", "Quyền", 70), ("t", "Kiểu", 60), ("d", "Thanh ghi", 90), ("s", "Hệ số", 50), ("lim", "Giới hạn ghi", 90), ("k", "Hiển thị", 90), ("u", "Đơn vị", 56), ("st", "Trạng thái", 90), ("v", "Giá trị hiện tại", 110) })
             _g.Columns.Add(new DataGridViewTextBoxColumn { Name = n, HeaderText = h, Width = w });
         _g.Columns[^1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
 
@@ -460,12 +466,15 @@ sealed class DevicesPage : UserControl
         var add = _addBtn = new FlatButton { Caption = "＋  Thêm thiết bị ngoại vi", Primary = true, Width = 210 };
         var edit = new FlatButton { Caption = "Sửa thiết bị", Width = 120 };
         var del = new FlatButton { Caption = "Xoá thiết bị", Width = 120, Danger = true };
+        _runBtn = new FlatButton { Caption = "⏸  Tạm dừng thiết bị", Width = 200 };
+        _runBtn.Click += async (_, _) => await ToggleRun();
+        _g.SelectionChanged += (_, _) => UpdateRunBtn();
         add.Click += (_, _) => AddOrEdit(null);
         edit.Click += (_, _) => AddOrEdit(SelectedChild());
         del.Click += async (_, _) => await Delete();
         _g.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) AddOrEdit(SelectedChild()); };
         _g.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Delete) { e.Handled = true; await Delete(); } };
-        bar.Controls.AddRange(new Control[] { add, edit, del });
+        bar.Controls.AddRange(new Control[] { add, edit, _runBtn, del });
 
         var card = new Card { Title = "Thiết bị ngoại vi", Sub = "mỗi dòng: giao thức + quyền + kiểu + ô nhớ D của PLC → d.<thiết bị>.<field>", Dock = DockStyle.Fill, Padding = new Padding(2, 40, 2, 2) };
         card.Controls.Add(_g);
@@ -481,6 +490,25 @@ sealed class DevicesPage : UserControl
         Refill(); _ = _app.ApplyAsync(deleted ? $"Đã xoá thiết bị {c}" : child == null ? $"Đã thêm thiết bị {c}" : $"Đã lưu thiết bị {c}");
     }
 
+    bool? IsEnabled(string? child) => child == null ? null : _app.Config.Pack.Where(p => p.Child == child).Select(p => (bool?)p.Enabled).FirstOrDefault();
+
+    void UpdateRunBtn()
+    {
+        if (_runBtn == null) return;
+        var en = IsEnabled(SelectedChild());
+        _runBtn.Caption = en == false ? "▶  Chạy thiết bị" : "⏸  Tạm dừng thiết bị";
+        _runBtn.Primary = en == false; _runBtn.Invalidate();
+    }
+
+    /// <summary>Chạy / tạm dừng việc nhận dữ liệu (đọc, ghi, gửi cloud) của thiết bị đang chọn. Có hiệu lực ngay.</summary>
+    async Task ToggleRun()
+    {
+        var c = SelectedChild(); if (c == null) { _app.Toast("Chọn một dòng của thiết bị cần chạy hoặc tạm dừng.", true); return; }
+        var err = await _app.SetDeviceEnabledAsync(c, IsEnabled(c) == false);
+        if (err != null) _app.Toast($"Không đổi được trạng thái {c}: {err}", true);
+        Refill();
+    }
+
     async Task Delete()
     {
         var c = SelectedChild(); if (c == null) { _app.Toast("Chọn một dòng của thiết bị cần xoá.", true); return; }
@@ -489,13 +517,15 @@ sealed class DevicesPage : UserControl
         Refill(); await _app.ApplyAsync($"Đã xoá thiết bị {c}");
     }
 
-    string Sig() => string.Join("|", _app.Config.Pack.Select(p => $"{p.Child}.{p.Field}@{p.Address}x{p.Scale}[{p.Min}-{p.Max}]{p.Protocol}/{p.Access}/{p.DataType}"))
+    string Sig() => string.Join("|", _app.Config.Pack.Select(p => $"{p.Child}.{p.Field}@{p.Address}x{p.Scale}[{p.Min}-{p.Max}]{p.Protocol}/{p.Access}/{p.DataType}/{p.Enabled}"))
         + string.Join("|", _app.Meta.Map.Select(kv => kv.Key + kv.Value.Kind + kv.Value.Unit + kv.Value.Title)) + string.Join("|", _app.Meta.Devices.Select(kv => kv.Key + kv.Value.Title));
 
     void Refill()
     {
         _sig = Sig();
         var keep = _g.CurrentRow?.Index ?? -1;
+        _g.SuspendLayout();
+        _g.CurrentCell = null;
         _g.Rows.Clear();
         foreach (var p in _app.Config.Pack)
         {
@@ -507,10 +537,14 @@ sealed class DevicesPage : UserControl
             var i = _g.Rows.Add(string.IsNullOrWhiteSpace(dev?.Title) ? p.Child : $"{dev!.Title} ({p.Child})", p.Field, m?.Title ?? "",
                 p.Source is { } ps ? ProtocolSpec.Name(ps) : "chưa gán", p.Source is null ? "—" : new[] { "Chỉ đọc", "Chỉ ghi", "Đọc/ghi" }[(int)p.Access], p.Source is null ? "—" : new[] { "UINT", "INT", "BOOL", "UDINT", "DINT", "REAL", "LREAL" }[(int)p.DataType],
                 dtxt, p.Scale > 0 ? p.Scale.ToString(CultureInfo.InvariantCulture) : "—", lim,
-                FieldMeta.KindNames[Math.Max(0, Array.IndexOf(FieldMeta.Kinds, r.Kind))], r.Unit, "—");
+                FieldMeta.KindNames[Math.Max(0, Array.IndexOf(FieldMeta.Kinds, r.Kind))], r.Unit, p.Enabled ? "Đang chạy" : "Tạm dừng", "—");
             _g.Rows[i].Cells[0].Tag = p.Child;
+            if (!p.Enabled) _g.Rows[i].DefaultCellStyle.ForeColor = Theme.Muted;
         }
         if (keep >= 0 && keep < _g.Rows.Count) _g.CurrentCell = _g.Rows[keep].Cells[0];
+        _g.ResumeLayout(true);
+        _g.Invalidate();
+        UpdateRunBtn();
     }
 
     public void Tick()
@@ -519,7 +553,7 @@ sealed class DevicesPage : UserControl
         foreach (DataGridViewRow r in _g.Rows)
         {
             var key = UiMetaStore.Key(Convert.ToString(r.Cells[0].Tag) ?? "", Convert.ToString(r.Cells[1].Value) ?? "");
-            r.Cells[11].Value = _app.TryValue(key, out var v) ? Theme.Num(v) : "—";
+            r.Cells[12].Value = _app.TryValue(key, out var v) ? Theme.Num(v) : "—";
         }
     }
 }

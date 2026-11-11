@@ -141,6 +141,21 @@ public class PackBindingTests
     }
 
     [Fact]
+    public async Task Pool_skips_and_refuses_writes_for_paused_device_and_resumes_without_restart()
+    {
+        var drv = new RecordingDriver(); drv.Regs[10] = 5; drv.Regs[20] = 7;
+        var cfg = Cfg(P("a", "x", 10, acc: PackAccess.ReadWrite), P("b", "y", 20, acc: PackAccess.ReadWrite));
+        using var pool = new PackDriverPool(cfg, (_, _) => drv);
+        cfg.Pack[0].Enabled = false;
+        var r = await pool.ReadAllAsync();
+        Assert.False(r.Values.ContainsKey(("a", "x")));
+        Assert.Equal(7, r.Values[("b", "y")]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => pool.WriteAsync(cfg.Pack[0], 1));
+        cfg.Pack[0].Enabled = true;                          // bật lại: lần đọc kế tiếp có ngay, cùng pool
+        Assert.Equal(5, (await pool.ReadAllAsync()).Values[("a", "x")]);
+    }
+
+    [Fact]
     public async Task Pool_isolates_each_plc_and_skips_write_only_fields()
     {
         var good = new RecordingDriver { }; good.Regs[10] = 5;

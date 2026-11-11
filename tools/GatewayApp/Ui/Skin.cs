@@ -12,6 +12,8 @@ static class Skin
         g.ColumnHeadersHeight = 34; g.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         g.DefaultCellStyle = new DataGridViewCellStyle { BackColor = Theme.Panel, ForeColor = Theme.Text, Font = Theme.Normal, SelectionBackColor = Color.FromArgb(60, Theme.Accent), SelectionForeColor = Color.White, Padding = new Padding(6, 0, 0, 0) };
         g.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle { BackColor = Color.FromArgb(28, 31, 36) };
+        // chống chữ bị vẽ đè khi nạp lại nhiều dòng liên tiếp: vẽ đệm kép
+        typeof(DataGridView).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(g, true);
         g.RowTemplate.Height = 32; g.ReadOnly = true; g.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
     }
 

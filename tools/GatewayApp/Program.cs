@@ -20,6 +20,8 @@ static class Program
         if (j >= 0 && j + 1 < args.Length) form.Shown += async (_, _) => await form.SelfTestAsync(args[j + 1]);
         var k = Array.IndexOf(args, "--pairtest");
         if (k >= 0 && k + 1 < args.Length) form.Shown += async (_, _) => await form.PairTestAsync(args[k + 1]);
+        var m = Array.IndexOf(args, "--edittest");
+        if (m >= 0 && m + 1 < args.Length) form.Shown += async (_, _) => await form.EditTestAsync(args[m + 1]);
         Application.Run(form);
     }
 }

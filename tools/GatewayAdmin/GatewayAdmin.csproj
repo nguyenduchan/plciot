@@ -11,7 +11,7 @@
     <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\GatewayApp\Pages\Dashboard.cs;..\GatewayApp\Pages\Devices.cs;..\GatewayApp\Pages\Protocols.cs;..\GatewayApp\Data.cs;..\GatewayApp\DeviceTemplates.cs;..\GatewayApp\Remote\Contract.cs" LinkBase="Shared" />
+    <Compile Include="..\GatewayApp\Pages\Dashboard.cs;..\GatewayApp\Pages\Devices.cs;..\GatewayApp\Pages\Protocols.cs;..\GatewayApp\Pages\Cloud.cs;..\GatewayApp\Fingerprint.cs;..\GatewayApp\Data.cs;..\GatewayApp\DeviceTemplates.cs;..\GatewayApp\Remote\Contract.cs;..\GatewayApp\Remote\Login.cs" LinkBase="Shared" />
     <Compile Include="..\GatewayApp\Ui\*.cs" LinkBase="Shared\Ui" />
     <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
   </ItemGroup>

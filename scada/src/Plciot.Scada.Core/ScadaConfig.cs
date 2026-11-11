@@ -66,6 +66,8 @@ public sealed class PackMap
     public Dictionary<string, string> Params { get; set; } = new();
     /// <summary>Tên struct nếu field thuộc một struct (chỉ để nhóm hiển thị; mọi field vẫn là field của thiết bị).</summary>
     public string Group { get; set; } = "";
+    /// <summary>false = thiết bị tạm dừng: gateway không đọc, không ghi, không gửi dữ liệu của field này (cấu hình vẫn giữ). Đặt chung cho mọi field của một thiết bị.</summary>
+    public bool Enabled { get; set; } = true;
 
     /// <summary>Khoá thực sự đi trên MQTT.</summary>
     [JsonIgnore] public string WireKey => string.IsNullOrWhiteSpace(MqttKey) ? Field : MqttKey.Trim();

@@ -21,6 +21,23 @@ public sealed partial class MainForm
     bool _apiOn, _apiLan;
     string _code = "", _fixedCode = "";
     int _apiPort = 8750;
+    DateTime _codeAt;
+    const int CodeLifeSec = 60;
+    readonly System.Windows.Forms.Timer _codeTimer = new() { Interval = 500 };
+
+    static string NewCode() => RandomNumberGenerator.GetInt32(10_000_000, 100_000_000).ToString();
+
+    /// <summary>Mỗi 60 giây tự đổi mã kết nối (trừ mã cố định --token) và cập nhật đếm lùi trên trang Kết nối admin.</summary>
+    void CodeTick()
+    {
+        if (!_apiOn || _api == null) { _codeTimer.Stop(); return; }
+        if (_fixedCode.Length == 0)
+        {
+            var left = CodeLifeSec - (int)(DateTime.UtcNow - _codeAt).TotalSeconds;
+            if (left <= 0) { _code = NewCode(); _codeAt = DateTime.UtcNow; _api.Rotate(_code); RefreshAccessPage(); left = CodeLifeSec; }
+            _access.SetCountdown(left);
+        }
+    }
     static readonly JsonSerializerOptions J = new() { PropertyNameCaseInsensitive = true };
 
     static string ArgValue(string[] a, string name) { var i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : ""; }
@@ -31,6 +48,7 @@ public sealed partial class MainForm
         _apiPort = int.TryParse(ArgValue(args, "--api-port"), out var p) ? p : 8750;
         _fixedCode = ArgValue(args, "--token");
         _apiLan = IPAddress.TryParse(ArgValue(args, "--bind"), out var ip) && !IPAddress.IsLoopback(ip);
+        _codeTimer.Tick += (_, _) => CodeTick();
         _access.EnabledChanged += on => SetAccess(on);
         _access.LanChanged += lan => { _apiLan = lan; if (_apiOn) SetAccess(true); else RefreshAccessPage(); };
         _access.NewCodeRequested += () => SetAccess(true, true);
@@ -43,11 +61,12 @@ public sealed partial class MainForm
         _api?.Dispose(); _api = null; _apiOn = false;
         if (on)
         {
-            if (!keep || _code.Length == 0) _code = _fixedCode.Length > 0 ? _fixedCode : RandomNumberGenerator.GetInt32(10_000_000, 100_000_000).ToString();
+            if (!keep || _code.Length == 0) _code = _fixedCode.Length > 0 ? _fixedCode : NewCode();
+            _codeAt = DateTime.UtcNow;
             try
             {
                 _api = new RemoteApi(_apiLan ? IPAddress.Any : IPAddress.Loopback, _apiPort, _code, HandleApi);
-                _api.Start(); _apiOn = true;
+                _api.Start(); _apiOn = true; _codeTimer.Start();
                 _log.Add("INFO", "api", $"Đã BẬT cho admin cài đặt: {(_apiLan ? "mọi địa chỉ" : "127.0.0.1")}:{_apiPort}");
                 Toast(newCode ? "Đã tạo mã kết nối mới." : "Đã bật cho admin cài đặt.");
             }
@@ -65,7 +84,8 @@ public sealed partial class MainForm
             try { ips.AddRange(Dns.GetHostEntry(Dns.GetHostName()).AddressList.Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(a)).Select(a => a.ToString())); }
             catch (Exception) { /* không lấy được danh sách IP */ }
         }
-        _access.Show(_apiOn, _apiLan, _code, _apiPort, ips.ToArray());
+        _access.Show(_apiOn, _apiLan, _code, _apiPort, ips.ToArray(), _fixedCode.Length == 0);
+        if (_apiOn && _fixedCode.Length == 0) _access.SetCountdown(Math.Max(0, CodeLifeSec - (int)(DateTime.UtcNow - _codeAt).TotalSeconds));
     }
 
     Task<T> OnUi<T>(Func<Task<T>> f)
@@ -103,6 +123,20 @@ public sealed partial class MainForm
                     await OnUi(async () => { if (r.Run) await StartAsync(); else await StopAsync(); return 0; });
                     return Ok(Running);
                 }
+                case "POST /api/device":
+                {
+                    var d = JsonSerializer.Deserialize<ApiDevice>(body, J);
+                    if (d == null || d.Child.Length == 0) return Err("bad_request");
+                    var err = await OnUi(() => SetDeviceEnabledAsync(d.Child, d.Enabled));
+                    return err == null ? Ok(Running) : Err(err);
+                }
+                case "POST /api/cloud":
+                {
+                    var c = JsonSerializer.Deserialize<ApiCloud>(body, J);
+                    if (c == null || c.Action.Length == 0) return Err("bad_request");
+                    var r = await OnUi(() => CloudAsync(c.Action, c.Api, c.Value));
+                    return (200, Json(new ApiResult { Ok = r.Ok, Err = r.Ok ? null : r.Msg, Msg = r.Msg, Running = Running }));
+                }
                 default: return Err("not_found", 404);
             }
         }
@@ -115,7 +149,7 @@ public sealed partial class MainForm
         Running = _host != null,
         Status = _host != null ? _host.Core.State.Status : "đã dừng",
         Cloud = (_host?.Cloud ?? CloudState.Disabled).ToString(),
-        Rev = _rev, Customer = _customer,
+        Rev = _rev, Customer = _customer, Fingerprint = FingerprintText,
         Values = _values.ToDictionary(kv => kv.Key, kv => kv.Value),
     };
 

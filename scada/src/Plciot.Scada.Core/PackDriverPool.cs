@@ -44,7 +44,7 @@ public sealed class PackDriverPool : IDisposable
     /// <summary>Đọc mọi field có quyền đọc (không phải "chỉ ghi"). Một PLC lỗi chỉ làm mất các field của PLC đó.</summary>
     public async Task<PackReadResult> ReadAllAsync(CancellationToken ct = default)
     {
-        var groups = _cfg.Pack.Where(p => p.Access != PackAccess.Write).GroupBy(Key).Select(g => g.ToList()).ToList();
+        var groups = _cfg.Pack.Where(p => p.Enabled && p.Access != PackAccess.Write).GroupBy(Key).Select(g => g.ToList()).ToList();
         var results = await Task.WhenAll(groups.Select(g => ReadGroupAsync(g, ct)));
         var values = new Dictionary<(string, string), double>();
         var errors = new List<string>();
@@ -97,6 +97,7 @@ public sealed class PackDriverPool : IDisposable
     /// <summary>Ghi một field: giá trị kỹ thuật × hệ số → mã hoá theo kiểu → ghi các word liền nhau. Ném ArgumentOutOfRangeException nếu ngoài khoảng của kiểu.</summary>
     public Task WriteAsync(PackMap p, double value, CancellationToken ct = default)
     {
+        if (!p.Enabled) throw new InvalidOperationException("device_disabled");
         if (p.Access == PackAccess.Read) throw new InvalidOperationException("read_only");
         var words = PackCodec.Encode(value * p.Scale, p.DataType, p.WordSwap);
         return For(p).WriteManyAsync(p.Address, words, ct);

@@ -7,7 +7,7 @@ namespace GatewayAdmin;
 /// Tool admin: nối tới gateway của khách bằng IP:cổng + token. Thêm/sửa/xoá thiết bị và giao thức ở đây
 /// → tự gửi sang gateway (gateway lưu và khởi động lại luồng đọc). Xem và điều khiển cũng đi qua gateway.
 /// </summary>
-public sealed class AdminForm : Form
+public sealed partial class AdminForm : Form
 {
     readonly RemoteGateway _gw = new();
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
@@ -19,7 +19,6 @@ public sealed class AdminForm : Form
     readonly Label _lblAddr = Skin.Lbl("Gateway (IP:cổng)");
     readonly Label _lblToken = Skin.Lbl("Mã kết nối");
     readonly FlatButton _connect = new() { Caption = "Kết nối", Primary = true, Width = 100 };
-    readonly FlatButton _run = new() { Caption = "▶  Chạy", Width = 100 };
     readonly StatusChip _chip = new() { Caption = "Chưa kết nối" };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _poll = new() { Interval = 1000 };
@@ -27,6 +26,7 @@ public sealed class AdminForm : Form
     readonly DashboardPage _dash;
     readonly DevicesPage _devices;
     readonly ProtocolsPage _protos;
+    readonly CloudPage _cloud;
     readonly List<(NavButton Btn, Control Page, string Title)> _pages = new();
     Control _current = null!;
     int _fails;
@@ -39,13 +39,14 @@ public sealed class AdminForm : Form
         _dash = new DashboardPage(_gw) { Dock = DockStyle.Fill };
         _devices = new DevicesPage(_gw) { Dock = DockStyle.Fill };
         _protos = new ProtocolsPage(_gw) { Dock = DockStyle.Fill };
+        _cloud = new CloudPage(_gw) { Dock = DockStyle.Fill };
         _gw.ToastRaised += Toast;
 
         Skin.Input(_addr); Skin.Input(_token);
 
         var logo = new Label { Text = "Admin", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
         var sub = new Label { Text = "PLCIOT · TOOL CÀI ĐẶT", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
-        var items = new (string Icon, string Name, Control Page)[] { ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos) };
+        var items = new (string Icon, string Name, Control Page)[] { ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☁", "Cloud", _cloud) };
         foreach (var (icon, name, page) in items)
         {
             var b = new NavButton { Icon = icon, Caption = name };
@@ -56,11 +57,9 @@ public sealed class AdminForm : Form
         for (var i = _pages.Count - 1; i >= 0; i--) _side.Controls.Add(_pages[i].Btn);
         _side.Controls.Add(sub); _side.Controls.Add(logo);
 
-        foreach (var c in new Control[] { _title, _lblAddr, _addr, _lblToken, _token, _connect, _run, _chip }) _head.Controls.Add(c);
-        _run.Visible = false;
+        foreach (var c in new Control[] { _title, _lblAddr, _addr, _lblToken, _token, _connect, _chip }) _head.Controls.Add(c);
         _head.Resize += (_, _) => LayoutHead();
         _connect.Click += async (_, _) => { if (_gw.Connected) Disconnect(); else await ConnectAsync(_addr.Text.Trim()); };
-        _run.Click += async (_, _) => { var e = await _gw.SetRunAsync(!_gw.Running); if (e != null) Toast("Không đổi được trạng thái: " + e, true); };
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
         Resize += (_, _) => PlaceToast();
         _toastTimer.Tick += (_, _) => { _toast.Visible = false; _toastTimer.Stop(); };
@@ -76,9 +75,8 @@ public sealed class AdminForm : Form
     {
         // các ô kết nối bám mép phải, từ phải sang trái
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _chip, _run, _connect, _token, _lblToken, _addr, _lblAddr })
+        foreach (var c in new Control[] { _chip, _connect, _token, _lblToken, _addr, _lblAddr })
         {
-            if (c == _run && !_gw.Connected) continue;
             x -= c.Width + 8;
             c.Location = new Point(x, c is StatusChip ? 17 : c is FlatButton ? 14 : c is Label ? 20 : 16);
         }
@@ -115,10 +113,8 @@ public sealed class AdminForm : Form
     {
         _connect.Caption = _gw.Connected ? "Ngắt" : "Kết nối"; _connect.Primary = !_gw.Connected; _connect.Invalidate();
         _addr.Enabled = _token.Enabled = !_gw.Connected;
-        _run.Visible = _gw.Connected;
-        _run.Caption = _gw.Running ? "■  Dừng" : "▶  Chạy"; _run.Danger = _gw.Running; _run.Primary = !_gw.Running; _run.Invalidate();
-        _chip.Caption = !_gw.Connected ? "Chưa kết nối" : _gw.Running ? $"Gateway: {_gw.Status}" : "Gateway: dừng";
-        _chip.Dot = !_gw.Connected ? Theme.Muted : !_gw.Running ? Theme.Yellow : _gw.Status == "online" ? Theme.Green : Theme.Yellow;
+        _chip.Caption = !_gw.Connected ? "Chưa kết nối" : _gw.Config.Pack.Count == 0 ? "Gateway: chưa có thiết bị" : $"Gateway: {_gw.Status}";
+        _chip.Dot = !_gw.Connected ? Theme.Muted : !_gw.Running ? Theme.Yellow : _gw.Config.Pack.Count == 0 || _gw.Status == "online" ? Theme.Green : Theme.Yellow;
         LayoutHead();
     }
 
@@ -132,6 +128,7 @@ public sealed class AdminForm : Form
         UpdateChrome();
         if (_current == _dash) _dash.Tick();
         else if (_current == _devices) _devices.Tick();
+        else if (_current == _cloud) _cloud.Refresh2();
     }
 
     void Toast(string text, bool error = false)

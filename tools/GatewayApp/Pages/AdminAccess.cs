@@ -16,6 +16,8 @@ sealed class AdminAccessPage : UserControl
     readonly Label _addr = new() { ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = true, BackColor = Color.Transparent, Location = new Point(18, 270) };
     readonly Label _note = new() { ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, BackColor = Color.Transparent, Location = new Point(18, 330), Size = new Size(760, 60) };
     readonly FlatButton _new = new() { Caption = "Tạo mã mới", Width = 140, Location = new Point(18, 296) };
+    readonly Label _count = new() { ForeColor = Theme.Muted, Font = Theme.Normal, AutoSize = true, BackColor = Color.Transparent, Location = new Point(470, 204) };
+    readonly ProgressBar _bar = new() { Location = new Point(472, 236), Size = new Size(240, 8), Minimum = 0, Maximum = 60, Style = ProgressBarStyle.Continuous };
     public event Action<bool>? EnabledChanged;
     public event Action<bool>? LanChanged;
     public event Action? NewCodeRequested;
@@ -29,20 +31,30 @@ sealed class AdminAccessPage : UserControl
         _on.Toggled += v => EnabledChanged?.Invoke(v);
         _lan.Toggled += v => LanChanged?.Invoke(v);
         _new.Click += (_, _) => NewCodeRequested?.Invoke();
-        card.Controls.AddRange(new Control[] { _on, l1, _lan, l2, _lanHint, _codeCap, _code, _addr, _new, _note });
+        card.Controls.AddRange(new Control[] { _on, l1, _lan, l2, _lanHint, _codeCap, _code, _addr, _new, _note, _count, _bar });
         Controls.Add(card);
     }
 
+    /// <summary>Đếm lùi đến lần đổi mã kế tiếp.</summary>
+    public void SetCountdown(int sec)
+    {
+        sec = Math.Clamp(sec, 0, 60);
+        _count.Text = $"Mã đổi sau {sec} giây";
+        _count.ForeColor = sec <= 10 ? Theme.Yellow : Theme.Muted;
+        _bar.Value = sec;
+    }
+
     /// <summary>Cập nhật hiển thị theo trạng thái hiện tại (không phát sự kiện).</summary>
-    public void Show(bool enabled, bool lan, string code, int port, string[] ips)
+    public void Show(bool enabled, bool lan, string code, int port, string[] ips, bool rotating = true)
     {
         _on.On = enabled; _lan.On = lan;
         _lanHint.Text = lan ? "Tường lửa Windows có thể hỏi quyền mở cổng — chọn Cho phép." : "";
         _codeCap.Visible = _code.Visible = _addr.Visible = _new.Visible = enabled;
+        _count.Visible = _bar.Visible = enabled && rotating;
         _code.Text = code.Length == 8 ? code[..4] + " " + code[4..] : code;
         _addr.Text = "Nhập vào tool admin:  " + string.Join("   hoặc   ", ips.Select(i => $"{i}:{port}"));
         _note.Text = enabled
-            ? "Admin nhập địa chỉ ở trên và mã này (bỏ qua khoảng trắng). Mã chỉ có hiệu lực khi đang bật; tắt hoặc tạo mã mới thì mã cũ hết hạn. Sai mã 5 lần sẽ bị khoá 1 phút."
+            ? "Admin nhập địa chỉ ở trên và mã này (bỏ qua khoảng trắng). Mã tự đổi mỗi 60 giây (admin đã nối rồi thì không bị ngắt). Tắt hoặc bấm Tạo mã mới thì mọi phiên đang nối bị ngắt. Sai mã 5 lần sẽ bị khoá 1 phút."
             : "Đang TẮT: cổng đóng, tool admin không kết nối được. Bật khi cần cài đặt, xong thì tắt lại.";
         if (!enabled) _note.Location = new Point(18, 168); else _note.Location = new Point(18, 336);
     }

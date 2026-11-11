@@ -185,8 +185,8 @@ public sealed partial class MainForm
             await ClickAsync(FindAll<FlatButton>(d).First(b => b.Caption == "Thêm thiết bị"));
         }, addBtn);
 
-        await Say("Bước 3/4: bấm ▶ Chạy gateway", 2000);
-        await ClickAsync(_start);
+        await Say("Bước 3/4: gateway tự chạy", 2000);
+        await StartAsync();
         for (var i = 0; i < 40 && !(Running && _host!.Core.State.Status == "online"); i++) await Task.Delay(500);
 
         await Say("Mở trang Tổng quan: mực nước đọc từ PlcSim qua Modbus TCP.", 800);

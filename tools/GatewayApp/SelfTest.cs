@@ -47,9 +47,10 @@ public sealed partial class MainForm
         var log = new List<string> { $"empty_on_start={_cfg.Pack.Count == 0}" };
         _cfg.Mobile = MobileAccess.Off; _cfg.PollMs = 500;
 
-        // không có thiết bị thì không chạy (không còn đọc D0–D39 ngầm định)
+        // chưa có thiết bị vẫn chạy được (chờ thiết bị; không đọc D0–D39 ngầm định)
         await StartAsync();
-        log.Add($"refuse_start_without_devices={!Running}");
+        log.Add($"start_without_devices={Running}");
+        await StopAsync();
 
         var modbus = new Dictionary<string, string> { ["unit"] = "1" };
         var none = new Dictionary<string, string>();

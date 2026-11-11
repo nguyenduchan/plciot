@@ -21,13 +21,14 @@ public sealed partial class MainForm : Form, IGatewayApp
     bool _demo;
     /// <summary>--customer: bản của khách — chỉ giám sát và điều khiển; thiết lập do tool admin gửi qua IP (xem MainForm.Remote.cs).</summary>
     readonly bool _customer = Environment.GetCommandLineArgs().Contains("--customer");
+    /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
+    readonly bool _editUi = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest" }.Any(Environment.GetCommandLineArgs().Contains);
 
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
     readonly Panel _head = new() { Dock = DockStyle.Top, Height = 62, BackColor = Theme.Bg };
     readonly Panel _body = new() { Dock = DockStyle.Fill, BackColor = Theme.Bg };
     readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent };
     readonly StatusChip _chipPlc = new(), _chipCloud = new(), _chipMode = new();
-    readonly FlatButton _start = new() { Caption = "▶  Chạy gateway", Primary = true, Width = 160 };
     readonly FlatButton _demoBtn = new() { Caption = "Demo: tắt", Width = 110 };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _ui = new() { Interval = 500 };
@@ -36,7 +37,6 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly DashboardPage _dash;
     readonly DevicesPage _devices;
     readonly ProtocolsPage _protos;
-    readonly CloudPage _cloud;
     readonly AdminAccessPage _access = new() { Dock = DockStyle.Fill };
     readonly LogPage _log = new();
     readonly List<(NavButton Btn, Control Page, string Title)> _pages = new();
@@ -73,12 +73,25 @@ public sealed partial class MainForm : Form, IGatewayApp
         return d.RootElement.TryGetProperty("err", out var e2) ? e2.GetString() : "lỗi";
     }
 
+    public async Task<string?> SetDeviceEnabledAsync(string child, bool enabled)
+    {
+        var items = _cfg.Pack.Where(p => p.Child == child).ToList();
+        if (items.Count == 0) return "không có thiết bị này";
+        foreach (var p in items) p.Enabled = enabled;   // bộ đọc xem cấu hình mỗi chu kỳ → có hiệu lực ngay, không cần khởi động lại
+        foreach (var p in items) { var k = UiMetaStore.Key(child, p.Field); if (!enabled) _values.TryRemove(k, out _); }
+        _rev++;
+        try { SaveCfg(); } catch (IOException) { }
+        Toast(enabled ? $"Thiết bị {child} đang chạy" : $"Thiết bị {child} đã tạm dừng");
+        await Task.CompletedTask;
+        return null;
+    }
+
     public async Task ApplyAsync(string why)
     {
         try { SaveCfg(); } catch (IOException) { /* không quan trọng */ }
         _rev++;
         if (_host != null) { await StopAsync(); await StartAsync(); }
-        Toast(why + (Running ? "" : " (lưu rồi, bấm Chạy để áp dụng)"));
+        Toast(why);
     }
 
     /// <summary>Thông báo cuối cùng (kiểm thử đọc lại kết quả thao tác).</summary>
@@ -105,18 +118,15 @@ public sealed partial class MainForm : Form, IGatewayApp
     // ------------------------------------------------------------------ dựng giao diện
     public MainForm()
     {
-        Text = _customer ? "Plciot GATEWAY (bản khách) — giám sát và điều khiển" : "Plciot GATEWAY (bản đầy đủ) — giám sát, điều khiển và thiết lập";
+        Text = _customer ? "Plciot GATEWAY (bản khách) — giám sát và điều khiển" : "Plciot GATEWAY (bản đầy đủ) — giám sát và điều khiển; thiết lập qua tool Admin";
         Width = 1400; Height = 860; MinimumSize = new Size(1100, 700); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; DoubleBuffered = true;
         _meta = new UiMetaStore(SettingsPath);
         try { if (File.Exists(SettingsPath)) CopyFrom(ConfigStore.Load(SettingsPath)); } catch (Exception e) when (e is IOException or JsonException) { /* dùng mặc định */ }
 
-        _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = _customer };
+        _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = !_editUi };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _protos = new ProtocolsPage(this) { Dock = DockStyle.Fill };
-        _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
-        _cloud.EnrollRequested = EnrollAsync;
-        _cloud.PairRequested = PairAsync;
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
@@ -124,8 +134,9 @@ public sealed partial class MainForm : Form, IGatewayApp
         var sub = new Label { Text = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log), ("⇆", "Kết nối admin", _access),
+            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☰", "Nhật ký", _log), ("⇆", "Kết nối admin", _access),
         };
+        if (!_editUi) items = items.Where(x => x.Page != _devices && x.Page != _protos).ToArray();                    // không sửa thiết bị/giao thức tại gateway
         if (_customer) items = items.Where(x => x.Page == _dash || x.Page == _log || x.Page == _access).ToArray();   // khách không thấy trang thiết lập
         foreach (var (icon, name, page) in items)
         {
@@ -141,9 +152,8 @@ public sealed partial class MainForm : Form, IGatewayApp
 
         // thanh trên
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _start, _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
         _head.Resize += (_, _) => LayoutHead();
-        _start.Click += async (_, _) => await ToggleAsync();
         _demoBtn.Click += async (_, _) => await ToggleDemoAsync();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -159,8 +169,9 @@ public sealed partial class MainForm : Form, IGatewayApp
         var args = Environment.GetCommandLineArgs();
         _demo = args.Contains("--demo");
         UpdateDemoButton();
-        if (_customer) _demoBtn.Visible = false;
-        if (args.Contains("--autostart") || _demo) Shown += async (_, _) => await StartAsync();
+        if (_customer || !_editUi) _demoBtn.Visible = false;
+        // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
+        if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--pairtest") && !args.Contains("--autodemo")) Shown += async (_, _) => await StartAsync();
         Shown += (_, _) => InitRemoteAccess(args);
         FormClosed += (_, _) => _api?.Dispose();
     }
@@ -168,9 +179,9 @@ public sealed partial class MainForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _start, _demoBtn, _chipMode, _chipCloud, _chipPlc })
+        foreach (var c in new Control[] { _demoBtn, _chipMode, _chipCloud, _chipPlc })
         {
-            if (_customer && c == _demoBtn) continue;
+            if ((_customer || !_editUi) && c == _demoBtn) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
         }
     }
@@ -194,18 +205,16 @@ public sealed partial class MainForm : Form, IGatewayApp
     }
 
     // ------------------------------------------------------------------ chạy / dừng
-    async Task ToggleAsync() { if (_host != null) await StopAsync(); else await StartAsync(); }
-
     async Task ToggleDemoAsync()
     {
-        if (_customer) return;
+        if (_customer || !_editUi) return;
         _demo = !_demo; UpdateDemoButton();
         _meta.Persist = !_demo;
         if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
         else if (!_demo && DemoDriver.IsSample(_cfg)) { _cfg.Pack.Clear(); _meta.Reload(); }   // rời demo: bỏ bộ mẫu tạm, không lưu
         else if (!_demo) _meta.Reload();
         if (_host != null) { await StopAsync(); await StartAsync(); }
-        else Toast(_demo ? "Demo bật: bấm Chạy gateway để xem bồn nước + bơm mô phỏng ngay trong chương trình." : "Demo tắt.");
+        else Toast(_demo ? "Demo bật: xem bồn nước + bơm mô phỏng ngay trong chương trình." : "Demo tắt.");
     }
 
     void UpdateDemoButton() { _demoBtn.Caption = _demo ? "Demo: BẬT" : "Demo: tắt"; _demoBtn.Primary = _demo; _demoBtn.Invalidate(); }
@@ -215,7 +224,6 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (_host != null) return;
         _meta.Persist = !_demo;
         if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
-        if (!_demo && _cfg.Pack.Count == 0 && _cfg.Source != PlcSource.Gateway) { Toast("Chưa có thiết bị nào: thêm thiết bị ở trang Thiết bị (chọn giao thức, kiểu, thanh ghi) rồi chạy.", true); return; }
         var err = _cfg.Validate();
         if (err != null) { Toast("Cấu hình chưa hợp lệ: " + err, true); return; }
         try { SaveCfg(); } catch (IOException) { }
@@ -232,7 +240,6 @@ public sealed partial class MainForm : Form, IGatewayApp
         }
         catch (LicenseRequiredException e) { await Abort(); Toast(e.Message, true); return; }
         catch (Exception e) { await Abort(); Toast("Không chạy được: " + e.Message, true); return; }
-        _start.Caption = "■  Dừng"; _start.Danger = true; _start.Primary = false; _start.Invalidate();
         Toast(_demo ? "Gateway đang chạy với PLC giả (demo)." : $"Gateway đang chạy: {_host!.Core.InfoLine}");
     }
 
@@ -245,7 +252,6 @@ public sealed partial class MainForm : Form, IGatewayApp
     async Task StopAsync()
     {
         await Abort();
-        _start.Caption = "▶  Chạy gateway"; _start.Danger = false; _start.Primary = true; _start.Invalidate();
     }
 
     /// <summary>Telemetry schema:2 của gateway: {"d":{child:{field:số}}} — cùng dữ liệu gửi lên cloud.</summary>
@@ -263,32 +269,43 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (JsonException) { /* bỏ qua gói hỏng */ }
     }
 
-    // ------------------------------------------------------------------ ghép cặp bằng mã admin (gateway chưa đăng ký)
-    async Task PairAsync()
+    // ------------------------------------------------------------------ cloud: do tool ADMIN điều khiển, gateway thực hiện
+    public string FingerprintText => Fingerprint.Of(_cfg);
+
+    public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => action switch
     {
-        var code = _cloud.Pair.Text.Trim();
-        if (code.Length == 0) { Toast("Nhập mã ghép cặp do admin phát.", true); return; }
-        if (_cfg.Pack.Count == 0) { Toast("Chưa có thiết bị nào để gửi — thêm thiết bị ở trang Thiết bị trước.", true); return; }
+        "pair" => PairAsync(api, value),
+        "enroll" => EnrollAsync(api, value),
+        _ => Task.FromResult((false, "việc cloud không hợp lệ")),
+    };
+
+    (bool, string) Done(bool ok, string msg) { Toast(msg, !ok); return (ok, msg); }
+
+    /// <summary>Ghép cặp bằng mã admin phát (gateway chưa đăng ký): gửi bản khai toàn bộ thiết bị + setting + UI để admin duyệt.</summary>
+    async Task<(bool Ok, string Msg)> PairAsync(string api, string code)
+    {
+        code = code.Trim();
+        if (code.Length == 0) return Done(false, "Nhập mã ghép cặp do admin phát.");
+        if (_cfg.Pack.Count == 0) return Done(false, "Chưa có thiết bị nào để gửi — thêm thiết bị ở trang Thiết bị trước.");
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(_cloud.Api.Text.Trim()), Timeout = TimeSpan.FromSeconds(20) };
+            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(20) };
             var json = ConfigBuilder.Build(_cfg, new MetaDescriber(_meta, _cfg));   // đúng bản tin config sẽ publish sau khi đăng ký
             var r = await new GatewayEnrollClient(http).PairAsync(code, Fingerprint.Of(_cfg), json);
-            _cloud.Pair.Text = "";
             _log.Add("INFO", "pair", $"đã gửi bản khai {r.Devices} thiết bị ({json.Length} byte), vân tay {Fingerprint.Of(_cfg)} — chờ admin duyệt");
-            Toast($"Đã gửi {r.Devices} thiết bị cho admin (vân tay {Fingerprint.Of(_cfg)}). Chờ admin duyệt và đưa QR.");
+            return Done(true, $"Đã gửi {r.Devices} thiết bị cho admin (vân tay {Fingerprint.Of(_cfg)}). Chờ admin duyệt và đưa QR.");
         }
-        catch (Exception ex) { Toast(ex.Message == "invalid_pairing" ? "Mã ghép cặp sai, hết hạn hoặc đã dùng." : "Gửi bản khai lỗi: " + ex.Message, true); }
+        catch (Exception ex) { return Done(false, ex.Message == "invalid_pairing" ? "Mã ghép cặp sai, hết hạn hoặc đã dùng." : "Gửi bản khai lỗi: " + ex.Message); }
     }
 
-    // ------------------------------------------------------------------ enroll từ QR (tuỳ chọn, cần Internet)
-    async Task EnrollAsync()
+    /// <summary>Enroll từ QR của tem (cần Internet của gateway): nhận site/MQTT từ server.</summary>
+    async Task<(bool Ok, string Msg)> EnrollAsync(string api, string qr)
     {
-        if (string.IsNullOrWhiteSpace(_cloud.Qr.Text)) { Toast("Dán mã QR của tem vào ô \"Mã QR của tem\".", true); return; }
+        if (string.IsNullOrWhiteSpace(qr)) return Done(false, "Dán mã QR của tem.");
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(_cloud.Api.Text.Trim()), Timeout = TimeSpan.FromSeconds(15) };
-            var kit = await new GatewayEnrollClient(http).EnrollAsync(_cloud.Qr.Text.Trim());
+            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(15) };
+            var kit = await new GatewayEnrollClient(http).EnrollAsync(qr.Trim());
             if (kit == null) throw new InvalidOperationException("server không trả dữ liệu");
             _cfg.Site = kit.Site ?? _cfg.Site; _cfg.Device = kit.Device ?? _cfg.Device;
             if (kit.Mqtt != null)
@@ -298,7 +315,7 @@ public sealed partial class MainForm : Form, IGatewayApp
                 if (Uri.TryCreate(kit.Mqtt.Mqtts, UriKind.Absolute, out var u)) { _cfg.CloudHost = u.Host; _cfg.CloudPort = u.Port; _cfg.CloudTransport = "mqtts"; }
             }
             // Pack: tem chỉ cho biết thiết bị/field/giới hạn. Giao thức, kiểu, quyền, thanh ghi D và hệ số KHÔNG đoán:
-            // để trống (Address = -1, Scale = 0) và người dùng khai báo ở trang Thiết bị trước khi chạy.
+            // để trống (Address = -1, Scale = 0) và admin khai báo ở trang Thiết bị trước khi chạy.
             var pack = new List<PackMap>();
             if (_cfg.Pack.Count > 0 && _cfg.Pack.All(p => p.Address >= 0))
             {
@@ -306,7 +323,7 @@ public sealed partial class MainForm : Form, IGatewayApp
                 _log.Add("INFO", "enroll", $"giữ {_cfg.Pack.Count} field đã khai báo; site={kit.Site} device={kit.Device}");
                 _cfg.Mobile = MobileAccess.Control;
                 await ApplyAsync($"Đã đăng ký: {_cfg.Site}/{_cfg.Device} — giữ nguyên {_cfg.Pack.Count} field đã khai báo, gateway publish config lên cloud");
-                return;
+                return (true, $"Đã đăng ký {_cfg.Site}/{_cfg.Device}; giữ nguyên {_cfg.Pack.Count} field đã khai báo.");
             }
             foreach (var c in kit.Pack ?? new())
                 foreach (var f in c.Fields ?? new())
@@ -316,9 +333,10 @@ public sealed partial class MainForm : Form, IGatewayApp
                 }
             _cfg.Pack = pack; _cfg.Mobile = MobileAccess.Control;
             _log.Add("INFO", "enroll", $"site={_cfg.Site} device={_cfg.Device} cloud={_cfg.CloudHost}:{_cfg.CloudPort} user={_cfg.CloudUser} pack={pack.Count} field");
-            await ApplyAsync($"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field — khai báo giao thức/thanh ghi ở trang Thiết bị");
+            await ApplyAsync($"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field — khai báo giao thức/thanh ghi ở trang Thiết bị của Admin");
+            return (true, $"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field. Khai báo giao thức/thanh ghi ở trang Thiết bị.");
         }
-        catch (Exception ex) { Toast("Enroll lỗi: " + ex.Message, true); }
+        catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
     }
 
     // ------------------------------------------------------------------ nhịp giao diện

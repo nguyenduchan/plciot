@@ -15,7 +15,9 @@ static class Program
         var t = Array.IndexOf(args, "--token");
         if (t >= 0 && t + 1 < args.Length) f.Token = args[t + 1];
         var i = Array.IndexOf(args, "--connect");
-        if (i >= 0 && i + 1 < args.Length) f.Shown += async (_, _) => await f.ConnectAsync(args[i + 1]);
+        if (i >= 0 && i + 1 < args.Length && !args.Contains("--autodemo")) f.Shown += async (_, _) => await f.ConnectAsync(args[i + 1]);
+        if (args.Contains("--autodemo") && i >= 0 && i + 1 < args.Length && t >= 0 && t + 1 < args.Length)
+            f.Shown += async (_, _) => await f.AutoDemoAsync(args[i + 1], args[t + 1]);
         var j = Array.IndexOf(args, "--shot");
         if (j >= 0 && j + 1 < args.Length) f.Shown += async (_, _) => await f.ShotAsync(args[j + 1]);
         Application.Run(f);
