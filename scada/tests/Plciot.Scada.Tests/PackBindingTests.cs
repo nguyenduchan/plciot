@@ -156,6 +156,18 @@ public class PackBindingTests
     }
 
     [Fact]
+    public void Enabled_defaults_to_true_for_old_config_and_round_trips_when_paused()
+    {
+        var old = JsonSerializer.Deserialize<PackMap>("{\"Child\":\"a\",\"Field\":\"x\",\"Address\":10,\"Scale\":1}")!;
+        Assert.True(old.Enabled);                                  // cấu hình cũ chưa có khoá Enabled: thiết bị vẫn chạy
+        var c = Cfg(P("a", "x", 10), P("b", "y", 20));
+        c.Pack[1].Enabled = false;
+        var back = JsonSerializer.Deserialize<ScadaConfig>(JsonSerializer.Serialize(c))!;
+        Assert.Equal(new[] { true, false }, back.Pack.Select(p => p.Enabled).ToArray());
+        Assert.Null(back.Validate());                              // tạm dừng không làm cấu hình không hợp lệ
+    }
+
+    [Fact]
     public async Task Pool_isolates_each_plc_and_skips_write_only_fields()
     {
         var good = new RecordingDriver { }; good.Regs[10] = 5;
