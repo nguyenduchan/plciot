@@ -19,6 +19,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly ConcurrentDictionary<string, double> _values = new();
     ScadaHost? _host;
     bool _demo;
+    /// <summary>--customer: bản của khách — chỉ giám sát và điều khiển; thiết lập do tool admin gửi qua IP (xem MainForm.Remote.cs).</summary>
+    readonly bool _customer = Environment.GetCommandLineArgs().Contains("--customer");
 
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
     readonly Panel _head = new() { Dock = DockStyle.Top, Height = 62, BackColor = Theme.Bg };
@@ -35,6 +37,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly DevicesPage _devices;
     readonly ProtocolsPage _protos;
     readonly CloudPage _cloud;
+    readonly AdminAccessPage _access = new() { Dock = DockStyle.Fill };
     readonly LogPage _log = new();
     readonly List<(NavButton Btn, Control Page, string Title)> _pages = new();
     Control _current = null!;
@@ -47,7 +50,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         CloudTelemetryMinMs = 2000,
     };
 
-    static string SettingsPath => Environment.GetEnvironmentVariable("GATEWAYAPP_SETTINGS") is { Length: > 0 } p ? p : ConfigStore.PathFor("gateway-app");
+    internal static string SettingsPath => Environment.GetEnvironmentVariable("GATEWAYAPP_SETTINGS") is { Length: > 0 } p ? p : ConfigStore.PathFor("gateway-app");
 
     // ------------------------------------------------------------------ IGatewayApp
     public ScadaConfig Config => _cfg;
@@ -73,6 +76,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     public async Task ApplyAsync(string why)
     {
         try { SaveCfg(); } catch (IOException) { /* không quan trọng */ }
+        _rev++;
         if (_host != null) { await StopAsync(); await StartAsync(); }
         Toast(why + (Running ? "" : " (lưu rồi, bấm Chạy để áp dụng)"));
     }
@@ -101,13 +105,13 @@ public sealed partial class MainForm : Form, IGatewayApp
     // ------------------------------------------------------------------ dựng giao diện
     public MainForm()
     {
-        Text = "Plciot Gateway — giám sát và điều khiển (offline)";
+        Text = _customer ? "Plciot GATEWAY (bản khách) — giám sát và điều khiển" : "Plciot GATEWAY (bản đầy đủ) — giám sát, điều khiển và thiết lập";
         Width = 1400; Height = 860; MinimumSize = new Size(1100, 700); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; DoubleBuffered = true;
         _meta = new UiMetaStore(SettingsPath);
         try { if (File.Exists(SettingsPath)) CopyFrom(ConfigStore.Load(SettingsPath)); } catch (Exception e) when (e is IOException or JsonException) { /* dùng mặc định */ }
 
-        _dash = new DashboardPage(this) { Dock = DockStyle.Fill };
+        _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = _customer };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _protos = new ProtocolsPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
@@ -116,12 +120,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
-        var logo = new Label { Text = "Plciot", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
-        var sub = new Label { Text = "GATEWAY · OFFLINE-READY", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
+        var logo = new Label { Text = "Gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
+        var sub = new Label { Text = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log),
+            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log), ("⇆", "Kết nối admin", _access),
         };
+        if (_customer) items = items.Where(x => x.Page == _dash || x.Page == _log || x.Page == _access).ToArray();   // khách không thấy trang thiết lập
         foreach (var (icon, name, page) in items)
         {
             var b = new NavButton { Icon = icon, Caption = name };
@@ -154,7 +159,10 @@ public sealed partial class MainForm : Form, IGatewayApp
         var args = Environment.GetCommandLineArgs();
         _demo = args.Contains("--demo");
         UpdateDemoButton();
+        if (_customer) _demoBtn.Visible = false;
         if (args.Contains("--autostart") || _demo) Shown += async (_, _) => await StartAsync();
+        Shown += (_, _) => InitRemoteAccess(args);
+        FormClosed += (_, _) => _api?.Dispose();
     }
 
     void LayoutHead()
@@ -162,6 +170,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         var x = _head.Width - 18;
         foreach (var c in new Control[] { _start, _demoBtn, _chipMode, _chipCloud, _chipPlc })
         {
+            if (_customer && c == _demoBtn) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
         }
     }
@@ -189,6 +198,7 @@ public sealed partial class MainForm : Form, IGatewayApp
 
     async Task ToggleDemoAsync()
     {
+        if (_customer) return;
         _demo = !_demo; UpdateDemoButton();
         _meta.Persist = !_demo;
         if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
@@ -342,7 +352,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         await Task.Delay(3500);
         TryValue("pump1.speed", out var sp); TryValue("pump1.flow", out var fl);
         File.WriteAllText(Path.Combine(dir, "write-test.txt"), $"write80={wr ?? "ok"} write500={bad ?? "ok"} speed={sp} flow={fl}");
-        var names = new[] { "dashboard", "devices", "protocols", "cloud", "log" };
+        var names = new[] { "dashboard", "devices", "protocols", "cloud", "log", "admin" };
         for (var i = 0; i < _pages.Count; i++)
         {
             Show(_pages[i].Page); Tick();

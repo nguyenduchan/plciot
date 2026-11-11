@@ -130,6 +130,9 @@ public sealed class UiMetaStore
         catch (Exception e) when (e is IOException or JsonException) { /* giữ rỗng */ }
     }
 
+    /// <summary>Thay toàn bộ metadata (tool admin gửi cấu hình mới).</summary>
+    public void Replace(Dictionary<string, FieldMeta> fields, Dictionary<string, DeviceMeta> devices) { Map = fields ?? new(); Devices = devices ?? new(); Save(); }
+
     public static string Key(string child, string field) => child + "." + field;
     public FieldMeta? Get(string child, string field) => Map.TryGetValue(Key(child, field), out var m) ? m : null;
     public DeviceMeta? Device(string child) => Devices.TryGetValue(child, out var d) ? d : null;

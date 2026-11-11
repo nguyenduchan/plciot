@@ -23,3 +23,16 @@ C# thuần (WinForms, vẽ bằng GDI+), không web, không CDN, không cần In
 - Cấu hình: `%ProgramData%\PlciotScada\gateway-app\config.json` và `config.ui.json` (cách hiển thị). Demo không ghi đè.
 - Biến môi trường `GATEWAYAPP_SETTINGS` đổi đường dẫn file cấu hình (dùng cho thử nghiệm).
 - Kiểm tra tự động: `--shot THƯ_MỤC` (chụp các trang), `--selftest THƯ_MỤC` (thêm thiết bị bằng hộp thoại thật, chạy Modbus TCP 1502 + OPC UA 4841 tới PlcSim nạp `e2e/plcsim-settings.json`, đọc/ghi/xoá, ghi `gateway-result.txt`).
+
+## Chế độ khách + API cho tool admin
+
+```powershell
+GatewayApp.exe --customer                       # Tổng quan + Nhật ký + "Kết nối admin"; không có trang thiết lập
+GatewayApp.exe --customer --api --token 12345678  # bật sẵn cho admin với mã cố định (kiểm thử)
+```
+
+- Token mặc định tạo ở `%ProgramData%\PlciotScada\gateway-app\api-token.txt` (cạnh file cấu hình); mọi yêu cầu cần `Authorization: Bearer <token>`.
+- API (JSON, `Remote/Contract.cs`): `GET /api/state` · `GET /api/config` · `PUT /api/config` (đẩy thiết bị/giao thức/hiển thị; gateway kiểm tra, lưu, khởi động lại luồng đọc) · `POST /api/write` · `POST /api/run`.
+- Mật khẩu (cloud, user local, cert) không gửi về tool; để trống khi đẩy = giữ nguyên.
+- HTTP thường: chỉ dùng trong LAN tin cậy hoặc VPN.
+- Tool admin: `tools/GatewayAdmin` (dùng lại các trang giao diện của GatewayApp).

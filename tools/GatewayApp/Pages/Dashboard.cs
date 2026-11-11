@@ -133,6 +133,8 @@ sealed class DashboardPage : UserControl
     string _sig = "";
     string? _selected;
     int _window = 300;
+    /// <summary>Chế độ khách: chỉ xem và điều khiển, không có nút thêm/sửa thiết bị.</summary>
+    public bool ReadOnly { get; set; }
 
     public DashboardPage(IGatewayApp app)
     {
@@ -180,9 +182,11 @@ sealed class DashboardPage : UserControl
         _cards.Clear();
         var groups = _app.Config.Pack.GroupBy(p => p.Child).ToList();
         _empty.Visible = groups.Count == 0;
+        foreach (var b in _empty.Controls.OfType<FlatButton>()) b.Visible = !ReadOnly;
+        if (ReadOnly) foreach (var l in _empty.Controls.OfType<Label>().Where(x => x.Font != Theme.Big)) l.Text = "Quản trị viên sẽ cài đặt thiết bị cho gateway này.";
         foreach (var g in groups)
         {
-            var card = new DeviceCard(g.Key, g.ToList(), _app, k => { _selected = k; UpdateChart(); }, EditDevice);
+            var card = new DeviceCard(g.Key, g.ToList(), _app, k => { _selected = k; UpdateChart(); }, ReadOnly ? null : EditDevice);
             _cards.Add(card); _flow.Controls.Add(card);
         }
         _flow.ResumeLayout();
