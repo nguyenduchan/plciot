@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tool admin: thêm/xoá/sửa thiết bị rồi đẩy cấu hình sang gateway của khách qua IP; xem và điều khiển qua gateway.
+       Dùng lại các trang giao diện của GatewayApp (liên kết file nguồn) — chỉ khác lớp RemoteGateway thay cho gateway cục bộ. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GatewayAdmin</RootNamespace>
+    <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\GatewayApp\Pages\Dashboard.cs;..\GatewayApp\Pages\Devices.cs;..\GatewayApp\Pages\Protocols.cs;..\GatewayApp\Data.cs;..\GatewayApp\DeviceTemplates.cs;..\GatewayApp\Remote\Contract.cs" LinkBase="Shared" />
+    <Compile Include="..\GatewayApp\Ui\*.cs" LinkBase="Shared\Ui" />
+    <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
+  </ItemGroup>
+</Project>

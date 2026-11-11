@@ -13,20 +13,34 @@ static class Ask
 
 static class DlgUi
 {
-    public static Label L(string t) => new() { Text = t, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) };
+    /// <summary>Nhãn của một hàng; ẩn/hiện nhãn thì chú thích đi kèm (Hint) ẩn/hiện theo, kể cả khi form chưa hiển thị.</summary>
+    sealed class RowLabel : Label
+    {
+        public Label? Hint;
+        protected override void SetVisibleCore(bool value) { base.SetVisibleCore(value); if (Hint != null) Hint.Visible = value; }
+    }
+
+    public static Label L(string t) => new RowLabel() { Text = t, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) };
 
     public static TableLayoutPanel Table()
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, Padding = new Padding(16, 12, 16, 0), AutoSize = true };
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var t = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 3, Padding = new Padding(16, 12, 16, 0), AutoSize = true };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         return t;
     }
 
-    public static Label Row(TableLayoutPanel t, string label, Control c)
+    /// <summary>Hàng nhãn + ô nhập; hint (ngắn) hiện xám bên phải và ẩn/hiện cùng nhãn.</summary>
+    public static Label Row(TableLayoutPanel t, string label, Control c, string? hint = null)
     {
         var l = L(label); var r = t.RowStyles.Count;   // đặt ô tường minh: control ẩn không làm lệch hàng
         c.Dock = DockStyle.Fill; c.Margin = new Padding(0, 3, 0, 3);
         t.Controls.Add(l, 0, r); t.Controls.Add(c, 1, r);
+        if (!string.IsNullOrEmpty(hint))
+        {
+            var h = new Label { Text = hint, AutoSize = true, ForeColor = Color.DimGray, Anchor = AnchorStyles.Left, Margin = new Padding(8, 6, 0, 0) };
+            t.Controls.Add(h, 2, r);
+            ((RowLabel)l).Hint = h;
+        }
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         return l;
     }
@@ -35,7 +49,7 @@ static class DlgUi
     public static Label Section(TableLayoutPanel t, string text)
     {
         var l = new Label { Text = text, AutoSize = true, Font = new Font("Segoe UI Semibold", 10f), ForeColor = Color.FromArgb(50, 116, 217), Margin = new Padding(0, 12, 0, 2) };
-        t.Controls.Add(l, 0, t.RowStyles.Count); t.SetColumnSpan(l, 2);
+        t.Controls.Add(l, 0, t.RowStyles.Count); t.SetColumnSpan(l, 3);
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         return l;
     }
@@ -252,18 +266,18 @@ sealed class StreamDialog : IDisposable
         foreach (var c in children) _child.Items.Add(c);
         var t = DlgUi.Table();
         DlgUi.Section(t, "Thiết bị và quyền");
-        DlgUi.Row(t, "Thiết bị (child)", _child);
-        _fieldLbl = DlgUi.Row(t, "Field", _field);
-        DlgUi.Row(t, "Quyền truy cập", _access);
+        DlgUi.Row(t, "Thiết bị (child)", _child, "tên thiết bị, vd tank1");
+        _fieldLbl = DlgUi.Row(t, "Field", _field, "tên giá trị, vd level");
+        DlgUi.Row(t, "Quyền truy cập", _access, "gateway được đọc/ghi gì");
         DlgUi.Section(t, "Kiểu dữ liệu");
-        _typeLbl = DlgUi.Row(t, "Kiểu dữ liệu", _type);
-        _swapLbl = DlgUi.Row(t, "Thứ tự word (kiểu ≥ 32-bit)", _swap);
+        _typeLbl = DlgUi.Row(t, "Kiểu dữ liệu", _type, "độ rộng: 1/2/4 word");
+        _swapLbl = DlgUi.Row(t, "Thứ tự word (kiểu ≥ 32-bit)", _swap, "thứ tự 2 word của số 32-bit");
         _memSec = DlgUi.Section(t, "Thành viên của struct (nằm liền nhau từ thanh ghi D bắt đầu)");
         BuildMembers(t);
         DlgUi.Section(t, "Giao thức và địa chỉ");
-        DlgUi.Row(t, "Giao thức", _proto);
-        _addrLbl = DlgUi.Row(t, "Thanh ghi D", _addr);
-        _scaleLbl = DlgUi.Row(t, "Hệ số (D = giá trị × hệ số)", _scale);
+        DlgUi.Row(t, "Giao thức", _proto, "chuẩn gateway dùng để đọc");
+        _addrLbl = DlgUi.Row(t, "Thanh ghi D", _addr, "nơi lưu giá trị trong PLC");
+        _scaleLbl = DlgUi.Row(t, "Hệ số (D = giá trị × hệ số)", _scale, "vd 12.5 × 10 → D=125");
         // mỗi nhóm giao thức có bộ thông số riêng; chỉ nhóm đang chọn được hiện
         foreach (var grp in protos.Select(p => ProtoParams.Group(p.Kind)).Distinct())
         {
@@ -273,17 +287,24 @@ sealed class StreamDialog : IDisposable
                 Control c;
                 if (d.Choices != null) { var cb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }; cb.Items.AddRange(d.Choices); c = cb; cb.SelectedIndexChanged += (_, _) => UpdateState(); }
                 else { var tb = new TextBox(); c = tb; tb.TextChanged += (_, _) => UpdateState(); }
-                list.Add((d, DlgUi.Row(t, d.Label, c), c));
+                list.Add((d, DlgUi.Row(t, d.Label, c, d.Key switch
+                    {
+                        "unit" => "địa chỉ slave Modbus", "plc" => "dòng PLC Mitsubishi", "node" => "node của PLC", "srcnode" => "node của gateway",
+                        "cpu" => "dòng CPU Siemens", "rack" => "rack chứa CPU", "slot" => "khe cắm CPU", "db" => "số Data Block",
+                        "tag" => "tên mảng INT trên PLC", "ns" => "namespace node OPC UA", "image" => "node chứa toàn bộ D", "prefix" => "tiền tố node ghi + số D",
+                        "netid" => "địa chỉ AMS của PLC", "port" => "cổng AMS", "symbol" => "tên biến mảng INT",
+                        "qos" => "0: ≤1 lần · 1: ≥1 · 2: đúng 1", "retain" => "broker giữ tin cuối", _ => null
+                    }), c));
             }
             _pc[grp] = list;
         }
         _simSec = DlgUi.Section(t, "Giả lập giá trị");
-        _modeLbl = DlgUi.Row(t, "Cách sinh giá trị", _mode);
-        _valueLbl = DlgUi.Row(t, "Giá trị cố định / ban đầu", _value);
-        _minLbl = DlgUi.Row(t, "Min", _min);
-        _maxLbl = DlgUi.Row(t, "Max", _max);
-        _periodLbl = DlgUi.Row(t, "Chu kỳ sóng sin (giây)", _period);
-        _stepLbl = DlgUi.Row(t, "Bước tăng mỗi giây", _step);
+        _modeLbl = DlgUi.Row(t, "Cách sinh giá trị", _mode, "cách PLC tự tạo số liệu");
+        _valueLbl = DlgUi.Row(t, "Giá trị cố định / ban đầu", _value, "giá trị luôn giữ nguyên");
+        _minLbl = DlgUi.Row(t, "Min", _min, "giá trị thấp nhất");
+        _maxLbl = DlgUi.Row(t, "Max", _max, "giá trị cao nhất");
+        _periodLbl = DlgUi.Row(t, "Chu kỳ sóng sin (giây)", _period, "thời gian 1 vòng dao động");
+        _stepLbl = DlgUi.Row(t, "Bước tăng mỗi giây", _step, "tăng tới Max thì về Min");
 _hint.Text = "";
         var ok = new Button { Text = edit ? "Lưu" : "Thêm", Width = 100, Height = 32, DialogResult = DialogResult.None };
         var cancel = new Button { Text = "Huỷ", Width = 90, Height = 32, DialogResult = DialogResult.Cancel };
@@ -356,7 +377,7 @@ _hint.Text = "";
         _memPanel.Controls.Add(_grid); _memPanel.Controls.Add(btns);
         _memPanel.Height = _f.LogicalToDeviceUnits(260); _memPanel.Margin = new Padding(0, 0, 0, 6);
         var r = t.RowStyles.Count;
-        t.Controls.Add(_memPanel, 0, r); t.SetColumnSpan(_memPanel, 2); t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        t.Controls.Add(_memPanel, 0, r); t.SetColumnSpan(_memPanel, 3); t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 
     static string Num(double d) => d.ToString("0.###", CultureInfo.InvariantCulture);
