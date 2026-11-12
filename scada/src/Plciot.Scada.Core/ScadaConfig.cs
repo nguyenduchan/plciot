@@ -193,6 +193,12 @@ public sealed class ScadaConfig
     public string LicenseServerUrl { get; set; } = "https://plc.dieukhientudong.net";
     /// <summary>QR tem của thiết bị (chỉ dùng khi LicenseMode = online).</summary>
     public string GatewayQr { get; set; } = "";
+    /// <summary>URL API cloud đã dùng để enroll; gateway hỏi lại để biết tem đã có user (claimed) chưa.</summary>
+    public string CloudApiUrl { get; set; } = "";
+    /// <summary>Khoá RIÊNG ECDSA P-256 của gateway (PKCS#8 base64, mã hoá DPAPI khi lưu). Khoá công khai gửi server lúc ghép cặp; không bao giờ rời máy.</summary>
+    public string GatewayKey { get; set; } = "";
+    /// <summary>false = tem chưa có user: chỉ đồng bộ setting (config/status), KHÔNG gửi telemetry/history. Server cũng bỏ nếu gửi.</summary>
+    public bool CloudSendData { get; set; } = true;
     public string ClientSuffix { get; set; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
 
     // ---- Giao diện web cục bộ (nhiều màn hình trong nhà máy). Dùng tài khoản LocalUsers vai trò Monitor/Operator.
@@ -349,6 +355,7 @@ public static class ConfigStore
         if (!File.Exists(path)) return new ScadaConfig();
         var cfg = JsonSerializer.Deserialize<ScadaConfig>(File.ReadAllText(path), Json) ?? new ScadaConfig();
         cfg.CloudPassword = Unprotect(cfg.CloudPassword);
+        cfg.GatewayKey = Unprotect(cfg.GatewayKey);
         foreach (var u in cfg.LocalUsers) u.Password = Unprotect(u.Password);
         cfg.WebCertPassword = Unprotect(cfg.WebCertPassword);
         cfg.InfluxToken = Unprotect(cfg.InfluxToken);
@@ -361,6 +368,7 @@ public static class ConfigStore
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var copy = JsonSerializer.Deserialize<ScadaConfig>(JsonSerializer.Serialize(cfg, Json), Json)!;
         copy.CloudPassword = Protect(copy.CloudPassword);
+        copy.GatewayKey = Protect(copy.GatewayKey);
         foreach (var u in copy.LocalUsers) u.Password = Protect(u.Password);
         copy.WebCertPassword = Protect(copy.WebCertPassword);
         copy.InfluxToken = Protect(copy.InfluxToken);

@@ -140,7 +140,15 @@ public sealed class CloudBridge : IAsyncDisposable
     /// <summary>Gửi lên cloud (hoặc ghi nhớ để đồng bộ khi nối lại). Telemetry bị gộp theo CloudTelemetryMinMs.</summary>
     public void Forward(string topic, byte[] payload, bool retain)
     {
-        if (!_cfg.CloudEnabled || payload.Length > (topic.EndsWith("/config", StringComparison.Ordinal) ? MaxConfigPayload : MaxPayload)) return;
+        // Chưa có user: chỉ setting (config) + status; không đưa data lên cloud
+        if (!_cfg.CloudSendData && (topic.EndsWith("/telemetry", StringComparison.Ordinal) || topic.EndsWith("/history", StringComparison.Ordinal))) return;
+        var isConfig = topic.EndsWith("/config", StringComparison.Ordinal);
+        if (!_cfg.CloudEnabled) return;
+        if (payload.Length > (isConfig ? MaxConfigPayload : MaxPayload))
+        {
+            if (isConfig) Log?.Invoke($"Bản tin setting {payload.Length} byte vượt giới hạn {MaxConfigPayload} — KHÔNG đồng bộ được lên server, hãy bớt thiết bị/field");
+            return;
+        }
         if (retain) _latest[topic] = (payload, retain);
         if (State != CloudState.Connected) return;
         if (topic.EndsWith("/telemetry", StringComparison.Ordinal))

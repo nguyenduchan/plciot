@@ -95,7 +95,7 @@ const op2 = A.createUser(db, admin, { username: 'operator_b', role: 'operator', 
 ok(!blockIn('acl', op2.id).includes('write'), 'kênh mã hoá: operator không ghi cmd trực tiếp');
 ok(!blockIn('acl-monitor', op2.id).includes('write') && blockIn('acl-monitor', op2.id).includes(`topic read gw/${IDB}/telemetry`),
   'kênh không mã hoá: operator chỉ đọc, không ghi cmd');
-ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').split('user gw')[1].split('user ingest')[1].match(/topic write .*\/cmd/),'acl-monitor không có dòng GHI cmd cho user (gateway chỉ ĐỌC cmd của chính mình)');
+ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').split('user ingest')[1].match(/topic write .*\/cmd/),'acl-monitor không có dòng GHI cmd cho user (gateway chỉ ĐỌC cmd của chính mình)');
 
 // chế độ tương thích CONTROL_VIA_SERVER=false: operator ghi cmd trực tiếp như trước
 process.env.CONTROL_VIA_SERVER = 'false';

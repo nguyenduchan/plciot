@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2b2b2b">
+<meta name="robots" content="noindex,nofollow">
+<title>Kích hoạt gateway</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:calc(14px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));max-width:520px;margin:auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.top h1{font-size:22px;margin:0}
+.top .sess{font-size:12px;color:var(--mut);text-align:right}
+.top button{padding:8px 12px;font-size:13px}
+main{padding:0;max-width:none}
+.panel{margin:0 0 12px}
+button{min-height:48px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1}
+.fit{flex:0 0 auto}
+input{font:inherit;width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);margin-top:4px}
+.gate{text-align:center;padding:28px 16px}
+.gate .ico{font-size:52px;line-height:1}
+.gate p{color:var(--mut)}
+.code{font:700 38px/1.2 ui-monospace,Consolas,monospace;letter-spacing:4px;text-align:center;padding:14px 4px;margin:10px 0 4px;background:var(--bg);border-radius:12px;user-select:all;-webkit-user-select:all}
+.help{font-size:13px;color:var(--mut);line-height:1.5;margin:6px 0}
+.item{padding:12px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.item b{font-size:15px}
+.item small{display:block;color:var(--mut);font-size:12.5px;margin-top:2px;word-break:break-word}
+.item.rcv{background:var(--accbg);margin:0 -16px;padding:12px 16px;border-top:0}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accbg);text-transform:uppercase;margin-left:6px}
+.dev{margin:6px 0;font-size:13px}
+.dev code,.item code{font-size:12px}
+.chk{display:flex;gap:10px;align-items:flex-start;margin:12px 0;color:var(--fg);font-size:14px}
+.chk input{width:22px;height:22px;margin:0;flex:0 0 22px}
+#bypass{margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--al-warn-bg);color:var(--al-warn);font-size:13px;font-weight:600;text-align:center}
+#msg{min-height:1.4em;font-size:14px;margin:0 0 10px;text-align:center}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--ok);font-weight:600}
+#qr-modal{position:fixed;inset:0;background:#000c;display:none;align-items:flex-start;justify-content:center;z-index:50;padding:calc(16px + env(safe-area-inset-top)) 16px 16px;overflow:auto}
+#qr-modal.on{display:flex}
+#qr-sheet{background:var(--bg);border-radius:16px;padding:18px;max-width:420px;width:100%;text-align:center}
+#qr-canvas canvas{max-width:100%;height:auto;background:#fff;border-radius:8px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Kích hoạt gateway</h1>
+  <div class="sess"><div id="sess-left"></div><button id="lock" class="fit" hidden>Khoá</button></div>
+</div>
+<p id="bypass" hidden>⚠ Chế độ TEST: Face ID đang tắt trên máy chủ</p>
+<p id="msg"></p>
+
+<!-- Cổng Face ID: chưa mở khoá thì KHÔNG hiện gì khác (server cũng từ chối mọi API) -->
+<section id="gate" class="panel gate" hidden>
+  <div class="ico">🔒</div>
+  <h2 style="font-size:18px;margin:10px 0 4px">Cần Face ID / vân tay</h2>
+  <p id="gate-text">Trang này chỉ mở được sau khi xác thực sinh trắc.</p>
+  <div class="row" style="margin-top:10px"><button id="gate-go" class="primary">Mở bằng Face ID</button></div>
+  <p class="help" id="gate-help"></p>
+</section>
+
+<main id="app" hidden>
+  <section class="panel">
+    <h2>Tạo mã cho gateway</h2>
+    <label>Site (nhà máy / trạm)<input id="site" list="sites" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="tram_binh_duong" required></label>
+    <datalist id="sites"></datalist>
+    <label>Ghi chú (tuỳ chọn)<input id="label" autocomplete="off" placeholder="Trạm bơm Bình Dương"></label>
+    <details>
+      <summary class="help">Tuỳ chọn nâng cao</summary>
+      <label style="margin-top:8px">Mã tem (để trống = tự đặt gw01, gw02…)<input id="device" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="gw01"></label>
+      <label class="chk"><input type="checkbox" id="manual"><span>Tôi muốn xem bản khai và duyệt tay (không tự duyệt)</span></label>
+    </details>
+    <div class="row"><button id="new" class="primary">Tạo mã</button></div>
+    <div id="code-box" hidden>
+      <div class="code" id="code"></div>
+      <p class="help" id="code-exp" style="text-align:center"></p>
+      <div class="row"><button id="code-copy">Sao chép mã</button></div>
+      <p class="help"><b>Chỉ cần nhập mã này vào GatewayApp</b> (Cloud → Mã ghép cặp → Kết nối). Gateway và server tự cấu hình, tự đồng bộ. Mã dùng một lần, hết hạn sau ~15 phút.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Gateway</h2>
+    <div id="list"><p class="help">Đang tải…</p></div>
+  </section>
+</main>
+
+<div id="qr-modal" role="dialog" aria-modal="true">
+  <div id="qr-sheet">
+    <h2 id="qr-title" style="margin:0 0 4px;font-size:18px">QR cho người dùng</h2>
+    <p id="qr-meta" class="help" style="margin:0 0 10px"></p>
+    <div id="qr-canvas"></div>
+    <p class="help">⚠ QR là bí mật của gateway. Chỉ đưa cho người lắp đặt, rồi đóng cửa sổ này.</p>
+    <div class="row">
+      <button id="qr-copy" class="primary">Sao chép link</button>
+      <button id="qr-share" class="fit" hidden>Chia sẻ</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button id="qr-close">Đóng</button></div>
+    <p class="help">Người dùng quét QR này trên webapp để thấy và điều khiển gateway.</p>
+  </div>
+</div>
+
+<script src="errors.js"></script>
+<script src="vendor/qrcode-generator.js"></script>
+<script src="vendor/qr-canvas.js"></script>
+<script src="security/session.js"></script>
+<script src="security/device-proof.js"></script>
+<script src="security/security-client.js"></script>
+<script src="activate.js"></script>
+</body>
+</html>

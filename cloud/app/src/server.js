@@ -17,7 +17,7 @@ import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
 import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
-import { adminLocalOnly, isDirectLocal } from './adminGate.js';
+import { adminLocalOnly, adminInternetGuard, isDirectLocal } from './adminGate.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
@@ -26,9 +26,10 @@ import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
+import { mountActivateApi } from './activateApi.js';
 import { mountUserDevices } from './userDevices.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
-import { mountFactoryApi } from './factoryApi.js';
+import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
 import { loginGateMiddleware } from './opsFlags.js';
@@ -63,7 +64,8 @@ app.locals.db = db;
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
 app.use(securityHeaders);
-app.use(adminLocalOnly);   // ADMIN_ONLY_CIDRS: trang + API admin chỉ cho PC của chủ (hoặc đường hầm SSH)
+app.use(adminLocalOnly);
+app.use(adminInternetGuard((req, res, next) => requireAuth(req, res, next)));   // requireAuth khai báo ở dưới; chỉ gọi lúc có request   // ADMIN_ONLY_CIDRS: trang + API admin chỉ cho PC của chủ (hoặc đường hầm SSH)
 app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '64kb', verify: (req, _res, buf) => { req.rawBody = buf; } })); // rawBody: chữ ký của PC nhà máy
 app.use('/api/', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
@@ -222,17 +224,14 @@ mountSite(app, { db, requireAuth, reauth });
 mountPartnerRoutes(app, { db, requireAuth, reauth });
 /* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */
 mountGatewayEnroll(app, { db });
-/* ---------- Tool nạp gateway (token sản xuất do admin cấp) ---------- */
-mountFactoryApi(app, {
-  db, requireAuth, requireAdmin, reauth,
-  adminWrite: rateLimit({
-    windowMs: 60_000,
-    max: Number(process.env.RATE_LIMIT_ADMIN || 30),
-    keyFn: (req) => `${clientIp(req)}:factory-admin:${req.user?.id || 'na'}`,
-  }),
-});
+/* Tem ghép cặp bỏ quên (chưa ai claim sau PAIRING_TEM_TTL_DAYS) tự thu hồi: lúc khởi động rồi mỗi giờ */
+const sweepTems = () => { try { sweepPairings(db); expireUnusedTems(db); } catch (e) { console.error('expireUnusedTems', e.message); } };
+sweepTems();
+setInterval(sweepTems, 3600_000).unref();
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
+/* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
+mountActivateApi(app, { db, requireAuth, requireAdmin, reauth });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,

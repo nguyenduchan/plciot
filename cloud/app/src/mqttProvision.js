@@ -34,12 +34,7 @@ const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config'];
 function staticHeader(secure) {
   const lines = [
     '# plciot ACL — static roles (do not put per-user lines above MARKER)',
-    'user gw',
-    ...deviceWriteAcl(),
-    '',
-    'user edge',
-    ...deviceWriteAcl(),
-    '',
+    // KHÔNG có role dùng chung (gw/edge) ghi gw/+/…: mỗi gateway có tài khoản riêng khoá vào gw/<mqttId>/# (deviceAclBlock)
   ];
   if (secure) {
     lines.push('user ctl');
@@ -52,13 +47,6 @@ function staticHeader(secure) {
   lines.push('# MARKER_USER_ACL');
   lines.push('');
   return lines.join('\n');
-}
-
-function deviceWriteAcl() {
-  return [
-    ...DEVICE_WRITE_KINDS.map((k) => `topic write ${GW_NS}/+/${k}`),
-    `topic read ${GW_NS}/+/cmd`,
-  ];
 }
 
 function configDir() {

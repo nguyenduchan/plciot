@@ -279,23 +279,39 @@ public sealed partial class MainForm : Form, IGatewayApp
         _ => Task.FromResult((false, "việc cloud không hợp lệ")),
     };
 
+    GatewayIdentity? _identity;
+    /// <summary>Danh tính mật mã của gateway (sinh lần đầu, lưu khoá riêng vào cấu hình đã mã hoá).</summary>
+    GatewayIdentity Identity()
+    {
+        if (_identity != null) return _identity;
+        var key = _cfg.GatewayKey;
+        _identity = GatewayIdentity.LoadOrCreate(ref key, out var created);
+        if (created) { _cfg.GatewayKey = key; try { SaveCfg(); } catch (IOException) { } }
+        return _identity;
+    }
+    public string HwText => Identity().Hw;
+
     (bool, string) Done(bool ok, string msg) { Toast(msg, !ok); return (ok, msg); }
 
-    /// <summary>Ghép cặp bằng mã admin phát (gateway chưa đăng ký): gửi bản khai toàn bộ thiết bị + setting + UI để admin duyệt.</summary>
+    /// <summary>Nhập mã ghép cặp: gửi khoá công khai + bản khai. Mã tự duyệt → nhận luôn site/MQTT và tự cấu hình + đồng bộ; mã duyệt tay → chờ admin.</summary>
     async Task<(bool Ok, string Msg)> PairAsync(string api, string code)
     {
         code = code.Trim();
         if (code.Length == 0) return Done(false, "Nhập mã ghép cặp do admin phát.");
-        if (_cfg.Pack.Count == 0) return Done(false, "Chưa có thiết bị nào để gửi — thêm thiết bị ở trang Thiết bị trước.");
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(20) };
+            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(30) };
             var json = ConfigBuilder.Build(_cfg, new MetaDescriber(_meta, _cfg));   // đúng bản tin config sẽ publish sau khi đăng ký
-            var r = await new GatewayEnrollClient(http).PairAsync(code, Fingerprint.Of(_cfg), json);
-            _log.Add("INFO", "pair", $"đã gửi bản khai {r.Devices} thiết bị ({json.Length} byte), vân tay {Fingerprint.Of(_cfg)} — chờ admin duyệt");
-            return Done(true, $"Đã gửi {r.Devices} thiết bị cho admin (vân tay {Fingerprint.Of(_cfg)}). Chờ admin duyệt và đưa QR.");
+            var r = await new GatewayEnrollClient(http).PairAsync(code, Fingerprint.Of(_cfg), json, Identity());
+            if (r.Approved && r.Kit != null && r.Qr != null)
+            {
+                _log.Add("INFO", "pair", $"tự duyệt: {r.Site}/{r.Device}, ID máy {Identity().Hw}");
+                return await ApplyKitAsync(r.Kit, r.Qr, api);
+            }
+            _log.Add("INFO", "pair", $"đã gửi bản khai {r.Devices} thiết bị ({json.Length} byte), vân tay {Fingerprint.Of(_cfg)}, ID máy {Identity().Hw} — chờ admin duyệt");
+            return Done(true, $"Đã gửi bản khai cho admin (vân tay {Fingerprint.Of(_cfg)}). Chờ admin duyệt rồi dán QR vào ô QR để Enroll.");
         }
-        catch (Exception ex) { return Done(false, ex.Message == "invalid_pairing" ? "Mã ghép cặp sai, hết hạn hoặc đã dùng." : "Gửi bản khai lỗi: " + ex.Message); }
+        catch (Exception ex) { return Done(false, ex.Message switch { "invalid_pairing" => "Mã ghép cặp sai, hết hạn hoặc đã dùng.", "invalid_proof" => "Đồng hồ máy lệch quá 5 phút so với server — chỉnh lại giờ rồi thử lại.", _ => "Ghép cặp lỗi: " + ex.Message }); }
     }
 
     /// <summary>Enroll từ QR của tem (cần Internet của gateway): nhận site/MQTT từ server.</summary>
@@ -305,8 +321,20 @@ public sealed partial class MainForm : Form, IGatewayApp
         try
         {
             using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(15) };
-            var kit = await new GatewayEnrollClient(http).EnrollAsync(qr.Trim());
+            var kit = await new GatewayEnrollClient(http).EnrollAsync(qr.Trim(), Identity());
             if (kit == null) throw new InvalidOperationException("server không trả dữ liệu");
+            return await ApplyKitAsync(kit, qr.Trim(), api);
+        }
+        catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
+    }
+
+    /// <summary>Áp kit server trả (site/device/MQTT/pack) vào cấu hình, rồi chạy lại host để đồng bộ setting lên server.</summary>
+    async Task<(bool Ok, string Msg)> ApplyKitAsync(GatewayProvisionKit kit, string qr, string api)
+    {
+        try
+        {
+            _cfg.GatewayQr = qr; _cfg.CloudApiUrl = api.Trim();
+            _cfg.CloudSendData = kit.Claimed ?? true;   // chưa có user → chỉ đồng bộ setting
             _cfg.Site = kit.Site ?? _cfg.Site; _cfg.Device = kit.Device ?? _cfg.Device;
             // id MQTT ngẫu nhiên do server cấp: gateway ghép vào mọi topic (gw/<id>/<kind>); không có id thì không nối cloud được
             var mqttId = kit.MqttId ?? (kit.TopicBase is { } tb && tb.StartsWith(Contract.GwPrefix + "/") ? tb[(Contract.GwPrefix.Length + 1)..] : null);
@@ -344,9 +372,32 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
     }
 
+    // ------------------------------------------------------------------ chờ user: hỏi server tem đã claim chưa
+    DateTime _nextClaimPoll = DateTime.MinValue;
+    bool _polling;
+    async void PollClaimed()
+    {
+        if (_polling || DateTime.UtcNow < _nextClaimPoll || _cfg.GatewayQr.Length == 0 || _cfg.CloudApiUrl.Length == 0) return;
+        _polling = true; _nextClaimPoll = DateTime.UtcNow.AddSeconds(_cfg.CloudSendData ? 300 : 60);   // chưa có user: hỏi dày; đã có: chỉ để nhận tín hiệu unclaimed bị lỡ
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(10) };
+            var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
+            if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
+            {
+                _cfg.CloudSendData = cl;
+                _log.Add("INFO", "cloud", cl ? "tem đã có user — bắt đầu gửi data" : "tem không còn user — ngừng gửi data");
+                try { SaveCfg(); } catch (IOException) { }
+            }
+        }
+        catch (Exception) { /* mất mạng: thử lại sau */ }
+        finally { _polling = false; }
+    }
+
     // ------------------------------------------------------------------ nhịp giao diện
     void Tick()
     {
+        PollClaimed();
         _log.Flush();
         var running = _host != null;
         var st = running ? _host!.Core.State.Status : "đã dừng";

@@ -111,6 +111,6 @@ Server là nguồn duy nhất: **đăng ký trên server → gateway lấy về*
 | **Mua sẵn** (chỉ topic MQTT) | Tool nạp QR + topic. Không kích hoạt. | Không hỗ trợ (cần cloud). |
 
 - Tool: `GatewayProvisioner` chọn *Loại gateway* + *không internet*, hoặc headless `--kind mcu|pc|generic --offline true|false`. Link `file:C:\kit\gw01.json` ghi kit (và `gw01.license.json` nếu có giấy phép).
-- Server: `POST /api/v1/factory/provision` nhận `kind` + `connectivity`; trả `plan`, `licenseFile` (PC offline), `offline` (type/widget của thiết bị con).
+- (ĐÃ BỎ — chỉ còn ghép cặp bằng mã admin) Server: `POST /api/v1/factory/provision` nhận `kind` + `connectivity`; trả `plan`, `licenseFile` (PC offline), `offline` (type/widget của thiết bị con).
 - Gateway PC (`scada/src/Plciot.Scada.Services/GatewayActivation.cs`): `ScadaConfig.LicenseMode` = `none` (mặc định, không đổi hành vi cũ) | `online` | `offline`; `ScadaHost.StartAsync` ném `LicenseRequiredException` (kèm ID máy) khi chưa được phép. ID máy = băm MachineGuid/`/etc/machine-id`, 12 ký tự.
 - Giấy phép có hạn: gateway lưu mốc chạy gần nhất (`license.json.seen`) để phát hiện chỉnh lùi đồng hồ.
