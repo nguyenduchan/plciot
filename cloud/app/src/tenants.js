@@ -111,8 +111,9 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
   let mqttPass = row?.mqtt_pass;
   if (rotate || !mqttPass) mqttPass = randomMqttPassword();
 
-  // Id MQTT ngẫu nhiên: cấp một lần, giữ nguyên khi xoay mật khẩu (đổi id = đổi topic, chỉ làm khi cấp lại thiết bị)
-  const mqttId = row?.mqtt_id || uniqueMqttId(db);
+  // Id MQTT ngẫu nhiên: cấp một lần, giữ nguyên khi xoay mật khẩu/đổi QR lúc id còn trên server.
+  // Thiết bị đã bị xoá/thu hồi (status='revoked') mà được cấp lại → id MỚI: id cũ không bao giờ sống lại.
+  const mqttId = (row?.mqtt_id && row.status !== 'revoked') ? row.mqtt_id : uniqueMqttId(db);
   if (row) {
     db.prepare(`
       UPDATE devices SET mqtt_user = ?, mqtt_pass = ?, mqtt_id = ?, topic_ns = ?, profile = ?, status = 'active', updated_at = ?
