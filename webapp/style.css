@@ -696,3 +696,19 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 .rg-arc { transition: stroke-dasharray .6s ease, stroke .3s; }
 .rg-knob { transition: cx .6s ease, cy .6s ease; }
 .ic-motion input { width: 22px; height: 22px; }
+
+/* cầu trục: móc đung đưa (chỉ khi bật chuyển động) */
+[data-ic-motion="on"] .ic.on .ic-sway { animation: ic-sway 2s ease-in-out infinite alternate; transform-origin: 24px 17px; transform-box: view-box; }
+@keyframes ic-sway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+
+/* ===== bộ icon RIÊNG theo từng phong cách (3D và SCADA có bộ hình riêng; các kiểu dưới đây biến đổi nét vẽ cho hợp phong cách) ===== */
+/* Grafana: nét mảnh, sắc cạnh, đơn sắc kiểu icon kỹ thuật */
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid) { stroke-width: 1.5; stroke-linecap: butt; stroke-linejoin: miter; }
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid) [fill="currentColor"] { fill: currentColor; }
+/* Carbon (IBM): nét rất mảnh, góc vuông, hình học thuần */
+[data-ic-style="carbon"] .ic:not(.ic3):not(.pid) { stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
+/* ThingsBoard: biểu tượng đặc (glyph) — mảng đặc màu chàm, chi tiết khoét trắng như bộ icon Material "filled" */
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid), [data-ic-style="thingsboard"] .wic .ic:not(.ic3):not(.pid) { stroke-width: 1.8; stroke-linejoin: round; }
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid) :is(circle, rect, ellipse, polygon, path[d$="z"], path[d$="Z"]) { fill: currentColor; stroke: #fff; stroke-width: 1.7; }
+/* Material: hai tông (viền + nền nhạt) — đã có ở trên; thêm nét tròn đầy đặn */
+[data-ic-style="material"] .ic:not(.ic3):not(.pid) { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
