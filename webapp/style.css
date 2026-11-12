@@ -661,7 +661,7 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 [data-ic-style="material"] .dev-card.dev-card { --acc: #d0bcff; background: #1d1b20; border: 0; border-radius: 22px; box-shadow: 0 1px 3px 1px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.55); }
 [data-ic-style="material"] .dev-ic { width: 48px; height: 48px; border-radius: 16px; background: #4a4458; color: #e8def8; box-shadow: none; }
 [data-ic-style="material"] .dev-card.is-off .dev-ic { background: #36343b; color: #938f99; }
-[data-ic-style="material"] .dev-ic .ic:not(.ic3):not(.pid) :is(circle, rect, ellipse) { fill: currentColor; fill-opacity: .22; }
+[data-ic-style="material"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx) :is(circle, rect, ellipse) { fill: currentColor; fill-opacity: .22; }
 [data-ic-style="material"] .dw { background: #2b2930; border: 0; border-radius: 16px; }
 [data-ic-style="material"] .rg-track { stroke: #49454f; stroke-opacity: 1; stroke-width: 12; }
 [data-ic-style="material"] .rg-arc { stroke-width: 12; }
@@ -703,12 +703,12 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 
 /* ===== bộ icon RIÊNG theo từng phong cách (3D và SCADA có bộ hình riêng; các kiểu dưới đây biến đổi nét vẽ cho hợp phong cách) ===== */
 /* Grafana: nét mảnh, sắc cạnh, đơn sắc kiểu icon kỹ thuật */
-[data-ic-style="grafana"] .ic:not(.ic3):not(.pid) { stroke-width: 1.5; stroke-linecap: butt; stroke-linejoin: miter; }
-[data-ic-style="grafana"] .ic:not(.ic3):not(.pid) [fill="currentColor"] { fill: currentColor; }
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.5; stroke-linecap: butt; stroke-linejoin: miter; }
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid):not(.icx) [fill="currentColor"] { fill: currentColor; }
 /* Carbon (IBM): nét rất mảnh, góc vuông, hình học thuần */
-[data-ic-style="carbon"] .ic:not(.ic3):not(.pid) { stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
+[data-ic-style="carbon"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
 /* ThingsBoard: biểu tượng đặc (glyph) — mảng đặc màu chàm, chi tiết khoét trắng như bộ icon Material "filled" */
-[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid), [data-ic-style="thingsboard"] .wic .ic:not(.ic3):not(.pid) { stroke-width: 1.8; stroke-linejoin: round; }
-[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid) :is(circle, rect, ellipse, polygon, path[d$="z"], path[d$="Z"]) { fill: currentColor; stroke: #fff; stroke-width: 1.7; }
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx), [data-ic-style="thingsboard"] .wic .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.8; stroke-linejoin: round; }
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx) :is(circle, rect, ellipse, polygon, path[d$="z"], path[d$="Z"]) { fill: currentColor; stroke: #fff; stroke-width: 1.7; }
 /* Material: hai tông (viền + nền nhạt) — đã có ở trên; thêm nét tròn đầy đặn */
-[data-ic-style="material"] .ic:not(.ic3):not(.pid) { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+[data-ic-style="material"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

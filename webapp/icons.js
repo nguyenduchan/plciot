@@ -151,6 +151,12 @@
     // bộ hình "P&ID chuẩn" (icons-pid.js, mặc định) hoặc "Minh hoạ" — chọn riêng, không phụ thuộc kiểu nền 3D/hiện đại/SCADA
     // hình vẽ theo kiểu nền: SCADA = ký hiệu P&ID đơn sắc; Đẹp (3D) = hình thiết bị đổ khối (icons-3d.js); Hiện đại = nét mảnh
     const st = document.documentElement.dataset.icStyle;
+    // Grafana / ThingsBoard / Material / Carbon: mỗi phong cách dùng bộ icon thật của hệ đó (icons-sets.js, giấy phép mở)
+    const set = window.PlcIconSets?.[st]?.[id];
+    if (set) {
+      const attrs = st === 'grafana' ? 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"' : 'fill="currentColor"';
+      return `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}class="ic icx ${opt.on ? 'on ' : ''}" viewBox="${set[0]}" ${attrs} aria-hidden="true">${set[1]}</svg>`;
+    }
     const alt = st === 'scada' ? window.PlcIconsPID?.[id] : st === '3d' ? window.PlcIcons3D?.[id] : null;
     const html = alt ? alt() : DEVICE[id]();
     return html.replace('class="ic ', `class="ic ${opt.on ? 'on ' : ''}`).replace('<svg ', `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}`);
