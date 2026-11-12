@@ -146,19 +146,25 @@
     [/(alarm|alm|fault|err|trip|canh_bao)/i, 'alarm'], [/(door|cua|gate)/i, 'door'], [/(batt|pin|soc|ups)/i, 'battery'], [/(heat|gia_nhiet|set_?t)/i, 'heater'],
   ];
 
+  // kiểu chuyển động cả icon (spin = quay, bob = trôi nhẹ, sway = đung đưa, pulse = thở)
+  const ANIM_KIND = { fan: 'spin', gear: 'spin', mixer: 'spin', chiller: 'spin', crane: 'sway', pump: 'bob', valve: 'bob', flow: 'bob', filter: 'bob', silo: 'bob', tank: 'bob', conveyor: 'bob', compressor: 'bob' };
+  const NO_PARTS = new Set(['di', 'do', 'power', 'clock']);
   function device(name, opt = {}) {
     const id = Array.isArray(name) ? pick(name) : pick(name);
     // bộ hình "P&ID chuẩn" (icons-pid.js, mặc định) hoặc "Minh hoạ" — chọn riêng, không phụ thuộc kiểu nền 3D/hiện đại/SCADA
     // hình vẽ theo kiểu nền: SCADA = ký hiệu P&ID đơn sắc; Đẹp (3D) = hình thiết bị đổ khối (icons-3d.js); Hiện đại = nét mảnh
     const st = document.documentElement.dataset.icStyle;
     // Grafana / ThingsBoard / Material / Carbon: mỗi phong cách dùng bộ icon thật của hệ đó (icons-sets.js, giấy phép mở)
+    // hiệu ứng cho bộ icon KHÔNG có bộ phận rời (Tabler/Material/Carbon/P&ID): chuyển động cả icon theo loại thiết bị
+    const anim = ANIM_KIND[id] || 'pulse';
     const set = window.PlcIconSets?.[st]?.[id];
     if (set) {
       const attrs = st === 'grafana' ? 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"' : 'fill="currentColor"';
-      return `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}class="ic icx ${opt.on ? 'on ' : ''}" viewBox="${set[0]}" ${attrs} aria-hidden="true">${set[1]}</svg>`;
+      return `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}class="ic icx ${opt.on ? 'on ' : ''}" data-anim="${anim}" viewBox="${set[0]}" ${attrs} aria-hidden="true">${set[1]}</svg>`;
     }
     const alt = st === 'scada' ? window.PlcIconsPID?.[id] : st === '3d' ? window.PlcIcons3D?.[id] : null;
-    const html = alt ? alt() : DEVICE[id]();
+    let html = alt ? alt() : DEVICE[id]();
+    if ((st === 'scada' && alt) || (!alt && NO_PARTS.has(id))) html = html.replace('<svg ', `<svg data-anim="${anim}" `);   // icon nét mảnh không có bộ phận rời → chuyển động cả icon
     return html.replace('class="ic ', `class="ic ${opt.on ? 'on ' : ''}`).replace('<svg ', `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}`);
   }
   /** Icon nhỏ cho một giá trị theo khoá field (level → giọt nước, temp → nhiệt kế…). */

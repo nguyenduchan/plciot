@@ -712,3 +712,17 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 [data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx) :is(circle, rect, ellipse, polygon, path[d$="z"], path[d$="Z"]) { fill: currentColor; stroke: #fff; stroke-width: 1.7; }
 /* Material: hai tông (viền + nền nhạt) — đã có ở trên; thêm nét tròn đầy đặn */
 [data-ic-style="material"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ===== chuyển động cho MỌI bộ icon khi bật "Hiệu ứng chuyển động" ===== */
+/* icon không có bộ phận rời (Tabler/Material/Carbon, P&ID SCADA): chuyển động cả icon theo loại */
+.ic[data-anim] { transform-origin: 50% 50%; }
+[data-ic-motion="on"] .ic.on[data-anim="spin"] { animation: ic-spin var(--spin, 2.4s) linear infinite; }
+[data-ic-motion="on"] .ic.on[data-anim="bob"] { animation: ic-bob 1.6s ease-in-out infinite; }
+[data-ic-motion="on"] .ic.on[data-anim="sway"] { animation: ic-sway 2s ease-in-out infinite alternate; }
+[data-ic-motion="on"] .ic.on[data-anim="pulse"] { animation: ic-breathe 1.8s ease-in-out infinite; }
+@keyframes ic-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes ic-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.93); } }
+/* sóng nước của icon 3D (bồn…) không nằm trong .ic-water nên cần luật riêng; nhịp nhấp nháy sâu hơn để nhìn rõ */
+[data-ic-motion="on"] .ic.on .ic-wave { animation: ic-wave 2.4s ease-in-out infinite alternate; }
+@keyframes ic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
+@keyframes ic-wave { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
