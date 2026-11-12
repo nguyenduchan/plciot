@@ -27,20 +27,40 @@ public sealed class GatewayEnrollClient
     public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, bool includeCredentials = false, string? hw = null, CancellationToken ct = default)
         => PostAsync("/api/v1/gateway/config", new { qr, includeCredentials, hw }, ct);
 
+    /// <summary>Enroll có chữ ký khoá riêng (server bắt buộc với tem đã ghép cặp): chỉ ảnh QR thì không đủ.</summary>
+    public Task<GatewayProvisionKit?> EnrollAsync(string qr, GatewayIdentity id, bool rotateMqtt = false, CancellationToken ct = default)
+        => SignedAsync("/api/v1/gateway/enroll", "enroll", qr, id, new Dictionary<string, object?> { ["rotateMqtt"] = rotateMqtt }, ct);
+
+    public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, GatewayIdentity id, bool includeCredentials = false, CancellationToken ct = default)
+        => SignedAsync("/api/v1/gateway/config", "config", qr, id, new Dictionary<string, object?> { ["includeCredentials"] = includeCredentials }, ct);
+
+    Task<GatewayProvisionKit?> SignedAsync(string path, string kind, string qr, GatewayIdentity id, Dictionary<string, object?> extra, CancellationToken ct)
+    {
+        var sd = GatewayIdentity.SiteDeviceOfQr(qr) ?? throw new InvalidOperationException("invalid_claim_payload");
+        var (ts, sig) = id.RequestProof(kind, sd.Site, sd.Device);
+        var body = new Dictionary<string, object?>(extra) { ["qr"] = qr, ["hw"] = id.Hw, ["ts"] = ts, ["sig"] = sig };
+        return PostAsync(path, body, ct);
+    }
+
     /// <summary>
-    /// Ghép cặp bằng mã do admin phát: gửi TOÀN BỘ bản khai (thiết bị, field, setting, UI — đúng bản tin &lt;base&gt;/config) lên server.
-    /// Server chỉ nhận khi mã còn hạn; admin xem trước rồi duyệt và cấp QR. <paramref name="fp"/> = vân tay ngắn của gateway để admin đối chiếu.
+    /// Ghép cặp bằng mã do admin phát: gửi KHOÁ CÔNG KHAI + chữ ký (chứng minh giữ khoá riêng) + bản khai (thiết bị, field, setting, UI).
+    /// Mã TỰ DUYỆT (admin chọn site lúc phát mã): server trả luôn kit (site/device/MQTT/pack) + QR → gateway tự enroll, không cần dán gì.
+    /// Mã duyệt tay: chỉ nhận bản khai, admin duyệt và đưa QR sau.
     /// </summary>
-    public async Task<PairResult> PairAsync(string code, string fp, byte[] configJson, CancellationToken ct = default)
+    public async Task<PairResult> PairAsync(string code, string fp, byte[] configJson, GatewayIdentity id, CancellationToken ct = default)
     {
         using var cfg = JsonDocument.Parse(configJson);
-        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/pair", new { code, fp, config = cfg.RootElement.Clone() }, JsonOpts, ct).ConfigureAwait(false);
+        var (ts, sig) = id.PairProof(code);
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/pair", new { code, fp, pubkey = id.PublicKey, ts, sig, config = cfg.RootElement.Clone() }, JsonOpts, ct).ConfigureAwait(false);
         var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
         var r = doc.RootElement;
         if (!res.IsSuccessStatusCode)
             throw new InvalidOperationException(r.TryGetProperty("error", out var e) ? e.GetString() : $"HTTP {(int)res.StatusCode}");
-        return new PairResult(r.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0);
+        string? S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var approved = r.TryGetProperty("approved", out var ap) && ap.ValueKind == JsonValueKind.True;
+        GatewayProvisionKit? kit = approved && r.TryGetProperty("kit", out var k) ? JsonSerializer.Deserialize<GatewayProvisionKit>(k.GetRawText(), JsonOpts) : null;
+        return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
     }
 
     async Task<GatewayProvisionKit?> PostAsync(string path, object body, CancellationToken ct)
@@ -57,7 +77,7 @@ public sealed class GatewayEnrollClient
     }
 }
 
-public sealed record PairResult(string Id, int Devices);
+public sealed record PairResult(string Id, int Devices, bool Approved = false, string? Site = null, string? Device = null, string? Qr = null, string? LoginUrl = null, GatewayProvisionKit? Kit = null);
 
 public sealed class GatewayProvisionKit
 {
@@ -66,6 +86,8 @@ public sealed class GatewayProvisionKit
     public string? Profile { get; set; }
     public int Schema { get; set; }
     public int ConfigRev { get; set; }
+    /// <summary>false = tem chưa có user: gateway chỉ đồng bộ setting, không gửi data.</summary>
+    public bool? Claimed { get; set; }
     /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
     public string? MqttId { get; set; }
     public string? TopicBase { get; set; }

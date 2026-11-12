@@ -57,60 +57,6 @@
 
   function msg(text, cls) { const m = $('#msg'); m.textContent = text || ''; m.className = cls || ''; }
 
-  function typeOptionsHtml(selected, excludeHub) {
-    return typeCatalog
-      .filter((t) => !excludeHub || t.id !== 'iot-hub')
-      .map((t) => `<option value="${esc(t.id)}"${t.id === selected ? ' selected' : ''}>${esc(t.id)} — ${esc(t.title)}</option>`)
-      .join('');
-  }
-
-  function fillProfileSelect() {
-    const sel = $('#hw-profile');
-    if (!sel) return;
-    const cur = sel.value || 'iot-hub';
-    sel.innerHTML = typeOptionsHtml(cur, false);
-    if (![...sel.options].some((o) => o.value === cur)) sel.value = typeCatalog[0]?.id || 'generic';
-    else sel.value = cur;
-    toggleSeedBox();
-  }
-
-  function toggleSeedBox() {
-    const box = $('#hw-seed-box');
-    if (!box) return;
-    const hub = $('#hw-profile')?.value === 'iot-hub';
-    box.hidden = !hub;
-    if (hub && !$('#hw-seed-rows')?.children.length) addSeedRow();
-  }
-
-  function addSeedRow(pre = {}) {
-    const host = $('#hw-seed-rows');
-    if (!host) return;
-    const row = document.createElement('div');
-    row.className = 'hw-seed-row';
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 1.2fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:end';
-    row.innerHTML = `
-      <label style="margin:0">childId<input class="seed-id" autocapitalize="off" placeholder="pump1" value="${esc(pre.childId || '')}"></label>
-      <label style="margin:0">Loại<select class="seed-type">${typeOptionsHtml(pre.type || 'pump', true)}</select></label>
-      <label style="margin:0">Tên hiển thị<input class="seed-title" placeholder="Bơm nước" value="${esc(pre.title || '')}"></label>
-      <button type="button" class="fit danger seed-rm" title="Xoá">×</button>`;
-    host.appendChild(row);
-    row.querySelector('.seed-rm').onclick = () => row.remove();
-  }
-
-  function collectSeedUiMeta() {
-    if ($('#hw-profile')?.value !== 'iot-hub') return undefined;
-    const seed = [];
-    $('#hw-seed-rows')?.querySelectorAll('.hw-seed-row').forEach((row) => {
-      const childId = row.querySelector('.seed-id')?.value.trim();
-      const type = row.querySelector('.seed-type')?.value;
-      const title = row.querySelector('.seed-title')?.value.trim();
-      if (!childId || !type) return;
-      seed.push({ childId, type, title: title || undefined });
-    });
-    if (!seed.length) throw new Error('Cổng kết nối cần ít nhất một thiết bị con (nút + Thêm thiết bị con).');
-    return { seed };
-  }
-
   function kitText(bundle) {
     const g = bundle?.gateway;
     if (!g) return '';
@@ -246,6 +192,8 @@
       cfg.style.color = j.configured ? 'var(--ok)' : 'var(--warn)';
     }
     renderHw();
+    const ps = $('#pr-sites');
+    if (ps) ps.innerHTML = [...new Set(hwDevices.map((d) => d.site))].map((x) => `<option value="${esc(x)}">`).join('');
     const sel = $('#act-dev');
     if (sel) {
       const cur = sel.value;
@@ -302,42 +250,6 @@
       $('#dup-list').innerHTML = items.map((i) => `<div class="hw"><div><small>${esc(fmtTs(i.ts))}</small><br>${esc(i.detail || '')}</div></div>`).join('');
     } catch { panel.hidden = true; }
   }
-
-  async function loadFt() {
-    const host = $('#ft-list');
-    if (!host) return;
-    try {
-      const j = await api('/api/admin/factory-tokens');
-      host.innerHTML = (j.tokens || []).map((t) => `
-        <div class="hw" data-ft="${t.id}">
-          <div><b>${esc(t.label)}</b> ${t.revoked ? '<span class="tag viewer">đã thu hồi</span>' : '<span class="tag">đang dùng</span>'}
-            <small>tạo ${esc(fmtTs(t.createdAt))} · dùng ${t.uses} lần${t.lastUsedAt ? ` · gần nhất ${esc(fmtTs(t.lastUsedAt))}` : ''}</small></div>
-          <div class="acts">${t.revoked ? '' : '<button data-ft-revoke class="danger">Thu hồi</button>'}</div>
-        </div>`).join('') || '<p class="help">Chưa có token nào.</p>';
-    } catch (e) { host.textContent = e.message; }
-  }
-
-  $('#ft-add')?.addEventListener('click', async () => {
-    msg('');
-    const label = $('#ft-label').value.trim();
-    if (!label) return msg('Nhập tên PC hoặc người dùng tool để dễ nhận biết khi thu hồi.', 'err');
-    try {
-      const r = await api('/api/admin/factory-tokens', 'POST', { label });
-      $('#ft-token').value = r.token;
-      $('#ft-out').hidden = false;
-      $('#ft-label').value = '';
-      msg('Đã tạo token. Hãy chép ngay vào tool nạp — sau khi rời trang sẽ không xem lại được.', 'ok');
-      await loadFt();
-    } catch (e) { msg(e.message, 'err'); }
-  });
-
-  $('#ft-list')?.addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-ft-revoke]');
-    if (!b) return;
-    const id = b.closest('[data-ft]').dataset.ft;
-    if (!confirm('Thu hồi token này? Tool đang dùng nó sẽ không nạp được nữa.')) return;
-    try { await api(`/api/admin/factory-tokens/${id}`, 'DELETE'); msg('Đã thu hồi token.', 'ok'); await loadFt(); } catch (er) { msg(er.message, 'err'); }
-  });
 
   $('#gk-new')?.addEventListener('click', () => {
     const al = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -399,7 +311,6 @@
         typeCatalog = data.types.map((t) => ({ id: t.id, title: t.title || t.id }));
       }
     } catch { /* giữ fallback */ }
-    fillProfileSelect();
   }
 
   async function load() {
@@ -407,12 +318,9 @@
       await loadTypes();
       const j = await api('/api/admin/users');
       roles = j.roles; users = j.users; scopesAll = j.scopes || scopesAll;
-      $('#n-scopes').innerHTML = scopeBoxes(scopesAll, 'data-nsc');
-      $('#n-role').innerHTML = roleOpts('operator');
       render();
       await loadHw();
       await loadPairings().catch(() => {});
-      await loadFt();
       await loadDup();
     } catch (e) {
       $('#list').textContent = '';
@@ -423,7 +331,7 @@
 
   /* ---------- Ghép cặp gateway: tạo mã → xem bản khai gateway gửi lên → duyệt + cấp QR ---------- */
   let pairings = [];
-  const PR_STATUS = { open: 'chờ gateway', received: 'đã nhận bản khai', approved: 'đã duyệt', expired: 'hết hạn', cancelled: 'đã huỷ' };
+  const PR_STATUS = { open: 'chờ gateway nhập mã', received: 'chờ bạn duyệt', approved: 'đã kết nối', expired: 'hết hạn', cancelled: 'đã huỷ' };
 
   async function loadPairings() {
     const j = await api('/api/admin/pairings');
@@ -431,10 +339,11 @@
     $('#pr-list').innerHTML = pairings.map((p) => `
       <div class="hw" data-pr="${esc(p.id)}">
         <div><b>${esc(p.label || p.id)}</b> <span class="tag ${p.status === 'received' ? '' : 'viewer'}">${esc(PR_STATUS[p.status] || p.status)}</span>
-          <small>${p.devices ? `${p.devices} thiết bị` : ''}${p.fp ? ` · vân tay <code>${esc(p.fp)}</code>` : ''}
+          <small>${p.devices ? `${p.devices} thiết bị` : ''}${p.fp ? ` · vân tay <code>${esc(p.fp)}</code>` : ''}${p.hw ? ` · ID máy <code>${esc(p.hw)}</code>` : ''}
             ${p.site ? ` · <code>${esc(p.site)}/${esc(p.device)}</code>` : ''} · hết hạn ${esc(fmtTs(p.expiresAt))}</small></div>
         <div class="acts">
           ${p.status === 'received' ? '<button data-pr-act="review" class="primary">Xem trước &amp; duyệt</button>' : ''}
+          ${p.status === 'approved' && p.site ? '<button data-pr-act="qr" class="primary">Hiện QR</button>' : ''}
           ${p.status === 'open' || p.status === 'received' ? '<button data-pr-act="cancel" class="danger">Huỷ</button>' : ''}
         </div>
       </div>`).join('') || '<p class="help">Chưa có mã ghép cặp nào.</p>';
@@ -452,7 +361,7 @@
       </div>`).join('');
     box.hidden = false;
     box.innerHTML = `
-      <h3 style="margin:0 0 6px">Bản khai gateway ${p.fp ? `<small>vân tay <code>${esc(p.fp)}</code> — đối chiếu với màn hình GatewayApp</small>` : ''}</h3>
+      <h3 style="margin:0 0 6px">Bản khai gateway ${p.fp ? `<small>vân tay <code>${esc(p.fp)}</code>${p.hw ? ` · ID máy <code>${esc(p.hw)}</code>` : ''} — đối chiếu với màn hình GatewayApp</small>` : ''}</h3>
       <p class="help" style="margin-top:0">Dữ liệu do gateway gửi, <b>chưa xác thực</b> — chỉ nhận chữ/số hợp lệ theo quy tắc server. Kiểm tra rồi mới duyệt.</p>
       ${devs}
       <div class="row" style="gap:8px;margin-top:8px">
@@ -475,11 +384,13 @@
   }
 
   $('#pr-new')?.addEventListener('click', () => run(async () => {
-    const r = await api('/api/admin/pairings', 'POST', { label: $('#pr-label').value.trim() });
+    const site = $('#pr-site').value.trim();
+    if (!site) throw new Error('Nhập site (nhà máy / trạm).');
+    const r = await api('/api/admin/pairings', 'POST', { label: $('#pr-label').value.trim(), site });
     $('#pr-label').value = '';
     $('#pr-code').hidden = false;
     $('#pr-code-val').textContent = r.code;
-    $('#pr-code-exp').textContent = `Hết hạn lúc ${fmtTs(r.expiresAt)}`;
+    $('#pr-code-exp').textContent = `Hết hạn lúc ${fmtTs(r.expiresAt)} · site ${site}`;
     await loadPairings();
   }, 'Đã tạo mã ghép cặp.'));
 
@@ -488,6 +399,10 @@
     const row = e.target.closest('[data-pr]');
     if (!b || !row) return;
     if (b.dataset.prAct === 'review') run(() => reviewPairing(row.dataset.pr), '');
+    else if (b.dataset.prAct === 'qr') {
+      const p = pairings.find((x) => x.id === row.dataset.pr);
+      if (p) run(async () => showQr(await api(`/api/admin/hardware/${encodeURIComponent(p.site)}/${encodeURIComponent(p.device)}/qr`)), '');
+    }
     else if (b.dataset.prAct === 'cancel') {
       if (!confirm('Huỷ mã ghép cặp này?')) return;
       run(async () => { await api(`/api/admin/pairings/${encodeURIComponent(row.dataset.pr)}`, 'DELETE'); await loadPairings(); }, 'Đã huỷ.');
@@ -507,35 +422,6 @@
     msg('');
     try { await fn(); msg(okText, 'ok'); await load(); } catch (e) { msg(e.message, 'err'); }
   }
-
-  $('#hw-profile')?.addEventListener('change', toggleSeedBox);
-  $('#hw-seed-add')?.addEventListener('click', () => addSeedRow());
-
-  $('#hw-add').onclick = () => run(async () => {
-    const site = $('#hw-site').value.trim();
-    const device = $('#hw-dev').value.trim() || 'gw01';
-    if (!site) throw new Error('Nhập mã nhà máy (site).');
-    const profile = $('#hw-profile')?.value || 'generic';
-    const uiMeta = collectSeedUiMeta();
-    const used = hwDevices.find((x) => x.site === site && x.device === device);
-    if (used?.claimed && !confirm(`${site}/${device} đã được dùng${used.claimedUsername ? ` bởi "${used.claimedUsername}"` : ''}.
-Tiếp tục sẽ thu hồi (gỡ khỏi người đó, QR cũ hết hiệu lực) và cấp QR mới. Tiếp tục?`)) throw new Error('Đã huỷ, chưa thay đổi gì.');
-    const r = await api('/api/admin/hardware', 'POST', {
-      site,
-      device,
-      label: $('#hw-label').value.trim(),
-      note: $('#hw-note').value.trim(),
-      profile,
-      uiMeta,
-    });
-    $('#hw-label').value = '';
-    $('#hw-note').value = '';
-    const rows = $('#hw-seed-rows');
-    if (rows) rows.innerHTML = '';
-    toggleSeedBox();
-    await loadHw();
-    await showQr(r);
-  }, 'Đã tạo QR. Cùng một mã này dùng cho cả gateway (enroll) và webapp (thêm thiết bị).');
 
   $('#hw-list').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-hw]');
@@ -630,15 +516,6 @@ Tiếp tục sẽ thu hồi (gỡ khỏi người đó, QR cũ hết hiệu lự
       msg('Đã hiện MQTT (có password) bên dưới.', 'ok');
     }
   }, ''));
-
-  $('#n-add').onclick = () => run(async () => {
-    await api('/api/admin/users', 'POST', {
-      username: $('#n-phone').value.trim() || undefined,
-      scopes: [...document.querySelectorAll('[data-nsc]')].filter((c) => c.checked).map((c) => c.dataset.nsc),
-      role: $('#n-role').value, site: $('#n-site').value.trim() || undefined, device: $('#n-dev').value.trim() || undefined,
-    });
-    $('#n-phone').value = '';
-  }, 'Đã thêm người dùng.');
 
   $('#list').addEventListener('change', (e) => {
     const row = e.target.closest('.u');

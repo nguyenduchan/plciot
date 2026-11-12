@@ -48,6 +48,7 @@ sealed class PreviewApp : IGatewayApp
     public Task ApplyAsync(string why) => Task.CompletedTask;
     public Task<string?> SetDeviceEnabledAsync(string child, bool enabled) => Task.FromResult<string?>(null);
     public string FingerprintText => "";
+    public string HwText => "";
     public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
 }

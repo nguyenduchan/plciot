@@ -11,6 +11,20 @@ import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
 
+/** Tem chưa có user? Cache 5 giây để không truy vấn DB cho từng gói telemetry (gateway cũng đã ngừng gửi khi chưa claim). */
+const unclaimedCache = new Map();
+function isUnclaimedGateway(db, site, device) {
+  const key = `${site}/${device}`;
+  const now = Date.now();
+  const hit = unclaimedCache.get(key);
+  if (hit && now - hit.at < 5000) return hit.v;
+  const r = db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
+  const v = Boolean(r) && !r.claimed_by;
+  if (unclaimedCache.size > 5000) unclaimedCache.clear();
+  unclaimedCache.set(key, { v, at: now });
+  return v;
+}
+
 /**
  * gw/<mqttId>/<kind> → { ns, mqttId, kind, tenant, site, device }.
  * Tra id ngẫu nhiên trong bảng devices; id lạ / thiết bị đã thu hồi hoặc bị khoá → null (gói bị bỏ, không ghi gì).
@@ -112,6 +126,11 @@ export function startMqttIngest(db) {
           console.log(`[config] ${site}/${device} rev ${r.rev}: ${r.devices} thiết bị`);
         }
         return;
+      }
+
+      // Tem chưa có user (chưa claim): chỉ nhận config/status, bỏ telemetry/history
+      if ((kind === 'telemetry' || kind === 'history') && isUnclaimedGateway(db, site, device)) {
+        return;   // im lặng: không ghi deny mỗi gói (gateway cũ vẫn có thể gửi)
       }
 
       if (kind === 'telemetry') {

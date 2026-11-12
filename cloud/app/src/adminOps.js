@@ -25,6 +25,7 @@ import { createPairing, listPairings, getPairing, cancelPairing, approvePairing 
 import { previewFromQr } from './userDevices.js';
 import { retentionInfo } from './retention.js';
 import { revokeDeviceBinding } from './sites.js';
+import { notifyGateway } from './gatewayNotify.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
   listPolicyEvents, policyConfigPublic, peekRejectStats,
@@ -440,7 +441,10 @@ export function mountAdminOps(app, {
 
   /* ---------- Ghép cặp gateway: admin phát mã → gateway gửi bản khai → admin xem trước + duyệt → QR ---------- */
   app.post('/api/admin/pairings', ...writeGate, (req, res) => {
-    const r = createPairing(db, { adminId: req.user.id, label: req.body?.label, ttlMin: req.body?.ttlMin });
+    const r = createPairing(db, {
+      adminId: req.user.id, label: req.body?.label, ttlMin: req.body?.ttlMin,
+      site: req.body?.site, device: req.body?.device, auto: req.body?.auto,
+    });
     if (!r.error) audit(db, 'pairing_create', { userId: req.user.id, ip: clientIp(req), detail: r.id });
     res.status(r.error ? r.status || 400 : 200).json(r);
   });
@@ -468,37 +472,6 @@ export function mountAdminOps(app, {
     res.json({ configured, devices: listHardwareDevices(db) });
   });
 
-  app.post('/api/admin/hardware', ...writeGate, (req, res) => {
-    let uiMeta = req.body?.uiMeta ?? req.body?.ui_meta;
-    if (uiMeta != null && typeof uiMeta === 'object' && uiMeta.configRev == null) {
-      uiMeta = { ...uiMeta, configRev: 1 };
-    }
-    // Mọi điều kiện: tem đã được dùng thì thu hồi (gỡ khỏi chủ cũ) rồi cấp QR mới, không bị kẹt site_taken
-    let revoked = null;
-    const prev = db.prepare('SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ?')
-      .get(String(req.body?.site || '').trim(), String(req.body?.device || 'plc01').trim());
-    if (prev?.claimed_by) {
-      revoked = revokeDeviceBinding(db, String(req.body.site).trim(), String(req.body?.device || 'plc01').trim(), { ip: clientIp(req), adminId: req.user.id });
-    }
-    const r = provisionHardwareDevice(db, {
-      site: req.body?.site,
-      device: req.body?.device,
-      label: req.body?.label,
-      note: req.body?.note,
-      profile: req.body?.profile,
-      uiMeta,
-    });
-    if (!r.error) {
-      audit(db, 'hardware_provision', {
-        userId: req.user.id, ip: clientIp(req), detail: `${r.site}/${r.device}`,
-      });
-    }
-    // Một lần nhập seed → tự cấp MQTT; gateway enroll bằng cùng QR (không copy pass tay)
-    const out = attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false });
-    if (!out.error && revoked) out.revoked = revoked;
-    sendHw(res, out);
-  });
-
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {
     const r = getHardwareDeviceQr(db, { site: req.params.site, device: req.params.device });
     sendHw(res, attachGatewayBundle(db, r, { rotateMqtt: false, includePassword: false }));
@@ -524,6 +497,7 @@ export function mountAdminOps(app, {
     const { site, device } = req.params;
     const row = db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
     if (!row) return sendHw(res, { error: 'not_found', status: 404 });
+    notifyGateway(db, site, device, 'unclaimed');
     const revoked = revokeDeviceBinding(db, site, device, { ip: clientIp(req), adminId: req.user.id });
     const r = reissueHardwareDeviceQr(db, { site, device, unclaim: true });
     if (!r.error) {
@@ -566,6 +540,7 @@ export function mountAdminOps(app, {
   });
 
   app.post('/api/admin/hardware/:site/:device/reissue', ...writeGate, (req, res) => {
+    if (req.body?.unclaim) notifyGateway(db, req.params.site, req.params.device, 'unclaimed');
     if (req.body?.unclaim) revokeDeviceBinding(db, req.params.site, req.params.device, { ip: clientIp(req), adminId: req.user.id });
     const r = reissueHardwareDeviceQr(db, {
       site: req.params.site,
@@ -608,6 +583,7 @@ export function mountAdminOps(app, {
 
   app.delete('/api/admin/hardware/:site/:device', ...writeGate, (req, res) => {
     if (req.query?.force === '1' || req.body?.force) {
+      notifyGateway(db, req.params.site, req.params.device, 'unclaimed');
       revokeDeviceBinding(db, req.params.site, req.params.device, { ip: clientIp(req), adminId: req.user.id });
     }
     const r = deleteHardwareDevice(db, {

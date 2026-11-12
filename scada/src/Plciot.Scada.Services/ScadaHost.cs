@@ -157,6 +157,14 @@ public sealed class ScadaHost : IAsyncDisposable
     {
         var replay = CheckReplay(payload);
         if (replay != null) { await RejectAsync(IdOf(payload), replay); return; }
+        var sys = SysOf(payload);
+        if (sys != null)
+        {
+            // Tín hiệu hệ thống từ server (không phải lệnh điều khiển PLC): bật/tắt gửi data theo tem có user hay chưa
+            if (sys == "claimed") { _cfg.CloudSendData = true; Core.Emit("Server báo tem đã có user — bắt đầu gửi data lên cloud"); }
+            else if (sys == "unclaimed") { _cfg.CloudSendData = false; Core.Emit("Server báo tem không còn user — ngừng gửi data, chỉ đồng bộ setting"); }
+            return;
+        }
         var rx = System.Diagnostics.Stopwatch.GetTimestamp();
         Core.Trace("Cloud→GW", _cfg.BaseTopic + "/cmd", Encoding.UTF8.GetString(payload) + TransitNote(payload));
         _bridge.Expedite();                                  // trạng thái PLC sau lệnh phải lên webapp ngay, không chờ khoảng chống dồn
@@ -211,6 +219,17 @@ public sealed class ScadaHost : IAsyncDisposable
     }
 
     /// <summary>Chống phát lại: id đã thấy → "replayed_cmd"; "ts" quá cũ/quá mới so với CmdMaxAgeSec → "stale_cmd"; còn lại null.</summary>
+    static string? SysOf(byte[] payload)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("sys", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String ? s.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
     string? CheckReplay(byte[] payload)
     {
         long? ts = null; string? id = null;

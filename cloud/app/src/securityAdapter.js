@@ -9,6 +9,7 @@ import { retentionInfo } from './retention.js';
 import { applyDefaultSubscription, subscriptionInfo } from './entitlements.js';
 import { plcSnapshot, edgeSince, pickProofBit } from './plcProof.js';
 import { audit } from '@plciot/security';
+import { notifyGateway } from './gatewayNotify.js';
 
 /** Notify chỉ ghi audit (không Telegram/email). */
 export async function notifyOwner(db, user, { subject, html, text }) {
@@ -54,6 +55,8 @@ configure({
     onDeviceClaimed: async (db, user, { site, device }) => {
       try {
         provisionUserMqtt(db, user, { site, device, rotate: true });
+        // Báo ngay cho gateway "đã có user" để nó bắt đầu gửi data (best-effort; mất gói thì gateway tự hỏi lại mỗi 60 giây)
+        notifyGateway(db, site, device, 'claimed');
         return { ok: true };
       } catch (e) {
         console.error('onDeviceClaimed', e.message);

@@ -1,5 +1,7 @@
 # GatewayProvisioner — tool nạp gateway (PC sản xuất)
 
+> **LỖI THỜI:** server đã bỏ `POST /api/v1/factory/provision` và token nhà máy (chỉ còn đường ghép cặp bằng mã admin, xem `docs/PROVISIONING-FLOW.md`). Tool này không còn nạp được gateway; giữ lại để tham khảo, sẽ xoá khi không còn cần.
+
 Nhập **mã yêu cầu** hiển thị trên gateway → tool xin VPS cấp QR + khoá + mã kích hoạt → ghi vào gateway qua LAN → gateway tự kiểm mã và xác nhận.
 
 ## Chuẩn bị (một lần)

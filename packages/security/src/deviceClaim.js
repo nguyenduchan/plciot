@@ -310,9 +310,11 @@ export function bindGatewayHardware(db, { site, device, hw, required = false }) 
   const given = hw != null && hw !== '';
   const id = given ? parseHardwareId(hw) : null;
   if (given && !id) return { error: 'invalid_hw', status: 400 };
-  if (!id) return required ? { error: 'hw_required', status: 400 } : { ok: true, bound: false };
   const row = db.prepare('SELECT activated_hw FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
   if (!row) return { error: 'unknown_device', status: 404 };
+  // Tem đã gắn với một máy (ví dụ lúc ghép cặp): chỉ cầm QR mà không có hw của máy đó thì KHÔNG enroll/lấy mật khẩu MQTT được
+  if (row.activated_hw && !id) return { error: 'hw_required', status: 403 };
+  if (!id) return required ? { error: 'hw_required', status: 400 } : { ok: true, bound: false };
   if (row.activated_hw && row.activated_hw !== id) return { error: 'device_already_activated', status: 409 };
   if (!row.activated_hw) {
     db.prepare('UPDATE hardware_devices SET activated_hw = ?, activated_at = ?, activations = 1 WHERE site = ? AND device = ?')

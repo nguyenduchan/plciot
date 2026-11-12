@@ -20,6 +20,7 @@ public interface IGatewayApp
     Task<string?> SetDeviceEnabledAsync(string child, bool enabled);
     /// <summary>Vân tay của gateway (để đối chiếu khi admin duyệt ghép cặp cloud).</summary>
     string FingerprintText { get; }
+    string HwText { get; }
     /// <summary>Việc cloud do GATEWAY thực hiện (cần mạng của gateway): action = "pair" (value = mã ghép cặp) hoặc "enroll" (value = mã QR của tem).</summary>
     Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value);
     void Toast(string text, bool error = false);

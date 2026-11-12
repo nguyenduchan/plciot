@@ -28,14 +28,14 @@ sealed class CloudPage : UserControl
         var t = new TableLayoutPanel { Dock = DockStyle.Top, Height = 136, ColumnCount = 2, BackColor = Color.Transparent };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130)); t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         t.Controls.Add(Skin.Lbl("Địa chỉ server")); Api.Dock = DockStyle.Fill; Api.Margin = new Padding(0, 4, 0, 4); t.Controls.Add(Api);
-        t.Controls.Add(Skin.Lbl("Mã ghép cặp (admin phát)")); Pair.Dock = DockStyle.Fill; Pair.Margin = new Padding(0, 4, 0, 4); Pair.CharacterCasing = CharacterCasing.Upper; t.Controls.Add(Pair);
+        t.Controls.Add(Skin.Lbl("Mã ghép cặp")); Pair.Dock = DockStyle.Fill; Pair.Margin = new Padding(0, 4, 0, 4); Pair.CharacterCasing = CharacterCasing.Upper; t.Controls.Add(Pair);
         t.Controls.Add(Skin.Lbl("Mã QR của tem")); Qr.Dock = DockStyle.Fill; Qr.Margin = new Padding(0, 4, 0, 4); t.Controls.Add(Qr);
         t.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); t.RowStyles.Add(new RowStyle(SizeType.Absolute, 44)); t.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
-        var pair = new FlatButton { Caption = "Gửi bản khai cho admin", Width = 210 };
+        var pair = new FlatButton { Caption = "Kết nối bằng mã", Primary = true, Width = 190 };
         pair.Click += async (_, _) => await RunCloud("pair", Pair, "Nhập mã ghép cặp do admin phát.");
-        var enroll = new FlatButton { Caption = "Enroll từ QR", Primary = true, Width = 150 };
+        var enroll = new FlatButton { Caption = "Enroll từ QR (duyệt tay)", Width = 210 };
         var adv = new FlatButton { Caption = "Cấu hình nâng cao…", Width = 190 };
         enroll.Click += async (_, _) => await RunCloud("enroll", Qr, "Dán mã QR của tem vào ô Mã QR của tem.");
         adv.Click += (_, _) => ShowAdvanced();
@@ -60,8 +60,8 @@ sealed class CloudPage : UserControl
     {
         var c = _app.Config;
         _info.Text = string.IsNullOrEmpty(c.CloudPassword)
-            ? $"Chưa đăng ký (vân tay gateway: {_app.FingerprintText}).\n1) Nhập mã ghép cặp admin phát → \"Gửi bản khai cho admin\" (gửi toàn bộ thiết bị + setting + UI).\n2) Admin duyệt và đưa lại QR → dán vào ô QR → Enroll để lấy site, MQTT."
-            : $"Đã cấu hình: site {c.Site} · thiết bị {c.Device} · broker {c.CloudHost}:{c.CloudPort}. Mật khẩu MQTT được lưu mã hoá trên máy này.";
+            ? $"Chưa đăng ký (vân tay gateway: {_app.FingerprintText} · ID máy: {_app.HwText} — đọc cho admin đối chiếu).\n1) Nhập mã ghép cặp admin phát → \"Gửi bản khai cho admin\" (gửi toàn bộ thiết bị + setting + UI).\n2) Admin duyệt và đưa lại QR → dán vào ô QR → Enroll để lấy site, MQTT."
+            : $"Đã cấu hình: site {c.Site} · thiết bị {c.Device} · broker {c.CloudHost}:{c.CloudPort}. Mật khẩu MQTT được lưu mã hoá trên máy này.\n" + (c.CloudSendData ? "Đã có user — gateway đang gửi data lên cloud." : "Chưa có user quét QR — gateway CHỈ đồng bộ setting, chưa gửi data. Hãy xác nhận đúng trạm rồi đưa QR cho user quét trên webapp.");
         _sync.On = c.Mobile != MobileAccess.Off;
     }
 
