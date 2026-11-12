@@ -82,7 +82,7 @@ const bad = await api('GET', '/api/v1/devices/other/gw1/telemetry/last');
 ok(bad.error === 'device_not_found' || bad.status === 404, 'tenant isolation');
 
 const cmd = await api('POST', '/api/v1/devices/p1/gw1/cmd', { a: 6, v: 1 });
-ok(cmd.ok && published.length === 1 && published[0].opts.ns === 'iot', 'partner cmd → mqtt');
+ok(cmd.ok && published.length === 1 && /^[a-f0-9]{16}$/.test(published[0].opts.mqttId || ''), 'partner cmd → mqtt (topic gw/<id> theo id ngẫu nhiên)');
 ok(published[0].cmd.schema === 1 || published[0].cmd.a === 6, 'cmd payload');
 
 const denied = await api('POST', '/api/v1/devices/p1/gw1/cmd', { a: 99, v: 1 });

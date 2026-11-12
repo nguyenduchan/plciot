@@ -228,10 +228,7 @@ export function mountPartnerRoutes(app, { db, requireAuth, reauth }) {
     const v = validateCmd(req.body, cfg);
     if (v.error) return res.status(400).json(v);
     try {
-      await publishCmd(row.site, row.device, v.cmd, {
-        tenant: row.tenant_id || DEFAULT_TENANT,
-        ns: row.topic_ns,
-      });
+      await publishCmd(row.site, row.device, v.cmd, { mqttId: row.mqtt_id });
     } catch {
       return res.status(503).json({ error: 'mqtt_unavailable' });
     }

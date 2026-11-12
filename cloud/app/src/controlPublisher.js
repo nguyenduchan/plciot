@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { topicOf, withSchema, DEFAULT_TENANT, preferredNamespace, LEGACY_NS } from './contract.js';
+import { topicOf, withSchema } from './contract.js';
 
 /**
  * Kênh duy nhất được phép ghi …/cmd (user MQTT `ctl`, xem mqttProvision.js).
@@ -46,7 +46,7 @@ function whenConnected(c) {
  * @param {string} site
  * @param {string} device
  * @param {object} cmd
- * @param {{ tenant?: string, ns?: string }} [opts]
+ * @param {{ mqttId: string }} opts  id MQTT ngẫu nhiên của gateway (devices.mqtt_id) — topic gw/<mqttId>/cmd
  */
 export async function publishCmd(site, device, cmd, opts = {}) {
   // ts = lúc server phát lệnh (ms epoch): gateway dùng để đo thời gian server → gateway
@@ -54,15 +54,7 @@ export async function publishCmd(site, device, cmd, opts = {}) {
   if (override) return override(site, device, payload, opts);
   const c = ensure();
   await whenConnected(c);
-  const ns = opts.ns || preferredNamespace();
-  const tenant = opts.tenant || DEFAULT_TENANT;
-  // Thiết bị legacy (ns=plc) không có tenant trong topic
-  const topic = topicOf({
-    ns: ns === LEGACY_NS ? LEGACY_NS : ns,
-    tenant,
-    site,
-    device,
-  }, 'cmd');
+  const topic = topicOf({ mqttId: opts.mqttId }, 'cmd');
   return new Promise((resolve, reject) => {
     c.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => (err ? reject(err) : resolve({ topic })));
   });

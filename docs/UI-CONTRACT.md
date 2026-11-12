@@ -91,7 +91,7 @@ Gateway publish (một message, nhiều device):
 
 | Trường | Ý nghĩa |
 |---|---|
-| Topic `plc/<site>/<gateway>/telemetry` | Thuộc **nhà máy / gateway** đã claim |
+| Topic `gw/<mqttId>/telemetry` | Thuộc **nhà máy / gateway** đã claim |
 | Key trong `d` (`env1`, `pump1`) | **childId** = thiết bị con trên dashboard |
 | Field `t`, `run`, … | Khớp `widget.bind` của type |
 

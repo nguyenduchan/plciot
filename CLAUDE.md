@@ -31,6 +31,7 @@ Không ghi đè: `cloud/.env`, `cloud/config/passwd`, `cloud/app/data`.
 
 ## Quy ước khác
 
+- MQTT topic **một dạng**: `gw/<mqttId>/<kind>`. `mqttId` = id ngẫu nhiên (16 hex) **server cấp** khi enroll/ghép cặp, lưu `devices.mqtt_id` và ánh xạ site/device/cấu hình; gateway ghép id này vào mọi topic (`ScadaConfig.MqttId`). Đã bỏ `plc/…` và `iot/…` trên cloud. Test ACL trên broker thật: `bash cloud/scripts/test-broker-acl.sh`. Chi tiết: `docs/PROTOCOL.md`.
 - MQTT telemetry **một shape**: `schema:2` + `d` (monitor/UI). Control: `cmd`/`ack`. Gateway enroll → `pack[]` + topics — **không** quản lý format/map thừa.
 - Type/widget chỉ trên server (tem + `/api/v1/ui/dashboard`). Chi tiết: `docs/PROVISIONING-FLOW.md`.
 - UI contract: `GET /api/v1/ui/dashboard` — web + C# cùng schema (`docs/UI-CONTRACT.md`).

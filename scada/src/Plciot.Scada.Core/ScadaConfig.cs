@@ -231,7 +231,9 @@ public sealed class ScadaConfig
     /// <summary>Chống phát lại: lệnh từ cloud có "ts" cũ (hoặc ở tương lai) hơn khoảng này bị từ chối. 0 = tắt. Cần đồng hồ gateway lệch server không quá khoảng này.</summary>
     public int CmdMaxAgeSec { get; set; } = 10;
 
-    [JsonIgnore] public string BaseTopic => Contract.Base(Site, Device);
+    /// <summary>Id MQTT ngẫu nhiên do server cấp khi đăng ký (enroll): gateway ghép vào topic gw/&lt;MqttId&gt;/&lt;kind&gt;. Rỗng = chưa đăng ký cloud.</summary>
+    public string MqttId { get; set; } = "";
+    [JsonIgnore] public string BaseTopic => Contract.IsMqttId(MqttId) ? Contract.Base(MqttId) : Contract.LocalBase(Site, Device);
     /// <summary>Web/màn hình phụ chỉ chạy ở topology nhiều màn hình (một màn hình thì không có client-server).</summary>
     [JsonIgnore] public bool WebActive => WebEnabled && Topology == Topology.MultiScreen;
 
@@ -279,6 +281,7 @@ public sealed class ScadaConfig
     {
         var safe = new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_-]{1,48}$");
         if (!safe.IsMatch(Site) || !safe.IsMatch(Device)) return "Site/Device chỉ gồm chữ, số, '_' và '-'.";
+        if (MqttId.Length > 0 && !Contract.IsMqttId(MqttId)) return "MqttId phải là 16 ký tự hex do server cấp.";
         if (WritableRegisters.Any(r => r is < 0 or >= Contract.MaxRegister) || WritableRegisters.Distinct().Count() != WritableRegisters.Count)
             return "WritableRegisters phải là số D 0–299, không trùng.";
         if (Station == StationRole.Screen)

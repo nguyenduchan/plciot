@@ -1,46 +1,28 @@
 # plciot ACL — static roles (do not put per-user lines above MARKER)
 user gw
-topic write plc/+/+/telemetry
-topic write plc/+/+/status
-topic write plc/+/+/ack
-topic write plc/+/+/history
-topic write plc/+/+/config
-topic read plc/+/+/cmd
-topic write iot/+/+/+/telemetry
-topic write iot/+/+/+/status
-topic write iot/+/+/+/ack
-topic write iot/+/+/+/history
-topic write iot/+/+/+/config
-topic read iot/+/+/+/cmd
+topic write gw/+/telemetry
+topic write gw/+/status
+topic write gw/+/ack
+topic write gw/+/history
+topic write gw/+/config
+topic read gw/+/cmd
 
 user edge
-topic write plc/+/+/telemetry
-topic write plc/+/+/status
-topic write plc/+/+/ack
-topic write plc/+/+/history
-topic write plc/+/+/config
-topic read plc/+/+/cmd
-topic write iot/+/+/+/telemetry
-topic write iot/+/+/+/status
-topic write iot/+/+/+/ack
-topic write iot/+/+/+/history
-topic write iot/+/+/+/config
-topic read iot/+/+/+/cmd
+topic write gw/+/telemetry
+topic write gw/+/status
+topic write gw/+/ack
+topic write gw/+/history
+topic write gw/+/config
+topic read gw/+/cmd
 
 user ctl
-topic write plc/+/+/cmd
-topic write iot/+/+/+/cmd
+topic write gw/+/cmd
 
 user ingest
-topic read plc/+/+/telemetry
-topic read plc/+/+/status
-topic read plc/+/+/ack
-topic read plc/+/+/history
-topic read plc/+/+/config
-topic read iot/+/+/+/telemetry
-topic read iot/+/+/+/status
-topic read iot/+/+/+/ack
-topic read iot/+/+/+/history
-topic read iot/+/+/+/config
+topic read gw/+/telemetry
+topic read gw/+/status
+topic read gw/+/ack
+topic read gw/+/history
+topic read gw/+/config
 
 # MARKER_USER_ACL

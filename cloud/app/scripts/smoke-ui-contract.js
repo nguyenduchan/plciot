@@ -16,6 +16,8 @@ import { migrateUserDevices, mountUserDevices, addDeviceFromQr, getDashboardFor 
 import { uiSchemaPublic, getDeviceType } from '../src/uiContract.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-contract-'));
+process.env.MQTT_CONFIG_DIR = path.join(tmp, 'cfg');
+process.env.MQTT_DOCKER_CONTAINER = 'no-such-container';
 const db = new Database(path.join(tmp, 't.db'));
 db.exec(`
   CREATE TABLE users (
@@ -23,7 +25,8 @@ db.exec(`
     folder_path TEXT NOT NULL, version TEXT DEFAULT '1',
     notify_site TEXT DEFAULT 's_tmp', notify_device TEXT DEFAULT 'plc01',
     site_owner INTEGER DEFAULT 1, role TEXT DEFAULT 'operator',
-    disabled INTEGER DEFAULT 0, setup_complete INTEGER DEFAULT 1, token_version INTEGER DEFAULT 0
+    disabled INTEGER DEFAULT 0, setup_complete INTEGER DEFAULT 1, token_version INTEGER DEFAULT 0,
+    mqtt_user TEXT, mqtt_pass TEXT, tenant_id TEXT DEFAULT 'default', monitor_scopes TEXT   -- onDeviceClaimed cấp MQTT cho user
   );
 `);
 migrateSecurity(db);

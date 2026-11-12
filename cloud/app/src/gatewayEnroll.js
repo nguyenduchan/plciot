@@ -9,7 +9,7 @@ import {
   decodeClaimQr, bindGatewayHardware, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
 } from '@plciot/security';
 import {
-  DEFAULT_TENANT, LEGACY_NS, preferredNamespace, mqttPublicEndpoints, topicBase,
+  DEFAULT_TENANT, mqttPublicEndpoints,
 } from './contract.js';
 import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
@@ -122,14 +122,12 @@ export function seedFromHardware(hw) {
   return { children, configRev, meta };
 }
 
-export function ensureMqttForHardware(db, { site, device, profile, rotate = false, ns } = {}) {
+export function ensureMqttForHardware(db, { site, device, profile, rotate = false } = {}) {
   ensureDefaultTenant(db);
-  const topicNs = ns === 'iot' ? 'iot' : (ns === LEGACY_NS ? LEGACY_NS : preferredNamespace());
   return provisionDevice(db, DEFAULT_TENANT, {
     site,
     device,
     profile: controlProfileForHardware(profile),
-    ns: topicNs,
   }, { rotate: Boolean(rotate), actor: 'hardware' });
 }
 
@@ -161,9 +159,9 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
   const site = hw.site;
   const device = hw.device;
   const tenant = getTenant(db, DEFAULT_TENANT);
-  const topicNs = mqttResult?.device?.topicNs || preferredNamespace();
-  const base = mqttResult?.device?.topicBase
-    || topicBase({ ns: topicNs, tenant: DEFAULT_TENANT, site, device });
+  // Topic dùng id MQTT NGẪU NHIÊN do server cấp (lưu trong devices.mqtt_id), không chứa tên site/device
+  const mqttId = mqttResult?.device?.mqttId;
+  const base = mqttResult?.device?.topicBase;
   const endpoints = mqttPublicEndpoints();
   const mqtt = mqttResult?.mqtt ? { ...mqttResult.mqtt } : { ...endpoints, useTls: true };
   if (!includePassword) delete mqtt.password;
@@ -174,6 +172,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     status: `${base}/status`,
     cmd: `${base}/cmd`,
     ack: `${base}/ack`,
+    config: `${base}/config`,
+    history: `${base}/history`,
   };
   const role = resolveDeviceTypeId(hw.profile) === 'iot-hub' || children.length > 1 ? 'hub' : 'leaf';
   // limits: khoảng giá trị mỗi trường do tem đặt — gateway tự kiểm lại trước khi ghi xuống PLC (phòng thủ nhiều lớp)
@@ -191,6 +191,7 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     role,
     schema: 2,
     configRev,
+    mqttId,
     topicBase: base,
     topics,
     pack,
@@ -228,7 +229,6 @@ export function enrollGateway(db, body = {}, opts = {}) {
     device: id.device,
     profile: id.hardware.profile,
     rotate: rotateMqtt,
-    ns: body.ns,
   });
   if (mqttResult.error) return mqttResult;
 

@@ -3,12 +3,25 @@ import { insertEvent } from './historyStore.js';
 import { purgeByPlan, defaultDays } from './retention.js';
 import { noteTelemetry } from './plcProof.js';
 import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
+import { deviceByMqttId } from './mqttIds.js';
 import { emitWebhook } from './webhooks.js';
 import { evaluateIngest, recordDeny, takeRejectStats } from './policy.js';
 import { isOpsOpen } from './opsFlags.js';
 import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
+
+/**
+ * gw/<mqttId>/<kind> → { ns, mqttId, kind, tenant, site, device }.
+ * Tra id ngẫu nhiên trong bảng devices; id lạ / thiết bị đã thu hồi hoặc bị khoá → null (gói bị bỏ, không ghi gì).
+ */
+export function resolveIngestTopic(db, topic) {
+  const pt = parseTopic(topic);
+  if (!pt) return null;
+  const dev = deviceByMqttId(db, pt.mqttId);
+  if (!dev) return null;
+  return { ...pt, tenant: dev.tenant_id, site: dev.site, device: dev.device };
+}
 
 function u32(r, i) {
   return (r[i] | 0) + (r[i + 1] | 0) * 65536;
@@ -59,7 +72,7 @@ export function startMqttIngest(db) {
   client.on('message', (t, buf) => {
     try {
       if (!isOpsOpen('mqtt_ingest_open')) return;
-      const parsed = parseTopic(t);
+      const parsed = resolveIngestTopic(db, t);
       if (!parsed) return;
       const { site, device, kind } = parsed;
       if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config'].includes(kind)) return;

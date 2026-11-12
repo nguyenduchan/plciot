@@ -13,7 +13,6 @@ import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode } from './uiContract.js';
 import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
-import { DEFAULT_TENANT, preferredNamespace, LEGACY_NS } from './contract.js';
 import { mayRemoteControl } from './entitlements.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
@@ -35,10 +34,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
 
   function publishOpts(user) {
     const dev = resolveDeviceForUser(db, user);
-    return {
-      tenant: user.tenant_id || dev?.tenant_id || DEFAULT_TENANT,
-      ns: dev?.topic_ns || preferredNamespace() || LEGACY_NS,
-    };
+    return { mqttId: dev?.mqtt_id };   // topic gw/<mqttId>/cmd: id ngẫu nhiên của gateway (thiếu = gateway chưa đăng ký)
   }
 
   async function dispatch(user, cmd, via, ip) {

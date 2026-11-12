@@ -8,7 +8,8 @@ namespace PlcSim.Protocols;
 
 /// <summary>
 /// PLC chủ động đẩy dữ liệu vào broker LAN của gateway C# (vai trò "Device", tài khoản gw):
-///   plc/&lt;site&gt;/&lt;device&gt;/telemetry  {"schema":2,"r":[..],"d":{child:{field:v}}}  (retain)
+///   gw/&lt;mqttId&gt;/telemetry (hoặc plc/&lt;site&gt;/&lt;device&gt;/… khi gateway chưa đăng ký cloud)
+///   telemetry  {"schema":2,"r":[..],"d":{child:{field:v}}}  (retain)
 ///   plc/&lt;site&gt;/&lt;device&gt;/status     online | offline (LWT, retain)
 ///   plc/&lt;site&gt;/&lt;device&gt;/cmd        lệnh từ webapp/gateway → áp dụng vào model → trả ack
 ///   plc/&lt;site&gt;/&lt;device&gt;/ack        {"id","ok",...}
@@ -29,7 +30,9 @@ public sealed class MqttGatewayLink : IEndpoint
     public MqttGatewayLink(PlcModel m, string host, int port, string user, string pass, string site, string device, Action<string> log)
     {
         _m = m; _host = host; _port = port; _user = user; _pass = pass; _log = log;
-        _base = $"plc/{site}/{device}";
+        // đã đăng ký cloud: "Site" = id MQTT (16 hex) hoặc gw/<id> của gateway → topic gw/<id>; chưa đăng ký: plc/<site>/<device> (broker LAN)
+        var sid = site.StartsWith("gw/") ? site[3..] : site;
+        _base = sid.Length == 16 && sid.All(ch => ch is (>= '0' and <= '9') or (>= 'a' and <= 'f')) ? $"gw/{sid}" : $"plc/{site}/{device}";
         _c = new MqttFactory().CreateMqttClient();
         _c.ApplicationMessageReceivedAsync += OnMessage;
         _c.DisconnectedAsync += e => { _log($"MQTT: mất kết nối gateway{(e.Exception != null ? " (" + e.Exception.Message + ")" : "")}"); return Task.CompletedTask; };

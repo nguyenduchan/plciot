@@ -9,6 +9,7 @@ import { resolveSubscriber, requireKnownDevice, requireActiveSubscription } from
 import { setMosquittoPassword, randomMqttPassword, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
 import { resolveTelemetryMessage } from './telemetryNormalize.js';
 import { MAX_CONFIG_BYTES } from './gatewayConfig.js';
+import { clearMqttIdCache } from './mqttIds.js';
 
 const floodBuckets = new Map(); // key -> { n, windowStart }
 let rejectStats = Object.create(null);
@@ -190,7 +191,7 @@ function validatePayload(kind, text, bufLen, resolved = null) {
 export function evaluateIngest(db, {
   topic, parsed, payloadBuf,
 }) {
-  const { site, device, kind, tenant, ns } = parsed;
+  const { site, device, kind, tenant } = parsed;
   const text = payloadBuf.toString();
   const bufLen = payloadBuf.length;
 
@@ -218,7 +219,7 @@ export function evaluateIngest(db, {
   const shape = validatePayload(kind, text, bufLen, resolved);
   if (shape) return { allow: false, reason: shape.reason, detail: shape.detail };
 
-  const sub = resolveSubscriber(db, { tenant, site, device, ns });
+  const sub = resolveSubscriber(db, { tenant, site, device });
   if (!sub.ok) return { allow: false, reason: sub.reason, detail: sub.reason, sub };
 
   // thiết bị bị status=blocked trong bảng devices
@@ -321,6 +322,7 @@ export function hardBlockDevice(db, { tenantId, site, device, reason, createdBy 
     const newPass = randomMqttPassword();
     db.prepare(`UPDATE devices SET status = 'blocked', mqtt_pass = ?, updated_at = ? WHERE id = ?`)
       .run(newPass, Date.now(), row.id);
+    clearMqttIdCache();
     if (row.mqtt_user) setMosquittoPassword(row.mqtt_user, newPass);
     rebuildAclFromUsers(db);
     reloadMosquitto();

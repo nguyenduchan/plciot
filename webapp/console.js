@@ -406,7 +406,7 @@
         <div class="row-card">
           <div><b>${esc(d.tenantId)}/${esc(d.site)}/${esc(d.device)}</b>
             ${d.onlineHint ? '<span class="tag ok">online?</span>' : '<span class="tag mut">idle</span>'}
-            <span class="tag">${esc(d.topicNs)}</span>
+            <span class="tag" title="id MQTT ngẫu nhiên do server cấp">gw/${esc(d.mqttId || '—')}</span>
             <div class="help">mqtt <code>${esc(d.mqttUser)}</code> · profile ${esc(d.profile || '—')} · status ${esc(d.lastStatus || '—')}
               · tele ${d.lastTelemetryAt ? new Date(d.lastTelemetryAt).toLocaleString() : '—'}</div>
           </div>
