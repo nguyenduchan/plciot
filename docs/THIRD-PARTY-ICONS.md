@@ -5,12 +5,13 @@
 | Phong cách | Thư viện | Bản quyền | Giấy phép | Nguồn |
 |---|---|---|---|---|
 | ThingsBoard | Material Icons (filled) | © Google | Apache License 2.0 | https://github.com/google/material-design-icons (gói npm `@material-design-icons/svg` 0.14.13) |
-| Material | Material Icons (two-tone) | © Google | Apache License 2.0 | như trên |
+| Material | Phosphor Icons (duotone) | © Phosphor Icons | MIT | https://github.com/phosphor-icons/core (gói npm `@phosphor-icons/core` 2.1.1) |
 | Grafana | Tabler Icons (outline) | © Paweł Kuna | MIT | https://github.com/tabler/tabler-icons (gói npm `@tabler/icons` 3.31.0) |
 | Carbon | Carbon Design System icons | © IBM | Apache License 2.0 | https://github.com/carbon-design-system/carbon (gói npm `@carbon/icons` 11.50.0) |
 
 - Giấy phép Apache 2.0: http://www.apache.org/licenses/LICENSE-2.0 — giữ nguyên thông báo bản quyền/giấy phép (đã ghi trong đầu `icons-sets.js`); không thay đổi nội dung đường vẽ.
-- Giấy phép MIT: https://opensource.org/license/mit — kèm thông báo bản quyền "Copyright (c) 2020-2024 Paweł Kuna".
+- Giấy phép MIT: https://opensource.org/license/mit — kèm thông báo bản quyền "Copyright (c) 2020-2024 Paweł Kuna" (Tabler) và "Copyright (c) 2020 Phosphor Icons" (Phosphor).
+- Mỗi phong cách dùng MỘT thư viện khác nhau và chọn ẩn dụ khác nhau cho cùng loại thiết bị, nên không hai phong cách nào có icon trùng nhau.
 - Đây là bộ icon chung của thư viện, **không** phải logo/icon thương mại của Grafana Labs, ThingsBoard hay các sản phẩm đó. Tên phong cách chỉ mô tả bố cục/màu sắc mô phỏng.
 - `@iconscout/unicons` (nguồn icon gốc của Grafana) **không dùng** vì giấy phép "IconScout Simple License" không phải giấy phép mở.
 - Bộ ký hiệu P&ID (`icons-pid.js`) và icon 3D (`icons-3d*.js`) do dự án tự vẽ.

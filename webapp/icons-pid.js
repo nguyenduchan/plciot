@@ -53,7 +53,8 @@
     counter: () => S(`<rect x="6" y="14" width="36" height="20" rx="2"/>${T('Σ', 18, 29)}`),
     di: () => S(`<rect x="8" y="8" width="32" height="32" rx="2"/><path d="M24 14v16M17 24l7 8 7-8"/>`),
     do: () => S(`<rect x="8" y="8" width="32" height="32" rx="2"/><path d="M24 34V18M17 24l7-8 7 8"/>`),
-    power: () => S(`<path d="M24 6v18"/><path d="M14 12a16 16 0 1 0 20 0"/>`),
+    power: () => S(`<rect x="7" y="12" width="34" height="24" rx="2"/>${T('ON', 15, 29)}<path d="M4 24h3M41 24h3"/>`),
+    gear: () => S(`<rect x="8" y="8" width="32" height="32" rx="2"/><circle cx="24" cy="24" r="9"/><path d="M24 15v-4M24 37v-4M15 24h-4M37 24h-4"/><circle cx="24" cy="24" r="2.5" fill="currentColor"/>`),
     clock: () => S(`<circle cx="24" cy="24" r="17"/><path d="M24 13v11l7 5"/>`),
     tank_: () => '',
   };
