@@ -103,6 +103,15 @@ ok(resolveIngestTopic(db, `gw/${newMqttId()}/telemetry`) === null, 'ingest: id l
 ok(resolveIngestTopic(db, `gw/${id1}/telemetry`) === null, 'ingest: id đã thu hồi bị bỏ');
 ok(resolveIngestTopic(db, 'plc/plant1/gw02/telemetry') === null && resolveIngestTopic(db, 'iot/acme/plant1/gw02/telemetry') === null, 'ingest: topic cũ theo tên site/device không còn được nhận');
 
+// ---- dấu vân tay chứng chỉ broker tự ký: server trao trong kit enroll để gateway tự ghim
+process.env.MQTT_PUBLIC_PIN_SHA256 = 'B2:DD:5C 55';
+const { mqttPublicEndpoints } = await import('../src/contract.js');
+ok(mqttPublicEndpoints().pinSha256 === 'b2dd5c55', 'pinSha256: bỏ dấu : và khoảng trắng, chữ thường');
+const provPin = provisionDevice(db, 'acme', { site: 'plant1', device: 'gw02' });
+ok(provPin.mqtt.pinSha256 === 'b2dd5c55', 'kit provision/enroll mang pinSha256');
+delete process.env.MQTT_PUBLIC_PIN_SHA256;
+ok(mqttPublicEndpoints().pinSha256 === null, 'không đặt env → pinSha256 null (chứng chỉ CA thật)');
+
 // ---- migrate DB cũ: thiết bị chưa có id được cấp id ngẫu nhiên
 db.exec('CREATE TABLE devices_old AS SELECT * FROM devices WHERE 0');
 db.prepare("INSERT INTO devices (tenant_id, site, device, mqtt_user, mqtt_pass, topic_ns, profile, status, created_at, updated_at, mqtt_id) VALUES ('acme','old','gwx','dold','p','plc','conveyor-v1','active',1,1,NULL)").run();

@@ -90,6 +90,8 @@ export function mqttPublicEndpoints() {
     || (host ? `wss://${host}` : (process.env.WEBAPP_PUBLIC_URL || '').replace(/^https/i, 'wss').replace(/\/$/, '') + '-mqtt');
   return {
     host: host || null,
+    /** SHA-256 (hex, không dấu :) của chứng chỉ TLS broker khi tự ký; gateway ghim đúng chứng chỉ này (CloudPinSha256). Rỗng = chứng chỉ CA thật. */
+    pinSha256: (process.env.MQTT_PUBLIC_PIN_SHA256 || '').replace(/[:\s]/g, '').toLowerCase() || null,
     mqtts: host ? `mqtts://${host}:${mqttsPort}` : (process.env.MQTT_PUBLIC_MQTTS || null),
     wss: process.env.MQTT_PUBLIC_WSS || (host ? `wss://${host}/mqtt` : null),
     /** Listener nội bộ Docker — không đưa cho thiết bị ngoài. */

@@ -77,6 +77,7 @@ services:
       MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
       MQTT_PUBLIC_MQTTS_PORT: ${PUB_PORT_MQTTS:-48263}
       MQTT_PUBLIC_WSS: ${MQTT_PUBLIC_WSS:-}
+      MQTT_PUBLIC_PIN_SHA256: ${MQTT_PUBLIC_PIN_SHA256:-}
       # Điều khiển qua server (step-up Passkey/TOTP) — xem docs/CONTROL-SECURITY.md
       CONTROL_VIA_SERVER: ${CONTROL_VIA_SERVER:-true}
       CONTROL_STEPUP: ${CONTROL_STEPUP:-true}

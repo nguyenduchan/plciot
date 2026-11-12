@@ -316,6 +316,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             {
                 _cfg.CloudUser = kit.Mqtt.Username ?? _cfg.CloudUser;
                 _cfg.CloudPassword = kit.Mqtt.Password ?? _cfg.CloudPassword;
+                if (!string.IsNullOrWhiteSpace(kit.Mqtt.PinSha256)) _cfg.CloudPinSha256 = kit.Mqtt.PinSha256.Replace(":", "").Trim();   // broker tự ký: server trao sẵn dấu vân tay
                 if (Uri.TryCreate(kit.Mqtt.Mqtts, UriKind.Absolute, out var u)) { _cfg.CloudHost = u.Host; _cfg.CloudPort = u.Port; _cfg.CloudTransport = "mqtts"; }
             }
             // Pack: tem chỉ cho biết thiết bị/field/giới hạn. Giao thức, kiểu, quyền, thanh ghi D và hệ số KHÔNG đoán:

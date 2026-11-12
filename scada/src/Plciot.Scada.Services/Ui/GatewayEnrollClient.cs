@@ -107,4 +107,6 @@ public sealed class GatewayMqttConfig
     public string? Wss { get; set; }
     public string? ClientIdHint { get; set; }
     public bool UseTls { get; set; }
+    /// <summary>SHA-256 (hex) chứng chỉ TLS tự ký của broker do server trao; gateway ghim đúng chứng chỉ này.</summary>
+    public string? PinSha256 { get; set; }
 }
