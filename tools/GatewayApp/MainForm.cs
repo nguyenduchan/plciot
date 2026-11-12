@@ -152,13 +152,15 @@ public sealed partial class MainForm : Form, IGatewayApp
 
         // thanh trên
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        _qrIcon = new QrIcon(this, () => CloudPage.DefaultServer);
+        foreach (var c in new Control[] { _qrIcon, _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
         _head.Resize += (_, _) => LayoutHead();
         _demoBtn.Click += async (_, _) => await ToggleDemoAsync();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
         Resize += (_, _) => PlaceToast();
         _toastTimer.Tick += (_, _) => { _toast.Visible = false; _toastTimer.Stop(); };
+        _qrIcon.Update();
         LayoutHead();
         Show(_dash);
         _dash.Rebuild();
@@ -176,13 +178,16 @@ public sealed partial class MainForm : Form, IGatewayApp
         FormClosed += (_, _) => _api?.Dispose();
     }
 
+    QrIcon _qrIcon = null!;
+
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _demoBtn, _chipMode, _chipCloud, _chipPlc })
+        foreach (var c in new Control[] { _qrIcon, _demoBtn, _chipMode, _chipCloud, _chipPlc })
         {
             if ((_customer || !_editUi) && c == _demoBtn) continue;
-            x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
+            if (c == _qrIcon && !c.Visible) continue;
+            x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : c == _qrIcon ? 11 : 14);
         }
     }
 
@@ -409,6 +414,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         var offline = _cfg.Mobile == MobileAccess.Off || cs != CloudState.Connected;
         _chipMode.Caption = offline ? "Chế độ cục bộ (offline)" : "Có cloud";
         _chipMode.Dot = offline ? Theme.Teal : Theme.Accent;
+        _qrIcon.Update();
         LayoutHead();
         if (_current == _dash) _dash.Tick();
         else if (_current == _devices) _devices.Tick();
@@ -426,7 +432,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         await Task.Delay(3500);
         TryValue("pump1.speed", out var sp); TryValue("pump1.flow", out var fl);
         File.WriteAllText(Path.Combine(dir, "write-test.txt"), $"write80={wr ?? "ok"} write500={bad ?? "ok"} speed={sp} flow={fl}");
-        var names = new[] { "dashboard", "devices", "protocols", "cloud", "log", "admin" };
+        // chụp thử thẻ QR của trang Cloud: GW_DEMO_QR = chuỗi QR tem (chỉ để kiểm tra giao diện)
+        if (Environment.GetEnvironmentVariable("GW_DEMO_QR") is { Length: > 0 } demoQr)
+        {
+            _cfg.GatewayQr = demoQr; _cfg.Site = "e2etest"; _cfg.Device = "gw01";
+            foreach (var p in _pages) (p.Page as CloudPage)?.Refresh2();
+        }
+        var names = new[] { "dashboard", "devices", "protocols", "log", "admin" };
         for (var i = 0; i < _pages.Count; i++)
         {
             Show(_pages[i].Page); Tick();

@@ -261,7 +261,8 @@ export function approvePairing(db, { id, site, device, label = '' }) {
  * Tem cấp từ ghép cặp mà quá TTL vẫn chưa có user claim → thu hồi (xoá tem, thu hồi MQTT).
  * Tem bỏ quên không để QR + tài khoản MQTT sống mãi. Chỉ đụng tem do ghép cặp tạo (ui_meta.pairingId), chưa ai claim.
  */
-export const TEM_TTL_DAYS = Number(process.env.PAIRING_TEM_TTL_DAYS || 30);
+// Mặc định 0 = KHÔNG giới hạn thời gian (QR/ID sống đến khi admin xoá/thu hồi). Đặt số ngày > 0 để bật tự thu hồi.
+export const TEM_TTL_DAYS = Number(process.env.PAIRING_TEM_TTL_DAYS ?? 0) || 0;
 export function expireUnusedTems(db, { ttlDays = TEM_TTL_DAYS, now = Date.now() } = {}) {
   if (!(ttlDays > 0)) return { expired: 0 };
   const cutoff = now - ttlDays * 86400_000;

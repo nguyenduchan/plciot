@@ -62,12 +62,13 @@ class MqttLink {
       if (k === 'status') this.h.status(p);
       else if (k === 'telemetry') {
         const j = JSON.parse(p);
-        this.h.regs(j.r);
-        window.DevicesUi?.onTelemetry?.(j);
+        if (Array.isArray(j.r)) this.h.regs(j.r);   // schema:2 chỉ có `d` (không có `r`) — không được gọi regs(undefined) làm đứt onTelemetry
+        else if (this.h.tick) this.h.tick();         // có dữ liệu mới → làm mới mốc "dữ liệu còn tươi"
+        window.DevicesUi?.onTelemetry?.(j, base);
       }
       else if (k === 'ack') this.h.ack(JSON.parse(p));
       else if (k === 'history') this.h.history(JSON.parse(p));
-      else if (k === 'config') window.DevicesUi?.onConfig?.(JSON.parse(p));   // gateway thêm/bớt thiết bị → dựng lại dashboard
+      else if (k === 'config') window.DevicesUi?.onConfig?.(JSON.parse(p), base);   // gateway thêm/bớt thiết bị → dựng lại dashboard
     } catch {}
   }
   send(cmd) { return this.base ? this.c.publish(`${this.base}/cmd`, JSON.stringify(cmd)) : false; }
@@ -175,12 +176,11 @@ function applySubscription(sub) {
   if (!sub) { panel.hidden = true; return; }
   panel.hidden = false;
   const exp = sub.expiresAt ? new Date(sub.expiresAt).toLocaleDateString() : 'không hết hạn';
-  if (sub.pendingActivation) {
-    info.textContent = 'Chờ admin kích hoạt gói trên cloud. Hiện chỉ xem (nếu có dữ liệu).';
-  } else {
-    info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có điều khiển' : 'chỉ giám sát'} · hết hạn: ${exp}`
-      + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));
-  }
+  info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'giám sát + điều khiển' : 'chỉ giám sát'}`
+    + (sub.widgetLimit != null ? ` · tối đa ${sub.widgetLimit} widget` : ' · không giới hạn widget')
+    + ` · hết hạn: ${exp}`
+    + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));
+  window.PlanUi?.update(sub, null);
 }
 /* Đã đăng nhập (không demo): lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
 const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
@@ -656,6 +656,7 @@ async function alignSiteDevFromSession() {
     S.dashboardAdmin = Boolean(me.dashboardAdmin);
     applyRole(me.role);
     applySubscription(me.subscription);
+    window.PlanUi?.update(me.subscription, null, me.username);
     LS.set('session', { ...session, role: me.role, dashboardAdmin: S.dashboardAdmin });
     let changed = false;
     if (me.mqtt) {
@@ -682,7 +683,7 @@ function connect() {
   if (window.AppLock?.isLocked()) return;
   if (link) link.stop();
   S.status = 'offline';
-  const h = { status: onStatus, regs: onRegs, ack: onAck, history: onHist };
+  const h = { status: onStatus, regs: onRegs, ack: onAck, history: onHist, tick: () => { S.ts = Date.now(); } };
   link = cfg.demo ? new DemoLink(h) : new MqttLink(h);
   link.start();
 }

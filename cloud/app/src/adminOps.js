@@ -469,7 +469,26 @@ export function mountAdminOps(app, {
 
   app.get('/api/admin/hardware', ...gate, (_req, res) => {
     const configured = Boolean(process.env.CLAIM_ROOT_PUBLIC_KEY && process.env.CLAIM_ROOT_PRIVATE_KEY);
-    res.json({ configured, devices: listHardwareDevices(db) });
+    // Gắn ID MQTT (do server cấp) + setting gateway đã khai vào từng tem: một dòng = ID máy (hw) ↔ ID MQTT ↔ site/device ↔ setting
+    const mqttOf = db.prepare("SELECT mqtt_id, status FROM devices WHERE site = ? AND device = ? ORDER BY id DESC LIMIT 1");
+    const cfgOf = db.prepare('SELECT rev, devices, updated_at FROM gateway_configs WHERE site = ? AND device = ?');
+    const devices = listHardwareDevices(db).map((d) => {
+      let mq = null; let cf = null;
+      try { mq = mqttOf.get(d.site, d.device); } catch { /* bảng devices chưa có */ }
+      try { cf = cfgOf.get(d.site, d.device); } catch { /* chưa có setting */ }
+      let children = 0; let fields = 0;
+      try {
+        const arr = cf ? JSON.parse(cf.devices) : [];
+        children = arr.length; fields = arr.reduce((n, c) => n + (c.fields?.length || 0), 0);
+      } catch { /* bỏ qua */ }
+      return {
+        ...d,
+        mqttId: mq?.mqtt_id || null,
+        mqttStatus: mq?.status || null,
+        config: cf ? { rev: cf.rev, devices: children, fields, updatedAt: cf.updated_at } : null,
+      };
+    });
+    res.json({ configured, devices });
   });
 
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {

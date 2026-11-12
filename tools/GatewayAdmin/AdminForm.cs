@@ -57,7 +57,8 @@ public sealed partial class AdminForm : Form
         for (var i = _pages.Count - 1; i >= 0; i--) _side.Controls.Add(_pages[i].Btn);
         _side.Controls.Add(sub); _side.Controls.Add(logo);
 
-        foreach (var c in new Control[] { _title, _lblAddr, _addr, _lblToken, _token, _connect, _chip }) _head.Controls.Add(c);
+        _qrIcon = new QrIcon(_gw, () => CloudPage.DefaultServer);
+        foreach (var c in new Control[] { _title, _lblAddr, _addr, _lblToken, _token, _connect, _chip, _qrIcon }) _head.Controls.Add(c);
         _head.Resize += (_, _) => LayoutHead();
         _connect.Click += async (_, _) => { if (_gw.Connected) Disconnect(); else await ConnectAsync(_addr.Text.Trim()); };
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -71,14 +72,17 @@ public sealed partial class AdminForm : Form
 
     public string Token { get => _token.Text; set => _token.Text = value; }
 
+    QrIcon _qrIcon = null!;
+
     void LayoutHead()
     {
         // các ô kết nối bám mép phải, từ phải sang trái
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _chip, _connect, _token, _lblToken, _addr, _lblAddr })
+        foreach (var c in new Control[] { _qrIcon, _chip, _connect, _token, _lblToken, _addr, _lblAddr })
         {
+            if (c == _qrIcon && !c.Visible) continue;
             x -= c.Width + 8;
-            c.Location = new Point(x, c is StatusChip ? 17 : c is FlatButton ? 14 : c is Label ? 20 : 16);
+            c.Location = new Point(x, c is StatusChip ? 17 : c is FlatButton ? 14 : c is Label ? 20 : c == _qrIcon ? 11 : 16);
         }
     }
 
@@ -115,6 +119,7 @@ public sealed partial class AdminForm : Form
         _addr.Enabled = _token.Enabled = !_gw.Connected;
         _chip.Caption = !_gw.Connected ? "Chưa kết nối" : _gw.Config.Pack.Count == 0 ? "Gateway: chưa có thiết bị" : $"Gateway: {_gw.Status}";
         _chip.Dot = !_gw.Connected ? Theme.Muted : !_gw.Running ? Theme.Yellow : _gw.Config.Pack.Count == 0 || _gw.Status == "online" ? Theme.Green : Theme.Yellow;
+        _qrIcon.Update();
         LayoutHead();
     }
 

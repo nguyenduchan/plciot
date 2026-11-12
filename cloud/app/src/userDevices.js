@@ -12,7 +12,13 @@ import {
 } from './uiContract.js';
 import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
-import { mqttIdFor } from './mqttIds.js';
+import { mqttIdFor, gatewaysOfUser } from './mqttIds.js';
+import { rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
+import { planWidgetLimit, effectivePlan } from './entitlements.js';
+
+/** Thông tin gói để dựng dashboard (giới hạn widget). */
+const planOf = (u) => ({ widgetLimit: planWidgetLimit(u), planId: effectivePlan(u).id, planLabel: effectivePlan(u).label });
+import { notifyGateway } from './gatewayNotify.js';
 import { DEFAULT_TENANT } from './contract.js';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
@@ -57,10 +63,14 @@ function listRows(db, userId) {
     'SELECT id, user_id AS userId, site, gateway_device AS gatewayDevice, child_id AS childId, type, title, binds, critical_keys AS criticalKeys, created_at AS createdAt FROM user_devices WHERE user_id = ? ORDER BY created_at',
   ).all(userId);
   // limits/critical do tem đặt (hardware.ui_meta) đi kèm từng dòng để dựng dashboard và kiểm lệnh
+  const tenant = db.prepare("SELECT tenant_id FROM users WHERE id = ?").get(userId)?.tenant_id || DEFAULT_TENANT;
+  const idOf = new Map();
+  const mqttOfRow = (r) => { const k = `${r.site}/${r.gatewayDevice}`; if (!idOf.has(k)) idOf.set(k, mqttIdFor(db, tenant, r.site, r.gatewayDevice)); return idOf.get(k); };
   return rows.map((r) => {
     const dyn = r.type === 'dynamic' ? deviceOf(db, { site: r.site, gateway: r.gatewayDevice, childId: r.childId }) : null;
     return {
       ...r,
+      mqttId: mqttOfRow(r),
       spec: specFor(db, r),
       userCritical: parseUserKeys(r.criticalKeys),
       ...(r.type === 'dynamic' ? { fields: dyn?.fields || [], icon: dyn?.icon, color: dyn?.color } : {}),
@@ -221,6 +231,12 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
 
   let u = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   const isGateway = GATEWAY_PROFILES.has(String(hw.profile || ''));
+
+  // Webapp thêm được NHIỀU gateway: user đã có gateway khác → gateway mới được THÊM vào (không thay gateway chính, không xoay mật khẩu MQTT)
+  const mine = db.prepare('SELECT DISTINCT site, gateway_device FROM user_devices WHERE user_id = ?').all(u.id);
+  if (isGateway && mine.length > 0 && !mine.some((g) => g.site === hw.site && g.gateway_device === hw.device)) {
+    return addAdditionalGateway(db, u, hw, { ip });
+  }
   const sameSite = u.notify_site === verified.site;
 
   if (!sameSite) {
@@ -243,7 +259,41 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
   return {
     ok: true,
     ...result,
-    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device) }),
+    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device), gateways: gatewaysOfUser(db, u), ...planOf(u) }),
+  };
+}
+
+/**
+ * Thêm gateway THỨ HAI trở đi vào tài khoản. Tem phải chưa có chủ (hoặc đã là của user này).
+ * Không đổi users.notify_site/device (gateway chính giữ nguyên), không xoay mật khẩu MQTT; chỉ cấp thêm quyền đọc topic
+ * gw/<mqttId> của gateway mới (ACL) để webapp nhận data, và báo gateway "đã có user" để bắt đầu gửi data.
+ */
+function addAdditionalGateway(db, u, hw, { ip } = {}) {
+  if (hw.claimed_by && hw.claimed_by !== u.id) {
+    const owner = db.prepare('SELECT id, disabled, setup_complete FROM users WHERE id = ?').get(hw.claimed_by);
+    if (owner && !owner.disabled && owner.setup_complete !== 0) return { error: 'device_already_claimed', status: 409 };
+  }
+  // Cùng site + trùng id thiết bị con với gateway đã có sẽ ghi đè nhau (UNIQUE user/site/child) → chặn rõ ràng
+  const seeds = Array.isArray(parseUiMeta(hw.ui_meta)?.seed) ? parseUiMeta(hw.ui_meta).seed : [];
+  const clash = seeds.map((s) => String(s.childId || s.id || '')).find((c) => c && db.prepare(
+    'SELECT 1 FROM user_devices WHERE user_id = ? AND site = ? AND child_id = ? AND gateway_device != ?',
+  ).get(u.id, hw.site, c, hw.device));
+  if (clash) return { error: 'child_id_clash', status: 409, childId: clash };
+
+  const before = gatewaysOfUser(db, u).length;
+  db.prepare('UPDATE hardware_devices SET claimed_by = ?, claimed_at = ? WHERE site = ? AND device = ?').run(u.id, Date.now(), hw.site, hw.device);
+  const result = addFromHardwareRow(db, { ...u, notify_site: hw.site, notify_device: hw.device }, hw);
+  if (result.error) return result;
+  if (gatewaysOfUser(db, u).length > before) {
+    try { rebuildAclFromUsers(db); reloadMosquitto(); } catch (e) { console.error('add gateway acl', e.message); }
+  }
+  notifyGateway(db, hw.site, hw.device, 'claimed');
+  audit(db, 'user_gateway_added', { userId: u.id, ip, detail: `${hw.site}/${hw.device} +${result.added.length}` });
+  return {
+    ok: true,
+    ...result,
+    additionalGateway: true,
+    dashboard: getDashboardFor(db, u, 'simple'),
   };
 }
 
@@ -261,12 +311,37 @@ export function deleteUserDevice(db, user, id, { ip } = {}) {
   return { ok: true, released: rel.released };
 }
 
+/**
+ * Gỡ MỘT GATEWAY khỏi tài khoản: xoá toàn bộ thiết bị con của gateway đó (không gỡ lẻ từng widget), nhả tem
+ * (gateway ngừng gửi data), thu quyền đọc topic MQTT của gateway. Gateway chính bị gỡ thì chuyển sang gateway còn lại
+ * (hết gateway thì về vùng riêng như khi nhả tem).
+ */
+export function removeGateway(db, user, site, device, { ip } = {}) {
+  const rows = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ?').all(user.id, site, device);
+  if (!rows.length) return { error: 'not_found', status: 404 };
+  db.prepare('DELETE FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ?').run(user.id, site, device);
+  db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ? AND claimed_by = ?').run(site, device, user.id);
+  notifyGateway(db, site, device, 'unclaimed');   // gateway ngừng gửi data (best-effort)
+  const rest = db.prepare('SELECT DISTINCT site, gateway_device FROM user_devices WHERE user_id = ? ORDER BY created_at').all(user.id);
+  const me = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  if (me.notify_site === site && me.notify_device === device) {
+    if (rest.length) db.prepare('UPDATE users SET notify_site = ?, notify_device = ? WHERE id = ?').run(rest[0].site, rest[0].gateway_device, user.id);
+    else releaseSiteIfEmpty(db, user.id, site, { ip });
+  }
+  try { rebuildAclFromUsers(db); reloadMosquitto(); } catch (e) { console.error('remove gateway acl', e.message); }
+  audit(db, 'user_gateway_removed', { userId: user.id, ip, detail: `${site}/${device} -${rows.length}` });
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  return { ok: true, removed: rows.length, dashboard: getDashboardFor(db, u, 'simple') };
+}
+
 export function getDashboardFor(db, user, mode) {
   return resolveDashboard({
     user,
     devices: listRows(db, user.id),
     mode: mode === 'pro' ? 'pro' : 'simple',
     mqttId: mqttIdFor(db, user.tenant_id, user.notify_site, user.notify_device),
+    gateways: gatewaysOfUser(db, user),
+    ...planOf(user),
   });
 }
 
@@ -347,6 +422,11 @@ export function mountUserDevices(app, { db, requireAuth, sensitiveStrict, author
       dashboard: getDashboardFor(db, req.user, 'simple'),
     });
   }));
+
+  // Gỡ cả gateway (webapp không gỡ lẻ từng thiết bị/widget)
+  app.delete('/api/gateways/:site/:device', requireAuth, sensitiveStrict, (req, res) => {
+    send(res, removeGateway(db, req.user, String(req.params.site), String(req.params.device), { ip: clientIp(req) }));
+  });
 
   app.delete('/api/devices/:id', requireAuth, sensitiveStrict, (req, res) => {
     send(res, deleteUserDevice(db, req.user, req.params.id, { ip: clientIp(req) }));

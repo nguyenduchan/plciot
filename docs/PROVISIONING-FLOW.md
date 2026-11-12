@@ -34,7 +34,7 @@ khi `claimed:true` mới bắt đầu gửi data. Server cũng im lặng bỏ `t
 ## Vòng đời tem ghép cặp
 
 - Enroll/config thất bại đều ghi audit `gateway_enroll_fail` (IP + tem + lý do). Quá `ENROLL_FAIL_MAX` (10) lần sai trong `ENROLL_FAIL_WINDOW_MIN` (15) phút → tem khoá tạm `enroll_locked` (429); máy thật đúng `hw` vẫn vào được.
-- Tem ghép cặp quá `PAIRING_TEM_TTL_DAYS` (30) ngày chưa ai claim tự thu hồi (xoá tem + thu hồi MQTT, audit `tem_expired`); quét lúc khởi động rồi mỗi giờ.
+- QR/ID tem **không giới hạn thời gian** (mặc định): chỉ mất khi admin xoá/thu hồi. Muốn tự thu hồi tem chưa ai claim thì đặt `PAIRING_TEM_TTL_DAYS=<số ngày>` (xoá tem + thu hồi MQTT, audit `tem_expired`; quét lúc khởi động rồi mỗi giờ). Riêng *mã ghép cặp* `XXXX-XXXX` vẫn hết hạn ~15 phút (dùng một lần).
 - Trang admin hiện cả vân tay lẫn ID máy của bản khai; GatewayApp hiện ID máy lúc chưa đăng ký và trạng thái "chưa có user → chỉ đồng bộ setting".
 
 ## Runtime

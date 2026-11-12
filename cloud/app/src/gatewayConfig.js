@@ -170,7 +170,10 @@ export function applyGatewayConfig(db, { tenantId = 'default', site, device, pay
  * và gỡ các thiết bị 'dynamic' không còn trong config. Thiết bị gắn bằng QR (type khác) giữ nguyên.
  */
 function syncUserDevices(db, { site, device, devices }) {
-  const users = db.prepare('SELECT id FROM users WHERE notify_site = ? AND notify_device = ?').all(site, device);
+  // Chủ gateway: user có gateway này làm gateway chính HOẶC đã thêm nó (nhiều gateway) và đang giữ tem
+  const users = db.prepare(`SELECT id FROM users WHERE (notify_site = ? AND notify_device = ?)
+    OR id IN (SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ? AND claimed_by IS NOT NULL)
+    OR id IN (SELECT user_id FROM user_devices WHERE site = ? AND gateway_device = ?)`).all(site, device, site, device, site, device);
   let added = 0; let removed = 0;
   const ids = devices.map((d) => d.id);
   for (const u of users) {

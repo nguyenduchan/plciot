@@ -63,6 +63,7 @@ export function validateChildCmd(body, devices) {
   const dev = (devices || []).find((d) => d.childId === child);
   const w = dev?.widgets?.find((x) => x.cmd && x.cmd.key === key);
   if (!w) return { error: 'bad_command' };
+  if (w.locked) return { error: 'widget_locked' };   // vượt giới hạn widget của gói
   const v = Number(b.v);
   if (w.kind === 'slider') {                                       // đặt giá trị liên tục (vd tốc độ bơm): trong [min,max] của widget
     const lo = Number(w.min ?? 0); const hi = Number(w.max ?? 100);

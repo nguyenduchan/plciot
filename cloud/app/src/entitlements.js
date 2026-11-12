@@ -12,11 +12,22 @@ import { setRetention, parseRetention, retentionInfo, defaultDays } from './rete
 import { ipInCidrs, clientIp } from '@plciot/security';
 
 /** Định nghĩa gói — không gắn giá tiền trong mã. */
+/** Số widget tối đa của gói miễn phí (vượt quá: làm mờ, không cập nhật data, không điều khiển). */
+export const FREE_WIDGET_LIMIT = Number(process.env.FREE_WIDGET_LIMIT || 5);
+
 export const PLAN_CATALOG = Object.freeze({
+  // Gói miễn phí (mặc định khi chưa gán gói): có giám sát + điều khiển, nhưng giới hạn số widget (xem FREE_WIDGET_LIMIT).
+  free: {
+    label: 'Miễn phí',
+    retention: 'default',
+    remoteControl: true,
+    partnerCmd: false,
+    widgets: FREE_WIDGET_LIMIT,
+  },
   monitor: {
-    label: 'Chỉ giám sát',
+    label: 'Giám sát',
     retention: 'default', // HISTORY_DEFAULT_DAYS
-    remoteControl: false,
+    remoteControl: true,   // mọi gói đều có giám sát + điều khiển
     partnerCmd: false,
   },
   pro: {
@@ -69,14 +80,8 @@ export function effectivePlan(user) {
   const id = user?.sub_plan;
   if (id && PLAN_CATALOG[id]) return { id, ...PLAN_CATALOG[id] };
   if (requireSubscriptionActivation()) {
-    // Chưa kích hoạt: chỉ như monitor (xem), chờ admin grant trên Console/cloud
-    return {
-      id: 'pending',
-      label: 'Chờ kích hoạt',
-      retention: 'default',
-      remoteControl: false,
-      partnerCmd: false,
-    };
+    // Chưa gán gói → gói MIỄN PHÍ (có giám sát + điều khiển, giới hạn widget); admin nâng gói trên Console/trang quản trị
+    return { id: 'free', ...PLAN_CATALOG.free };
   }
   // Tắt REQUIRE_ACTIVATION: hành vi cũ (legacy)
   return {
@@ -140,20 +145,21 @@ export function mayPartnerCmd(tenant, { ip } = {}) {
 export function subscriptionInfo(user) {
   const plan = effectivePlan(user);
   const active = planActive(user);
-  const pendingActivation = plan.id === 'pending' || (requireSubscriptionActivation() && !user?.sub_plan);
+  const pendingActivation = false;   // không còn trạng thái chờ: chưa gán gói = gói miễn phí
   const remoteControl = active
     && !pendingActivation
     && user?.remote_control !== 0
     && user?.remote_control !== false
     && Boolean(plan.remoteControl);
   return {
+    ...retentionInfo(user),   // trước các khoá plan/… bên dưới (retentionInfo cũng có khoá "plan" riêng, không được ghi đè gói thật)
     plan: plan.id || 'legacy',
+    widgetLimit: planWidgetLimit(user),
     planLabel: plan.label,
     active: active && !pendingActivation,
     pendingActivation,
     expiresAt: user?.sub_expires_at ?? null,
     remoteControl,
-    ...retentionInfo(user),
   };
 }
 
@@ -208,3 +214,9 @@ export function grantTenantPlan(db, tenantId, planId, { expiresAt = null } = {})
 
 // re-export helpers used by plan.js
 export { parseRetention, setRetention, clientIp };
+
+/** Số widget tối đa user được dùng (null = không giới hạn). Gói hết hạn quay về mức gói miễn phí. */
+export function planWidgetLimit(user) {
+  const plan = planActive(user) ? effectivePlan(user) : { widgets: FREE_WIDGET_LIMIT };
+  return plan.widgets == null ? null : Number(plan.widgets);
+}

@@ -11,6 +11,7 @@
     <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
   </ItemGroup>
 </Project>

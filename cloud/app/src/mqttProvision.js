@@ -9,7 +9,7 @@ import {
   GW_NS, DEFAULT_TENANT, isValidMqttId,
   sanitizeId, topicBase, mqttPublicEndpoints, contractInfo,
 } from './contract.js';
-import { mqttIdFor } from './mqttIds.js';
+import { mqttIdFor, gatewaysOfUser } from './mqttIds.js';
 
 /** Lưu mqtt_pass dạng AES-GCM (v1.…); plaintext cũ vẫn đọc được và được reseal khi ghi lại. */
 export function sealMqttPass(plain) {
@@ -135,9 +135,9 @@ export function rebuildAclFromUsers(db) {
   for (const u of users) {
     const scopes = userScopes(u);
     const tenant = u.tenant_id || DEFAULT_TENANT;
-    const id = mqttIdFor(db, tenant, u.notify_site, u.notify_device);
-    secure += userAclBlock(u.mqtt_user, id ? [id] : [], u.role, scopes, true);
-    plain += userAclBlock(u.mqtt_user, id ? [id] : [], u.role, scopes, false);
+    const ids = gatewaysOfUser(db, { ...u, tenant_id: tenant }).map((g) => g.mqttId).filter(Boolean);   // mọi gateway user đã thêm
+    secure += userAclBlock(u.mqtt_user, ids, u.role, scopes, true);
+    plain += userAclBlock(u.mqtt_user, ids, u.role, scopes, false);
   }
   for (const d of devices) {
     const block = deviceAclBlock(d.mqtt_user, { mqttId: d.mqtt_id });
@@ -239,7 +239,7 @@ export function mqttClientConfig(db, user) {
     tenant,
     mqttId,
     topicBase: base,
-    topicBases: base ? [base] : [],
+    topicBases: [...new Set([base, ...gatewaysOfUser(db, user).map((g) => (g.mqttId ? topicBase({ mqttId: g.mqttId }) : null))].filter(Boolean))],   // mọi gateway user đã thêm
     endpoints: mqttPublicEndpoints(),
     contract: contractInfo(),
   };

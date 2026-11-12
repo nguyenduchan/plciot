@@ -447,3 +447,113 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 /* Xem thử (admin quét QR): chỉ đọc, cuộn trong hộp kết quả */
 .qr-prev{max-height:46vh;overflow:auto;margin:12px 0;text-align:left;display:flex;flex-direction:column;gap:10px}
 .dev-card.readonly{pointer-events:none;opacity:.96}
+
+/* nhãn gateway trên thẻ thiết bị khi tài khoản có nhiều gateway */
+.gw-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2, #1e2530); color: var(--muted, #9aa7b8); margin-left: auto; white-space: nowrap; }
+/* hướng dẫn bật quyền camera */
+.cam-help { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
+.cam-help .sheet { width: min(520px, 100%); background: var(--panel, #161b22); color: var(--text, #e6edf3); border-radius: 18px 18px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.4); }
+.cam-help h3 { margin: 0 0 6px; font-size: 18px; }
+.cam-help ol { margin: 10px 0 14px; padding-left: 22px; line-height: 1.55; }
+.cam-help .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cam-help .row button { flex: 1 1 140px; min-height: 44px; }
+.cam-help .note { font-size: 12px; opacity: .7; margin: 0 0 12px; }
+
+/* gói dịch vụ: widget bị khoá, banner, bảng gói */
+.dw.locked { opacity: .38; filter: grayscale(.7); cursor: pointer; position: relative; user-select: none; }
+.dw.locked .v { font-size: 14px; }
+.plan-banner { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: rgba(240,180,40,.12); border: 1px solid rgba(240,180,40,.4); font-size: 13px; }
+.plan-banner button { margin-left: auto; min-height: 36px; }
+.plan-table { display: grid; gap: 8px; margin: 8px 0 12px; }
+.plan-row { padding: 10px 12px; border-radius: 12px; background: var(--panel2, #1e2530); display: grid; gap: 2px; }
+.plan-row.cur { outline: 2px solid var(--accent, #3b82f6); }
+.plan-row small { opacity: .75; }
+#sub-panel.plan-flash { animation: planflash 1.1s ease 2; }
+@keyframes planflash { 50% { box-shadow: 0 0 0 3px var(--accent, #3b82f6); } }
+
+/* làm mượt: chuyển động số liệu + thanh trượt cảm ứng */
+.dev-widgets .gauge-bar i { transition: width .5s ease; }
+@property --p { syntax: '<number>'; inherits: false; initial-value: 0; }
+.ring { transition: --p .5s ease; }
+.dw .v, .dw .chip { transition: opacity .2s; }
+.dw-toggle { transition: background-color .15s, border-color .15s, color .15s; }
+.dw-slider { width: 100%; height: 34px; touch-action: pan-y; -webkit-tap-highlight-color: transparent; accent-color: var(--acc, #3b82f6); cursor: pointer; }
+.dw-slider.pending { opacity: .8; }
+.dev-card { contain: layout style; }
+
+/* ===== icon thiết bị: vector + hiệu ứng khi chạy ===== */
+.ic { width: 1em; height: 1em; display: block; overflow: visible; }
+.dev-ic { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--acc, #3b82f6) 16%, transparent); color: var(--acc, #3b82f6); font-size: 30px; }
+.dev-ic .ic { stroke-width: 2.4; }
+.dev-card.is-off .dev-ic { color: var(--muted, #8b98a5); background: color-mix(in srgb, var(--muted, #8b98a5) 14%, transparent); }
+.wic { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: 5px; color: var(--acc, #3b82f6); opacity: .9; font-size: 16px; }
+.wic .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+.ic [class^="ic-"], .ic [class*=" ic-"] { transform-box: fill-box; transform-origin: center; }
+.ic-flow { stroke-dasharray: 3.5 4.5; }
+.ic-wave { }
+.ic.on .ic-rot { animation: ic-spin var(--spin, 2.4s) linear infinite; }
+.ic.on .ic-flow { animation: ic-dash .7s linear infinite; }
+.ic.on .ic-belt { animation: ic-belt 1.6s linear infinite; }
+.ic.on .ic-needle { animation: ic-needle 2.2s ease-in-out infinite alternate; transform-origin: 24px 34px; transform-box: view-box; }
+.ic.on .ic-pulse { animation: ic-pulse 1.4s ease-in-out infinite; }
+.ic.on .ic-sw { animation: ic-sw .6s ease forwards; transform-origin: 21px 30px; transform-box: view-box; }
+.ic .ic-water .ic-wave { animation: ic-wave 3.2s linear infinite; }
+.ic:not(.on) .ic-water .ic-wave { animation-duration: 7s; }
+@keyframes ic-spin { to { transform: rotate(360deg); } }
+@keyframes ic-dash { to { stroke-dashoffset: -16; } }
+@keyframes ic-belt { from { transform: translateX(-6px); } to { transform: translateX(6px); } }
+@keyframes ic-needle { from { transform: rotate(-22deg); } to { transform: rotate(18deg); } }
+@keyframes ic-pulse { 50% { opacity: .35; } }
+@keyframes ic-sw { to { transform: rotate(-28deg); } }
+@keyframes ic-wave { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+@media (prefers-reduced-motion: reduce) { .ic *, .ic { animation: none !important; } }
+
+/* thanh trượt có nút gửi lệnh */
+.slider-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.dw-send { min-height: 40px; padding: 0 16px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+.dw-send:disabled { opacity: .45; }
+.dw-send.dirty { background: var(--acc, #3b82f6); color: #fff; border-color: transparent; box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #3b82f6) 30%, transparent); }
+.dw-pendinfo { font-size: 12px; opacity: .75; margin-top: 4px; min-height: 16px; }
+.dw-toggle small { opacity: .75; font-weight: 400; margin-left: 6px; }
+
+/* ===== kiểu hiển thị thiết bị: 3D / hiện đại / SCADA ===== */
+/* 3D: ô icon nổi khối */
+[data-ic-style="3d"] .dev-ic { background: linear-gradient(145deg, color-mix(in srgb, var(--acc, #3b82f6) 82%, #fff 18%), color-mix(in srgb, var(--acc, #3b82f6) 58%, #000 42%)); color: #fff; border-radius: 15px; box-shadow: 0 9px 16px rgba(0,0,0,.5), inset 0 2px 1px rgba(255,255,255,.5), inset 0 -5px 7px rgba(0,0,0,.38); }
+[data-ic-style="3d"] .dev-ic .ic { stroke-width: 2.7; filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.6)); }
+[data-ic-style="3d"] .dev-card { border-radius: 18px; box-shadow: 0 12px 26px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.07); transition: transform .25s ease, box-shadow .25s ease; }
+[data-ic-style="3d"] .dev-card:hover { transform: translateY(-2px); box-shadow: 0 16px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.09); }
+[data-ic-style="3d"] .dev-card.is-off .dev-ic { filter: saturate(.25) brightness(.8); }
+[data-ic-style="3d"] .tank { box-shadow: inset 0 3px 6px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.12); }
+[data-ic-style="3d"] .gauge-bar { box-shadow: inset 0 2px 4px rgba(0,0,0,.5); }
+[data-ic-style="3d"] .dw-toggle { box-shadow: 0 4px 0 rgba(0,0,0,.35), 0 6px 10px rgba(0,0,0,.3); transition: transform .1s, box-shadow .1s; }
+[data-ic-style="3d"] .dw-toggle:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+/* SCADA: phẳng, tĩnh */
+[data-ic-style="scada"] .dev-card { border-radius: 4px; box-shadow: none; border: 1px solid #3b4756; }
+[data-ic-style="scada"] .dev-ic { border-radius: 3px; background: #1b232d; border: 1px solid #55667a; color: #3fb950; }
+[data-ic-style="scada"] .dev-card.is-off .dev-ic { color: #8b98a5; }
+[data-ic-style="scada"] .ic { stroke-width: 2.8; filter: none; }
+[data-ic-style="scada"] .ic *, [data-ic-style="scada"] .ic { animation: none !important; transition: none !important; }
+[data-ic-style="scada"] .wic { color: #7d8da0; }
+[data-ic-style="scada"] .gauge-bar i, [data-ic-style="scada"] .tank i, [data-ic-style="scada"] .ring { transition: none; }
+[data-ic-style="scada"] .dw-toggle, [data-ic-style="scada"] .dw-send { border-radius: 2px; }
+/* hộp chọn kiểu (Cài đặt) */
+.ic-choices { display: grid; gap: 10px; margin: 8px 0; }
+.ic-choice { display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 14px; border: 2px solid var(--line, #2c3744); background: transparent; color: inherit; cursor: pointer; }
+.ic-choice.on { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent); }
+.ic-choice small { opacity: .7; }
+.ic-prev { display: flex; gap: 8px; margin-bottom: 6px; }
+.ic-prev .dev-ic { width: 40px; height: 40px; font-size: 26px; }
+
+/* nhóm theo gateway */
+.dev-grid { display: block; }
+.gw-group { margin: 0 0 18px; }
+.gw-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+.gw-ic { width: 34px; height: 34px; flex: none; display: grid; place-items: center; font-size: 22px; color: var(--muted, #8b98a5); }
+.gw-title { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.gw-title b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gw-title small { opacity: .7; }
+.gw-rm { min-height: 38px; padding: 0 14px; }
+.gw-cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) { body:not(.ui-simple) .gw-cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); } }
+[data-ic-style="scada"] .gw-head { border-radius: 4px; }
+.dev-card header { align-items: center; }

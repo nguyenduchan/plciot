@@ -15,8 +15,8 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
-<link rel="stylesheet" href="style.css">
-<script src="errors.js"></script>
+<link rel="stylesheet" href="style.css?v=20261113e">
+<script src="errors.js?v=20261113b"></script>
 <script src="security/session.js"></script>
 <script src="security/boot.js"></script>
 </head>
@@ -143,10 +143,17 @@
           </div>
           <div class="row"><button id="logout" type="button">Đăng xuất</button></div>
         </div>
+        <div class="panel" id="ic-panel" style="margin-top:12px">
+          <h2>Kiểu hiển thị thiết bị</h2>
+          <p class="muted">Chọn kiểu icon và hiệu ứng cho thẻ thiết bị. Lưu trên máy này.</p>
+          <div class="ic-choices" id="ic-choices"></div>
+        </div>
         <div class="panel" id="sub-panel" style="margin-top:12px" hidden>
           <h2>Gói dịch vụ (cloud)</h2>
           <p class="muted" id="sub-info">Đang tải…</p>
-          <p class="muted">Webapp dùng cùng mô hình subscribe trên cloud như thiết bị IoT / đối tác. Admin kích hoạt gói trên Console (không thanh toán trong app).</p>
+          <div id="plan-table" class="plan-table"></div>
+          <div class="row"><button type="button" class="primary" id="plan-copy">Sao chép yêu cầu nâng gói</button></div>
+          <p class="muted">Gửi nội dung đã sao chép cho quản trị viên. Quản trị viên gán gói ở trang quản trị; sau đó tải lại webapp là dùng được, không cần đăng nhập lại.</p>
         </div>
         <div class="panel form pro-only" id="admin-link" style="margin-top:12px" hidden>
           <h2>Quản trị</h2>
@@ -218,8 +225,10 @@
     <p class="muted">Dán chuỗi mã QR trên tem, hoặc quét lại bằng camera. Giao diện thiết bị sẽ tự dựng.</p>
     <div class="row">
       <button type="button" id="dev-scan" class="fit">Quét bằng camera</button>
+      <button type="button" id="dev-cap" class="fit">Chụp ảnh QR</button>
       <button type="button" id="dev-pick" class="fit">Chọn ảnh QR</button>
       <input type="file" id="dev-file" accept="image/*" hidden>
+      <input type="file" id="dev-cap-file" accept="image/*" capture="environment" hidden>
     </div>
     <label>Mã QR<textarea id="dev-qr" rows="4" placeholder="Hoặc dán chuỗi QR từ tem thiết bị"></textarea></label>
     <div class="row">
@@ -295,10 +304,12 @@
 <script src="security/debug-trace.js"></script>
 <script src="security/security-client.js"></script>
 <script src="auth-app.js"></script>
-<script src="control.js"></script>
+<script src="control.js?v=20261113a"></script>
 <script src="site.js"></script>
-<script src="devices.js"></script>
-<script src="app.js"></script>
+<script src="icons.js?v=20261113b"></script>
+<script src="plan.js?v=20261113a"></script>
+<script src="devices.js?v=20261113i"></script>
+<script src="app.js?v=20261113b"></script>
 <script src="security/account.js"></script>
 </body>
 </html>
