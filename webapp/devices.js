@@ -58,6 +58,9 @@
   /** Icon nhỏ mô tả giá trị (mức nước → giọt nước, nhiệt độ → nhiệt kế…). */
   const wic = (w) => (window.PlcIcons ? `<span class="wic" aria-hidden="true">${window.PlcIcons.value(w.bind || w.id, w.kind)}</span>` : '');
 
+  /** Icon của thiết bị theo danh mục chuẩn: mã icon gateway gửi → loại → tên/mã thiết bị (loại chung chung như dynamic không lấn át tên). */
+  const GENERIC_TYPE = /^(dynamic|generic|iot-hub|custom|device)$/i;
+  const iconFor = (d) => (window.PlcIcons ? window.PlcIcons.pick(d.icon, GENERIC_TYPE.test(d.type || '') ? null : d.type, d.title, d.childId, d.type) : 'gear');
   const RUN_KEY = /^(run|q_run|on|running|start|q_on|enable|q_start)$/i;
   const SPEED_KEY = /(speed|rpm|freq|^sp$)/i;
   /** Trạng thái chạy + tốc độ quay của một thiết bị (suy từ số liệu sống) → điều khiển hiệu ứng icon. */
@@ -71,8 +74,48 @@
       if (SPEED_KEY.test(w.bind) && Number.isFinite(Number(v))) { const mx = Number(w.max ?? 100) || 100; pct = (Number(v) / mx) * 100; }
     }
     if (on == null) on = Object.keys(o).length > 0;   // không có khoá chạy/dừng (bồn, cảm biến): có số liệu = đang hoạt động
-    if (on && pct === 0 && /^(pump|fan|motor|conveyor)$/.test(d.icon || d.type || '')) on = false;
+    if (on && pct === 0 && /^(pump|fan|motor|conveyor|compressor|mixer|generator|chiller|vfd)$/.test(iconFor(d))) on = false;
     return { on, spin: window.PlcIcons ? window.PlcIcons.spinSeconds(on ? pct : null) : '2.4' };
+  }
+
+  const icStyle = () => document.documentElement.dataset.icStyle || '3d';
+  const FLAT_GAUGE = new Set(['scada', 'carbon']);   // kiểu phẳng: thanh tiến trình thay đồng hồ tròn
+  const POLAR = (cx, cy, r, deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy + r * Math.sin((deg * Math.PI) / 180)];
+
+  /** Đồng hồ tròn 270° (kiểu Grafana/ThingsBoard): vạch chia, cung giá trị đổi màu theo ngưỡng, vùng thấp/cao, núm chỉ. */
+  function radialSvg(pct, lvl, lowP, highP, has) {
+    const R = 46; const C = 2 * Math.PI * R; const arc = C * 0.75;
+    const col = lvl === 'high' ? '#f2495c' : lvl === 'low' ? '#f2b705' : 'var(--acc,#3b82f6)';
+    const ticks = Array.from({ length: 11 }, (_, i) => {
+      const a = 135 + 27 * i; const long = i % 5 === 0;
+      const [x1, y1] = POLAR(60, 60, long ? 36 : 38, a); const [x2, y2] = POLAR(60, 60, 42, a);
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="currentColor" stroke-opacity="${long ? .55 : .28}" stroke-width="${long ? 1.8 : 1.2}"/>`;
+    }).join('');
+    const zone = (from, to, c) => `<circle cx="60" cy="60" r="55" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="butt" stroke-dasharray="0 ${(2 * Math.PI * 55 * 0.75 * from / 100).toFixed(1)} ${(2 * Math.PI * 55 * 0.75 * (to - from) / 100).toFixed(1)} ${(2 * Math.PI * 55).toFixed(1)}" transform="rotate(135 60 60)" opacity=".85"/>`;
+    const zones = (lowP != null && lowP > 0 ? zone(0, lowP, '#f2b705') : '') + (highP != null && highP < 100 ? zone(highP, 100, '#f2495c') : '');
+    const [kx, ky] = POLAR(60, 60, R, 135 + 270 * pct / 100);
+    return `<svg class="rg-svg" viewBox="0 6 120 112" aria-hidden="true">
+      <circle class="rg-track" cx="60" cy="60" r="${R}" fill="none" stroke="currentColor" stroke-opacity=".13" stroke-width="10" stroke-linecap="round" stroke-dasharray="${arc.toFixed(1)} ${C.toFixed(1)}" transform="rotate(135 60 60)"/>
+      <g class="rg-zones">${zones}</g><g class="rg-ticks">${ticks}</g>
+      <circle class="rg-arc" cx="60" cy="60" r="${R}" fill="none" stroke="${col}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(has ? Math.max(0.01, arc * pct / 100) : 0).toFixed(1)} ${C.toFixed(1)}" transform="rotate(135 60 60)"/>
+      ${has ? `<circle class="rg-knob" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="5.5" fill="#fff" stroke="${col}" stroke-width="3"/>` : ''}
+    </svg>`;
+  }
+
+  /** Bồn trụ 3D: thân kính, nước có mặt elip, thước chia, đổi màu khi chạm ngưỡng. */
+  function tank3dSvg(pct, lvl, has) {
+    const H = 52; const h = has ? H * pct / 100 : 0; const y = 18 + H - h;
+    const liq = lvl === 'high' ? 'fill="#e0626d"' : lvl === 'low' ? 'fill="#f2b705"' : 'fill="url(#g3-liq)"';
+    const top = lvl === 'high' ? '#ff9aa4' : lvl === 'low' ? '#ffe08a' : '#a8d8ff';
+    return `<svg class="t3-svg" viewBox="0 0 70 84" aria-hidden="true">
+      <ellipse cx="30" cy="70" rx="22" ry="7" fill="#1d2530"/>
+      <path d="M8 18v52a22 7 0 0 0 44 0V18z" fill="rgba(255,255,255,.07)"/>
+      ${h > 0.5 ? `<path d="M8 ${y.toFixed(1)}v${(70 - y).toFixed(1)}a22 7 0 0 0 44 0V${y.toFixed(1)}z" ${liq} opacity=".92"/><ellipse cx="30" cy="${y.toFixed(1)}" rx="22" ry="7" fill="${top}" opacity=".95"/>` : ''}
+      <ellipse cx="30" cy="18" rx="22" ry="7" fill="rgba(255,255,255,.1)" stroke="rgba(255,255,255,.55)" stroke-width="1.4"/>
+      <path d="M8 18v52a22 7 0 0 0 44 0V18" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6"/>
+      <path d="M13 24v42" stroke="#fff" stroke-opacity=".35" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M56 22h6M56 35h4M56 48h6M56 61h4" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
   }
 
   function widgetHtml(dev, w) {
@@ -88,6 +131,12 @@
       const n = Number(v);
       const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, ((n - min) / (max - min || 1)) * 100)) : 0;
       const lvl = Number.isFinite(n) && w.low != null && n <= w.low ? 'low' : Number.isFinite(n) && w.high != null && n >= w.high ? 'high' : '';
+      if (!FLAT_GAUGE.has(icStyle())) {        // đồng hồ tròn kiểu Grafana / ThingsBoard (kiểu SCADA giữ thanh phẳng)
+        const zp = (x) => (x == null ? null : Math.max(0, Math.min(100, ((Number(x) - min) / (max - min || 1)) * 100)));
+        return `<div class="dw gauge rg ${lvl}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div>
+        <div class="rg-wrap">${radialSvg(pct, lvl, zp(w.low), zp(w.high), Number.isFinite(n))}<div class="rg-val"><b>${esc(show)}</b>${w.unit ? `<small>${esc(w.unit)}</small>` : ''}</div></div>
+        <div class="rg-range"><span>${esc(min)}</span><span>${esc(max)}</span></div></div>`;
+      }
       return `<div class="dw gauge ${lvl}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div>
         <div class="gauge-bar"><i style="width:${pct}%"></i></div>
         <div class="v">${esc(show)}${unit}</div></div>`;
@@ -97,6 +146,14 @@
       const min = Number(w.min ?? 0); const max = Number(w.max ?? 100); const n = Number(v);
       const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, ((n - min) / (max - min || 1)) * 100)) : 0;
       const lvl = Number.isFinite(n) && w.low != null && n <= w.low ? 'low' : Number.isFinite(n) && w.high != null && n >= w.high ? 'high' : '';
+      if (icStyle() === 'grafana' || icStyle() === 'carbon') {   // thanh bar gauge ngang kiểu Grafana / Carbon
+        return `<div class="dw tankw bargauge ${lvl}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div>
+        <div class="bg-bar"><i style="width:${pct}%"></i></div><div class="v">${esc(show)}${unit}</div></div>`;
+      }
+      if (icStyle() !== 'scada') {        // bồn trụ 3D có mặt nước + thước chia (kiểu SCADA giữ cột phẳng)
+        return `<div class="dw tankw tank3d ${lvl}" data-wid="${esc(w.id)}">${tank3dSvg(pct, lvl, Number.isFinite(n))}
+        <div><div class="k">${wic(w)}${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div><div class="v">${esc(show)}${unit}</div></div></div>`;
+      }
       return `<div class="dw tankw ${lvl}" data-wid="${esc(w.id)}"><div class="tank"><i style="height:${pct}%"></i></div>
         <div><div class="k">${wic(w)}${esc(w.label)}${lvl ? ` <b class="lvl">${lvl === 'low' ? 'Mức thấp' : 'Mức cao'}</b>` : ''}</div><div class="v">${esc(show)}${unit}</div></div></div>`;
     }
@@ -131,7 +188,7 @@
     if (w.kind === 'status' || w.kind === 'chip') {
       const on = Number(v) === 1 || v === true || (typeof v === 'number' && v > 0);
       return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}</div>
-        <div class="chip ${on ? 'on' : ''}">${esc(w.onText || w.offText ? (on ? (w.onText || 'Bật') : (w.offText || 'Tắt')) : String(show))}</div></div>`;
+        <div class="chip ${on ? 'on' : ''}"><i class="lamp"></i>${esc(w.onText || w.offText ? (on ? (w.onText || 'Bật') : (w.offText || 'Tắt')) : String(show))}</div></div>`;
     }
     if (w.kind === 'sparkline' || w.kind === 'line' || w.kind === 'bar') {
       return `<div class="dw" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}</div>
@@ -148,8 +205,8 @@
   /** HTML một thẻ thiết bị. readonly = xem thử: không nút gỡ, không điều khiển được. */
   function cardHtml(d, readonly) {
     const st = devState(d);
-    const icon = window.PlcIcons ? `<span class="dev-ic" aria-hidden="true">${window.PlcIcons.device(d.icon || d.type, { on: st.on, speed: st.spin })}</span>` : '';
-    return `<article class="dev-card${d.color ? ` acc-${esc(d.color)}` : ''}${readonly ? ' readonly' : ''}${st.on ? '' : ' is-off'}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
+    const icon = window.PlcIcons ? `<span class="dev-ic" aria-hidden="true">${window.PlcIcons.device(iconFor(d), { on: st.on, speed: st.spin })}</span>` : '';
+    return `<article class="dev-card${window.PlcIcons?.category ? ` cat-${window.PlcIcons.category(iconFor(d))}` : ''}${d.color ? ` acc-${esc(d.color)}` : ''}${readonly ? ' readonly' : ''}${st.on ? '' : ' is-off'}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
       <header>${icon}<h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
       </header>
       <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
@@ -770,6 +827,19 @@
     clearTimeout(cfgTimer);
     cfgTimer = setTimeout(() => { load().catch(() => {}); }, 1500);
   }
+
+  document.addEventListener('plc-icstyle', () => { lastSig = ''; render(); renderSample(); });   // đổi kiểu/màu/chuyển động: vẽ lại ngay (cả thẻ mẫu ở Cài đặt)
+  /** Thẻ mẫu ở Cài đặt → Kiểu hiển thị: đổi kiểu / màu / chuyển động là thấy thay đổi ngay, không cần sang tab Thiết bị. */
+  function renderSample() {
+    const host = document.getElementById('ic-live'); if (!host) return;
+    const d = { id: 'sample', childId: '__sample', type: 'pump', icon: 'pump', title: 'Bơm mẫu', widgets: [
+      { id: 's1', kind: 'tank', bind: 'level', label: 'Mức nước', unit: '%', min: 0, max: 100, low: 15, high: 90 },
+      { id: 's2', kind: 'gauge', bind: 'flow', label: 'Lưu lượng', unit: 'L/phút', min: 0, max: 100, low: 15, high: 85 },
+      { id: 's3', kind: 'toggle', bind: 'run', label: 'Bơm', onText: 'Chạy', offText: 'Dừng', cmd: { key: 'run' } }] };
+    live[lk(d)] = { level: 62, flow: 48, run: 1 };
+    host.innerHTML = cardHtml(d, true);
+  }
+  document.addEventListener('DOMContentLoaded', renderSample);
 
   window.DevicesUi = { load, onConfig, onTelemetry, injectDemoLive, openModal, getDashboard: () => dashboard };
 

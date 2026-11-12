@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bộ icon thiết bị công nghiệp</title>
+<link rel="stylesheet" href="style.css?v=20261113m">
+<style>
+  body { padding: 16px; max-width: 980px; margin: 0 auto; }
+  h1 { margin: 4px 0; font-size: 22px; }
+  h2 { margin: 22px 0 8px; font-size: 15px; opacity: .8; text-transform: uppercase; letter-spacing: .05em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .cell { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 6px; justify-items: center; text-align: center; }
+  .cell .dev-ic { width: 56px; height: 56px; font-size: 38px; }
+  .cell b { font-size: 13px; } .cell code { font-size: 11px; opacity: .75; } .cell small { font-size: 11px; opacity: .65; line-height: 1.3; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .bar button { min-height: 38px; }
+</style>
+</head>
+<body>
+<h1>Bộ icon thiết bị công nghiệp</h1>
+<p class="muted">Mã icon = mã gateway gửi trong <code>icon</code>. Nếu không có mã, webapp tự nhận theo loại / tên thiết bị (bảng alias bên dưới). Chọn kiểu hiển thị và bật/tắt chuyển động để xem.</p>
+<div class="bar" id="bar"></div>
+<div id="catalog"></div>
+<script src="icons.js?v=20261113i"></script>
+<script src="icons-pid.js?v=1"></script>
+<script src="icons-3d.js?v=2"></script>
+<script src="icons-3d-more.js?v=3"></script>
+<script src="icons-preview.js?v=5"></script>
+</body>
+</html>
