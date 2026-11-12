@@ -6,6 +6,7 @@ import { initPolicyTables } from './policy.js';
 import { initHomePcTable } from './homePc.js';
 import { initOpsFlagsTable, loadOpsFlags } from './opsFlags.js';
 import { migrateSecurity } from '@plciot/security';
+import { ensureMqttIdColumn } from './mqttIds.js';
 
 function migrate(db) {
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
@@ -78,6 +79,7 @@ function migratePlatform(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id, enabled);
   `);
+  ensureMqttIdColumn(db);   // id MQTT ngẫu nhiên của gateway (topic gw/<mqttId>/<kind>)
   // tenants tạo trước khi có cột gói → ALTER an toàn
   const tcols = db.prepare('PRAGMA table_info(tenants)').all().map((c) => c.name);
   if (!tcols.includes('sub_plan')) db.exec('ALTER TABLE tenants ADD COLUMN sub_plan TEXT');

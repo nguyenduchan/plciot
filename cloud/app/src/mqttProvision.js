@@ -6,9 +6,10 @@ import { execFileSync } from 'child_process';
 import { sealSecret, openSecret } from '@plciot/security';
 import { userScopes } from './roles.js';
 import {
-  LEGACY_NS, PLATFORM_NS, DEFAULT_TENANT, dualNamespace, preferredNamespace,
-  sanitizeId, topicBase, topicBases, mqttPublicEndpoints, contractInfo,
+  GW_NS, DEFAULT_TENANT, isValidMqttId,
+  sanitizeId, topicBase, mqttPublicEndpoints, contractInfo,
 } from './contract.js';
+import { mqttIdFor } from './mqttIds.js';
 
 /** Lưu mqtt_pass dạng AES-GCM (v1.…); plaintext cũ vẫn đọc được và được reseal khi ghi lại. */
 export function sealMqttPass(plain) {
@@ -27,56 +28,37 @@ export function openMqttPass(stored) {
 // Hai file ACL cho hai nhóm listener của Mosquitto (per_listener_settings):
 //   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
 //   acl-monitor  — listener KHÔNG mã hoá: chỉ monitor, không ai (trừ gateway) được ghi cmd
-// Hỗ trợ cả plc/{site}/{device} và iot/{tenant}/{site}/{device}.
+// Topic duy nhất: gw/{mqttId}/{kind} — mqttId là id ngẫu nhiên server cấp cho gateway (devices.mqtt_id).
+const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config'];
+
 function staticHeader(secure) {
   const lines = [
     '# plciot ACL — static roles (do not put per-user lines above MARKER)',
     'user gw',
-    ...deviceWriteAcl(LEGACY_NS),
-    ...(dualNamespace() || preferredNamespace() === PLATFORM_NS ? deviceWriteAcl(PLATFORM_NS) : []),
+    ...deviceWriteAcl(),
     '',
     'user edge',
-    ...deviceWriteAcl(LEGACY_NS),
-    ...(dualNamespace() || preferredNamespace() === PLATFORM_NS ? deviceWriteAcl(PLATFORM_NS) : []),
+    ...deviceWriteAcl(),
     '',
   ];
   if (secure) {
     lines.push('user ctl');
-    lines.push(`topic write ${LEGACY_NS}/+/+/cmd`);
-    if (dualNamespace() || preferredNamespace() === PLATFORM_NS) {
-      lines.push(`topic write ${PLATFORM_NS}/+/+/+/cmd`);
-    }
+    lines.push(`topic write ${GW_NS}/+/cmd`);
     lines.push('');
   }
   lines.push('user ingest');
-  lines.push(...ingestReadAcl(LEGACY_NS));
-  if (dualNamespace() || preferredNamespace() === PLATFORM_NS) {
-    lines.push(...ingestReadAcl(PLATFORM_NS));
-  }
+  lines.push(...DEVICE_WRITE_KINDS.map((k) => `topic read ${GW_NS}/+/${k}`));
   lines.push('');
   lines.push('# MARKER_USER_ACL');
   lines.push('');
   return lines.join('\n');
 }
 
-function deviceWriteAcl(ns) {
-  const kinds = ['telemetry', 'status', 'ack', 'history', 'config'];
-  if (ns === LEGACY_NS) {
-    return [
-      ...kinds.map((k) => `topic write ${LEGACY_NS}/+/+/${k}`),
-      `topic read ${LEGACY_NS}/+/+/cmd`,
-    ];
-  }
+function deviceWriteAcl() {
   return [
-    ...kinds.map((k) => `topic write ${PLATFORM_NS}/+/+/+/${k}`),
-    `topic read ${PLATFORM_NS}/+/+/+/cmd`,
+    ...DEVICE_WRITE_KINDS.map((k) => `topic write ${GW_NS}/+/${k}`),
+    `topic read ${GW_NS}/+/cmd`,
   ];
-}
-
-function ingestReadAcl(ns) {
-  const kinds = ['telemetry', 'status', 'ack', 'history', 'config'];
-  if (ns === LEGACY_NS) return kinds.map((k) => `topic read ${LEGACY_NS}/+/+/${k}`);
-  return kinds.map((k) => `topic read ${PLATFORM_NS}/+/+/+/${k}`);
 }
 
 function configDir() {
@@ -107,18 +89,19 @@ export function mqttUsernameFor(userId) {
 }
 
 /**
- * ACL block: user may only touch their site/device (và tenant nếu dual/iot).
+ * ACL block: user chỉ đọc được topic của các gateway (mqttId) mà họ được xem.
+ * @param {string[]} mqttIds id MQTT của gateway user được xem (devices.mqtt_id)
  * @param {string[]} scopes nhóm topic được đọc (monitor)
  * @param {boolean} secure true = listener mã hoá (cho phép control theo vai trò); false = chỉ monitor
  */
-export function userAclBlock(mqttUser, site, device, role = 'operator', scopes = ['telemetry', 'status', 'ack', 'history'], secure = true, tenant = DEFAULT_TENANT) {
+export function userAclBlock(mqttUser, mqttIds, role = 'operator', scopes = ['telemetry', 'status', 'ack', 'history'], secure = true) {
   const u = sanitizeId(mqttUser);
-  const bases = topicBases({ tenant, site, device, ns: preferredNamespace() });
   const control = secure && role !== 'viewer';
   const directWrite = control && !controlViaServer();
   const readKinds = ['telemetry', 'status', 'ack', 'history', 'config'].filter((k) => scopes.includes(k) || (control && k === 'ack') || (k === 'config' && scopes.includes('telemetry')));
   const lines = [`user ${u}`];
-  for (const base of bases) {
+  for (const id of (mqttIds || []).filter(isValidMqttId)) {
+    const base = topicBase({ mqttId: id });
     for (const k of readKinds) lines.push(`topic read ${base}/${k}`);
     if (directWrite) lines.push(`topic write ${base}/cmd`);
   }
@@ -126,32 +109,16 @@ export function userAclBlock(mqttUser, site, device, role = 'operator', scopes =
   return lines.join('\n');
 }
 
-/** ACL cho thiết bị IoT (chỉ publish telemetry/status/…, đọc cmd). */
-export function deviceAclBlock(mqttUser, { tenant, site, device, topicNs }) {
+/** ACL cho gateway/thiết bị IoT: chỉ ghi vào topic CỦA id mình (telemetry/status/…), đọc cmd của id mình. */
+export function deviceAclBlock(mqttUser, { mqttId }) {
   const u = sanitizeId(mqttUser);
-  const base = topicBase({ ns: topicNs || PLATFORM_NS, tenant, site, device });
+  const base = topicBase({ mqttId });
   const lines = [
     `user ${u}`,
-    `topic write ${base}/telemetry`,
-    `topic write ${base}/status`,
-    `topic write ${base}/ack`,
-    `topic write ${base}/history`,
-    `topic write ${base}/config`,
+    ...DEVICE_WRITE_KINDS.map((k) => `topic write ${base}/${k}`),
     `topic read ${base}/cmd`,
+    '',
   ];
-  // Dual: cho phép legacy song song nếu thiết bị khai báo iot (firmware cũ thử plc/)
-  if (dualNamespace() && (topicNs || PLATFORM_NS) === PLATFORM_NS) {
-    const legacy = topicBase({ ns: LEGACY_NS, site, device });
-    lines.push(
-      `topic write ${legacy}/telemetry`,
-      `topic write ${legacy}/status`,
-      `topic write ${legacy}/ack`,
-      `topic write ${legacy}/history`,
-      `topic write ${legacy}/config`,
-      `topic read ${legacy}/cmd`,
-    );
-  }
-  lines.push('');
   return lines.join('\n');
 }
 
@@ -169,8 +136,8 @@ export function rebuildAclFromUsers(db) {
   let devices = [];
   try {
     devices = db.prepare(`
-      SELECT mqtt_user, tenant_id, site, device, topic_ns FROM devices
-      WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND status = 'active'
+      SELECT mqtt_user, tenant_id, site, device, mqtt_id FROM devices
+      WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND mqtt_id IS NOT NULL AND status = 'active'
     `).all();
   } catch {
     devices = [];
@@ -180,13 +147,12 @@ export function rebuildAclFromUsers(db) {
   for (const u of users) {
     const scopes = userScopes(u);
     const tenant = u.tenant_id || DEFAULT_TENANT;
-    secure += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device, u.role, scopes, true, tenant);
-    plain += userAclBlock(u.mqtt_user, u.notify_site, u.notify_device, u.role, scopes, false, tenant);
+    const id = mqttIdFor(db, tenant, u.notify_site, u.notify_device);
+    secure += userAclBlock(u.mqtt_user, id ? [id] : [], u.role, scopes, true);
+    plain += userAclBlock(u.mqtt_user, id ? [id] : [], u.role, scopes, false);
   }
   for (const d of devices) {
-    const block = deviceAclBlock(d.mqtt_user, {
-      tenant: d.tenant_id, site: d.site, device: d.device, topicNs: d.topic_ns,
-    });
+    const block = deviceAclBlock(d.mqtt_user, { mqttId: d.mqtt_id });
     // Thiết bị được publish trên cả listener (monitor-only vẫn nhận telemetry)
     secure += block;
     plain += block;
@@ -268,12 +234,12 @@ function findFresh(db, id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
 
-export function mqttClientConfig(user) {
+export function mqttClientConfig(db, user) {
   const pass = openMqttPass(user?.mqtt_pass);
   if (!user?.mqtt_user || !pass) return null;
   const tenant = user.tenant_id || DEFAULT_TENANT;
-  const ns = preferredNamespace();
-  const base = topicBase({ ns, tenant, site: user.notify_site, device: user.notify_device });
+  const mqttId = mqttIdFor(db, tenant, user.notify_site, user.notify_device);   // id ngẫu nhiên của gateway user đang xem
+  const base = mqttId ? topicBase({ mqttId }) : null;
   return {
     user: user.mqtt_user,
     pass,
@@ -283,9 +249,9 @@ export function mqttClientConfig(user) {
     site: user.notify_site,
     device: user.notify_device,
     tenant,
-    topicNs: ns,
+    mqttId,
     topicBase: base,
-    topicBases: topicBases({ tenant, site: user.notify_site, device: user.notify_device, ns }),
+    topicBases: base ? [base] : [],
     endpoints: mqttPublicEndpoints(),
     contract: contractInfo(),
   };

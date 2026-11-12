@@ -266,7 +266,7 @@ export function mountAdminOps(app, {
     } else {
       devices = db.prepare(`
         SELECT id, tenant_id AS tenantId, site, device, mqtt_user AS mqttUser,
-               topic_ns AS topicNs, profile, status, created_at AS createdAt, updated_at AS updatedAt
+               mqtt_id AS mqttId, profile, status, created_at AS createdAt, updated_at AS updatedAt
         FROM devices ORDER BY tenant_id, site, device
       `).all();
     }

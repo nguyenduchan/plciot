@@ -29,9 +29,10 @@ const quat = { id: 'quat_hut_02', name: 'Quạt hút', fields: [
   { key: 'control', lbl: 'Điều khiển', widget: 'switch', writable: true },
   { key: 'ro', lbl: 'Chỉ đọc', widget: 'switch' }] };
 
-ok(KINDS.includes('config') && parseTopic('plc/tram1/GW01/config')?.kind === 'config', 'topic kind config');
-ok(userAclBlock('u1', 'tram1', 'GW01').includes('/config'), 'user ACL đọc config');
-ok(deviceAclBlock('g', { tenant: 'default', site: 's', device: 'd', topicNs: 'plc' }).includes('write plc/s/d/config'), 'device ACL ghi config');
+const GID = 'a'.repeat(16);   // id MQTT ngẫu nhiên của gateway
+ok(KINDS.includes('config') && parseTopic(`gw/${GID}/config`)?.kind === 'config', 'topic kind config');
+ok(userAclBlock('u1', [GID], 'operator').includes('/config'), 'user ACL đọc config');
+ok(deviceAclBlock('g', { mqttId: GID }).includes(`write gw/${GID}/config`), 'device ACL ghi config');
 ok(normalizeTelemetryPayload({ gw: 'x', ts: 1, data: { a: { v: 1 } } }).d.a.v === 1, 'telemetry `data` = `d`');
 ok(sanitizeConfig({ devices: 'x' }).error === 'config_devices_missing', 'reject devices sai kiểu');
 ok(sanitizeConfig({ devices: [{ id: 'bad id!', fields: [] }, { id: 'a', fields: [{ key: 'k k' }, { key: 'v', widget: 'zzz' }] }] }).devices[0].fields[0].widget === 'kpi', 'id/key xấu bị bỏ, widget lạ → kpi');

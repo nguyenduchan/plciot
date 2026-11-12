@@ -10,9 +10,19 @@ public static class Contract
     /// <summary>Nhóm topic đi từ thiết bị lên cloud (cmd thì chỉ đi chiều ngược lại).</summary>
     public static bool IsUpstream(string kind) => kind is "telemetry" or "status" or "ack" or "history" or "config";
 
-    public static string Base(string site, string device) => $"plc/{site}/{device}";
+    /// <summary>Tiền tố topic của gateway đã đăng ký cloud.</summary>
+    public const string GwPrefix = "gw";
 
-    /// <summary>"plc/s/d/kind" → kind; null nếu không thuộc base.</summary>
+    /// <summary>Id MQTT do server cấp: 16 ký tự hex ngẫu nhiên (khớp cloud/app/src/contract.js).</summary>
+    public static bool IsMqttId(string? s) => s is { Length: 16 } && s.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+
+    /// <summary>Topic base khi đã đăng ký cloud: gw/&lt;mqttId&gt; — server cấp id ngẫu nhiên, không lộ tên site/device.</summary>
+    public static string Base(string mqttId) => $"{GwPrefix}/{mqttId}";
+
+    /// <summary>Topic base CỤC BỘ (broker LAN) khi chưa đăng ký cloud, nên chưa có id MQTT. Cloud không nhận dạng topic này.</summary>
+    public static string LocalBase(string site, string device) => $"plc/{site}/{device}";
+
+    /// <summary>"gw/id/kind" → kind; null nếu không thuộc base.</summary>
     public static string? KindOf(string topic, string baseTopic)
     {
         if (!topic.StartsWith(baseTopic + "/", StringComparison.Ordinal)) return null;

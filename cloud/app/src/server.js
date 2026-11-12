@@ -105,7 +105,7 @@ function appPayload(user) {
     username: u.username,
     version: u.version,
     files,
-    mqtt: mqttClientConfig(u),
+    mqtt: mqttClientConfig(db, u),
     notifySite: u.notify_site,
     notifyDevice: u.notify_device,
     role: u.role,
@@ -165,7 +165,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     dashboardAdmin: isDashboardAdmin(u),
     ...retentionInfo(u),
     subscription: subscriptionInfo(u),
-    mqtt: mqttClientConfig(u),
+    mqtt: mqttClientConfig(db, u),
   });
 });
 

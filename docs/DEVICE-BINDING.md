@@ -14,7 +14,7 @@ Thiết bị  --MQTTS-->  Mosquitto ACL  --topic-->  Ingest  --DB-->  Lịch s�
 | Lớp | Cơ chế |
 |---|---|
 | **1. Credential** | Mỗi thiết bị/user có MQTT user riêng (`d_acme_plant1_gw01` hoặc `u12`). Sai pass → broker từ chối. |
-| **2. ACL topic** | User đó chỉ `write` đúng `iot/{tenant}/{site}/{device}/telemetry|…` (hoặc `plc/...`). Không giả topic của người khác. |
+| **2. ACL topic** | User đó chỉ `write` đúng `gw/{mqttId}/telemetry|…` của gateway mình (id ngẫu nhiên server cấp). Không giả topic của người khác. |
 | **3. Ingest + gói** | App chỉ lưu khi `resolveSubscriber` tìm thấy device/user và (mặc định) **gói còn hạn**. |
 
 Env:

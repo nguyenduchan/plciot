@@ -6,7 +6,8 @@ write whitelist, answers on <base>/ack. The register logic mirrors plc/xd3_logic
 
   python tools/gw_sim.py --port 1883 --user gw --password ...
 """
-import argparse, json, random, socket, struct, threading, time
+import argparse
+import re, json, random, socket, struct, threading, time
 
 WRITABLE = {3, 4, 6, 7, 9}
 
@@ -77,15 +78,16 @@ def main():
     ap.add_argument('--host', default='127.0.0.1'); ap.add_argument('--port', type=int, default=1883)
     ap.add_argument('--user', default='gw'); ap.add_argument('--password', default='')
     ap.add_argument('--site', default='factory1'); ap.add_argument('--dev', default='plc01')
-    ap.add_argument('--ns', choices=('plc', 'iot'), default='plc',
-                    help='topic namespace: plc/<site>/<dev> (legacy) hoặc iot/<tenant>/<site>/<dev>')
-    ap.add_argument('--tenant', default='default', help='tenant id khi --ns=iot (partner contract)')
+    ap.add_argument('--mqtt-id', default='',
+                    help='id MQTT ngẫu nhiên (16 hex) do server cấp khi enroll → topic gw/<id>/<kind>. Bỏ trống = topic cục bộ plc/<site>/<dev> (broker LAN, không lên cloud)')
     ap.add_argument('--schema', type=int, default=1, help='payload schema version (0 = omit field)')
     ap.add_argument('--hour', type=int, default=3600, help='seconds per history slot (use 60 to see rollovers)')
     ap.add_argument('--hist-every', type=int, default=10, help='seconds between history publishes')
     a = ap.parse_args()
-    if a.ns == 'iot':
-        base = f'iot/{a.tenant}/{a.site}/{a.dev}'
+    if a.mqtt_id:
+        if not re.fullmatch(r'[0-9a-f]{16}', a.mqtt_id):
+            raise SystemExit('--mqtt-id phải là 16 ký tự hex (server cấp)')
+        base = f'gw/{a.mqtt_id}'
     else:
         base = f'plc/{a.site}/{a.dev}'
     print('topic base', base)

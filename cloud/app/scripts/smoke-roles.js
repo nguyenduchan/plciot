@@ -15,6 +15,11 @@ const { hashPassword } = await import('../src/auth.js');
 const A = await import('../src/adminUsers.js');
 
 const db = openDb(tmp);
+// gateway có id MQTT ngẫu nhiên do server cấp; ACL của user dùng topic gw/<id>/…
+const { ensureDefaultTenant, provisionDevice } = await import('../src/tenants.js');
+ensureDefaultTenant(db);
+const IDA = provisionDevice(db, 'default', { site: 'plantA', device: 'plc01' }).device.mqttId;
+const IDB = provisionDevice(db, 'default', { site: 'plantB', device: 'plc01' }).device.mqttId;
 const src = path.join(tmp, 'webapp');
 fs.mkdirSync(src);
 fs.writeFileSync(path.join(src, 'index.html'), 'x');
@@ -57,14 +62,14 @@ const blockOf = (id) => {
 };
 const vb = blockOf(viewer.id);
 const ob = blockOf(oper.id);
-ok(vb.includes('topic read plc/plantA/plc01/telemetry') && !vb.includes('write'), 'viewer: chỉ đọc, không có quyền ghi');
-ok(ob.includes('topic read plc/plantA/plc01/ack') && !ob.includes('write'), 'operator: đọc được ack, KHÔNG ghi cmd trực tiếp (lệnh đi qua app server)');
-ok(acl().includes('user ctl\ntopic write plc/+/+/cmd'),'acl (mã hoá): chỉ user ctl của app server được ghi cmd');
+ok(vb.includes(`topic read gw/${IDA}/telemetry`) && !vb.includes('write'), 'viewer: chỉ đọc, không có quyền ghi');
+ok(ob.includes(`topic read gw/${IDA}/ack`) && !ob.includes('write'), 'operator: đọc được ack, KHÔNG ghi cmd trực tiếp (lệnh đi qua app server)');
+ok(acl().includes('user ctl\ntopic write gw/+/cmd'),'acl (mã hoá): chỉ user ctl của app server được ghi cmd');
 ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').includes('user ctl'), 'acl-monitor: không có user ctl');
 
 // đổi vai trò
 r = A.updateUser(db, admin, viewer.id, { role: 'operator' }, ctx);
-ok(r.ok && blockOf(viewer.id).includes('topic read plc/plantA/plc01/ack'), 'nâng viewer → operator cấp quyền đọc ack (để xác nhận lệnh)');
+ok(r.ok && blockOf(viewer.id).includes(`topic read gw/${IDA}/ack`), 'nâng viewer → operator cấp quyền đọc ack (để xác nhận lệnh)');
 r = A.updateUser(db, admin, viewer.id, { role: 'viewer' }, ctx);
 ok(r.ok && !blockOf(viewer.id).includes('write'), 'hạ → viewer thu hồi quyền cmd');
 
@@ -88,14 +93,14 @@ const blockIn = (file, id) => {
 };
 const op2 = A.createUser(db, admin, { username: 'operator_b', role: 'operator', site: 'plantB' }, ctx).user;
 ok(!blockIn('acl', op2.id).includes('write'), 'kênh mã hoá: operator không ghi cmd trực tiếp');
-ok(!blockIn('acl-monitor', op2.id).includes('write') && blockIn('acl-monitor', op2.id).includes('topic read plc/plantB/plc01/telemetry'),
+ok(!blockIn('acl-monitor', op2.id).includes('write') && blockIn('acl-monitor', op2.id).includes(`topic read gw/${IDB}/telemetry`),
   'kênh không mã hoá: operator chỉ đọc, không ghi cmd');
-ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').split('user gw')[1].split('user ingest')[1].includes('cmd'), 'acl-monitor không có dòng cmd cho user');
+ok(!fs.readFileSync(path.join(tmp, 'cfg', 'acl-monitor'), 'utf8').split('user gw')[1].split('user ingest')[1].match(/topic write .*\/cmd/),'acl-monitor không có dòng GHI cmd cho user (gateway chỉ ĐỌC cmd của chính mình)');
 
 // chế độ tương thích CONTROL_VIA_SERVER=false: operator ghi cmd trực tiếp như trước
 process.env.CONTROL_VIA_SERVER = 'false';
 A.updateUser(db, admin, op2.id, { role: 'operator' }, ctx);
-ok(blockIn('acl', op2.id).includes('topic write plc/plantB/plc01/cmd'), 'CONTROL_VIA_SERVER=false: khôi phục ghi cmd trực tiếp');
+ok(blockIn('acl', op2.id).includes(`topic write gw/${IDB}/cmd`), 'CONTROL_VIA_SERVER=false: khôi phục ghi cmd trực tiếp');
 process.env.CONTROL_VIA_SERVER = 'true';
 A.updateUser(db, admin, op2.id, { role: 'operator' }, ctx);
 

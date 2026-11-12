@@ -223,7 +223,10 @@ public class PackBindingTests
         var raw = await core.ExecuteAsync(Encoding.UTF8.GetBytes("{\"id\":\"r\",\"a\":3,\"v\":1}"), ControlSource.LocalScreen, "t");
         Assert.Contains("use_key_command", raw);                                                       // địa chỉ D trần không xác định PLC
 
-        for (var i = 0; i < 50 && telemetry == null; i++) await Task.Delay(50);
+        // Bản tin đầu có thể được đọc TRƯỚC khi các lệnh ghi chạy xong (chạy song song nhiều test): đợi tới khi giá trị mới lên telemetry
+        static bool Has(byte[]? t) => t != null && JsonDocument.Parse(t).RootElement.TryGetProperty("d", out var d)
+            && d.TryGetProperty("s", out var s) && s.TryGetProperty("temp", out var v) && v.GetDouble() == 12.5;
+        for (var i = 0; i < 100 && !Has(telemetry); i++) await Task.Delay(50);
         Assert.NotNull(telemetry);
         using var doc = JsonDocument.Parse(telemetry!);
         Assert.False(doc.RootElement.TryGetProperty("r", out _));                                      // không còn r[] D0–D39 ngầm định

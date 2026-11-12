@@ -12,9 +12,12 @@ const mqtt = require('mqtt');
 
 const HOST = process.env.MQTT_HOST || '14.225.224.218';
 const MQTTS_PORT = Number(process.env.MQTTS_PORT || 48263);
-const SITE = process.env.SITE || 'factory1';
+const SITE = process.env.SITE || 'factory1';       // chỉ để tra DB phía server theo site/device
 const DEVICE = process.env.DEVICE || 'plc01';
-const BASE = `plc/${SITE}/${DEVICE}`;
+// topic = gw/<mqttId>: id MQTT ngẫu nhiên server cấp cho gateway (devices.mqtt_id)
+const MQTT_ID = process.env.MQTT_ID || '';
+if (!/^[0-9a-f]{16}$/.test(MQTT_ID)) { console.error('Đặt MQTT_ID=<16 hex> của gateway thử'); process.exit(2); }
+const BASE = `gw/${MQTT_ID}`;
 const GW_USER = process.env.MQTT_GW_USER || 'gw';
 const GW_PASS = process.env.MQTT_GW_PASS || 'GwTest@2026Plc';
 const MARK = `e2e-${Date.now()}`;

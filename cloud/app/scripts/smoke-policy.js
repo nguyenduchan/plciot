@@ -18,7 +18,8 @@ process.env.POLICY_AUTO_BLOCK_TTL_SEC = '3600';
 const { openDb, upsertUser } = await import('../src/db.js');
 const { hashPassword } = await import('../src/auth.js');
 const { evaluateIngest, createBlock, listBlocks, recordDeny, hardBlockDevice } = await import('../src/policy.js');
-const { parseTopic } = await import('../src/contract.js');
+// ingest tra id MQTT ngẫu nhiên → thiết bị rồi mới gọi evaluateIngest với parsed đã có site/device/tenant
+const parsedOf = (site, device, mqttId = 'a'.repeat(16)) => ({ ns: 'gw', mqttId, tenant: 'default', site, device, kind: 'telemetry' });
 
 const db = openDb(tmp);
 let fails = 0;
@@ -30,13 +31,13 @@ upsertUser(db, {
 });
 
 const tele = Buffer.from(JSON.stringify({ schema: 1, r: Array.from({ length: 40 }, (_, i) => i) }));
-const topic = 'plc/p/d1/telemetry';
-const parsed = parseTopic(topic);
+const topic = `gw/${'a'.repeat(16)}/telemetry`;
+const parsed = parsedOf('p', 'd1');
 
 let v = evaluateIngest(db, { topic, parsed, payloadBuf: tele });
 ok(v.allow, 'known user telemetry allowed');
 
-v = evaluateIngest(db, { topic: 'plc/no/no/telemetry', parsed: parseTopic('plc/no/no/telemetry'), payloadBuf: tele });
+v = evaluateIngest(db, { topic: `gw/${'b'.repeat(16)}/telemetry`, parsed: parsedOf('no', 'no', 'b'.repeat(16)), payloadBuf: tele });
 ok(!v.allow && v.reason === 'unknown_device', 'unknown denied');
 
 v = evaluateIngest(db, { topic, parsed, payloadBuf: Buffer.from('not-json') });
@@ -54,8 +55,8 @@ upsertUser(db, {
   username: '84901110002', passwordHash: hashPassword('x'), folderPath: 's2', version: '1',
   notifySite: 'p', notifyDevice: 'd2',
 });
-const t2 = 'plc/p/d2/telemetry';
-const p2 = parseTopic(t2);
+const t2 = `gw/${'c'.repeat(16)}/telemetry`;
+const p2 = parsedOf('p', 'd2', 'c'.repeat(16));
 let flooded = false;
 for (let i = 0; i < 8; i++) {
   const r = evaluateIngest(db, { topic: t2, parsed: p2, payloadBuf: tele });

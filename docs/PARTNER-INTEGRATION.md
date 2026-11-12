@@ -7,13 +7,13 @@ Tài liệu hợp đồng để công ty solution / thiết bị IoT MQTTS gắn
 | `cloud/app/src/contract.js` | Topic, schema, endpoints |
 | `tenants.js` + `partnerRoutes.js` | Provision + REST + webhook |
 | `docs/openapi-partner.yaml` | OpenAPI 3 Partner API |
-| `tools/gw_sim.py` | Simulator MQTT (`--ns iot --tenant …`) |
+| `tools/gw_sim.py` | Simulator MQTT (`--mqtt-id <id server cấp>`) |
 
 ## 0. Trạng thái đề xuất kiến trúc
 
 | Đề xuất | Trạng thái |
 |---|---|
-| Hợp đồng MQTT versioned (`plc/` + `iot/{tenant}/`) | Đã có |
+| Hợp đồng MQTT versioned (`gw/{mqttId}/{kind}`, id ngẫu nhiên do server cấp) | Đã có |
 | Multi-tenant + provision API + ACL | Đã có |
 | MQTTS công khai (HAProxy :8883 → listener control) | Đã có (infra) + endpoint trong provision |
 | Control server-authoritative + solution profiles | Đã có |
@@ -43,14 +43,13 @@ Ba đường tích hợp:
 
 ## 2. Topic
 
-| Kiểu | Mẫu |
+| Mẫu | Ý nghĩa |
 |---|---|
-| Legacy (gateway hiện có) | `plc/{site}/{device}/{kind}` |
-| Chuẩn đa tenant | `iot/{tenant}/{site}/{device}/{kind}` |
+| `gw/{mqttId}/{kind}` | `mqttId` = id MQTT ngẫu nhiên (16 hex) server cấp khi provision/enroll, lưu `devices.mqtt_id`, ánh xạ tenant/site/device + cấu hình |
 
 `kind` ∈ `telemetry` | `status` | `history` | `cmd` | `ack`
 
-`MQTT_DUAL_NS=true` (mặc định): ACL + ingest cả hai. Thiết bị partner mới → `iot/…`.
+Chỉ một dạng topic. Kết quả provision/enroll trả `device.mqttId`, `device.topicBase`, `device.topics` — dùng đúng các giá trị đó. Topic cũ `plc/…` và `iot/{tenant}/…` đã bị bỏ (không còn `MQTT_DUAL_NS`).
 
 Contract sống: `GET /api/v1/contract`.
 
@@ -159,12 +158,8 @@ TLS tại HAProxy `:8883` → Mosquitto `1884` (control). Thiết bị Internet 
 ## 9. Mô phỏng
 
 ```bash
-# Legacy
-python tools/gw_sim.py --port 21883 --user gw --password ... --site factory1 --dev plc01
-
-# Partner iot/
-python tools/gw_sim.py --port 21883 --user d_acme_plant1_gw01 --password ... \
-  --ns iot --tenant acme --site plant1 --dev gw01
+# Gateway đã đăng ký: dùng id MQTT server cấp (topic gw/<id>/<kind>)
+python tools/gw_sim.py --port 21883 --user d_acme_plant1_gw01 --password ... --mqtt-id 0123456789abcdef
 ```
 
 Smoke: `cloud/app/scripts/smoke-contract.js`, `smoke-partner-api.js`.

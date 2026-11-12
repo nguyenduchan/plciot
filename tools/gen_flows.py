@@ -37,6 +37,7 @@ ap.add_argument('--eip-slot', default='0'); ap.add_argument('--eip-tag', default
 ap.add_argument('--mc-type', default='Q', help='Mitsubishi PLC series: Q|L|QnA|iQ-R|iQ-L'); ap.add_argument('--mc-frame', default='3E')
 ap.add_argument('--fins-protocol', default='udp', choices=['udp', 'tcp']); ap.add_argument('--fins-area', default='D', help='Omron memory area (D = DM)')
 ap.add_argument('--ads-net-id', default='127.0.0.1.1.1'); ap.add_argument('--ads-port', default='851')
+ap.add_argument('--mqtt-id', default='', help='id MQTT ngẫu nhiên (16 hex) do server cấp → topic gw/<id>/<kind>')
 ap.add_argument('--ads-symbol', default='GVL_PLC.D', help='Beckhoff: ARRAY[0..299] OF INT symbol')
 ap.add_argument('--serve', default='', help='comma list: modbus,opcua  (listen as a server for other HMI/MES; monitor only)')
 ap.add_argument('--modbus-server-port', default='1502'); ap.add_argument('--opcua-server-port', default='4840')
@@ -48,7 +49,7 @@ ap.add_argument('--no-web', action='store_true', help='do not generate the /scad
 ap.add_argument('--out', default=os.path.join(os.path.dirname(__file__), '..', 'edge', 'data'))
 a = ap.parse_args()
 
-BASE = f'plc/{a.site}/{a.dev}'
+BASE = f'gw/{a.mqtt_id}' if a.mqtt_id else f'plc/{a.site}/{a.dev}'   # id MQTT ngẫu nhiên server cấp; bỏ trống = topic cục bộ
 WRITABLE = [3, 4, 6, 7, 9]
 Z = 'tab_plc'
 nodes = []

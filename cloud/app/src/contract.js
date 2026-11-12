@@ -2,9 +2,9 @@
  * Hợp đồng tích hợp MQTT của nền tảng (platform contract).
  * Mọi adapter/thiết bị/partner chỉ cần tuân thủ file này + docs/PARTNER-INTEGRATION.md.
  *
- * Topic:
- *   Legacy (gateway hiện tại):  plc/{site}/{device}/{kind}
- *   Chuẩn đa tenant:            iot/{tenant}/{site}/{device}/{kind}
+ * Topic (MỘT dạng duy nhất):  gw/{mqttId}/{kind}
+ *   mqttId = id NGẪU NHIÊN do server cấp cho mỗi gateway (16 ký tự hex), lưu trong bảng devices
+ *   và ánh xạ tới site/device/cấu hình. Topic không lộ tên site/device.
  *
  * kind ∈ telemetry | status | history | cmd | ack | config (gateway khai báo cấu trúc thiết bị)
  * Telemetry IoT: schema 2 + d.{childId}.{field}
@@ -17,22 +17,19 @@ export const SCHEMA_VERSION = 1;
 /** Schema telemetry IoT (monitor + UI bind). */
 export const TELEMETRY_SCHEMA = 2;
 export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config']);
-export const LEGACY_NS = 'plc';
-export const PLATFORM_NS = 'iot';
+/** Tiền tố topic của mọi gateway. */
+export const GW_NS = 'gw';
 export const DEFAULT_TENANT = 'default';
 
-/** true (mặc định): ACL + ingest hỗ trợ cả plc/ và iot/ trong giai chuyển. */
-export function dualNamespace() {
-  return String(process.env.MQTT_DUAL_NS || 'true').toLowerCase() !== 'false';
+const MQTT_ID_RE = /^[a-f0-9]{16}$/;
+
+/** Id MQTT ngẫu nhiên (64 bit) cấp cho gateway; không suy ra được từ site/device. */
+export function newMqttId() {
+  return crypto.randomBytes(8).toString('hex');
 }
 
-/**
- * Namespace ưu tiên khi cấp credential / publish cmd nếu thiết bị chưa khai báo riêng.
- * Giữ 'plc' để gateway/firmware cũ không cần nạp lại.
- */
-export function preferredNamespace() {
-  const v = String(process.env.MQTT_PREFERRED_NS || LEGACY_NS).toLowerCase();
-  return v === PLATFORM_NS ? PLATFORM_NS : LEGACY_NS;
+export function isValidMqttId(s) {
+  return typeof s === 'string' && MQTT_ID_RE.test(s);
 }
 
 export function sanitizeId(s, max = 48) {
@@ -44,28 +41,17 @@ export function isValidId(s) {
 }
 
 /**
- * @param {{ ns?: string, tenant?: string, site: string, device: string }} p
+ * @param {{ mqttId: string }} p
  * @returns {string} topic base không có /kind
  */
 export function topicBase(p) {
-  const site = sanitizeId(p.site);
-  const device = sanitizeId(p.device);
-  const ns = p.ns || preferredNamespace();
-  if (ns === LEGACY_NS) return `${LEGACY_NS}/${site}/${device}`;
-  const tenant = sanitizeId(p.tenant || DEFAULT_TENANT);
-  return `${PLATFORM_NS}/${tenant}/${site}/${device}`;
+  if (!isValidMqttId(p?.mqttId)) throw new Error('bad_mqtt_id');
+  return `${GW_NS}/${p.mqttId}`;
 }
 
-/** Mọi base topic mà client/ACL cần (legacy + iot khi dual). */
+/** Danh sách base topic mà client/ACL cần (một phần tử; giữ dạng mảng cho client). */
 export function topicBases(p) {
-  const site = sanitizeId(p.site);
-  const device = sanitizeId(p.device);
-  const tenant = sanitizeId(p.tenant || DEFAULT_TENANT);
-  const primary = topicBase({ ...p, site, device, tenant });
-  if (!dualNamespace()) return [primary];
-  const legacy = `${LEGACY_NS}/${site}/${device}`;
-  const modern = `${PLATFORM_NS}/${tenant}/${site}/${device}`;
-  return primary === legacy ? [legacy, modern] : [modern, legacy];
+  return [topicBase(p)];
 }
 
 export function topicOf(p, kind) {
@@ -73,33 +59,11 @@ export function topicOf(p, kind) {
   return `${topicBase(p)}/${kind}`;
 }
 
-/**
- * Phân tích topic → { ns, tenant, site, device, kind } hoặc null.
- * Chấp nhận cả plc/… và iot/….
- */
+/** Phân tích topic → { ns, mqttId, kind } hoặc null. site/device/tenant do nơi gọi tra từ bảng devices. */
 export function parseTopic(topic) {
   const parts = String(topic || '').split('/');
-  if (parts[0] === LEGACY_NS && parts.length >= 4) {
-    const kind = parts[3];
-    if (!KINDS.includes(kind)) return null;
-    return {
-      ns: LEGACY_NS,
-      tenant: DEFAULT_TENANT,
-      site: parts[1],
-      device: parts[2],
-      kind,
-    };
-  }
-  if (parts[0] === PLATFORM_NS && parts.length >= 5) {
-    const kind = parts[4];
-    if (!KINDS.includes(kind)) return null;
-    return {
-      ns: PLATFORM_NS,
-      tenant: parts[1],
-      site: parts[2],
-      device: parts[3],
-      kind,
-    };
+  if (parts[0] === GW_NS && parts.length === 3 && isValidMqttId(parts[1]) && KINDS.includes(parts[2])) {
+    return { ns: GW_NS, mqttId: parts[1], kind: parts[2] };
   }
   return null;
 }
@@ -107,12 +71,8 @@ export function parseTopic(topic) {
 /** Topic filter cho ingest (có thể nhiều). */
 export function ingestTopicFilters() {
   const custom = process.env.MQTT_INGEST_TOPIC;
-  if (custom) return custom.split(',').map((s) => s.trim()).filter(Boolean);
-  const filters = [`${LEGACY_NS}/+/+/+`];
-  if (dualNamespace() || preferredNamespace() === PLATFORM_NS) {
-    filters.push(`${PLATFORM_NS}/+/+/+/+`);
-  }
-  return filters;
+  if (custom) return custom.split(',').map((x) => x.trim()).filter(Boolean);
+  return [`${GW_NS}/+/+`];
 }
 
 /** Gắn schema vào payload lệnh/telemetry (không đè nếu đã có). */
@@ -143,9 +103,7 @@ export function contractInfo() {
     schema: SCHEMA_VERSION,
     telemetrySchema: TELEMETRY_SCHEMA,
     kinds: [...KINDS],
-    namespaces: { legacy: LEGACY_NS, platform: PLATFORM_NS },
-    preferredNs: preferredNamespace(),
-    dualNs: dualNamespace(),
+    topicPattern: `${GW_NS}/{mqttId}/{kind}`,
     defaultTenant: DEFAULT_TENANT,
     endpoints: mqttPublicEndpoints(),
     telemetry: { shape: 'd', example: { schema: TELEMETRY_SCHEMA, d: { childId: { field: 0 } } } },

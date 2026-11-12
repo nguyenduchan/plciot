@@ -40,8 +40,15 @@ Cùng bản đồ D như trên; giao diện PC, web nhiều màn hình và đi�
 
 ## 2. MQTT (Gateway ⇄ Cloud ⇄ App)
 
-Base topic (legacy): `plc/<site>/<device>`  
-Base topic (đa tenant / partner): `iot/<tenant>/<site>/<device>`  
+Base topic: **`gw/<mqttId>`** — một dạng duy nhất.
+
+`mqttId` là **id MQTT ngẫu nhiên (16 ký tự hex, 64 bit) do server cấp** cho mỗi gateway khi đăng ký (enroll/ghép cặp). Server lưu trong bảng `devices.mqtt_id` và **ánh xạ id → tenant/site/device → cấu hình gateway** (`gateway_configs`, `user_devices`). Gateway nhận id trong kết quả enroll (`mqttId`, `topicBase`, `topics`) và **ghép id này vào mọi topic**; topic không lộ tên site/device và không đoán được.
+
+- Cấp một lần, **giữ nguyên khi xoay mật khẩu MQTT**; chỉ đổi khi cấp lại thiết bị (thu hồi + enroll mới).
+- Ingest tra ngược `gw/<id>/<kind>` → thiết bị trong DB; id lạ, đã thu hồi hoặc bị khoá thì **bỏ gói** (không ghi gì).
+- ACL Mosquitto: mỗi gateway chỉ ghi `gw/<id của mình>/{telemetry,status,ack,history,config}` và đọc `gw/<id>/cmd`; user app chỉ đọc topic của gateway được xem; chỉ `ctl` ghi `gw/+/cmd`.
+- **Đã bỏ** hẳn `plc/<site>/<device>` và `iot/<tenant>/<site>/<device>` trên cloud (không còn song song). Gateway/firmware cũ phải **đăng ký lại** để nhận id (firmware: đặt `MQTT_ID` trong `config.h`). Gateway chưa đăng ký chỉ dùng topic cục bộ `plc/<site>/<device>` trên broker LAN của chính nó (cloud không nhận dạng).
+- DB cũ: lần mở đầu tiên server thêm cột `mqtt_id` và cấp id ngẫu nhiên cho thiết bị đã có (`ensureMqttIdColumn`).
 
 Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PARTNER-INTEGRATION.md](PARTNER-INTEGRATION.md). Contract runtime: `GET /api/v1/contract`.
 
@@ -61,7 +68,7 @@ app không thể giả mạo telemetry; chỉ `ctl` (app server) được ghi l�
 PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thực: app tính mốc của giờ hiện tại từ `s` (giây đã trôi qua) và đồng hồ của máy người dùng. Khi PLC mất điện, thời gian tắt máy không được đếm, nên một khung giờ có thể dài hơn 60 phút thực.
 
 ## Lịch sử trên server (app ingest)
-`plciot-app` subscribe `plc/+/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 3 ngày (`HISTORY_DEFAULT_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
+`plciot-app` subscribe `gw/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 3 ngày (`HISTORY_DEFAULT_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
 
 Webapp (đã đăng nhập) khi mở gọi `GET /api/history/telemetry?site=&dev=&since=` (Bearer JWT), ghi vào IndexedDB để xem offline / khi app từng đóng. Live vẫn qua MQTT trực tiếp.
 

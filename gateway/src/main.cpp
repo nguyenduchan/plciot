@@ -13,7 +13,7 @@ static esp_mqtt_client_handle_t mc;
 static volatile bool mqttUp = false, ethUp = false;
 static QueueHandle_t cmdQ;                       // cmd payloads, handled in loop() (owns the RS485 port)
 struct Cmd { char s[160]; };
-static String base = String("plc/") + SITE + "/" + DEVICE;
+static String base = String("gw/") + MQTT_ID;   // topic gw/<id>: id MQTT ngẫu nhiên do server cấp (config.h)
 static String tTele = base + "/telemetry", tStatus = base + "/status",
               tCmd = base + "/cmd", tAck = base + "/ack", tHist = base + "/history";
 static uint16_t regs[REG_COUNT];

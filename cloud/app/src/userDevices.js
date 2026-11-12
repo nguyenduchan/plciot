@@ -12,6 +12,8 @@ import {
 } from './uiContract.js';
 import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
+import { mqttIdFor } from './mqttIds.js';
+import { DEFAULT_TENANT } from './contract.js';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
 import { deviceOf, migrateGatewayConfigs } from './gatewayConfig.js';
@@ -191,7 +193,7 @@ export function previewFromQr(db, { qr, ip, adminId }) {
       ...(c.type === 'dynamic' ? { fields: dyn?.fields || [], icon: dyn?.icon, color: dyn?.color } : {}),
     };
   });
-  const dash = resolveDashboard({ user: { notify_site: site, notify_device: gatewayDevice }, devices: rows, mode: 'simple' });
+  const dash = resolveDashboard({ user: { notify_site: site, notify_device: gatewayDevice }, devices: rows, mode: 'simple', mqttId: mqttIdFor(db, DEFAULT_TENANT, site, gatewayDevice) });
   audit(db, 'admin_qr_preview', { userId: adminId ?? null, ip, detail: `${site}/${gatewayDevice}` });
   return {
     ok: true, review: true, site, device: gatewayDevice, label: hw.label || null, profile: hw.profile || null,
@@ -241,7 +243,7 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
   return {
     ok: true,
     ...result,
-    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple' }),
+    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device) }),
   };
 }
 
@@ -264,6 +266,7 @@ export function getDashboardFor(db, user, mode) {
     user,
     devices: listRows(db, user.id),
     mode: mode === 'pro' ? 'pro' : 'simple',
+    mqttId: mqttIdFor(db, user.tenant_id, user.notify_site, user.notify_device),
   });
 }
 

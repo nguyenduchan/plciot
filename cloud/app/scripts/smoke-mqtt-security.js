@@ -2,8 +2,8 @@
 /**
  * Live test against a running broker: cô lập topic giữa 2 user + từ chối truy cập bất hợp lệ.
  *   BROKER=mqtts://plc-mqtt.example.net:8883 \
- *   A_USER=u1 A_PASS=... A_SITE=s1 A_DEV=plc01 \
- *   B_USER=u2 B_PASS=... B_SITE=s2 B_DEV=plc01 \
+ *   A_USER=u1 A_PASS=... A_ID=<mqttId gateway A> \
+ *   B_USER=u2 B_PASS=... B_ID=<mqttId gateway B> \
  *   node scripts/smoke-mqtt-security.js
  * (BROKER mặc định mqtt://127.0.0.1:1883; đặt INSECURE_TLS=1 cho chứng chỉ tự ký.)
  */
@@ -12,9 +12,10 @@ import mqtt from 'mqtt';
 const E = process.env;
 const url = E.BROKER || 'mqtt://127.0.0.1:1883';
 const rej = E.INSECURE_TLS === '1' ? { rejectUnauthorized: false } : {};
-const A = { username: E.A_USER, password: E.A_PASS, site: E.A_SITE, dev: E.A_DEV || 'plc01' };
-const B = { username: E.B_USER, password: E.B_PASS, site: E.B_SITE, dev: E.B_DEV || 'plc01' };
-if (!A.username || !B.username) { console.error('Thiếu A_USER/B_USER...'); process.exit(2); }
+// topic = gw/<mqttId>: id MQTT ngẫu nhiên server cấp cho gateway (devices.mqtt_id)
+const A = { username: E.A_USER, password: E.A_PASS, id: E.A_ID };
+const B = { username: E.B_USER, password: E.B_PASS, id: E.B_ID };
+if (!A.username || !B.username || !A.id || !B.id) { console.error('Thiếu A_USER/B_USER...'); process.exit(2); }
 
 let fails = 0;
 const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
@@ -34,7 +35,7 @@ function connect(u) {
 }
 // 128 (0x80) = SUBACK từ chối
 const sub = (c, t) => new Promise((res) => c.subscribe(t, (err, g) => res(err ? 128 : g?.[0]?.qos)));
-const base = (u) => `plc/${u.site}/${u.dev}`;
+const base = (u) => `gw/${u.id}`;
 
 // 1. Xác thực
 ok(!(await connect({ username: A.username, password: 'sai-mat-khau' })), 'sai mật khẩu bị từ chối');
@@ -50,7 +51,7 @@ for (const k of ['telemetry', 'status', 'ack', 'history']) {
   ok((await sub(b, `${base(A)}/${k}`)) === 128, `B không đọc được ${base(A)}/${k}`);
   ok((await sub(a, `${base(A)}/${k}`)) !== 128, `A đọc được topic của mình: ${k}`);
 }
-for (const wild of ['#', 'plc/#', 'plc/+/+/telemetry', `plc/${A.site}/#`, '$SYS/#', `plc/${A.site}/+/+`]) {
+for (const wild of ['#', 'gw/#', 'gw/+/telemetry', `gw/${A.id}/#`, '$SYS/#', 'gw/+/+']) {
   ok((await sub(b, wild)) === 128, `B không subscribe được wildcard ${wild}`);
 }
 

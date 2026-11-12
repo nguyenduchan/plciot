@@ -4,9 +4,10 @@
  */
 import crypto from 'crypto';
 import {
-  DEFAULT_TENANT, PLATFORM_NS, LEGACY_NS,
-  isValidId, sanitizeId, hashApiKey, randomApiKey, topicBase, topicBases, mqttPublicEndpoints, withSchema,
+  DEFAULT_TENANT, GW_NS, KINDS,
+  isValidId, sanitizeId, hashApiKey, randomApiKey, topicBase, mqttPublicEndpoints, withSchema,
 } from './contract.js';
+import { uniqueMqttId, clearMqttIdCache, ensureMqttIdColumn } from './mqttIds.js';
 import { randomMqttPassword, setMosquittoPassword, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
 import { PROFILES, listProfiles } from './profiles.js';
 
@@ -95,11 +96,10 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
   if (!t) return { error: 'tenant_not_found', status: 404 };
 
   if (!isValidId(body.site) || !isValidId(body.device)) return { error: 'invalid_site_or_device', status: 400 };
+  ensureMqttIdColumn(db);   // DB cũ: thêm cột mqtt_id + cấp id cho thiết bị đã có
   const site = sanitizeId(body.site);
   const device = sanitizeId(body.device);
 
-  // Mặc định thiết bị partner mới → iot/; chỉ dùng plc/ khi gọi rõ ns=plc
-  const topicNs = body.ns === LEGACY_NS ? LEGACY_NS : PLATFORM_NS;
   const profile = body.profile && PROFILES[body.profile] ? body.profile : (t.profile || 'conveyor-v1');
   if (body.profile && !PROFILES[body.profile]) return { error: 'unknown_profile', status: 400 };
 
@@ -111,25 +111,28 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
   let mqttPass = row?.mqtt_pass;
   if (rotate || !mqttPass) mqttPass = randomMqttPassword();
 
+  // Id MQTT ngẫu nhiên: cấp một lần, giữ nguyên khi xoay mật khẩu (đổi id = đổi topic, chỉ làm khi cấp lại thiết bị)
+  const mqttId = row?.mqtt_id || uniqueMqttId(db);
   if (row) {
     db.prepare(`
-      UPDATE devices SET mqtt_user = ?, mqtt_pass = ?, topic_ns = ?, profile = ?, status = 'active', updated_at = ?
+      UPDATE devices SET mqtt_user = ?, mqtt_pass = ?, mqtt_id = ?, topic_ns = ?, profile = ?, status = 'active', updated_at = ?
       WHERE id = ?
-    `).run(mqttUser, mqttPass, topicNs, profile, Date.now(), row.id);
+    `).run(mqttUser, mqttPass, mqttId, GW_NS, profile, Date.now(), row.id);
   } else {
     const info = db.prepare(`
-      INSERT INTO devices (tenant_id, site, device, mqtt_user, mqtt_pass, topic_ns, profile, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    `).run(t.id, site, device, mqttUser, mqttPass, topicNs, profile, Date.now(), Date.now());
+      INSERT INTO devices (tenant_id, site, device, mqtt_user, mqtt_pass, mqtt_id, topic_ns, profile, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `).run(t.id, site, device, mqttUser, mqttPass, mqttId, GW_NS, profile, Date.now(), Date.now());
     row = { id: info.lastInsertRowid };
   }
+  clearMqttIdCache();
 
   const pw = setMosquittoPassword(mqttUser, mqttPass);
   rebuildAclFromUsers(db);
   const reload = reloadMosquitto();
 
   const fresh = db.prepare('SELECT * FROM devices WHERE id = ?').get(row.id);
-  const base = topicBase({ ns: fresh.topic_ns, tenant: t.id, site, device });
+  const base = topicBase({ mqttId: fresh.mqtt_id });
   const endpoints = mqttPublicEndpoints();
 
   return {
@@ -139,11 +142,10 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
       tenantId: t.id,
       site,
       device,
-      topicNs: fresh.topic_ns,
+      mqttId: fresh.mqtt_id,
       profile: fresh.profile,
       topicBase: base,
-      topics: Object.fromEntries(['telemetry', 'status', 'history', 'cmd', 'ack'].map((k) => [k, `${base}/${k}`])),
-      dualBases: topicBases({ tenant: t.id, site, device, ns: fresh.topic_ns }),
+      topics: Object.fromEntries(KINDS.map((k) => [k, `${base}/${k}`])),
     },
     mqtt: {
       username: mqttUser,
@@ -164,7 +166,7 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
 export function listDevices(db, tenantId) {
   return db.prepare(`
     SELECT id, tenant_id AS tenantId, site, device, mqtt_user AS mqttUser,
-           topic_ns AS topicNs, profile, status, created_at AS createdAt, updated_at AS updatedAt
+           mqtt_id AS mqttId, profile, status, created_at AS createdAt, updated_at AS updatedAt
     FROM devices WHERE tenant_id = ? ORDER BY site, device
   `).all(tenantId);
 }
@@ -193,6 +195,7 @@ export function revokeDevice(db, tenantId, site, device) {
   const newPass = randomMqttPassword();
   db.prepare(`UPDATE devices SET status = 'revoked', mqtt_pass = ?, updated_at = ? WHERE id = ?`)
     .run(newPass, Date.now(), row.id);
+  clearMqttIdCache();   // ingest không nhận thêm gói của id đã thu hồi
   setMosquittoPassword(row.mqtt_user, newPass);
   rebuildAclFromUsers(db);
   reloadMosquitto();

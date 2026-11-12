@@ -308,6 +308,10 @@ public sealed partial class MainForm : Form, IGatewayApp
             var kit = await new GatewayEnrollClient(http).EnrollAsync(qr.Trim());
             if (kit == null) throw new InvalidOperationException("server không trả dữ liệu");
             _cfg.Site = kit.Site ?? _cfg.Site; _cfg.Device = kit.Device ?? _cfg.Device;
+            // id MQTT ngẫu nhiên do server cấp: gateway ghép vào mọi topic (gw/<id>/<kind>); không có id thì không nối cloud được
+            var mqttId = kit.MqttId ?? (kit.TopicBase is { } tb && tb.StartsWith(Contract.GwPrefix + "/") ? tb[(Contract.GwPrefix.Length + 1)..] : null);
+            if (!Contract.IsMqttId(mqttId)) throw new InvalidOperationException("server không cấp id MQTT hợp lệ");
+            _cfg.MqttId = mqttId!;
             if (kit.Mqtt != null)
             {
                 _cfg.CloudUser = kit.Mqtt.Username ?? _cfg.CloudUser;

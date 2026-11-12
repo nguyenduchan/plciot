@@ -7,7 +7,7 @@
  * Thiết bị công nghiệp/dân dụng: MQTTS + username/password + topic cố định
  * (không cần SDK riêng) — xem docs/DEVICE-BINDING.md.
  */
-import { DEFAULT_TENANT, PLATFORM_NS } from './contract.js';
+import { DEFAULT_TENANT } from './contract.js';
 import { planActive } from './entitlements.js';
 import { findDevice } from './tenants.js';
 
@@ -23,12 +23,12 @@ export function requireActiveSubscription() {
  * @returns {{ ok: true, source: 'device'|'user', tenantId: string, subscriber?: object }
  *          |{ ok: false, reason: string }}
  */
-export function resolveSubscriber(db, { tenant, site, device, ns }) {
+export function resolveSubscriber(db, { tenant, site, device }) {
   const hint = tenant || DEFAULT_TENANT;
 
   // Ưu tiên bảng devices (partner / IoT MQTTS)
   let row = null;
-  if (ns === PLATFORM_NS || hint !== DEFAULT_TENANT) {
+  if (hint !== DEFAULT_TENANT) {
     row = findDevice(db, hint, site, device);
   }
   if (!row) {
@@ -57,7 +57,7 @@ export function resolveSubscriber(db, { tenant, site, device, ns }) {
       tenantId: row.tenant_id,
       deviceId: row.id,
       mqttUser: row.mqtt_user,
-      topicNs: row.topic_ns,
+      mqttId: row.mqtt_id,
       profile: row.profile,
     };
   }

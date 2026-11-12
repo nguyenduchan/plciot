@@ -96,7 +96,7 @@ ok(got.status === 'received' && got.config[0].icon === 'tank' && got.config[0].f
 // --- admin duyệt → QR
 ok(P.approvePairing(db, { id: made.id, site: 'bad site!', device: 'gw01' }).error === 'invalid_site_or_device', 'site/device sai bị từ chối');
 const ap = P.approvePairing(db, { id: made.id, site: 'tram_a', device: 'gw01', label: 'Trạm A' });
-ok(ap.ok && ap.qr && ap.gateway?.topicBase?.includes('tram_a/gw01'), 'duyệt → có QR + topic');
+ok(ap.ok && ap.qr && /^gw\/[a-f0-9]{16}$/.test(ap.gateway?.topicBase || ''), 'duyệt → có QR + topic gw/<id ngẫu nhiên>');
 ok(ap.gateway.pack?.[0]?.id === 'bon1' && ap.gateway.pack[0].fields.join() === 'level,q_run', 'pack của gateway = khoá MQTT trong bản khai');
 ok(P.approvePairing(db, { id: made.id, site: 'tram_a', device: 'gw02' }).error === 'pairing_not_received', 'duyệt lần hai bị chặn');
 ok(P.submitPairing(db, { code: made.code, config: cfg }).error === 'invalid_pairing', 'mã đã duyệt không dùng lại được');

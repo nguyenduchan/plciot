@@ -38,11 +38,11 @@ const hms = (s) => `${Math.floor(s / 3600)} giờ ${String(Math.floor(s / 60) % 
 class MqttLink {
   constructor(h) {
     this.h = h;
-    // topicBase từ server (mqtt.topicBase); fallback plc/<site>/<dev> cho bản cũ / demo
+    // topic do server cấp: gw/<mqttId> (id ngẫu nhiên của gateway). Không còn đoán topic từ tên site/device.
     this.bases = (Array.isArray(cfg.topicBases) && cfg.topicBases.length)
       ? cfg.topicBases
-      : [cfg.topicBase || `plc/${cfg.site}/${cfg.dev}`];
-    this.base = this.bases[0];
+      : (cfg.topicBase ? [cfg.topicBase] : []);
+    this.base = this.bases[0] || '';
     this.c = new MqttLite({ url: cfg.url, user: cfg.user, pass: cfg.pass })
       .on('connect', () => { h.status('connecting'); })
       .on('close', () => h.status('offline'))
@@ -56,6 +56,7 @@ class MqttLink {
   stop() { this.c.close(); }
   msg(t, p) {
     const base = this.bases.find((b) => t === b || t.startsWith(b + '/')) || this.base;
+    if (!base) return;
     const k = t.slice(base.length + 1);
     try {
       if (k === 'status') this.h.status(p);
@@ -69,7 +70,7 @@ class MqttLink {
       else if (k === 'config') window.DevicesUi?.onConfig?.(JSON.parse(p));   // gateway thêm/bớt thiết bị → dựng lại dashboard
     } catch {}
   }
-  send(cmd) { return this.c.publish(`${this.base}/cmd`, JSON.stringify(cmd)); }
+  send(cmd) { return this.base ? this.c.publish(`${this.base}/cmd`, JSON.stringify(cmd)) : false; }
 }
 
 /* Offline simulator with the same logic as plc/xd3_logic.st */

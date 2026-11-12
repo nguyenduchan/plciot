@@ -66,6 +66,8 @@ public sealed class GatewayProvisionKit
     public string? Profile { get; set; }
     public int Schema { get; set; }
     public int ConfigRev { get; set; }
+    /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
+    public string? MqttId { get; set; }
     public string? TopicBase { get; set; }
     public Dictionary<string, string>? Topics { get; set; }
     /// <summary>Chỉ id + fields để đóng gói — không dùng type để vẽ.</summary>

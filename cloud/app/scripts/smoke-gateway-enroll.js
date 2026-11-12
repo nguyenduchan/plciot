@@ -77,7 +77,7 @@ const hw = provisionHardwareDevice(db, {
 ok(hw.ok && hw.qr, 'provision hardware + qr');
 
 const bundled = attachGatewayBundle(db, hw, { rotateMqtt: true, includePassword: false });
-ok(bundled.gateway?.topicBase?.includes('demo_home/gw01'), 'admin bundle topicBase');
+ok(/^gw\/[a-f0-9]{16}$/.test(bundled.gateway?.topicBase || '') && !bundled.gateway.topicBase.includes('gw01') && bundled.gateway.mqttId === bundled.gateway.topicBase.slice(3), 'admin bundle topicBase = gw/<id ngẫu nhiên>, không lộ site/device');
 ok(bundled.gateway?.pack?.length === 2, 'admin bundle pack');
 ok(!bundled.gateway?.mqtt?.password, 'admin bundle ẩn password');
 

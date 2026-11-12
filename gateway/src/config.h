@@ -6,6 +6,8 @@
 #define MQTT_URI    "wss://plc-mqtt.dieukhientudong.net:443/mqtt"
 #define SITE        "factory1"
 #define DEVICE      "plc01"
+// Id MQTT ngẫu nhiên (16 hex) do server cấp khi đăng ký gateway (admin: Hiện MQTT). Topic: gw/<MQTT_ID>/<kind>.
+#define MQTT_ID     "0000000000000000"
 #define MQTT_USER   "gw"
 #define MQTT_PASS   "change-me"
 

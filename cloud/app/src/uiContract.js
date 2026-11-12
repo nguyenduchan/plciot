@@ -238,10 +238,11 @@ export function deviceToUiNode(row) {
  * @param {Array} opts.devices — rows from user_devices
  * @param {'simple'|'pro'} [opts.mode]
  */
-export function resolveDashboard({ user, devices, mode = 'simple' } = {}) {
+export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null } = {}) {
   const m = mode === 'pro' ? 'pro' : 'simple';
   const site = user?.notify_site || '';
   const gateway = user?.notify_device || '';
+  const base = mqttId && /^[a-f0-9]{16}$/.test(mqttId) ? `gw/${mqttId}` : null;   // id MQTT ngẫu nhiên của gateway
   const nodes = (devices || []).map(deviceToUiNode);
   const order = nodes.map((d) => d.id);
   return {
@@ -251,14 +252,14 @@ export function resolveDashboard({ user, devices, mode = 'simple' } = {}) {
     site,
     gateway,
     telemetry: {
-      topicBase: site && gateway ? `plc/${site}/${gateway}` : null,
+      topicBase: base,
       legacyRegs: nodes.some((d) => d.type === 'conveyor'),
       devicesPath: 'd',
       schema: 2,
     },
     control: {
-      topicCmd: site && gateway ? `plc/${site}/${gateway}/cmd` : null,
-      topicAck: site && gateway ? `plc/${site}/${gateway}/ack` : null,
+      topicCmd: base ? `${base}/cmd` : null,
+      topicAck: base ? `${base}/ack` : null,
     },
     devices: nodes,
     layout: {

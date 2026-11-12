@@ -41,15 +41,16 @@ const resolved = resolveTelemetryMessage(db, {
 });
 ok(resolved.ok && resolved.canonical.d.pump1.run === 1, 'resolve schema2');
 
-const topic = 'plc/demo/gw01/telemetry';
+const topic = `gw/${'d'.repeat(16)}/telemetry`;
+const parsed = { ns: 'gw', mqttId: 'd'.repeat(16), tenant: 'default', site: 'demo', device: 'gw01', kind: 'telemetry' };
 const v = evaluateIngest(db, {
-  topic, parsed: parseTopic(topic),
+  topic, parsed,
   payloadBuf: Buffer.from(JSON.stringify({ schema: 2, d: { env1: { t: 9 } } })),
 });
 ok(v.allow && v.resolved?.canonical?.d?.env1?.t === 9, 'policy allow schema2');
 
 const bad = evaluateIngest(db, {
-  topic, parsed: parseTopic(topic),
+  topic, parsed,
   payloadBuf: Buffer.from(JSON.stringify({ temp: 1 })),
 });
 ok(!bad.allow && bad.reason === 'policy_telemetry_shape', 'policy reject unmanaged flat');
