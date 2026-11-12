@@ -491,21 +491,6 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .ic [class^="ic-"], .ic [class*=" ic-"] { transform-box: fill-box; transform-origin: center; }
 .ic-flow { stroke-dasharray: 3.5 4.5; }
 .ic-wave { }
-[data-ic-motion="on"] .ic.on .ic-rot { animation: ic-spin var(--spin, 2.4s) linear infinite; }
-[data-ic-motion="on"] .ic.on .ic-flow { animation: ic-dash .7s linear infinite; }
-[data-ic-motion="on"] .ic.on .ic-belt { animation: ic-belt 1.6s linear infinite; }
-[data-ic-motion="on"] .ic.on .ic-needle { animation: ic-needle 2.2s ease-in-out infinite alternate; transform-origin: 24px 34px; transform-box: view-box; }
-[data-ic-motion="on"] .ic.on .ic-pulse { animation: ic-pulse 1.4s ease-in-out infinite; }
-[data-ic-motion="on"] .ic.on .ic-sw { animation: ic-sw .6s ease forwards; transform-origin: 21px 30px; transform-box: view-box; }
-[data-ic-motion="on"] .ic .ic-water .ic-wave { animation: ic-wave 3.2s linear infinite; }
-[data-ic-motion="on"] .ic:not(.on) .ic-water .ic-wave { animation-duration: 7s; }
-@keyframes ic-spin { to { transform: rotate(360deg); } }
-@keyframes ic-dash { to { stroke-dashoffset: -16; } }
-@keyframes ic-belt { from { transform: translateX(-6px); } to { transform: translateX(6px); } }
-@keyframes ic-needle { from { transform: rotate(-22deg); } to { transform: rotate(18deg); } }
-@keyframes ic-pulse { 50% { opacity: .35; } }
-@keyframes ic-sw { to { transform: rotate(-28deg); } }
-@keyframes ic-wave { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
 @media (prefers-reduced-motion: reduce) { .ic *, .ic { animation: none !important; } }
 
 /* thanh trượt có nút gửi lệnh */
@@ -559,8 +544,6 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dev-card header { align-items: center; }
 
 /* ===== mặc định KHÔNG chuyển động (đỡ nóng máy, đỡ lag); bật ở Cài đặt → "Hiệu ứng chuyển động" ===== */
-html:not([data-ic-motion="on"]) .dev-widgets *, html:not([data-ic-motion="on"]) .dev-card { transition: none !important; }
-html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { animation: none !important; }
 /* đèn trạng thái tĩnh: xanh = đang chạy, xám = dừng / chưa có số liệu (thay cho hiệu ứng quay) */
 .dev-ic { position: relative; }
 .dev-card .dev-ic::after { content: ""; position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px var(--card, #161b22); }
@@ -590,8 +573,6 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 .ic-swatch i { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; box-shadow: 0 0 0 1px var(--line, #2c3744); background: var(--sw); }
 .ic-swatch.on i { border-color: var(--text, #fff); }
 .ic-swatch.auto i { background: conic-gradient(#2f8cff 0 14%, #22c55e 0 29%, #fb923c 0 43%, #eab308 0 57%, #14b8a6 0 71%, #ef4444 0 86%, #a78bfa 0); }
-.ic-motion { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
-.ic-motion small { opacity: .7; }
 
 /* icon 3D đổ khối: ô nền tối để hình kim loại nổi bật, tô nhẹ màu nhấn */
 [data-ic-style="3d"] .dev-ic:has(.ic3) { background: radial-gradient(circle at 30% 22%, color-mix(in srgb, var(--acc, #3b82f6) 62%, #4a586b), color-mix(in srgb, var(--acc, #3b82f6) 28%, #1a2029) 80%); width: 52px; height: 52px; font-size: 40px; border-radius: 16px; }
@@ -695,11 +676,8 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 /* chuyển động bật: số liệu đổi thì cung / thanh trượt mượt (tắt thì transition bị vô hiệu ở trên) */
 .rg-arc { transition: stroke-dasharray .6s ease, stroke .3s; }
 .rg-knob { transition: cx .6s ease, cy .6s ease; }
-.ic-motion input { width: 22px; height: 22px; }
 
 /* cầu trục: móc đung đưa (chỉ khi bật chuyển động) */
-[data-ic-motion="on"] .ic.on .ic-sway { animation: ic-sway 2s ease-in-out infinite alternate; transform-origin: 24px 17px; transform-box: view-box; }
-@keyframes ic-sway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
 
 /* ===== bộ icon RIÊNG theo từng phong cách (3D và SCADA có bộ hình riêng; các kiểu dưới đây biến đổi nét vẽ cho hợp phong cách) ===== */
 /* Grafana: nét mảnh, sắc cạnh, đơn sắc kiểu icon kỹ thuật */
@@ -715,20 +693,6 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 
 /* ===== chuyển động cho MỌI bộ icon khi bật "Hiệu ứng chuyển động" ===== */
 /* icon không có bộ phận rời (Tabler/Material/Carbon, P&ID SCADA): chuyển động cả icon theo loại */
-.ic[data-anim] { transform-origin: 50% 50%; }
-[data-ic-motion="on"] .ic.on[data-anim="spin"] { animation: ic-spin var(--spin, 2.4s) linear infinite; }
-[data-ic-motion="on"] .ic.on[data-anim="bob"] { animation: ic-bob 1.6s ease-in-out infinite; }
-[data-ic-motion="on"] .ic.on[data-anim="sway"] { animation: ic-sway 2s ease-in-out infinite alternate; }
-[data-ic-motion="on"] .ic.on[data-anim="pulse"] { animation: ic-breathe 1.8s ease-in-out infinite; }
-@keyframes ic-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes ic-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.93); } }
 /* sóng nước của icon 3D (bồn…) không nằm trong .ic-water nên cần luật riêng; nhịp nhấp nháy sâu hơn để nhìn rõ */
-[data-ic-motion="on"] .ic.on .ic-wave { animation: ic-wave 2.4s ease-in-out infinite alternate; }
-@keyframes ic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
-@keyframes ic-wave { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
 
 /* nước dâng/hạ trong bồn, thuỷ ngân nhiệt kế lên/xuống (icon 3D) */
-[data-ic-motion="on"] .ic.on .ic-liq { animation: ic-liq 2.4s ease-in-out infinite alternate; }
-[data-ic-motion="on"] .ic.on .ic-merc { animation: ic-merc 2.2s ease-in-out infinite alternate; transform-origin: 24px 34px; transform-box: view-box; }
-@keyframes ic-liq { from { transform: translateY(-3px); } to { transform: translateY(4px); } }
-@keyframes ic-merc { from { transform: scaleY(.45); } to { transform: scaleY(1); } }

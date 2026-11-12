@@ -146,25 +146,19 @@
     [/(alarm|alm|fault|err|trip|canh_bao)/i, 'alarm'], [/(door|cua|gate)/i, 'door'], [/(batt|pin|soc|ups)/i, 'battery'], [/(heat|gia_nhiet|set_?t)/i, 'heater'],
   ];
 
-  // kiểu chuyển động cả icon (spin = quay, bob = trôi nhẹ, sway = đung đưa, pulse = thở)
-  const ANIM_KIND = { fan: 'spin', gear: 'spin', mixer: 'spin', chiller: 'spin', crane: 'sway', pump: 'bob', valve: 'bob', flow: 'bob', filter: 'bob', silo: 'bob', tank: 'bob', conveyor: 'bob', compressor: 'bob' };
-  const NO_PARTS = new Set(['di', 'do', 'power', 'clock']);
   function device(name, opt = {}) {
     const id = Array.isArray(name) ? pick(name) : pick(name);
     // bộ hình "P&ID chuẩn" (icons-pid.js, mặc định) hoặc "Minh hoạ" — chọn riêng, không phụ thuộc kiểu nền 3D/hiện đại/SCADA
     // hình vẽ theo kiểu nền: SCADA = ký hiệu P&ID đơn sắc; Đẹp (3D) = hình thiết bị đổ khối (icons-3d.js); Hiện đại = nét mảnh
     const st = document.documentElement.dataset.icStyle;
     // Grafana / ThingsBoard / Material / Carbon: mỗi phong cách dùng bộ icon thật của hệ đó (icons-sets.js, giấy phép mở)
-    // hiệu ứng cho bộ icon KHÔNG có bộ phận rời (Tabler/Material/Carbon/P&ID): chuyển động cả icon theo loại thiết bị
-    const anim = ANIM_KIND[id] || 'pulse';
     const set = window.PlcIconSets?.[st]?.[id];
     if (set) {
       const attrs = st === 'grafana' ? 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"' : 'fill="currentColor"';
-      return `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}class="ic icx ${opt.on ? 'on ' : ''}" data-anim="${anim}" viewBox="${set[0]}" ${attrs} aria-hidden="true">${set[1]}</svg>`;
+      return `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}class="ic icx ${opt.on ? 'on ' : ''}" viewBox="${set[0]}" ${attrs} aria-hidden="true">${set[1]}</svg>`;
     }
     const alt = st === 'scada' ? window.PlcIconsPID?.[id] : st === '3d' ? window.PlcIcons3D?.[id] : null;
     let html = alt ? alt() : DEVICE[id]();
-    if ((st === 'scada' && alt) || (!alt && NO_PARTS.has(id))) html = html.replace('<svg ', `<svg data-anim="${anim}" `);   // icon nét mảnh không có bộ phận rời → chuyển động cả icon
     return html.replace('class="ic ', `class="ic ${opt.on ? 'on ' : ''}`).replace('<svg ', `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}`);
   }
   /** Icon nhỏ cho một giá trị theo khoá field (level → giọt nước, temp → nhiệt kế…). */
@@ -231,14 +225,13 @@
   const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } };
   const getColor = () => { const v = lsGet('icColor', 'auto'); return COLORS.some((c) => c.id === v) ? v : 'auto'; };
-  const getMotion = () => lsGet('icMotion', 'off') === 'on';
+  
   /** Nhóm màu của một icon (fluid/motion/thermal/electric/sensor/safety/ctrl). */
   const category = (id) => CAT[(I.catalog.find((c) => c.id === id) || {}).group] || 'ctrl';
-  function apply() { document.documentElement.dataset.icColor = getColor(); document.documentElement.dataset.icMotion = getMotion() ? 'on' : 'off'; }
+  function apply() { document.documentElement.dataset.icColor = getColor(); }
   function setColor(id) { if (COLORS.some((c) => c.id === id)) { lsSet('icColor', id); apply(); render(); document.dispatchEvent(new Event('plc-icstyle')); } }
   const getShape = () => (lsGet('icShape', 'pid') === 'illust' ? 'illust' : 'pid');
   function setShape(s) { lsSet('icShape', s === 'illust' ? 'illust' : 'pid'); render(); document.dispatchEvent(new Event('plc-icstyle')); }
-  function setMotion(on) { lsSet('icMotion', on ? 'on' : 'off'); apply(); render(); document.dispatchEvent(new Event('plc-icstyle')); }
   function render() {
     const host = document.getElementById('ic-colors');
     if (host) {
@@ -252,13 +245,8 @@
       sh.innerHTML = [['pid', 'P&ID chuẩn', 'Ký hiệu công nghệ: bơm, van, bồn, M, G, bong bóng đo'], ['illust', 'Minh hoạ', 'Hình khối nét mảnh dễ nhìn']].map(([id, n, d]) => `<button type="button" class="ic-choice${id === cur ? ' on' : ''}" data-sh="${id}"><b>${n}</b><small>${d}</small></button>`).join('');
       sh.querySelectorAll('[data-sh]').forEach((b) => { b.onclick = () => setShape(b.dataset.sh); });
     }
-    const m = document.getElementById('ic-motion');
-    if (m) {
-      m.innerHTML = `<label class="ic-motion"><input type="checkbox" id="ic-motion-cb" ${getMotion() ? 'checked' : ''}><span>Hiệu ứng chuyển động <small>(quay, nước chảy — tốn pin, dễ nóng máy; mặc định tắt)</small></span></label>`;
-      m.querySelector('input').onchange = (e) => setMotion(e.target.checked);
-    }
   }
   apply();
   document.addEventListener('DOMContentLoaded', render);
-  Object.assign(I, { colors: COLORS, getColor, setColor, getMotion, setMotion, category, getShape, setShape });
+  Object.assign(I, { colors: COLORS, getColor, setColor, category, getShape, setShape });
 }());
