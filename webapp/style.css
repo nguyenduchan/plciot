@@ -447,3 +447,252 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 /* Xem thử (admin quét QR): chỉ đọc, cuộn trong hộp kết quả */
 .qr-prev{max-height:46vh;overflow:auto;margin:12px 0;text-align:left;display:flex;flex-direction:column;gap:10px}
 .dev-card.readonly{pointer-events:none;opacity:.96}
+
+/* nhãn gateway trên thẻ thiết bị khi tài khoản có nhiều gateway */
+.gw-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2, #1e2530); color: var(--muted, #9aa7b8); margin-left: auto; white-space: nowrap; }
+/* hướng dẫn bật quyền camera */
+.cam-help { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
+.cam-help .sheet { width: min(520px, 100%); background: var(--panel, #161b22); color: var(--text, #e6edf3); border-radius: 18px 18px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.4); }
+.cam-help h3 { margin: 0 0 6px; font-size: 18px; }
+.cam-help ol { margin: 10px 0 14px; padding-left: 22px; line-height: 1.55; }
+.cam-help .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cam-help .row button { flex: 1 1 140px; min-height: 44px; }
+.cam-help .note { font-size: 12px; opacity: .7; margin: 0 0 12px; }
+
+/* gói dịch vụ: widget bị khoá, banner, bảng gói */
+.dw.locked { opacity: .38; filter: grayscale(.7); cursor: pointer; position: relative; user-select: none; }
+.dw.locked .v { font-size: 14px; }
+.plan-banner { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: rgba(240,180,40,.12); border: 1px solid rgba(240,180,40,.4); font-size: 13px; }
+.plan-banner button { margin-left: auto; min-height: 36px; }
+.plan-table { display: grid; gap: 8px; margin: 8px 0 12px; }
+.plan-row { padding: 10px 12px; border-radius: 12px; background: var(--panel2, #1e2530); display: grid; gap: 2px; }
+.plan-row.cur { outline: 2px solid var(--accent, #3b82f6); }
+.plan-row small { opacity: .75; }
+#sub-panel.plan-flash { animation: planflash 1.1s ease 2; }
+@keyframes planflash { 50% { box-shadow: 0 0 0 3px var(--accent, #3b82f6); } }
+
+/* làm mượt: chuyển động số liệu + thanh trượt cảm ứng */
+.dev-widgets .gauge-bar i { transition: width .5s ease; }
+@property --p { syntax: '<number>'; inherits: false; initial-value: 0; }
+.ring { transition: --p .5s ease; }
+.dw .v, .dw .chip { transition: opacity .2s; }
+.dw-toggle { transition: background-color .15s, border-color .15s, color .15s; }
+.dw-slider { width: 100%; height: 34px; touch-action: pan-y; -webkit-tap-highlight-color: transparent; accent-color: var(--acc, #3b82f6); cursor: pointer; }
+.dw-slider.pending { opacity: .8; }
+.dev-card { contain: layout style; }
+
+/* ===== icon thiết bị: vector + hiệu ứng khi chạy ===== */
+.ic { width: 1em; height: 1em; display: block; overflow: visible; }
+.dev-ic { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--acc, #3b82f6) 16%, transparent); color: var(--acc, #3b82f6); font-size: 30px; }
+.dev-ic .ic { stroke-width: 2.4; }
+.dev-card.is-off .dev-ic { color: var(--muted, #8b98a5); background: color-mix(in srgb, var(--muted, #8b98a5) 14%, transparent); }
+.wic { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: 5px; color: var(--acc, #3b82f6); opacity: .9; font-size: 16px; }
+.wic .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+.ic [class^="ic-"], .ic [class*=" ic-"] { transform-box: fill-box; transform-origin: center; }
+.ic-flow { stroke-dasharray: 3.5 4.5; }
+.ic-wave { }
+@media (prefers-reduced-motion: reduce) { .ic *, .ic { animation: none !important; } }
+
+/* thanh trượt có nút gửi lệnh */
+.slider-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.dw-send { min-height: 40px; padding: 0 16px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+.dw-send:disabled { opacity: .45; }
+.dw-send.dirty { background: var(--acc, #3b82f6); color: #fff; border-color: transparent; box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #3b82f6) 30%, transparent); }
+.dw-pendinfo { font-size: 12px; opacity: .75; margin-top: 4px; min-height: 16px; }
+.dw-toggle small { opacity: .75; font-weight: 400; margin-left: 6px; }
+
+/* ===== kiểu hiển thị thiết bị: 3D / hiện đại / SCADA ===== */
+/* 3D: ô icon nổi khối */
+[data-ic-style="3d"] .dev-ic { background: linear-gradient(145deg, color-mix(in srgb, var(--acc, #3b82f6) 82%, #fff 18%), color-mix(in srgb, var(--acc, #3b82f6) 58%, #000 42%)); color: #fff; border-radius: 15px; box-shadow: 0 9px 16px rgba(0,0,0,.5), inset 0 2px 1px rgba(255,255,255,.5), inset 0 -5px 7px rgba(0,0,0,.38); }
+[data-ic-style="3d"] .dev-ic .ic { stroke-width: 2.7; filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.6)); }
+[data-ic-style="3d"] .dev-card { border-radius: 18px; box-shadow: 0 12px 26px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.07); transition: transform .25s ease, box-shadow .25s ease; }
+[data-ic-style="3d"] .dev-card:hover { transform: translateY(-2px); box-shadow: 0 16px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.09); }
+[data-ic-style="3d"] .dev-card.is-off .dev-ic { filter: saturate(.25) brightness(.8); }
+[data-ic-style="3d"] .tank { box-shadow: inset 0 3px 6px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.12); }
+[data-ic-style="3d"] .gauge-bar { box-shadow: inset 0 2px 4px rgba(0,0,0,.5); }
+[data-ic-style="3d"] .dw-toggle { box-shadow: 0 4px 0 rgba(0,0,0,.35), 0 6px 10px rgba(0,0,0,.3); transition: transform .1s, box-shadow .1s; }
+[data-ic-style="3d"] .dw-toggle:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+/* SCADA: phẳng, tĩnh */
+[data-ic-style="scada"] .dev-card { border-radius: 4px; box-shadow: none; border: 1px solid #3b4756; }
+[data-ic-style="scada"] .dev-ic { border-radius: 3px; background: #1b232d; border: 1px solid #55667a; color: #3fb950; }
+[data-ic-style="scada"] .dev-card.is-off .dev-ic { color: #8b98a5; }
+[data-ic-style="scada"] .ic { stroke-width: 2.8; filter: none; }
+[data-ic-style="scada"] .ic *, [data-ic-style="scada"] .ic { animation: none !important; transition: none !important; }
+[data-ic-style="scada"] .wic { color: #7d8da0; }
+[data-ic-style="scada"] .gauge-bar i, [data-ic-style="scada"] .tank i, [data-ic-style="scada"] .ring { transition: none; }
+[data-ic-style="scada"] .dw-toggle, [data-ic-style="scada"] .dw-send { border-radius: 2px; }
+/* hộp chọn kiểu (Cài đặt) */
+.ic-choices { display: grid; gap: 10px; margin: 8px 0; }
+.ic-choice { display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 14px; border: 2px solid var(--line, #2c3744); background: transparent; color: inherit; cursor: pointer; }
+.ic-choice.on { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent); }
+.ic-choice small { opacity: .7; }
+.ic-prev { display: flex; gap: 8px; margin-bottom: 6px; }
+.ic-prev .dev-ic { width: 40px; height: 40px; font-size: 26px; }
+
+/* nhóm theo gateway */
+.dev-grid { display: block; }
+.gw-group { margin: 0 0 18px; }
+.gw-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+.gw-ic { width: 34px; height: 34px; flex: none; display: grid; place-items: center; font-size: 22px; color: var(--muted, #8b98a5); }
+.gw-title { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.gw-title b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gw-title small { opacity: .7; }
+.gw-rm { min-height: 38px; padding: 0 14px; }
+.gw-cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) { body:not(.ui-simple) .gw-cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); } }
+[data-ic-style="scada"] .gw-head { border-radius: 4px; }
+.dev-card header { align-items: center; }
+
+/* ===== mặc định KHÔNG chuyển động (đỡ nóng máy, đỡ lag); bật ở Cài đặt → "Hiệu ứng chuyển động" ===== */
+/* đèn trạng thái tĩnh: xanh = đang chạy, xám = dừng / chưa có số liệu (thay cho hiệu ứng quay) */
+.dev-ic { position: relative; }
+.dev-card .dev-ic::after { content: ""; position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px var(--card, #161b22); }
+.dev-card.is-off .dev-ic::after { background: #64748b; }
+.ic-prev .dev-ic::after { display: none; }
+
+/* ===== màu theo nhóm thiết bị (mặc định "Tự động") ===== */
+.dev-card.cat-fluid:not([class*="acc-"]) { --acc: #2f8cff; }
+.dev-card.cat-motion:not([class*="acc-"]) { --acc: #22c55e; }
+.dev-card.cat-thermal:not([class*="acc-"]) { --acc: #fb923c; }
+.dev-card.cat-electric:not([class*="acc-"]) { --acc: #eab308; }
+.dev-card.cat-sensor:not([class*="acc-"]) { --acc: #14b8a6; }
+.dev-card.cat-safety:not([class*="acc-"]) { --acc: #ef4444; }
+.dev-card.cat-ctrl:not([class*="acc-"]) { --acc: #a78bfa; }
+.dev-card[class*="cat-"] { border-top: 3px solid var(--acc); }
+/* bảng màu cố định do người dùng chọn: áp cho mọi thẻ */
+[data-ic-color="blue"] .dev-card.dev-card { --acc: #3b82f6; }
+[data-ic-color="green"] .dev-card.dev-card { --acc: #22c55e; }
+[data-ic-color="orange"] .dev-card.dev-card { --acc: #f97316; }
+[data-ic-color="purple"] .dev-card.dev-card { --acc: #a855f7; }
+[data-ic-color="rose"] .dev-card.dev-card { --acc: #f43f5e; }
+[data-ic-color="teal"] .dev-card.dev-card { --acc: #14b8a6; }
+[data-ic-color="gold"] .dev-card.dev-card { --acc: #eab308; }
+[data-ic-color="mono"] .dev-card.dev-card { --acc: #94a3b8; }
+.ic-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 4px; }
+.ic-swatch { display: grid; gap: 4px; justify-items: center; background: none; border: 0; color: inherit; cursor: pointer; font-size: 11px; opacity: .85; }
+.ic-swatch i { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; box-shadow: 0 0 0 1px var(--line, #2c3744); background: var(--sw); }
+.ic-swatch.on i { border-color: var(--text, #fff); }
+.ic-swatch.auto i { background: conic-gradient(#2f8cff 0 14%, #22c55e 0 29%, #fb923c 0 43%, #eab308 0 57%, #14b8a6 0 71%, #ef4444 0 86%, #a78bfa 0); }
+
+/* icon 3D đổ khối: ô nền tối để hình kim loại nổi bật, tô nhẹ màu nhấn */
+[data-ic-style="3d"] .dev-ic:has(.ic3) { background: radial-gradient(circle at 30% 22%, color-mix(in srgb, var(--acc, #3b82f6) 62%, #4a586b), color-mix(in srgb, var(--acc, #3b82f6) 28%, #1a2029) 80%); width: 52px; height: 52px; font-size: 40px; border-radius: 16px; }
+[data-ic-style="3d"] .dev-ic .ic3 { width: 40px; height: 40px; stroke-width: initial; filter: drop-shadow(0 3px 2px rgba(0,0,0,.55)); }
+.ic3 * { transform-box: fill-box; }
+
+/* ===== widget đẹp: đồng hồ tròn kiểu Grafana/ThingsBoard, bồn 3D, đèn báo ===== */
+.dw.rg { display: grid; justify-items: center; text-align: center; gap: 2px; }
+.dw.rg .k { justify-self: start; }
+.rg-wrap { position: relative; width: min(100%, 190px); color: var(--text, #e6edf3); }
+.rg-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.rg-val { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-38%); display: grid; gap: 0; line-height: 1.05; }
+.rg-val b { font-size: clamp(22px, 7vw, 30px); font-weight: 800; letter-spacing: -.02em; }
+.rg-val small { font-size: 12px; opacity: .65; }
+.rg-range { display: flex; justify-content: space-between; width: min(62%, 120px); font-size: 11px; opacity: .55; margin-top: -14px; }
+.dw.rg.low .rg-val b { color: #f2b705; } .dw.rg.high .rg-val b { color: #f2495c; }
+.tank3d { display: flex; align-items: center; gap: 14px; color: var(--text, #e6edf3); }
+.tank3d .t3-svg { width: 74px; height: 88px; flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; }
+.chip .lamp { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #94a3b8, #475569); box-shadow: inset 0 -2px 3px rgba(0,0,0,.45); flex: none; }
+.chip.on .lamp { background: radial-gradient(circle at 35% 30%, #c8ffd9, #22c55e 62%); box-shadow: 0 0 9px #22c55e, inset 0 -2px 3px rgba(0,0,0,.25); }
+/* kiểu SCADA: không đèn phát sáng, không vòng tròn */
+[data-ic-style="scada"] .chip .lamp { box-shadow: none; }
+
+/* ===================== phong cách mô phỏng các framework dashboard =====================
+ * Chỉ mô phỏng bố cục/màu/kiểu widget; hình và mã tự viết, không dùng tài nguyên của các sản phẩm đó. */
+.bargauge { display: grid; gap: 6px; }
+.bg-bar { height: 12px; border-radius: 3px; background: rgba(255,255,255,.09); overflow: hidden; }
+.bg-bar i { display: block; height: 100%; background: var(--acc, #3b82f6); }
+.bargauge.low .bg-bar i { background: #f2cc0c; } .bargauge.high .bg-bar i { background: #f2495c; }
+
+/* ---- Grafana: panel tối, cung mảnh phát sáng, bar gauge ---- */
+[data-ic-style="grafana"] .dev-card.dev-card { --acc: #73bf69; background: #181b1f; border: 1px solid #2c3235; border-top: 1px solid #2c3235; border-radius: 2px; box-shadow: none; }
+[data-ic-style="grafana"] .dev-card header h3 { font-size: 14px; font-weight: 500; color: #d8d9da; }
+[data-ic-style="grafana"] .dev-ic { background: none; box-shadow: none; border: 0; color: #5794f2; width: 30px; height: 30px; font-size: 24px; border-radius: 0; }
+[data-ic-style="grafana"] .dev-card.is-off .dev-ic { color: #6e7079; background: none; }
+[data-ic-style="grafana"] .dw { background: #111217; border: 1px solid #22252b; border-radius: 2px; }
+[data-ic-style="grafana"] .dw .k { color: #8e8e9d; font-size: 12px; }
+[data-ic-style="grafana"] .rg-track { stroke-width: 7; stroke-opacity: .28; }
+[data-ic-style="grafana"] .rg-arc { stroke-width: 7; stroke-linecap: butt; filter: drop-shadow(0 0 5px var(--acc)); }
+[data-ic-style="grafana"] .rg-ticks, [data-ic-style="grafana"] .rg-zones, [data-ic-style="grafana"] .rg-knob { display: none; }
+[data-ic-style="grafana"] .rg-val b { color: var(--acc); font-weight: 600; }
+[data-ic-style="grafana"] .dw.rg.low .rg-val b { color: #f2cc0c; } [data-ic-style="grafana"] .dw.rg.high .rg-val b { color: #f2495c; }
+[data-ic-style="grafana"] .bg-bar { height: 16px; border-radius: 2px; background: #22252b; }
+[data-ic-style="grafana"] .dw-toggle { background: #22252b; border: 1px solid #3b4047; border-radius: 2px; }
+
+/* ---- ThingsBoard: thẻ sáng, icon tròn màu chàm, đồng hồ dày ---- */
+[data-ic-style="thingsboard"] .dev-card.dev-card { --acc: #3f51b5; background: #fff; color: #2c3e50; border: 0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.3); }
+[data-ic-style="thingsboard"] .dev-card header h3 { color: #305680; font-weight: 600; }
+[data-ic-style="thingsboard"] .dev-card .muted, [data-ic-style="thingsboard"] .dw .k { color: #6b7a8d; }
+[data-ic-style="thingsboard"] .dev-ic { width: 42px; height: 42px; border-radius: 50%; background: rgba(63,81,181,.12); color: #3f51b5; box-shadow: none; font-size: 26px; }
+[data-ic-style="thingsboard"] .dev-card.is-off .dev-ic { background: #eceff3; color: #8a97a8; }
+[data-ic-style="thingsboard"] .dev-ic::after { box-shadow: 0 0 0 2px #fff; }
+[data-ic-style="thingsboard"] .dw { background: #f5f7fa; border: 0; border-radius: 4px; color: #2c3e50; }
+[data-ic-style="thingsboard"] .rg-wrap, [data-ic-style="thingsboard"] .tank3d, [data-ic-style="thingsboard"] .dw .v { color: #2c3e50; }
+[data-ic-style="thingsboard"] .rg-track { stroke: #dde3ea; stroke-opacity: 1; stroke-width: 13; }
+[data-ic-style="thingsboard"] .rg-arc { stroke-width: 13; }
+[data-ic-style="thingsboard"] .rg-ticks line { stroke: #8a97a8; }
+[data-ic-style="thingsboard"] .rg-knob { display: none; }
+[data-ic-style="thingsboard"] .rg-val b { color: #305680; font-weight: 700; }
+[data-ic-style="thingsboard"] .dw-toggle, [data-ic-style="thingsboard"] .dw-send { background: #305680; color: #fff; border: 0; border-radius: 4px; }
+[data-ic-style="thingsboard"] .dw-send:disabled { background: #cfd6df; color: #fff; }
+[data-ic-style="thingsboard"] .tank3d .t3-svg { color: #8a97a8; }
+[data-ic-style="thingsboard"] .chip { color: #2c3e50; }
+
+/* ---- Material: thẻ nổi bo tròn, icon hai tông ---- */
+[data-ic-style="material"] .dev-card.dev-card { --acc: #d0bcff; background: #1d1b20; border: 0; border-radius: 22px; box-shadow: 0 1px 3px 1px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.55); }
+[data-ic-style="material"] .dev-ic { width: 48px; height: 48px; border-radius: 16px; background: #4a4458; color: #e8def8; box-shadow: none; }
+[data-ic-style="material"] .dev-card.is-off .dev-ic { background: #36343b; color: #938f99; }
+[data-ic-style="material"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx) :is(circle, rect, ellipse) { fill: currentColor; fill-opacity: .22; }
+[data-ic-style="material"] .dw { background: #2b2930; border: 0; border-radius: 16px; }
+[data-ic-style="material"] .rg-track { stroke: #49454f; stroke-opacity: 1; stroke-width: 12; }
+[data-ic-style="material"] .rg-arc { stroke-width: 12; }
+[data-ic-style="material"] .rg-ticks, [data-ic-style="material"] .rg-zones { display: none; }
+[data-ic-style="material"] .dw-toggle, [data-ic-style="material"] .dw-send { border-radius: 999px; background: #4a4458; color: #e8def8; border: 0; }
+[data-ic-style="material"] .dw-send.dirty { background: #d0bcff; color: #381e72; }
+
+/* ---- Carbon (IBM): phẳng, vuông vức ---- */
+[data-ic-style="carbon"] .dev-card.dev-card { --acc: #4589ff; background: #262626; border: 0; border-top: 3px solid #0f62fe; border-radius: 0; box-shadow: none; }
+[data-ic-style="carbon"] .dev-ic { background: none; border: 0; box-shadow: none; color: #78a9ff; border-radius: 0; }
+[data-ic-style="carbon"] .dev-card.is-off .dev-ic { color: #6f6f6f; }
+[data-ic-style="carbon"] .dw { background: #393939; border: 0; border-radius: 0; }
+[data-ic-style="carbon"] .gauge-bar, [data-ic-style="carbon"] .bg-bar { border-radius: 0; height: 8px; background: #161616; }
+[data-ic-style="carbon"] .gauge-bar i, [data-ic-style="carbon"] .bg-bar i { border-radius: 0; background: #4589ff; }
+[data-ic-style="carbon"] .dw-toggle, [data-ic-style="carbon"] .dw-send { border-radius: 0; }
+[data-ic-style="carbon"] .ic { stroke-width: 2.2; }
+[data-ic-style="carbon"] .gw-head { border-radius: 0; }
+[data-ic-style="grafana"] .gw-head { border-radius: 2px; } [data-ic-style="material"] .gw-head { border-radius: 18px; } [data-ic-style="thingsboard"] .gw-head { border-radius: 4px; }
+
+/* thẻ thiết bị: tiêu đề KHÔNG dính/ nền như thanh đầu trang (selector header toàn cục) */
+.dev-card header { position: static; background: transparent; backdrop-filter: none; border: 0; padding: 0; }
+/* bồn 3D trên thẻ sáng (ThingsBoard) */
+[data-ic-style="thingsboard"] .t3-svg [stroke^="rgba(255"] { stroke: #9aa9bb; }
+[data-ic-style="thingsboard"] .t3-svg ellipse:first-of-type { fill: #cfd8e3; }
+[data-ic-style="thingsboard"] .t3-svg path[fill^="rgba(255"] { fill: rgba(63,81,181,.06); }
+[data-ic-style="thingsboard"] .t3-svg ellipse[fill^="rgba(255"] { fill: rgba(63,81,181,.1); }
+
+.ic-live { margin: 10px 0 14px; }
+.ic-live .dev-card { max-width: 380px; }
+
+/* chuyển động bật: số liệu đổi thì cung / thanh trượt mượt (tắt thì transition bị vô hiệu ở trên) */
+.rg-arc { transition: stroke-dasharray .6s ease, stroke .3s; }
+.rg-knob { transition: cx .6s ease, cy .6s ease; }
+
+/* cầu trục: móc đung đưa (chỉ khi bật chuyển động) */
+
+/* ===== bộ icon RIÊNG theo từng phong cách (3D và SCADA có bộ hình riêng; các kiểu dưới đây biến đổi nét vẽ cho hợp phong cách) ===== */
+/* Grafana: nét mảnh, sắc cạnh, đơn sắc kiểu icon kỹ thuật */
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.5; stroke-linecap: butt; stroke-linejoin: miter; }
+[data-ic-style="grafana"] .ic:not(.ic3):not(.pid):not(.icx) [fill="currentColor"] { fill: currentColor; }
+/* Carbon (IBM): nét rất mảnh, góc vuông, hình học thuần */
+[data-ic-style="carbon"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
+/* ThingsBoard: biểu tượng đặc (glyph) — mảng đặc màu chàm, chi tiết khoét trắng như bộ icon Material "filled" */
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx), [data-ic-style="thingsboard"] .wic .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 1.8; stroke-linejoin: round; }
+[data-ic-style="thingsboard"] .dev-ic .ic:not(.ic3):not(.pid):not(.icx) :is(circle, rect, ellipse, polygon, path[d$="z"], path[d$="Z"]) { fill: currentColor; stroke: #fff; stroke-width: 1.7; }
+/* Material: hai tông (viền + nền nhạt) — đã có ở trên; thêm nét tròn đầy đặn */
+[data-ic-style="material"] .ic:not(.ic3):not(.pid):not(.icx) { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ===== chuyển động cho MỌI bộ icon khi bật "Hiệu ứng chuyển động" ===== */
+/* icon không có bộ phận rời (Tabler/Material/Carbon, P&ID SCADA): chuyển động cả icon theo loại */
+/* sóng nước của icon 3D (bồn…) không nằm trong .ic-water nên cần luật riêng; nhịp nhấp nháy sâu hơn để nhìn rõ */
+
+/* nước dâng/hạ trong bồn, thuỷ ngân nhiệt kế lên/xuống (icon 3D) */

@@ -228,6 +228,8 @@ export function deviceToUiNode(row) {
     ...(row.icon ? { icon: row.icon } : {}),
     ...(row.color ? { color: row.color } : {}),
     source: sourceFor(type, childId),
+    // Gateway chứa thiết bị này (webapp thêm được nhiều gateway): dùng để chọn topic nhận data và đích gửi lệnh
+    ...(row.gatewayDevice && row.site ? { gw: { site: row.site, device: row.gatewayDevice, ...(row.mqttId ? { mqttId: row.mqttId, base: `gw/${row.mqttId}` } : {}) } } : {}),
     widgets: applyControlSpec(cloneWidgets(type, childId, row.fields), { spec: row.spec, userCritical: row.userCritical }),
   };
 }
@@ -238,12 +240,30 @@ export function deviceToUiNode(row) {
  * @param {Array} opts.devices — rows from user_devices
  * @param {'simple'|'pro'} [opts.mode]
  */
-export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null } = {}) {
+/**
+ * Giới hạn số widget theo gói: widget thứ limit+1 trở đi bị khoá (locked) — webapp làm mờ, không cập nhật data, không điều khiển.
+ * Trả về { nodes, total, locked }. limit null/undefined = không giới hạn.
+ */
+export function applyWidgetLimit(nodes, limit) {
+  let n = 0; let locked = 0;
+  const out = nodes.map((d) => ({
+    ...d,
+    widgets: d.widgets.map((w) => {
+      n += 1;
+      if (limit != null && n > limit) { locked += 1; return { ...w, locked: true }; }
+      return w;
+    }),
+  }));
+  return { nodes: out, total: n, locked };
+}
+
+export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null, gateways = [], widgetLimit = null, planId = null, planLabel = null } = {}) {
   const m = mode === 'pro' ? 'pro' : 'simple';
   const site = user?.notify_site || '';
   const gateway = user?.notify_device || '';
   const base = mqttId && /^[a-f0-9]{16}$/.test(mqttId) ? `gw/${mqttId}` : null;   // id MQTT ngẫu nhiên của gateway
-  const nodes = (devices || []).map(deviceToUiNode);
+  const lim = applyWidgetLimit((devices || []).map(deviceToUiNode), widgetLimit);
+  const nodes = lim.nodes;
   const order = nodes.map((d) => d.id);
   return {
     schema: UI_SCHEMA,
@@ -262,6 +282,8 @@ export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null
       topicAck: base ? `${base}/ack` : null,
     },
     devices: nodes,
+    plan: { id: planId, label: planLabel, widgetLimit, widgetCount: lim.total, locked: lim.locked },
+    gateways: (gateways || []).map((g) => ({ site: g.site, device: g.device, mqttId: g.mqttId || null, base: g.mqttId ? `gw/${g.mqttId}` : null })),
     layout: {
       simple: { columns: 2, order },
       pro: {

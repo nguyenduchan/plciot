@@ -10,10 +10,11 @@ import { publishCmd } from './controlPublisher.js';
 import { isOpsOpen } from './opsFlags.js';
 import { plcControlConfig, validateCmd, validateChildCmd } from './plcCommands.js';
 import { listUserDevices } from './userDevices.js';
-import { deviceToUiNode } from './uiContract.js';
+import { gatewaysOfUser } from './mqttIds.js';
+import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
-import { mayRemoteControl } from './entitlements.js';
+import { mayRemoteControl, planWidgetLimit } from './entitlements.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
 export function mountPlcControl(app, { db, requireAuth, security }) {
@@ -51,11 +52,22 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
       return out(res, 503, { error: 'remote_control_paused' });
     }
     const tIn = Date.now();
-    const cfg = configForUser(req.user);
+    // Webapp nhiều gateway: body.gw = "site/device" chọn gateway đích (phải là gateway user đã thêm); không gửi = gateway chính
+    const gwSel = typeof req.body?.gw === "string" ? req.body.gw.trim() : "";
+    let tu = req.user;
+    if (gwSel) {
+      const hit = gatewaysOfUser(db, req.user).find((g) => `${g.site}/${g.device}` === gwSel);
+      if (!hit) return out(res, 403, { error: "forbidden_gateway" });
+      tu = { ...req.user, notify_site: hit.site, notify_device: hit.device };
+    }
+    const cfg = configForUser(tu);
     if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
     // {child,key,v}: nút của thiết bị con (bơm, relay…) theo widget của loại thiết bị; còn lại là ghi/đọc thanh ghi D
+    // Giới hạn widget của gói tính trên TOÀN BỘ thiết bị (cùng thứ tự với dashboard) rồi mới lọc theo gateway đích
+    const rows = req.body?.key != null ? listUserDevices(db, req.user) : [];
+    const limited = applyWidgetLimit(rows.map(deviceToUiNode), planWidgetLimit(req.user)).nodes;
     const v = req.body?.key != null
-      ? validateChildCmd(req.body, listUserDevices(db, req.user).map(deviceToUiNode))
+      ? validateChildCmd(req.body, limited.filter((_, i) => !gwSel || (rows[i].site === tu.notify_site && rows[i].gatewayDevice === tu.notify_device)))
       : validateCmd(req.body, cfg);
     if (v.error) return out(res, 400, v);
     const ip = clientIp(req);
@@ -83,7 +95,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
         const challengeId = String(req.headers['x-command-challenge'] || '');
         const challenge = commandChallenges.get(challengeId);
         const proof = checkControlSession(db, req.user.id, String(req.headers['x-control-token'] || ''), ip);
-        const fingerprint = JSON.stringify([req.user.notify_site, req.user.notify_device, v.cmd]);
+        const fingerprint = JSON.stringify([tu.notify_site, tu.notify_device, v.cmd]);
         if (!challenge || challenge.userId !== req.user.id || challenge.sessionId !== req.tokenPayload?.sid
           || challenge.fingerprint !== fingerprint || !proof.ok || proof.commandId !== challengeId) {
           if (commandChallenges.size >= 1000) return out(res, 429, { error: 'rate_limited' });
@@ -92,7 +104,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
           return out(res, 401, {
             error: 'step_up_required', reason: 'critical_command', commandChallenge: id,
             methods: security.methodsFor(req.user),          // passkey / totp / password (xác nhận đúng lệnh này)
-            command: v.cmd, target: { site: req.user.notify_site, device: req.user.notify_device },
+            command: v.cmd, target: { site: tu.notify_site, device: tu.notify_device },
           });
         }
         commandChallenges.delete(challengeId);
@@ -101,7 +113,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
       if (v.critical && cfg.physicalBit !== null) {
         const id = crypto.randomBytes(8).toString('hex');
         pendingConfirm.set(id, {
-          userId: req.user.id, site: req.user.notify_site, device: req.user.notify_device,
+          userId: req.user.id, site: tu.notify_site, device: tu.notify_device,
           cmd: v.cmd, via, sessionId: req.tokenPayload?.sid, controlToken: String(req.headers['x-control-token'] || ''),
           bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
         });
@@ -110,7 +122,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
       }
     }
     try {
-      await dispatch(req.user, v.cmd, via, ip);
+      await dispatch(tu, v.cmd, via, ip);
     } catch (e) {
       return out(res, 503, { error: 'mqtt_unavailable' });
     }
@@ -125,7 +137,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     }
     const p = pendingConfirm.get(req.params.id);
     if (!p || p.userId !== req.user.id) return out(res, 404, { error: 'not_found' });
-    if (!canControl(req.user) || p.sessionId !== req.tokenPayload?.sid || p.site !== req.user.notify_site || p.device !== req.user.notify_device) {
+    if (!canControl(req.user) || p.sessionId !== req.tokenPayload?.sid || !gatewaysOfUser(db, req.user).some((g) => g.site === p.site && g.device === p.device)) {
       pendingConfirm.delete(req.params.id);
       return out(res, 403, { error: 'forbidden' });
     }
@@ -141,7 +153,7 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     if (!edgeSince(p.site, p.device, p.bit, p.since)) return res.json({ waiting: true, bit: p.bit });
     pendingConfirm.delete(req.params.id);
     try {
-      await dispatch(req.user, p.cmd, `${p.via}+button`, clientIp(req));
+      await dispatch({ ...req.user, notify_site: p.site, notify_device: p.device }, p.cmd, `${p.via}+button`, clientIp(req));
     } catch {
       return out(res, 503, { error: 'mqtt_unavailable' });
     }

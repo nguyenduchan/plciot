@@ -62,3 +62,23 @@ function mqttIdForUnsafe(db, tenant, site, device) {
   ).get(site, device);
   return any?.mqtt_id || null;
 }
+
+/**
+ * Mọi gateway user đang dùng: gateway chính (users.notify_site/device) + mọi gateway có thiết bị trong user_devices.
+ * Webapp thêm được NHIỀU gateway: ACL MQTT, topic webapp subscribe và điều khiển đều dựa trên danh sách này.
+ * @returns {{site:string, device:string, mqttId:string|null}[]}  (gateway chính luôn đứng đầu nếu có)
+ */
+export function gatewaysOfUser(db, user) {
+  const tenant = user?.tenant_id || DEFAULT_TENANT;
+  const seen = new Map();
+  const add = (site, device) => {
+    if (!site || !device) return;
+    const k = `${site}/${device}`;
+    if (!seen.has(k)) seen.set(k, { site, device, mqttId: mqttIdFor(db, tenant, site, device) });
+  };
+  add(user?.notify_site, user?.notify_device);
+  try {
+    for (const r of db.prepare('SELECT DISTINCT site, gateway_device FROM user_devices WHERE user_id = ? ORDER BY created_at').all(user.id)) add(r.site, r.gateway_device);
+  } catch { /* chưa có bảng user_devices */ }
+  return [...seen.values()];
+}

@@ -46,11 +46,11 @@ public sealed partial class AdminForm
         await Say("Bước 3/4: mở tab Cloud ở thanh bên", 2000);
         var cloud = _pages.First(p => p.Page == _cloud);
         await ClickAsync(cloud.Btn);
-        await Say("Tab Cloud: bật/tắt đồng bộ, địa chỉ server, mã ghép cặp, mã QR của tem, Enroll, cấu hình nâng cao.", 4500);
+        await Say("Tab Cloud: bật/tắt đồng bộ, mã ghép cặp (địa chỉ server đã cố định), cấu hình nâng cao.", 4500);
 
-        await Say("Bước 4/4: nhập địa chỉ server cloud");
-        await TypeAsync(_cloud.Api, "https://plc.dieukhientudong.net");
-        await Say("Đến đây dừng. Để ghép cặp: nhập MÃ GHÉP CẶP admin phát rồi bấm \"Gửi bản khai cho admin\"; hoặc dán MÃ QR của tem rồi bấm \"Enroll từ QR\".", 8000);
+        await Say("Bước 4/4: nhập mã ghép cặp do admin phát");
+        await TypeAsync(_cloud.Pair, "ABCD-1234");
+        await Say("Đến đây dừng. Để ghép cặp: nhập MÃ GHÉP CẶP thật rồi bấm \"Kết nối bằng mã\"; QR hiện ở góc phải thanh trên.", 8000);
         await Say("Chưa gửi gì lên Internet. Đang chờ bạn nhập mã.", 6000);
     }
 }

@@ -70,7 +70,8 @@
       }
       if (r.status === 202 && r.body.pending) return waitPhysical(r.body);
       if (r.status === 401) return { error: 'session_expired' };
-      return r.ok ? { ok: true, id: r.body.id } : { error: r.body.error || 'error' };
+      // subscription_denied kèm lý do (chưa kích hoạt gói, gói chỉ giám sát…) → mã riêng để báo đúng nguyên nhân
+      return r.ok ? { ok: true, id: r.body.id } : { error: (r.body.error === 'subscription_denied' && r.body.reason) ? `sub_${r.body.reason}` : (r.body.error || 'error'), status: r.status };
     }
     return { error: 'cancelled' };
   }

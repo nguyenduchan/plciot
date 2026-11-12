@@ -24,6 +24,8 @@ public sealed class RemoteGateway : IGatewayApp
     public string Status { get; private set; } = "";
     public string Cloud { get; private set; } = "";
     public string FingerprintText { get; private set; } = "";
+    /// <summary>ID máy (băm khoá công khai) do chính gateway giữ; tool admin ở xa không đọc được.</summary>
+    public string HwText => "";
     public bool TryValue(string key, out double v) => _values.TryGetValue(key, out v);
     public event Action<string, bool>? ToastRaised;
     public void Toast(string text, bool error = false) => ToastRaised?.Invoke(text, error);

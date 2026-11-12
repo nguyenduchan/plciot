@@ -133,7 +133,10 @@
             ${d.profile ? ` · <b>${esc(d.profile)}</b>` : ' · <span class="tag viewer">chưa profile</span>'}
             ${d.note ? ` · ${esc(d.note)}` : ''}
             ${d.claimedUsername ? ` · user ${esc(d.claimedUsername)}` : ''}
-            · tạo ${esc(fmtTs(d.createdAt))}</small></div>
+            · tạo ${esc(fmtTs(d.createdAt))}</small>
+          <small>${d.activatedHw ? `ID máy <code>${esc(d.activatedHw)}</code>` : 'chưa gắn máy'}
+            ${d.mqttId ? ` · ID MQTT <code>${esc(d.mqttId)}</code>${d.mqttStatus && d.mqttStatus !== 'active' ? ` (${esc(d.mqttStatus)})` : ''}` : ''}
+            ${d.config ? ` · setting rev ${d.config.rev}: ${d.config.devices} thiết bị, ${d.config.fields} field · cập nhật ${esc(fmtTs(d.config.updatedAt))}` : ' · chưa có setting'}</small></div>
         <div class="acts">
           <button data-hw="qr">Xem / in QR</button>
           ${d.activated ? '<button data-hw="unbind">Gỡ máy đã gắn</button>' : ''}
@@ -331,6 +334,11 @@
 
   /* ---------- Ghép cặp gateway: tạo mã → xem bản khai gateway gửi lên → duyệt + cấp QR ---------- */
   let pairings = [];
+  // Tự làm mới danh sách gateway + mã ghép cặp (gateway vừa nhập mã là hiện ngay, không cần tải lại trang)
+  setInterval(() => {
+    if (document.hidden || $('#qr-modal')?.classList.contains('on')) return;
+    loadHw().catch(() => {}); loadPairings().catch(() => {});
+  }, 8000);
   const PR_STATUS = { open: 'chờ gateway nhập mã', received: 'chờ bạn duyệt', approved: 'đã kết nối', expired: 'hết hạn', cancelled: 'đã huỷ' };
 
   async function loadPairings() {

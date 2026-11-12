@@ -22,13 +22,20 @@ process.env.SUBSCRIBE_REQUIRE_ACTIVATION = 'true';
 const u = upsertUser(db, {
   username: 'ent_user', passwordHash: hashPassword('x'), folderPath: 's', version: '1',
 });
-ok(mayRemoteControl(u, { ip: '1.2.3.4' }).reason === 'pending_activation', 'chưa gói: chờ kích hoạt');
+ok(mayRemoteControl(u, { ip: '1.2.3.4' }).ok, 'chưa gán gói = gói miễn phí: có điều khiển');
+ok(subscriptionInfo(u).plan === 'free' && subscriptionInfo(u).widgetLimit === 5, 'gói miễn phí giới hạn 5 widget');
+const { applyWidgetLimit } = await import('../src/uiContract.js');
+const fakeNodes = Array.from({ length: 4 }, (_, i) => ({ id: String(i), widgets: [{ id: 'a' + i }, { id: 'b' + i }] }));
+const lim = applyWidgetLimit(fakeNodes, 5);
+ok(lim.total === 8 && lim.locked === 3, 'vượt 5 widget: 3 widget cuối bị khoá');
+ok(lim.nodes[2].widgets[0].locked !== true && lim.nodes[2].widgets[1].locked === true && lim.nodes[3].widgets.every((w) => w.locked), 'khoá đúng thứ tự (widget thứ 6 trở đi)');
+ok(applyWidgetLimit(fakeNodes, null).locked === 0, 'không giới hạn thì không khoá');
 
 ok(grantPlan(db, u.id, 'monitor').ok, 'grant monitor');
 let fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);
-ok(subscriptionInfo(fresh).remoteControl === false, 'monitor: no remote control');
-ok(mayRemoteControl(fresh, { ip: '1.2.3.4' }).reason === 'plan_monitor_only'
-  || mayRemoteControl(fresh, { ip: '1.2.3.4' }).reason === 'remote_control_off', 'monitor blocked');
+ok(subscriptionInfo(fresh).remoteControl === true, 'mọi gói đều có điều khiển (monitor)');
+ok(mayRemoteControl(fresh, { ip: '1.2.3.4' }).ok, 'monitor: điều khiển được');
+ok(subscriptionInfo(fresh).widgetLimit === null, 'monitor: không giới hạn widget');
 
 ok(grantPlan(db, u.id, 'pro', { expiresAt: '2099-01-01' }).ok, 'grant pro');
 fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);
