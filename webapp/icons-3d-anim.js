@@ -7,14 +7,14 @@
 (function () {
   const A = window.PlcIcons3D; if (!A) return;
   const EXTRA = {
-    tank: '<path class="ic-wave" d="M11 25c3-2 5 2 8 0s5 2 8 0 5 2 8 0" stroke="#bfe3ff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle class="ic-pulse" cx="24" cy="7" r="1.6" fill="#7cc4ff"/>',
+    tank: '<path class="ic-liq" d="M10 27c3-2 5 2 8 0s5 2 8 0 5 2 8 0 3-1 4 0v11a15 5 0 0 1-30 0z" fill="url(#g3-liq)" fill-opacity=".85"/><path class="ic-wave" d="M10 27c3-2 5 2 8 0s5 2 8 0 5 2 8 0 3-1 4 0" stroke="#e1f2ff" stroke-width="2" fill="none" stroke-linecap="round"/><circle class="ic-pulse" cx="24" cy="7" r="1.8" fill="#7cc4ff"/>',
     silo: '<path class="ic-flow" d="M24 14v22" stroke="#fde68a" stroke-width="2.4" stroke-linecap="round"/>',
     valve: '<path class="ic-flow" d="M2 30.5h9M37 30.5h9" stroke="#7cc4ff" stroke-width="2.4" stroke-linecap="round"/>',
     filter: '<path class="ic-flow" d="M3 22.5h5M40 22.5h5" stroke="#7cc4ff" stroke-width="2.4" stroke-linecap="round"/><rect class="ic-pulse" x="14" y="15" width="20" height="20" rx="2" fill="#7cc4ff" fill-opacity=".2"/>',
     generator: '<g class="ic-rot"><path d="M20 17v2M20 32v2M12 25.5h2M26 25.5h2" stroke="#ffd43b" stroke-width="1.8" stroke-linecap="round"/></g>',
     transformer: '<path class="ic-pulse" d="M16 20v12M24 20v12M32 20v12" stroke="#ffd43b" stroke-width="1.8" stroke-linecap="round"/>',
     heater: '<path class="ic-pulse" d="M13 19h22M13 24h22M13 29h22" stroke="#ff4d1a" stroke-width="3.2" stroke-linecap="round" opacity=".7"/>',
-    env: '<rect class="ic-pulse" x="22" y="14" width="4" height="20" rx="2" fill="#ff8a8a" fill-opacity=".6"/>',
+    env: '<rect class="ic-merc" x="22" y="12" width="4" height="22" rx="2" fill="#ff5a5a"/><circle class="ic-pulse" cx="24" cy="36" r="8.5" fill="#ff8a8a" fill-opacity=".45"/>',
     humidity: '<circle class="ic-pulse" cx="21" cy="33" r="3" fill="#fff"/>',
     ph: '<circle class="ic-pulse" cx="20" cy="34" r="1.6" fill="#fff"/><circle class="ic-pulse" cx="28" cy="36" r="1.2" fill="#fff"/>',
     gas: '<path class="ic-pulse" d="M17 22c3-3 5 3 8 0s5 3 8 0" stroke="#4ade80" stroke-width="1.8" fill="none" stroke-linecap="round"/>',

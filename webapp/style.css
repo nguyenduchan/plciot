@@ -726,3 +726,9 @@ html:not([data-ic-motion="on"]) .ic, html:not([data-ic-motion="on"]) .ic * { ani
 [data-ic-motion="on"] .ic.on .ic-wave { animation: ic-wave 2.4s ease-in-out infinite alternate; }
 @keyframes ic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
 @keyframes ic-wave { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+
+/* nước dâng/hạ trong bồn, thuỷ ngân nhiệt kế lên/xuống (icon 3D) */
+[data-ic-motion="on"] .ic.on .ic-liq { animation: ic-liq 2.4s ease-in-out infinite alternate; }
+[data-ic-motion="on"] .ic.on .ic-merc { animation: ic-merc 2.2s ease-in-out infinite alternate; transform-origin: 24px 34px; transform-box: view-box; }
+@keyframes ic-liq { from { transform: translateY(-3px); } to { transform: translateY(4px); } }
+@keyframes ic-merc { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
