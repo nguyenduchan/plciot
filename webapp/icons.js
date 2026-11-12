@@ -150,7 +150,7 @@
     const id = Array.isArray(name) ? pick(name) : pick(name);
     // bộ hình "P&ID chuẩn" (icons-pid.js, mặc định) hoặc "Minh hoạ" — chọn riêng, không phụ thuộc kiểu nền 3D/hiện đại/SCADA
     // hình vẽ theo kiểu nền: SCADA = ký hiệu P&ID đơn sắc; Đẹp (3D) = hình thiết bị đổ khối (icons-3d.js); Hiện đại = nét mảnh
-    const st = document.documentElement.dataset.icStyle;
+    const st = opt.style || document.documentElement.dataset.icStyle;   // opt.style: vẽ theo một phong cách cụ thể (ô xem trước ở Cài đặt)
     // Grafana / ThingsBoard / Material / Carbon: mỗi phong cách dùng bộ icon thật của hệ đó (icons-sets.js, giấy phép mở)
     const set = window.PlcIconSets?.[st]?.[id];
     if (set) {
@@ -201,7 +201,7 @@
     if (!host || !window.PlcIcons) return;
     const cur = get();
     host.innerHTML = STYLES.map((s) => `<button type="button" class="ic-choice${s.id === cur ? ' on' : ''}" data-ic="${s.id}" aria-pressed="${s.id === cur}">
-      <span class="ic-prev" data-ic-style="${s.id}"><span class="dev-ic">${window.PlcIcons.device('pump', { on: true, speed: 1.2 })}</span><span class="dev-ic">${window.PlcIcons.device('tank', { on: true })}</span><span class="dev-ic">${window.PlcIcons.device('fan', { on: true, speed: 0.9 })}</span></span>
+      <span class="ic-prev" data-ic-style="${s.id}"><span class="dev-ic">${window.PlcIcons.device('pump', { on: true, style: s.id })}</span><span class="dev-ic">${window.PlcIcons.device('tank', { on: true, style: s.id })}</span><span class="dev-ic">${window.PlcIcons.device('fan', { on: true, style: s.id })}</span></span>
       <b>${s.name}</b><small>${s.desc}</small></button>`).join('');
     host.querySelectorAll('.ic-choice').forEach((b) => { b.onclick = () => set(b.dataset.ic); });
   }
