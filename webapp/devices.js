@@ -179,11 +179,20 @@
       const n = Number(v);
       const cur = Number.isFinite(n) ? n : min;
       const lim = w.cmd?.limits;
-      return `<div class="dw ctlw" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}</div>
-        <div class="slider-row"><input type="range" class="dw-slider" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" min="${min}" max="${max}" step="${step}" value="${cur}" aria-label="${esc(w.label)}">
-          <button type="button" class="dw-send" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" disabled>Gửi lệnh</button></div>
-        <div class="dw-pendinfo" aria-live="polite"></div>
-        <div class="v"><output>${esc(show)}</output>${unit}</div>${lim ? `<div class="d muted dw-info">Giới hạn ${lim.min}–${lim.max}</div>` : ''}</div>`;
+      const sk = `${dev.id}|${w.id}`;
+      if (staged[sk] !== undefined && staged[sk] === cur) delete staged[sk];     // thiết bị đã tới đúng giá trị đã chọn
+      const pend = staged[sk] !== undefined;
+      const sval = pend ? staged[sk] : cur;
+      const pendText = pend ? `Chưa gửi — thiết bị đang ở ${show}${w.unit ? ' ' + w.unit : ''}, giá trị mới ${sval}${w.unit ? ' ' + w.unit : ''}. Bấm “Gửi lệnh” để áp dụng hoặc “Huỷ”.` : '';
+      const unitTxt = w.unit ? `<span class="dw-nu">${esc(w.unit)}</span>` : '';
+      const rangeTxt = `Khoảng ${min}–${max}${lim ? `, giới hạn ${lim.min}–${lim.max}` : ''}${step !== 1 ? `, bước ${step}` : ''}`;
+      // Số đang đặt = ô NHẬP SỐ lớn nằm TRÊN thanh trượt (ngón tay không che khuất; chạm vào để gõ chính xác bằng bàn phím), cạnh nút −/+.
+      return `<div class="dw ctlw${pend ? ' pending' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)}</div>
+        <div class="dw-numrow dw-vtop"><button type="button" class="dw-step" data-d="-1" aria-label="Giảm ${step}">−</button><input type="number" class="dw-numin" inputmode="decimal" enterkeyhint="done" min="${min}" max="${max}" step="${Math.min(step, 1)}" value="${sval}" aria-label="${esc(w.label)} — nhập số bằng bàn phím"><button type="button" class="dw-step" data-d="1" aria-label="Tăng ${step}">+</button>${unitTxt}<button type="button" class="dw-cancel" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" tabindex="${pend ? 0 : -1}">Huỷ</button></div>
+        <div class="slider-row"><input type="range" class="dw-slider" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" min="${min}" max="${max}" step="${step}" value="${sval}" aria-label="${esc(w.label)}"${pend ? ' data-dirty="1"' : ''}>
+          <button type="button" class="dw-send${pend ? ' dirty' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}"${pend ? '' : ' disabled'}>Gửi lệnh</button></div>
+        <div class="dw-pendinfo" aria-live="polite">${esc(pendText)}</div>
+        <div class="d muted dw-info">${esc(rangeTxt)}</div></div>`;
     }
     if (w.kind === 'status' || w.kind === 'chip') {
       const on = Number(v) === 1 || v === true || (typeof v === 'number' && v > 0);
@@ -222,6 +231,9 @@
   const holdKey = (dev, w) => `${lk(dev)}|${w.bind}`;
   const setHold = (dev, w, v) => hold.set(holdKey(dev, w), { v: Number(v), until: Date.now() + 3500 });
   const clearHold = (dev, w) => hold.delete(holdKey(dev, w));
+  // Giá trị thanh trượt người dùng đã chọn nhưng CHƯA gửi: lưu ở đây để không mất khi lưới dựng lại, và luôn hiện rõ "chưa gửi".
+  const staged = {};                       // "<dev.id>|<w.id>" → số
+  const PENDING_TTL_MS = 60000;            // quên quá 60 giây thì bỏ, nhưng PHẢI báo cho người dùng (không im lặng nhảy về số cũ)
   const releaseSlider = (sl) => setTimeout(() => { if (activeSlider === sl) activeSlider = null; }, 900);
 
   function morph(a, b) {
@@ -229,7 +241,7 @@
     if (a.nodeType !== 1 || b.nodeType !== 1) return;
     for (const at of [...a.attributes]) if (at.name !== 'disabled' && !b.hasAttribute(at.name)) a.removeAttribute(at.name);
     for (const at of [...b.attributes]) if (at.name !== 'disabled' && a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
-    if (a.tagName === 'INPUT') { if (a !== activeSlider && a.value !== b.getAttribute('value')) a.value = b.getAttribute('value'); return; }
+    if (a.tagName === 'INPUT') { if (a !== activeSlider && a !== document.activeElement && a.value !== b.getAttribute('value')) a.value = b.getAttribute('value'); return; }
     const ac = a.childNodes; const bc = b.childNodes;
     if (ac.length !== bc.length) { a.innerHTML = b.innerHTML; return; }
     for (let i = 0; i < ac.length; i++) {
@@ -351,30 +363,69 @@
         const dev = dashboard.devices.find((x) => x.id === sl.dataset.dev);
         return { dev, w: dev?.widgets?.find((x) => x.id === sl.dataset.wid) };
       };
+      const cancelBtn = box.querySelector('.dw-cancel');
+      const skey = `${sl.dataset.dev}|${sl.dataset.wid}`;
       let idle = null;
       const clearDirty = () => {
-        clearTimeout(idle); delete sl.dataset.dirty; activeSlider = null;
+        clearTimeout(idle); delete sl.dataset.dirty; activeSlider = null; delete staged[skey];
         btn.disabled = true; btn.classList.remove('dirty'); if (info) info.textContent = '';
+        box.classList.remove('pending');
       };
       const cancelDirty = () => { clearDirty(); render(); };       // bỏ giá trị chưa gửi, trả về số liệu thật
+      if (cancelBtn) cancelBtn.onclick = () => { cancelDirty(); };
+      if (staged[skey] !== undefined) {                           // dựng lại lưới khi đang có giá trị chưa gửi: giữ hẹn giờ quên
+        clearTimeout(idle); idle = setTimeout(() => { const v = staged[skey]; cancelDirty(); toast(`Giá trị ${v} chưa gửi đã bị bỏ sau 60 giây. Thiết bị vẫn giữ giá trị cũ.`); }, PENDING_TTL_MS);
+      }
       const grab = () => { activeSlider = sl; };
       sl.addEventListener('pointerdown', grab); sl.addEventListener('touchstart', grab, { passive: true });
       for (const ev of ['pointerup', 'pointercancel', 'touchend', 'touchcancel']) sl.addEventListener(ev, () => { if (!sl.dataset.dirty) releaseSlider(sl); });
-      sl.oninput = () => {
-        activeSlider = sl; sl.dataset.dirty = '1';
-        if (out) out.textContent = sl.value;
+      const numin = box.querySelector('.dw-numin');
+      // Dùng chung cho thanh trượt (chỉnh thô), ô nhập số và nút −/+ (chỉnh chính xác): kẹp trong khoảng, làm tròn theo bước, đồng bộ hai chiều.
+      const stage = (raw, from) => {
         const { dev, w } = find();
+        const lo = Number(sl.min), hi = Number(sl.max), st = Number(sl.step) || 1;
+        let n = Number(raw);
+        if (!Number.isFinite(n)) return;
+        const lim = w?.cmd?.limits;
+        const L = lim ? Math.max(lo, Number(lim.min)) : lo; const H = lim ? Math.min(hi, Number(lim.max)) : hi;
+        const out_ = n < L || n > H;
+        const fine = (from === 'num' || from === 'refresh') ? Math.min(st, 1) : st;   // gõ bàn phím: bước mịn (gõ 66 ra 66); kéo / −/+: theo bước widget
+        n = Math.min(H, Math.max(L, Math.round((n - lo) / fine) * fine + lo));
+        n = Math.round(n * 1e6) / 1e6;
+        sl.value = String(n);
+        if (numin && from !== 'num') numin.value = String(n);
+        activeSlider = sl; sl.dataset.dirty = '1';
+        if (out) out.textContent = String(n);
         const cur = Number(val(dev, w?.bind));
-        const changed = !Number.isFinite(cur) || cur !== Number(sl.value);
+        const changed = !Number.isFinite(cur) || cur !== n;
+        if (changed) staged[skey] = n; else delete staged[skey];
         btn.disabled = !changed; btn.classList.toggle('dirty', changed);
-        if (info) info.textContent = changed ? `Chưa gửi: ${sl.value}${w?.unit ? ' ' + w.unit : ''} — bấm “Gửi lệnh”.` : '';
-        clearTimeout(idle); idle = setTimeout(cancelDirty, 20000);   // để quên 20 giây thì bỏ
+        box.classList.toggle('pending', changed);
+        if (info) info.textContent = changed ? `Chưa gửi — thiết bị đang ở ${Number.isFinite(cur) ? cur : '?'}${w?.unit ? ' ' + w.unit : ''}, giá trị mới ${n}${w?.unit ? ' ' + w.unit : ''}${out_ ? ` (đã đưa về giới hạn ${L}–${H})` : ''}. Bấm “Gửi lệnh” để áp dụng hoặc “Huỷ”.` : '';
+        clearTimeout(idle);
+        // Quên thì bỏ, nhưng KHÔNG im lặng nhảy về số cũ: báo rõ cho người dùng.
+        if (changed) idle = setTimeout(() => { const v = staged[skey]; cancelDirty(); toast(`Giá trị ${v} chưa gửi đã bị bỏ sau 60 giây. Thiết bị vẫn giữ giá trị cũ.`); }, PENDING_TTL_MS);
       };
+      sl.oninput = () => stage(sl.value, 'slider');
+      if (numin) {
+        numin.addEventListener('focus', () => { activeSlider = sl; try { numin.select(); } catch { /* */ } });
+        numin.addEventListener('input', () => { if (numin.value.trim() !== '' && Number.isFinite(Number(numin.value))) stage(numin.value, 'num'); });
+        numin.addEventListener('change', () => { if (numin.value.trim() === '') { numin.value = sl.value; return; } stage(numin.value, 'refresh'); });   // rời ô: chuẩn hoá hiển thị
+        numin.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); numin.blur(); } });
+        numin.addEventListener('blur', () => { if (!sl.dataset.dirty) releaseSlider(sl); });
+      }
+      box.querySelectorAll('.dw-step').forEach((sb) => {
+        sb.onclick = () => {
+          const base = staged[skey] !== undefined ? staged[skey] : Number(val(find().dev, find().w?.bind));
+          const b0 = Number.isFinite(base) ? base : Number(sl.value);
+          stage(b0 + Number(sb.dataset.d) * (Number(sl.step) || 1), 'step');
+        };
+      });
       btn.onclick = () => {
         const { dev, w } = find();
         if (!w?.cmd?.key || !window.Ctl?.send || btn.disabled) return;
         const prev = live[lk(dev)]?.[w.bind];
-        const next = Number(sl.value);
+        const next = staged[skey] !== undefined ? Number(staged[skey]) : Number(sl.value);
         live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
         setHold(dev, w, next);
         clearDirty();
