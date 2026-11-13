@@ -498,7 +498,19 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dw-send { min-height: 40px; padding: 0 16px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
 .dw-send:disabled { opacity: .45; }
 .dw-send.dirty { background: var(--acc, #3b82f6); color: #fff; border-color: transparent; box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #3b82f6) 30%, transparent); }
-.dw-pendinfo { font-size: 12px; opacity: .75; margin-top: 4px; min-height: 16px; }
+.dw-pendinfo { font-size: 12px; opacity: .75; margin-top: 4px; min-height: 3.1em; }   /* chừa sẵn 2 dòng: chữ "Chưa gửi…" hiện ra không làm khung nhảy */
+.dw-cancel { min-height: 40px; padding: 0 14px; border-radius: 12px; font-weight: 600; white-space: nowrap; background: transparent; border: 1px solid currentColor; opacity: .85; visibility: hidden; }
+.dw.pending .dw-cancel { visibility: visible; }
+/* Số đang đặt nằm TRÊN thanh trượt để ngón tay không che khuất khi kéo */
+.dev-widgets .dw .dw-vtop { margin: 2px 0 10px; }
+.dw-numrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.dw-numin { width: 4.4em; min-height: 52px; text-align: center; font-weight: 700; font-size: 1.9rem; line-height: 1.1; border-radius: 12px; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.dw-numin::-webkit-outer-spin-button, .dw-numin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.dw-step { min-width: 48px; min-height: 52px; border-radius: 12px; font-size: 24px; font-weight: 700; line-height: 1; }
+.dw-nu { opacity: .7; }
+.dw-range { font-size: 12px; margin-left: auto; }
+.dw.pending { outline: 2px solid var(--warn, #f59e0b); outline-offset: 2px; border-radius: 14px; }
+.dw.pending .dw-pendinfo { opacity: 1; font-weight: 600; color: var(--warn, #f59e0b); }
 .dw-toggle small { opacity: .75; font-weight: 400; margin-left: 6px; }
 
 /* ===== kiểu hiển thị thiết bị: 3D / hiện đại / SCADA ===== */

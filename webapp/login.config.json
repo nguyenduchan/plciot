@@ -3,8 +3,8 @@
   "subtitle": "Danh tính theo thiết bị — lưu username, mật khẩu và mã khôi phục",
   "themeColor": "#1a1a1a",
   "manifest": "manifest.json",
-  "icon": "icon.svg",
-  "appleIcon": "icon-180.png",
+  "icon": "icon.svg?v=3",
+  "appleIcon": "icon-180.png?v=3",
   "stylesheet": "style.css",
   "appScripts": [
     "auth-app.js"
