@@ -7,6 +7,7 @@ import { initHomePcTable } from './homePc.js';
 import { initOpsFlagsTable, loadOpsFlags } from './opsFlags.js';
 import { migrateSecurity } from '@plciot/security';
 import { ensureMqttIdColumn } from './mqttIds.js';
+import { initPushTables } from './webPush.js';
 
 function migrate(db) {
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
@@ -132,6 +133,7 @@ export function openDb(dataDir) {
   initPolicyTables(db);
   initHomePcTable(db);
   initOpsFlagsTable(db);
+  initPushTables(db);
   loadOpsFlags(db);
   // Tránh import vòng: seed tenant mặc định bằng SQL thuần
   const def = db.prepare("SELECT id FROM tenants WHERE id = 'default'").get();

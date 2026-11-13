@@ -1,4 +1,4 @@
-﻿/* Per-user cache-first shell. Active bundle name lives in cache "plc-meta". */
+/* Per-user cache-first shell. Active bundle name lives in cache "plc-meta". */
 const META = 'plc-meta';
 const AUTH_SHELL = new Set(['/login.html', '/auth-app.js', '/security/login.js', '/security/login.css', '/security/account.js', '/security/boot.js', '/security/device-proof.js', '/security/security-client.js', '/security/session.js']);
 
@@ -86,4 +86,23 @@ self.addEventListener('fetch', (e) => {
       return new Response('Không có kết nối mạng', { status: 503, statusText: 'Offline' });
     }
   })());
+});
+
+// ---- Web Push: cảnh báo nguy hiểm (nội dung mã hoá đầu cuối, không có thông tin cá nhân)
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { b: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.t || 'Cảnh báo', {
+    body: d.b || '', tag: d.tag || 'plciot-alert', renotify: true, requireInteraction: true,
+    icon: 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    for (const c of cs) if ('focus' in c) return c.focus();
+    return self.clients.openWindow(url);
+  }));
 });

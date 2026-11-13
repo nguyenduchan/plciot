@@ -273,6 +273,14 @@
   function render() {
     const host = $('#dev-grid');
     if (!host) return;
+    if (loadErr && !dashboard?.devices?.length) {
+      const why = ({ unauthorized: 'phiên đăng nhập hết hạn — hãy đăng nhập lại', session_revoked: 'phiên đã bị thu hồi — hãy đăng nhập lại', app_locked: 'ứng dụng đang khoá — mở khoá rồi thử lại', login_step_up_required: 'cần xác thực thêm — đăng nhập lại', network: 'không có kết nối mạng' })[loadErr.code] || `lỗi ${loadErr.code}`;
+      host.innerHTML = `<div class="dev-empty muted">Không tải được danh sách thiết bị (${esc(why)}).<br><button type="button" class="primary" id="dev-retry">Thử lại</button> <button type="button" id="dev-relogin">Đăng nhập lại</button></div>`;
+      $('#dev-retry')?.addEventListener('click', () => { loadRetried = false; load().catch(() => {}); });
+      $('#dev-relogin')?.addEventListener('click', () => { try { localStorage.removeItem('session'); } catch { /* */ } location.replace('login.html'); });
+      lastSig = '';
+      return;
+    }
     if (!dashboard?.devices?.length) {
       host.innerHTML = `<div class="dev-empty muted">Chưa có thiết bị.<br>Bấm <b>+ Thêm</b>, dán/quét QR tem — widget tự hiện (không cần sơ đồ SCADA).</div>`;
       lastSig = '';
@@ -417,6 +425,8 @@
     });
   }
 
+  let loadErr = null;
+  let loadRetried = false;
   async function load() {
     const s = session();
     if (!s?.token || s.demo) {
@@ -425,12 +435,17 @@
       return;
     }
     const mode = (LS.get('cfg', {})?.uiMode === 'pro') ? 'pro' : 'simple';
-    const r = await api('GET', `/api/v1/ui/dashboard?mode=${mode}`);
+    let r;
+    try { r = await api('GET', `/api/v1/ui/dashboard?mode=${mode}`); } catch { r = { ok: false, status: 0, data: { error: 'network' } }; }
     if (!r.ok) {
+      // Không im lặng hiện "trống": báo rõ lý do + nút thử lại; thử lại tự động một lần (iOS hay mở app lúc mạng/phiên chưa sẵn sàng).
+      loadErr = { code: r.data?.error || `http_${r.status || 0}`, status: r.status || 0 };
+      if (!loadRetried) { loadRetried = true; setTimeout(() => { load().catch(() => {}); }, 1500); }
       dashboard = { devices: [] };
       render();
       return;
     }
+    loadErr = null; loadRetried = false;
     dashboard = r.data;
     window.PlanUi?.update(null, dashboard.plan);
     render();

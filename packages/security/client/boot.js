@@ -83,36 +83,54 @@
       return;
     }
 
-    if (navigator.onLine && session.token) {
-      try {
-        const base = session.apiBase || location.origin;
-        const r = await fetch(`${base}/api/me`, {
-          headers: { Authorization: `Bearer ${session.token}` },
-        });
-        if (r.status === 401) {
-          const j = await r.json().catch(() => ({}));
-          if (j.error === 'session_revoked') {
-            // Phone changed / account recovered elsewhere: this device must sign in again.
-            try { localStorage.removeItem('session'); } catch {}
-            toLogin('?revoked=1');
-            return;
-          }
-          // Token expired: still allow offline app, but flag for re-login on next update
+    await checkVersion(session);
+  }
+
+  /**
+   * Hỏi server bản webapp mới nhất; khác bản đang chạy thì tải ngay (không bắt xoá cache).
+   * Chạy lúc mở app VÀ mỗi khi app quay lại foreground (PWA trên điện thoại có thể mở nhiều ngày không tải lại trang).
+   */
+  async function checkVersion(session) {
+    if (!navigator.onLine || !session?.token) return;
+    try {
+      const base = session.apiBase || location.origin;
+      const r = await fetch(`${base}/api/me`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+        cache: 'no-store',
+      });
+      if (r.status === 401) {
+        const j = await r.json().catch(() => ({}));
+        if (j.error === 'session_revoked') {
+          // Phone changed / account recovered elsewhere: this device must sign in again.
+          try { localStorage.removeItem('session'); } catch {}
+          toLogin('?revoked=1');
           return;
         }
-        if (r.ok) {
-          const me = await r.json();
-          if (me.version !== session.version) {
-            // PC có mã nguồn mới: tự tải bằng phiên hiện tại (không bắt đăng nhập lại); lỗi mới quay về đăng nhập.
-            if (await silentUpdate(session, me)) { window.AppLock?.allowNavigation(); location.reload(); }
-            else toLogin('?update=1');
-          }
-        }
-      } catch {
-        // offline / network error — continue with cached app
+        // Server trả lời được mà phiên hết hạn: đăng nhập lại (đăng nhập luôn tải bản mới nhất), không ở lại bản cũ.
+        if (j.error === 'unauthorized') { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
+        return;
       }
+      if (r.ok) {
+        const me = await r.json();
+        if (me.version !== session.version) {
+          // PC có mã nguồn mới: tự tải bằng phiên hiện tại (không bắt đăng nhập lại); lỗi mới quay về đăng nhập.
+          if (await silentUpdate(session, me)) { window.AppLock?.allowNavigation(); location.reload(); }
+          else { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
+        }
+      }
+    } catch {
+      // offline / network error — continue with cached app
     }
   }
+
+  let lastCheck = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 30_000) return;
+    lastCheck = Date.now();
+    if (window.AppLock?.isLocked?.()) return;
+    const session = LS.get('session', null);
+    if (session && !session.demo && !session.gate) checkVersion(session);
+  });
 
   run();
 })();

@@ -24,6 +24,7 @@ import { mountPlcControl } from './plcControlRoutes.js';
 import { plcControlConfig } from './plcCommands.js';
 import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
+import { mountPush } from './webPush.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountActivateApi } from './activateApi.js';
@@ -220,6 +221,7 @@ app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) 
 mountPlcControl(app, { db, requireAuth, security: controlApi });
 /* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
 mountSite(app, { db, requireAuth, reauth });
+mountPush(app, { db, requireAuth, dataDir: DATA_DIR });
 /* ---------- Nền tảng đa tenant: admin tenants + partner API (MQTTS provision) ---------- */
 mountPartnerRoutes(app, { db, requireAuth, reauth });
 /* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */

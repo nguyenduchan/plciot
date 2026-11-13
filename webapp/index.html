@@ -119,6 +119,12 @@
       </section>
 
       <section id="tab-set" class="tab" hidden>
+        <div class="panel form" id="push-panel">
+          <h2>Cảnh báo nguy hiểm trên điện thoại</h2>
+          <p class="muted">Nhận thông báo khi thiết bị vượt ngưỡng hoặc mất kết nối. Máy chủ không lưu số điện thoại hay email của bạn.</p>
+          <button type="button" id="push-on">Bật cảnh báo</button> <button type="button" id="push-off" hidden>Tắt</button> <button type="button" id="push-test" hidden>Gửi thử</button>
+          <p class="muted" id="push-msg"></p>
+        </div>
         <div class="panel form">
           <label>Kiểu giao diện<select id="uiMode"><option value="simple">Điện thoại — widget + báo cáo</option><option value="pro">SCADA kỹ thuật (I/O, băng tải)</option></select></label>
           <div class="pro-only">
@@ -310,14 +316,15 @@
 <script src="auth-app.js"></script>
 <script src="control.js?v=20261113a"></script>
 <script src="site.js"></script>
+<script src="push.js"></script>
 <script src="icons.js?v=20261113q"></script>
 <script src="icons-pid.js?v=2"></script>
 <script src="icons-sets.js?v=5"></script>
 <script src="icons-3d.js?v=2"></script>
 <script src="icons-3d-more.js?v=3"></script>
 <script src="plan.js?v=20261113a"></script>
-<script src="devices.js?v=20261113o"></script>
-<script src="app.js?v=20261113b"></script>
+<script src="devices.js?v=20261113p"></script>
+<script src="app.js?v=20261113c"></script>
 <script src="security/account.js"></script>
 </body>
 </html>
