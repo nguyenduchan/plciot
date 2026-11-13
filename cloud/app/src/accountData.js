@@ -11,6 +11,7 @@ import {
 } from './mqttProvision.js';
 
 const USER_TABLES = [
+  'push_subs',
   'recovery_codes',
   'passkeys',
   'app_sessions',

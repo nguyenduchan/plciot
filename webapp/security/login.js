@@ -127,12 +127,14 @@ async function putBundleFiles(token, files, cacheName, base) {
 async function registerSw() {
   if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
   try {
-    await navigator.serviceWorker.register('sw.js', { scope: './' });
+    const reg = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
     await navigator.serviceWorker.ready;
+    reg.update().catch(() => {});   // luôn kiểm tra service worker mới (nhận push, sửa cache) mỗi lần đăng nhập
   } catch {}
 }
 
 async function finishLogin(data) {
+  if (!data?.token) throw new Error(data?.error || 'login_invalid');   // không bao giờ lưu phiên rỗng / vào app khi chưa có token
   const base = location.origin;
   const offlineOk = 'caches' in window;
   const cacheName = offlineOk ? cacheNameFor(data.userId, data.version) : null;
@@ -289,8 +291,23 @@ async function passkeyLogin() {
   setError('');
   setBusy(true);
   try {
-    const data = await window.Security.loginWithPasskey();
+    // Máy mới (icon Màn hình chính có bộ nhớ riêng) cần thêm mật khẩu cùng Face ID: dùng ô mật khẩu nếu đã nhập.
+    const pw = ($('#password')?.value || '').trim();
+    const data = await window.Security.loginWithPasskey(pw || undefined);
     if (!data) return;
+    // loginWithPasskey trả cả nội dung LỖI của máy chủ (không ném lỗi). Không có token = chưa đăng nhập: TUYỆT ĐỐI không vào app / không báo thành công.
+    if (data.error || !data.token) {
+      if (data.error === 'second_factor_required' || data.error === 'password_invalid') {
+        if ($('#pw-row')) $('#pw-row').hidden = false;
+        $('#password')?.focus();
+        setError(data.error === 'password_invalid'
+          ? 'Mật khẩu chưa đúng. Nhập lại mật khẩu rồi bấm Face ID.'
+          : 'Máy mới (hoặc icon Màn hình chính) chưa được tin cậy: nhập mật khẩu vào ô bên dưới rồi bấm lại nút Face ID.');
+      } else {
+        setError(data.error || 'webauthn_failed');
+      }
+      return;
+    }
     if (flowPlan?.mustEnroll) {
       LS.set('session', { token: data.token, userId: data.userId, apiBase: location.origin, online: true, gate: 'bio' });
       const r = await window.Security.enrollMandatory();

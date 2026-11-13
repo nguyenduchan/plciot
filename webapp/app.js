@@ -784,13 +784,21 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 applyDbLimits();
 loadSettings();
 applyRole(LS.get('session', null)?.role);
+// MQTT (số liệu trực tiếp) KHÔNG được chờ IndexedDB/đồng bộ lịch sử: trên icon Màn hình chính iPhone (bộ nhớ trống, IndexedDB chậm/lỗi) bước này có thể treo
+// và khi đó webapp mãi mãi "Mất kết nối". Nối ngay; lịch sử mở song song, lỗi chỉ ghi cảnh báo.
+let dashShown = false;
+const showDash = () => { if (dashShown) return; dashShown = true; try { showTab('dash'); } catch (e) { console.warn('showTab', e); } };
 alignSiteDevFromSession()
-  .then(() => openDb())
-  .then(() => { connect(); showTab('dash'); DB.compact(); });
+  .catch((e) => console.warn('align', e))
+  .then(() => {
+    connect();
+    const fallback = setTimeout(showDash, 4000);   // IndexedDB treo: vẫn hiện trang chính sau 4 giây
+    return openDb().catch((e) => console.warn('openDb', e)).then(() => { clearTimeout(fallback); showDash(); try { DB.compact(); } catch { /* */ } });
+  });
 setInterval(() => { if (!document.hidden) renderStatus(); }, 1000);
 setInterval(() => { DB.compact().then(() => { if (!$('#tab-rep').hidden) Dash.refresh(true); }); }, 60000);
 setInterval(() => { if (!document.hidden && !$('#tab-rep').hidden) Dash.refresh(false); }, 10000);

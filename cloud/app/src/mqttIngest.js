@@ -10,6 +10,7 @@ import { isOpsOpen } from './opsFlags.js';
 import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
+import { evaluateTelemetryAlerts, evaluateStatusAlert } from './pushAlerts.js';
 
 /** Tem chưa có user? Cache 5 giây để không truy vấn DB cho từng gói telemetry (gateway cũng đã ngừng gửi khi chưa claim). */
 const unclaimedCache = new Map();
@@ -146,6 +147,7 @@ export function startMqttIngest(db) {
         } else {
           // schema:2 / d — đánh dấu online; không map conveyor r[]
           noteTelemetry(site, device, 1, now);
+          evaluateTelemetryAlerts(db, { tenantId, site, device, d: canonical.d, now });
         }
 
         const key = `${tenantId}/${site}/${device}`;
@@ -171,6 +173,7 @@ export function startMqttIngest(db) {
         const was = prevStatus.get(sk);
         prevStatus.set(sk, text);
         if (was !== undefined && was !== text) {
+          evaluateStatusAlert(db, { site, device, text, now });
           emitWebhook(db, {
             tenantId, site, device, event: 'status', data: { status: text, previous: was },
           });

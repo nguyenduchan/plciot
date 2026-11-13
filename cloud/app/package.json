@@ -16,6 +16,7 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mime-types": "^2.1.35",
-    "mqtt": "^5.10.3"
+    "mqtt": "^5.10.3",
+    "web-push": "^3.6.7"
   }
 }
