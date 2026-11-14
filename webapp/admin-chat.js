@@ -118,8 +118,9 @@
 
   async function open(userId, username) {
     current = { userId, username }; lastId = 0; oldestId = 0; $('#log').textContent = '';
+    document.body.classList.add('in-conv'); $('#info').classList.add('hidden'); $('#info-btn').classList.remove('on');
     $('#older').disabled = false; $('#export').disabled = false;
-    $('#who').textContent = `Trò chuyện với ${username}`;
+    $('#who').textContent = username;
     $('#input').disabled = false; $('#send').disabled = false;
     await poll(true);
     clearInterval(timer); timer = setInterval(() => { poll(false); }, 10000);
@@ -130,11 +131,23 @@
     if (!current) return;
     try {
       const j = await api(`/api/admin/support/threads/${current.userId}?after=${lastId}`);
-      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); renderProfile(j.profile, j.plans, j.planId); }
+      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); renderProfile(j.profile, j.plans, j.planId); pendBar(j); }
       addMessages(j.messages);
       if (first) { const lu = [...(j.messages || [])].reverse().find((m) => m.from === 'user'); $('#reply-ch').value = lu?.channel === 'upgrade' || j.requestedPlan ? 'upgrade' : 'support'; }
     } catch (e) { msg(e.message, true); }
   }
+
+  /* ---------- Bố cục kiểu ứng dụng nhắn tin: khung chat chiếm hết chỗ, thông tin/xử lý gói nằm trong ngăn ℹ ---------- */
+  function pendBar(j) {
+    const bar = $('#pend-bar'); const lbl = (j.plans || []).find((p) => p.id === j.requestedPlan)?.label || j.requestedPlan;
+    bar.classList.toggle('hidden', !j.requestedPlan);
+    $('#pend-text').textContent = j.requestedPlan ? `Yêu cầu đổi gói: ${lbl}${j.requestedDays ? ` · lưu ${j.requestedDays} ngày` : ''}` : '';
+  }
+  const toggleInfo = (open) => { const i = $('#info'); const on = open ?? i.classList.contains('hidden'); i.classList.toggle('hidden', !on); $('#info-btn').classList.toggle('on', on); if (on) i.scrollTop = 0; };
+  $('#info-btn').addEventListener('click', () => { if (current) toggleInfo(); });
+  $('#pend-open').addEventListener('click', () => { toggleInfo(true); $('#apr').scrollIntoView({ block: 'start' }); });
+  $('#back-btn').addEventListener('click', () => { document.body.classList.remove('in-conv'); });
+  { const inp = $('#input'); inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = `${Math.min(140, inp.scrollHeight)}px`; }); }
 
   /* ---------- Thông tin cơ bản của người dùng (DB) + cập nhật nhanh ---------- */
   const dmy = (t) => (t ? new Date(t).toLocaleDateString('vi-VN') : '—');
@@ -265,7 +278,7 @@
     const body = $('#input').value.trim();
     if (!current || !body) return;
     msg(''); $('#send').disabled = true;
-    try { await api(`/api/admin/support/threads/${current.userId}`, 'POST', { body, channel: $('#reply-ch').value }); $('#input').value = ''; await poll(false); loadThreads().catch(() => {}); }
+    try { await api(`/api/admin/support/threads/${current.userId}`, 'POST', { body, channel: $('#reply-ch').value }); $('#input').value = ''; $('#input').style.height = 'auto'; syncComposer(); await poll(false); loadThreads().catch(() => {}); }
     catch (e) { msg(e.message, true); } finally { $('#send').disabled = false; }
   });
 
