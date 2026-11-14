@@ -1,4 +1,4 @@
-# Trang admin riêng (admin.plc.dieukhientudong.net)
+# Trang admin riêng (adminplc.dieukhientudong.net)
 
 Trang admin tách khỏi web app: tên miền riêng, đăng nhập riêng, không nằm trong `plc.dieukhientudong.net`.
 
@@ -10,5 +10,5 @@ Trang admin tách khỏi web app: tên miền riêng, đăng nhập riêng, khô
 - Mất điện thoại Authenticator: vào bằng đường hầm SSH (`ADMIN_SSH_LOGIN=true`) rồi đổi trong Cài đặt, hoặc xoá `totp_*` của user trong DB.
 
 ## Cloudflare
-Zero Trust → Networks → Tunnels → tunnel của dự án → **Published application routes** → thêm hostname `admin.plc.dieukhientudong.net` → HTTP `app:3080`.
-Lưu ý: chứng chỉ Universal SSL miễn phí của Cloudflare chỉ phủ `*.dieukhientudong.net` (một cấp). Tên **hai cấp** như `admin.plc.dieukhientudong.net` cần Advanced Certificate Manager (trả phí); nếu không, dùng `admin-plc.dieukhientudong.net` (một cấp) và đặt `ADMIN_HOST` tương ứng.
+Zero Trust → Networks → Tunnels → tunnel của dự án → **Published application routes** → thêm hostname `adminplc.dieukhientudong.net` → HTTP `app:3080`.
+Lưu ý: Universal SSL miễn phí chỉ phủ tên một cấp (`*.dieukhientudong.net`), nên dùng `adminplc.dieukhientudong.net` (không phải `admin.plc.…`, cần Advanced Certificate Manager trả phí).
