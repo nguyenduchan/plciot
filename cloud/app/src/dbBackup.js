@@ -30,7 +30,15 @@ export async function backupOnce(db, dataDir, opts = {}) {
   const target = path.join(dir, name);
   if (fs.existsSync(target) && !opts.force) return { skipped: true, file: name };
   const tmp = `${target}.tmp`;
-  await db.backup(tmp);
+  // Cần chỗ trống ≥ ~1,2 × kích thước DB: thiếu thì bỏ qua (và báo), không để bản sao lưu làm đầy đĩa cùng DB đang chạy.
+  try {
+    const dbBytes = fs.statSync(path.join(dataDir, 'app.db')).size;
+    const st = fs.statfsSync(dir);
+    const free = Number(st.bavail) * Number(st.bsize);
+    if (free < dbBytes * 1.2 + 256 * 1048576) return { skipped: true, file: name, reason: `không đủ chỗ trống (${Math.round(free / 1048576)} MB trống, DB ${Math.round(dbBytes / 1048576)} MB)` };
+  } catch { /* không đọc được dung lượng: cứ sao lưu */ }
+  // Sao lưu theo từng đợt trang rồi nhường vòng lặp sự kiện: DB lớn không làm đứng việc nhận tin MQTT.
+  await db.backup(tmp, { progress: () => { return 256; } });
   try { fs.chmodSync(tmp, 0o600); } catch { /* Windows */ }
   fs.renameSync(tmp, target);
   const pruned = pruneBackups(dir, { daily: Number(process.env.DB_BACKUP_DAILY || 7), weekly: Number(process.env.DB_BACKUP_WEEKLY || 4) });
@@ -39,7 +47,7 @@ export async function backupOnce(db, dataDir, opts = {}) {
 
 export function startBackups(db, dataDir) {
   if (String(process.env.DB_BACKUP ?? '1') === '0') return;
-  const run = () => backupOnce(db, dataDir).then((r) => { if (!r.skipped) console.log('[backup]', r.file, r.size, 'bytes, pruned', r.pruned); }).catch((e) => console.error('[backup]', e.message));
+  const run = () => backupOnce(db, dataDir).then((r) => { if (r.reason) console.warn('[backup] bỏ qua:', r.reason); else if (!r.skipped) console.log('[backup]', r.file, r.size, 'bytes, pruned', r.pruned); }).catch((e) => console.error('[backup]', e.message));
   setTimeout(run, 60_000).unref?.();             // sau khi khởi động xong
   setInterval(run, 3600_000).unref?.();          // mỗi giờ kiểm tra: qua ngày mới thì tạo bản mới
 }

@@ -42,6 +42,18 @@ if (role === 'pub') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-'));
   const db = openDb(dir);
   const c = mqtt.connect(url, { clientId: 'bench-sub', clean: true });
+  // BENCH_PREFILL_ROWS=N: nạp sẵn N dòng (nhiều site/device, ts rải đều) để đo khi DB ĐÃ ĐẦY, không chỉ DB trống.
+  const prefill = Number(process.env.BENCH_PREFILL_ROWS) || 0;
+  let probe = null;
+  if (prefill) {
+    const tf = Date.now(); const base = tf - 30 * 86400000; const step = Math.max(1, Math.floor((30 * 86400000) / prefill));
+    const fill = db.transaction((a, b) => { for (let i = a; i < b; i++) insertEvent(db, { ts: base + i * step, site: 'bench', device: mqttId(i % GW), kind: 'telemetry', payload: '{"schema":2,"d":{"w":{"level":62.1,"flow":48,"run":1}}}', o: 1, i: 1, a: 0, c: 1, s: 1 }); });
+    for (let a = 0; a < prefill; a += 100000) fill(a, Math.min(prefill, a + 100000));
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    const t1 = process.hrtime.bigint();
+    const n = db.prepare("SELECT COUNT(*) n FROM (SELECT id FROM mqtt_events WHERE site='bench' AND device=? AND kind='telemetry' AND ts>? AND ts<=? ORDER BY ts LIMIT 5000)").get(mqttId(1), base, base + 86400000 * 3).n;
+    probe = { prefillRows: prefill, fillSec: Math.round((Date.now() - tf) / 1000), queryRows: n, queryMs: Number(process.hrtime.bigint() - t1) / 1e6 };
+  }
   let rows = []; let flushing = false; let received = 0; let stored = 0;
   const insertMany = db.transaction((r) => { for (const x of r) insertEvent(db, x); });
   const flush = () => { flushing = false; if (!rows.length) return; const r = rows; rows = []; insertMany(r); stored += r.length; };
@@ -66,7 +78,7 @@ if (role === 'pub') {
     console.log(JSON.stringify({
       role: 'sub', widgets, seconds: Math.round(el), received, stored, rate: Math.round(received / el),
       cpuPctOneCore: Math.round(((cpu.user + cpu.system) / 1e6 / el) * 100),
-      bytesPerRowDb: baseRows ? Math.round(size / baseRows) : null, rssMb: Math.round(process.memoryUsage().rss / 1048576),
+      probe, bytesPerRowDb: baseRows ? Math.round(size / baseRows) : null, rssMb: Math.round(process.memoryUsage().rss / 1048576),
     }));
     c.end(true, () => { fs.rmSync(dir, { recursive: true, force: true }); process.exit(0); });
   }, (seconds + 3) * 1000);

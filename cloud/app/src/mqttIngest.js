@@ -1,7 +1,7 @@
 import { shardCount, shardUrls } from './shards.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
-import { purgeByPlan, defaultDays, thinOldTelemetry } from './retention.js';
+import { purgeByPlanAsync, defaultDays, thinOldTelemetryAsync } from './retention.js';
 import { noteTelemetry } from './plcProof.js';
 import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
 import { deviceByMqttId } from './mqttIds.js';
@@ -275,15 +275,18 @@ function maybeWebhookAlarm(db, tenantId, site, device, alarmMask, prevAlarm, app
 }
 
 export function startHistoryPurge(db) {
-  const run = () => {
+  let busy = false;   // không chạy chồng khi một vòng xoá/gộp còn dở (DB lớn)
+  const run = async () => {
+    if (busy) return;
+    busy = true;
     try {
-      const n = purgeByPlan(db);
+      const n = await purgeByPlanAsync(db);
       if (n) console.log(`history purge: deleted ${n} expired rows (default ${defaultDays()}d, per-plan overrides)`);
-      const t = thinOldTelemetry(db);
+      const t = await thinOldTelemetryAsync(db);
       if (t) console.log(`history thin: gộp thưa ${t} mẫu cũ của gói không giới hạn`);
     } catch (e) {
       console.error('history purge', e.message);
-    }
+    } finally { busy = false; }
   };
   run();
   return setInterval(run, 3600e3);

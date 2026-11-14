@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDb } from '../src/db.js';
 import { insertEvent } from '../src/historyStore.js';
-import { thinOldTelemetry } from '../src/retention.js';
+import { thinOldTelemetry, thinOldTelemetryAsync, purgeByPlanAsync } from '../src/retention.js';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'thin-'));
 const db = openDb(dir);
@@ -36,6 +36,26 @@ ok(deleted === before - after, 'số dòng xoá khớp');
 ok(cnt('siteA', false) === 600, 'dữ liệu mới (< 30 ngày) giữ nguyên');
 ok(cnt('siteB', true) === 3600, 'gói lưu 30 ngày: không bị gộp thưa');
 ok(thinOldTelemetry(db, now + 1000) === 0, 'chạy lại ngay: không xử lý lại khoảng đã gộp');
+
+// Lô nhỏ: xoá/gộp nhiều dòng bằng nhiều lệnh ngắn, nhường vòng lặp sự kiện giữa các lô.
+process.env.PURGE_CHUNK_ROWS = '1000';
+const ins = db.transaction(() => { for (let i = 0; i < 5500; i++) insertEvent(db, { ts: now - 40 * DAY - i * 1000, site: 'orphan', device: 'x', kind: 'telemetry', payload: '{}', o: 1, i: 1, a: 0, c: 1, s: 1 }); });
+ins();
+let ticks = 0; const timer = setInterval(() => ticks++, 0);
+const purged = await purgeByPlanAsync(db, now);
+clearInterval(timer);
+ok(purged >= 5500, `xoá hết ${purged} dòng quá hạn theo lô 1000`);
+ok(ticks >= 5, `vòng lặp sự kiện được nhường giữa các lô (${ticks} lượt)`);
+ok(db.prepare("SELECT COUNT(*) n FROM mqtt_events WHERE site='orphan'").get().n === 0, 'không còn dòng quá hạn');
+addUser('big2', 'siteC', 'gw3', 0);
+// Gộp thưa nhiều cửa sổ 6 giờ: 2 ngày dữ liệu 1 mẫu/10 giây → 1 mẫu/5 phút
+const t0 = now - 45 * DAY;
+const ins2 = db.transaction(() => { for (let i = 0; i < 17280; i++) insertEvent(db, { ts: t0 + i * 10000, site: 'siteC', device: 'gw3', kind: 'telemetry', payload: '{}', o: 1, i: 1, a: 0, c: 1, s: 1 }); });
+ins2();
+const bigBefore = db.prepare("SELECT COUNT(*) n FROM mqtt_events WHERE site='siteC' AND ts>=? AND ts<?").get(t0, t0 + 2 * DAY).n;
+await thinOldTelemetryAsync(db, now + 3600e3);
+const bigAfter = db.prepare("SELECT COUNT(*) n FROM mqtt_events WHERE site='siteC' AND ts>=? AND ts<?").get(t0, t0 + 2 * DAY).n;
+ok(bigBefore === 17280 && bigAfter >= 570 && bigAfter <= 600, `2 ngày 17280 mẫu → ${bigAfter} mẫu (~576)`);
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(fails ? `${fails} lỗi` : 'smoke-thin OK');
