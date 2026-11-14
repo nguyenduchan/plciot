@@ -167,7 +167,7 @@ function applyRole(role) {
   document.body.classList.remove('viewer');   // mọi tài khoản đều điều khiển được
   // Link Console chỉ hiện khi server báo là dashboard admin (SĐT allow-list)
   const l = $('#admin-link');
-  if (l) l.hidden = !(S.dashboardAdmin || S.role === 'admin');
+  if (l) l.hidden = !S.dashboardAdmin;   // chỉ admin cao nhất (ADMIN_DASHBOARD_USERS)
 }
 function applySubscription(sub) {
   const panel = $('#sub-panel');
@@ -652,6 +652,7 @@ async function alignSiteDevFromSession() {
     if (!r.ok) return;
     const me = await r.json();
     S.dashboardAdmin = Boolean(me.dashboardAdmin);
+    if (me.adminUrl) document.querySelectorAll('#admin-link a').forEach((a) => { a.href = me.adminUrl + 'admin-login.html'; a.target = '_blank'; a.rel = 'noopener'; });   // admin ở tên miền riêng
     applyRole(me.role);
     applySubscription(me.subscription);
     window.PlanUi?.update(me.subscription, null, me.username);

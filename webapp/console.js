@@ -4,7 +4,7 @@
   const $ = (s) => document.querySelector(s);
   let session = null;
   try { session = JSON.parse(localStorage.getItem('session')); } catch {}
-  if (!session?.token || session.demo) { location.replace('login.html'); return; }
+  if (!session?.token || session.demo) { location.replace('admin-login.html'); return; }
   const base = session.apiBase || location.origin;
 
   const ERR = {

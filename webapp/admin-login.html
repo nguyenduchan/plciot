@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="robots" content="noindex,nofollow">
+<title>Đăng nhập quản trị — Giám sát PLC</title>
+<link rel="icon" href="icon.svg?v=3">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="security/login.css">
+<style>.hidden{display:none!important}#secret{font:600 15px ui-monospace,Consolas,monospace;word-break:break-all;background:var(--bg);padding:10px;border-radius:10px;user-select:all;margin:8px 0}#qr canvas{display:block;margin:10px auto}</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-brand">
+    <img src="icon.svg?v=3" alt="">
+    <div>
+      <h1>Giám sát PLC</h1>
+      <p>Quản trị hệ thống — chỉ dành cho quản trị viên</p>
+    </div>
+  </div>
+  <div class="panel form">
+    <p id="error" role="alert" aria-atomic="true"></p>
+
+    <form id="step-login" class="step" autocomplete="on">
+      <p class="hint">Đăng nhập bằng tên đăng nhập, mật khẩu và mã Authenticator.</p>
+      <label>Tên đăng nhập<input id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Tên đăng nhập" required></label>
+      <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu" required></label>
+      <label id="code-row" class="hidden">Mã Authenticator (6 số)<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456"></label>
+      <div class="login-actions"><button type="submit" id="btn-login" class="primary">Đăng nhập</button></div>
+    </form>
+
+    <div id="step-setup" class="step hidden">
+      <p class="hint" style="font-weight:600">Bật xác thực hai bước</p>
+      <p class="hint">Tài khoản quản trị bắt buộc dùng ứng dụng Authenticator (Google / Microsoft Authenticator…). Quét mã QR hoặc nhập khoá bên dưới, rồi nhập mã 6 số để hoàn tất.</p>
+      <div id="qr"></div>
+      <div id="secret"></div>
+      <label>Mã 6 số<input id="setup-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+      <div class="login-actions"><button type="button" id="btn-enable" class="primary">Xác nhận và đăng nhập</button></div>
+    </div>
+  </div>
+</div>
+<script src="vendor/qrcode-generator.js"></script>
+<script src="vendor/qr-canvas.js"></script>
+<script src="admin-login.js"></script>
+</body>
+</html>

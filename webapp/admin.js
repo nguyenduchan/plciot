@@ -9,8 +9,8 @@
   if (!session?.token || session.demo) {
     fetch('/api/admin/local-session', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (j?.token) { localStorage.setItem('session', JSON.stringify({ token: j.token, apiBase: location.origin })); location.reload(); }
-      else location.replace('login.html');
-    }).catch(() => location.replace('login.html'));
+      else location.replace('admin-login.html');
+    }).catch(() => location.replace('admin-login.html'));
     return;
   }
   const base = session.apiBase || location.origin;

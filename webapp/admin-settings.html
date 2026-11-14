@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="robots" content="noindex,nofollow">
+<title>Cài đặt quản trị — Giám sát PLC</title>
+<link rel="icon" href="icon.svg?v=3">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:16px;max-width:820px;margin:auto}
+.panel{max-width:none;margin-bottom:14px}
+.help{font-size:13px;color:var(--mut);line-height:1.5}
+#msg{min-height:1.3em;font-size:14px;margin:0 0 10px}#msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-size:11px;text-transform:uppercase}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accbg);color:var(--acc)}.tag.bad{background:#dc262622;color:var(--bad)}.tag.ok{background:#16a34a22;color:var(--ok)}
+.hidden{display:none!important}
+#secret{font:600 15px ui-monospace,Consolas,monospace;word-break:break-all;background:var(--bg);padding:10px;border-radius:10px;user-select:all;margin:8px 0}#qr canvas{display:block;margin:10px auto}
+</style>
+</head>
+<body>
+<h1 style="font-size:20px;margin:0 0 10px">Cài đặt quản trị</h1>
+<p id="msg"></p>
+
+<div class="panel form">
+  <h2>Tài khoản</h2>
+  <p>Đăng nhập: <b id="who"></b> · Authenticator: <span id="totp-state" class="tag"></span></p>
+</div>
+
+<div class="panel form">
+  <h2>Đổi mật khẩu</h2>
+  <p class="help">Tối thiểu 10 ký tự, có chữ và số. Đổi xong, mọi phiên khác bị đăng xuất.</p>
+  <label>Mật khẩu hiện tại<input id="pw-cur" type="password" autocomplete="current-password"></label>
+  <label>Mật khẩu mới<input id="pw-new" type="password" autocomplete="new-password"></label>
+  <label class="totp-need">Mã Authenticator<input id="pw-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+  <button id="btn-pw" class="primary fit" type="button">Đổi mật khẩu</button>
+</div>
+
+<div class="panel form">
+  <h2>Đổi Authenticator</h2>
+  <p class="help">Xác nhận bằng mật khẩu và mã hiện tại, quét khoá mới, rồi nhập mã mới để bật. Mọi phiên khác bị đăng xuất.</p>
+  <div id="tc-start">
+    <label>Mật khẩu<input id="tc-pw" type="password" autocomplete="current-password"></label>
+    <label class="totp-need">Mã Authenticator hiện tại<input id="tc-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+    <button id="btn-tc" class="fit" type="button">Tạo khoá mới</button>
+  </div>
+  <div id="tc-finish" class="hidden">
+    <div id="qr"></div><div id="secret"></div>
+    <label>Mã 6 số từ khoá mới<input id="tc-new" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+    <button id="btn-tc-ok" class="primary fit" type="button">Bật khoá mới</button>
+  </div>
+</div>
+
+<div class="panel form">
+  <h2>Phiên đăng nhập</h2>
+  <table><thead><tr><th>Nơi</th><th>Hoạt động cuối</th><th></th></tr></thead><tbody id="sessions"></tbody></table>
+  <button id="btn-revoke" class="fit" type="button" style="margin-top:10px">Đăng xuất mọi máy khác</button>
+</div>
+
+<div class="panel form">
+  <h2>Nhật ký đăng nhập quản trị</h2>
+  <table><thead><tr><th>Lúc</th><th>Sự kiện</th><th>IP</th></tr></thead><tbody id="history"></tbody></table>
+</div>
+
+<div class="panel form">
+  <h2>Cấu hình bảo mật máy chủ (chỉ xem)</h2>
+  <p class="help">Đổi trong <code>cloud/.env</code> rồi triển khai lại. Mục cảnh báo nên đặt về giá trị an toàn khi chạy thật.</p>
+  <table><tbody id="server"></tbody></table>
+</div>
+
+<script src="vendor/qrcode-generator.js"></script>
+<script src="vendor/qr-canvas.js"></script>
+<script src="admin-nav.js"></script>
+<script src="admin-settings.js"></script>
+</body>
+</html>

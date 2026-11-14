@@ -18,6 +18,7 @@ import { wipeOwnHistory } from './deviceTransfer.js';
 import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
 import { adminLocalOnly, adminInternetGuard, isDirectLocal } from './adminGate.js';
+import { adminSiteGate, mountAdminSite, adminHost } from './adminSite.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
@@ -65,6 +66,7 @@ app.locals.db = db;
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
 app.use(securityHeaders);
+app.use(adminSiteGate);   // ADMIN_HOST: tên miền admin riêng, tên miền app không phục vụ admin
 app.use(adminLocalOnly);
 app.use(adminInternetGuard((req, res, next) => requireAuth(req, res, next)));   // requireAuth khai báo ở dưới; chỉ gọi lúc có request   // ADMIN_ONLY_CIDRS: trang + API admin chỉ cho PC của chủ (hoặc đường hầm SSH)
 app.use(cors(buildCorsOptions()));
@@ -130,6 +132,7 @@ const controlApi = mountAuthentication(app, {
   authConfig: () => ({ channel: 'device' }),
 });
 const { requireAuth, sensitiveStrict, reauth } = controlApi;
+mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret: JWT_SECRET });
 const send = (res, result) => res.status(result.error ? result.status || 400 : 200).json(result);
 const ipOf = clientIp;
 
@@ -166,6 +169,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     notifyDevice: u.notify_device,
     role: u.role,
     dashboardAdmin: isDashboardAdmin(u),
+    adminUrl: adminHost() ? `https://${adminHost()}/` : null,
     ...retentionInfo(u),
     subscription: subscriptionInfo(u),
     mqtt: mqttClientConfig(db, u),
