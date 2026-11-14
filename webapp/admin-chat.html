@@ -44,7 +44,9 @@ body{padding:16px;max-width:1100px;margin:auto}
     <div id="apr" class="hidden" style="margin:8px 0;padding:10px;border-radius:12px;box-shadow:0 0 0 1px var(--line)">
       <b>Xử lý yêu cầu đổi gói</b>
       <p class="help" id="apr-asked"></p>
+      <div id="quote" class="help hidden" style="margin:6px 0;padding:8px;border-radius:10px;background:var(--accbg)"><div id="quote-text"></div><div class="row" style="margin-top:6px"><button id="quote-fill" class="fit" type="button">Chèn ước tính vào ô soạn</button></div></div>
       <label>Gói sẽ gán<select id="apr-plan"></select></label>
+      <label class="hidden" id="apr-now-row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="apr-now" style="width:auto"> Đổi ngay (bỏ qua hạn gói hiện tại — chỉ dùng khi hạ gói)</label>
       <label>Lý do (chỉ dùng khi từ chối, tuỳ chọn)<input id="apr-reason" maxlength="300" autocomplete="off"></label>
       <div class="row"><button id="apr-yes" class="primary fit" type="button">Đồng ý — gán gói</button><button id="apr-no" class="fit" type="button">Từ chối</button></div>
       <div id="apr-confirm" class="hidden">
@@ -65,6 +67,6 @@ body{padding:16px;max-width:1100px;margin:auto}
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261114e"></script>
+<script src="admin-chat.js?v=20261114g"></script>
 </body>
 </html>

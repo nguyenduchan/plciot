@@ -17,7 +17,7 @@
     ['Chưa thấy tiền về', 'Hiện mình chưa thấy khoản chuyển khoản của bạn trong tài khoản. Bạn kiểm tra lại giúp mình ngày giờ, số tiền và nội dung chuyển khoản nhé.'],
   ];
 
-  const ERR = { empty_message: 'Hãy nhập nội dung.', user_not_found: 'Không tìm thấy người dùng.', rate_limited: 'Gửi quá nhanh, chờ một chút.', quota_exceeded: 'Vượt hạn mức dung lượng.', busy: 'Hệ thống đang quá tải, thử lại sau.',
+  const ERR = { empty_message: 'Hãy nhập nội dung.', user_not_found: 'Không tìm thấy người dùng.', rate_limited: 'Gửi quá nhanh, chờ một chút.', no_expiry: 'Gói hiện tại không có ngày hết hạn: tick "Đổi ngay" nếu muốn hạ gói luôn.', quota_exceeded: 'Vượt hạn mức dung lượng.', busy: 'Hệ thống đang quá tải, thử lại sau.',
     admin_session_required: 'Đăng nhập lại.', unauthorized: 'Phiên hết hạn, đăng nhập lại.', session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.' };
   const msg = (t, bad) => { const m = $('#msg'); m.textContent = t || ''; m.className = bad ? 'err' : ''; };
   const when = (t) => new Date(t).toLocaleString('vi-VN');
@@ -123,9 +123,10 @@
   }
 
   /* ---------- Đồng ý / Từ chối yêu cầu đổi gói (gán gói thủ công + nhắn chữ; không đơn hàng, không thanh toán) ---------- */
-  let planLabels = {}; let pendingAction = null;
+  let planLabels = {}; let pendingAction = null; let curPlanId = null; let curExp = null; let planOrder = [];
   function fillApprove(j) {
     planLabels = Object.fromEntries((j.plans || []).map((p) => [p.id, p.label]));
+    planOrder = (j.plans || []).map((p) => p.id); curPlanId = j.planId; curExp = j.expiresAt || null;
     const sel = $('#apr-plan'); sel.textContent = '';
     for (const p of j.plans || []) {
       const o = document.createElement('option'); o.value = p.id;
@@ -134,7 +135,12 @@
     if (j.requestedPlan && j.requestedPlan !== j.planId) sel.value = j.requestedPlan;
     else sel.value = [...sel.options].find((o) => !o.disabled)?.value || '';
     $('#apr-asked').textContent = j.requestedPlan ? `Người dùng đang xin tư vấn gói: ${planLabels[j.requestedPlan] || j.requestedPlan}.` : 'Người dùng chưa chọn gói cụ thể.';
+    const q = j.quote; const money = (n) => `${Number(n).toLocaleString('vi-VN')}đ`;
+    window._quote = q || null;
+    $('#quote').classList.toggle('hidden', !q);
+    if (q) $('#quote-text').textContent = `Ước tính tham khảo (chỉ admin thấy): ${q.widgets} widget × ${money(q.perWidget)} = ${money(q.total)}. Cách tính: 3 × chi phí vận hành server của 1 widget trong ${q.assumptions.years} năm = 3 × (${money(q.assumptions.vpsMonthVnd)}/tháng × 12 × ${q.assumptions.years} ÷ ${q.assumptions.capacityWidgets} widget, mỗi widget 1 tin/giây).`;
     $('#apr').classList.remove('hidden'); $('#apr-confirm').classList.add('hidden'); pendingAction = null;
+    $('#apr-now').checked = false; $('#apr-now-row').classList.toggle('hidden', !isDown(sel.value));
   }
   function askConfirm(kind) {
     const sel = $('#apr-plan');
@@ -143,8 +149,22 @@
     $('#apr-confirm-text').textContent = kind === 'yes'
       ? `Gán gói “${planLabels[sel.value] || sel.value}” cho ${current.username} và nhắn xác nhận? Chỉ bấm khi bạn đã tự kiểm tra tiền về ngoài hệ thống.`
       : `Từ chối yêu cầu của ${current.username} và gửi tin nhắn báo?`;
+    const down = isDown(sel.value);
+    if (kind === 'yes' && down) {
+      $('#apr-confirm-text').textContent = curExp && !$('#apr-now').checked
+        ? `Hạ gói của ${current.username}: giữ “${planLabels[curPlanId] || curPlanId}” đến hết ngày ${new Date(curExp).toLocaleDateString('vi-VN')}, sau đó tự chuyển sang “${planLabels[sel.value] || sel.value}” và nhắn báo ngày chuyển?`
+        : `Đổi NGAY ${current.username} sang gói thấp hơn “${planLabels[sel.value] || sel.value}” (bỏ qua hạn gói hiện tại) và nhắn xác nhận?`;
+    }
     $('#apr-confirm').classList.remove('hidden');
   }
+  const isDown = (id) => planOrder.indexOf(id) !== -1 && planOrder.indexOf(id) < planOrder.indexOf(curPlanId);
+  $('#apr-plan').addEventListener('change', () => { $('#apr-now-row').classList.toggle('hidden', !isDown($('#apr-plan').value)); });
+  $('#quote-fill').addEventListener('click', () => {
+    const q = window._quote; if (!q || !current) return;
+    const money = (n) => `${Number(n).toLocaleString('vi-VN')}đ`;
+    $('#input').value = `Với ${q.widgets} widget hiện có trên tài khoản của bạn, mức ước tính là ${money(q.perWidget)} cho mỗi widget, tổng khoảng ${money(q.total)} (dùng trong ${q.assumptions.years} năm). Mức này chỉ để tham khảo; nếu bạn đồng ý, mình gửi hướng dẫn chuyển khoản.`;
+    $('#input').focus();
+  });
   $('#apr-yes').addEventListener('click', () => askConfirm('yes'));
   $('#apr-no').addEventListener('click', () => askConfirm('no'));
   $('#apr-cancel').addEventListener('click', () => { pendingAction = null; $('#apr-confirm').classList.add('hidden'); });
@@ -152,7 +172,7 @@
     if (!current || !pendingAction) return;
     msg(''); $('#apr-ok').disabled = true;
     try {
-      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value });
+      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value, immediate: $('#apr-now').checked });
       else await api(`/api/admin/support/threads/${current.userId}/decline`, 'POST', { reason: $('#apr-reason').value.trim() });
       $('#apr-reason').value = '';
       lastId = 0; oldestId = 0; $('#log').textContent = ''; await poll(true); loadThreads().catch(() => {});

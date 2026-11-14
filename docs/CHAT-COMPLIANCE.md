@@ -69,3 +69,10 @@ Người dùng (và admin) gửi được ảnh trong chat: nút 📷 hoặc dá
 - Chặn tin giống hệt trong 60 giây (`duplicate`). Mã gửi `cid` do client sinh: gửi lại khi rớt mạng không tạo tin trùng.
 - Ảnh: chỉ JPEG/PNG đúng byte đầu tệp, tối đa 2 MB; `SUPPORT_USER_IMAGE_BYTES` (30 MB) / người dùng; `SUPPORT_GLOBAL_IMAGE_BYTES` (1 GB) và `SUPPORT_GLOBAL_MESSAGES` (300000) toàn hệ thống → vượt thì trả `busy` (503) cho tin/ảnh mới, chat cũ vẫn xem được. `SUPPORT_IMAGE_ARCHIVE_DAYS` (730): ảnh quá hạn bị xoá, tin chữ vẫn giữ.
 - Mọi endpoint chat đều yêu cầu đăng nhập (không có endpoint ẩn danh làm đầy DB). Tấn công cấp mạng (DDoS) do Cloudflare chặn ở phía trước; tầng ứng dụng chỉ giữ giới hạn tốc độ như trên.
+
+
+## Báo giá ước tính (chỉ admin thấy) & hạ gói
+
+- **Báo giá:** trong khung "Xử lý yêu cầu đổi gói" admin thấy ước tính theo số widget của người dùng: `giá mỗi widget = 3 × chi phí vận hành server của 1 widget trong 10 năm`, với chi phí 1 widget = `PRICING_VPS_VND_MONTH × 12 × 10 ÷ PRICING_CAPACITY_WIDGETS` (mỗi widget 1 tin/giây). Mặc định 260.000đ/tháng, sức chứa 500 widget → 188.000đ/widget. `PRICING_CAPACITY_WIDGETS` là **ước tính, chưa đo**: nên đo thử tải thật rồi đặt lại. Nếu nâng VPS lên 600.000đ/tháng thì đặt lại cả hai biến theo sức chứa mới.
+- Số tiền **không hiện trong app người dùng** (tránh bị coi là website giới thiệu/bán dịch vụ cần thông báo Bộ Công Thương); nút "Chèn ước tính vào ô soạn" chỉ điền sẵn, admin tự chỉnh và bấm Gửi. Không có đơn hàng, không thanh toán trong hệ thống.
+- **Hạ gói:** chọn gói thấp hơn thì gói cũ **vẫn giữ đến hết hạn**, app báo ngày chuyển. Admin "Đồng ý" sẽ lên lịch (`users.sub_next_plan`), hết hạn hệ thống tự chuyển và nhắn người dùng. Gói không có ngày hết hạn: admin phải tick "Đổi ngay" hoặc đặt hạn.

@@ -15,7 +15,10 @@
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
-import { subscriptionInfo, grantPlan, listPlans, PLAN_CATALOG } from './entitlements.js';
+import { quoteForWidgets } from './pricing.js';
+import { listUserDevices } from './userDevices.js';
+import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
+import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG } from './entitlements.js';
 
 const MAX_LEN = 1000;
 const DAILY_CAP = Number(process.env.SUPPORT_DAILY_CAP || 100);
@@ -71,6 +74,27 @@ export function initSupport(db) {
   // Mặc định KHÔNG xoá chữ theo thời gian (tránh mất dữ liệu). Ảnh chiếm dung lượng nhất: mặc định xoá sau 730 ngày (0 = giữ mãi).
   const days = Math.max(0, Number(process.env.SUPPORT_RETENTION_DAYS || 0));
   const imgDays = Math.max(0, Number(process.env.SUPPORT_IMAGE_ARCHIVE_DAYS ?? 730));
+  // Hạ gói theo lịch: giữ gói hiện tại đến hết hạn rồi tự chuyển sang gói thấp hơn (cột users.sub_next_plan)
+  try {
+    const ucols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+    if (!ucols.includes('sub_next_plan')) db.exec('ALTER TABLE users ADD COLUMN sub_next_plan TEXT');
+  } catch (e) { console.error('sub_next_plan', e.message); }
+  const switchDue = () => {
+    try {
+      const due = db.prepare('SELECT id FROM users WHERE sub_next_plan IS NOT NULL AND sub_expires_at IS NOT NULL AND sub_expires_at <= ?').all(Date.now());
+      for (const { id } of due) {
+        const u = db.prepare('SELECT sub_next_plan FROM users WHERE id = ?').get(id);
+        const r = grantPlan(db, id, u.sub_next_plan, { expiresAt: 'never', note: 'scheduled_downgrade' });
+        if (r.ok) {
+          db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)')
+            .run(id, `Gói trước đã hết hạn, tài khoản của bạn đã tự chuyển sang gói "${PLAN_CATALOG[u.sub_next_plan].label}" như đã thông báo. Bạn tải lại ứng dụng để cập nhật.`, Date.now());
+          audit(db, 'plan_scheduled_switch', { userId: id, detail: `${id} -> ${u.sub_next_plan}` });
+        }
+      }
+    } catch (e) { console.error('switchDue', e.message); }
+  };
+  switchDue();
+  setInterval(switchDue, 60_000).unref?.();
   const purge = () => {
     try {
       if (days > 0) {
@@ -182,7 +206,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
 
   app.get('/api/support/unread', requireAuth, (req, res) => {
     const n = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL').get(req.user.id).n;
-    res.json({ unread: n });
+    const pr = db.prepare('SELECT plan, ts FROM support_requests WHERE user_id = ?').get(req.user.id);
+    res.json({ unread: n, pendingPlan: pr?.plan || null });
   });
 
   app.post('/api/support/messages', requireAuth, ...userLimits, sendLimit, (req, res) => {
@@ -192,6 +217,11 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (cid) {   // gửi lại cùng mã (rớt mạng): trả tin đã có, không tạo trùng
       const ex = db.prepare('SELECT id FROM support_messages WHERE user_id = ? AND cid = ?').get(req.user.id, cid);
       if (ex) return res.json({ ok: true, id: ex.id, duplicate: true });
+    }
+    // Gói này đã được xin tư vấn và đang chờ admin xử lý: báo "đã đăng ký rồi", không tạo thêm tin
+    const planAsked = PLAN_CATALOG[String(req.body?.plan || '')] ? String(req.body.plan) : null;
+    if (planAsked && db.prepare('SELECT 1 FROM support_requests WHERE user_id = ? AND plan = ?').get(req.user.id, planAsked)) {
+      return res.status(409).json({ error: 'already_requested', plan: planAsked });
     }
     if (usage().msgs >= GLOBAL_MESSAGES) return res.status(503).json({ error: 'busy' });
     const today = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 0 AND ts > ?').get(req.user.id, Date.now() - 86400_000).n;
@@ -245,6 +275,9 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     res.json({
       userId: uid, username: u.username, plan, planId: subscriptionInfo(u)?.plan || null,
       requestedPlan: asked?.plan_hint || null,
+      quote: (() => { try { return quoteForWidgets(applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total); } catch { return null; } })(),
+      expiresAt: subscriptionInfo(u)?.expiresAt ?? null,
+      nextPlan: subscriptionInfo(u)?.nextPlan || null,
       plans: listPlans().map((p) => ({ id: p.id, label: p.label })),
       messages: rows.map(view),
     });
@@ -296,6 +329,18 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (!u) return res.status(404).json({ error: 'user_not_found' });
     const planId = String(req.body?.plan || '');
     if (!PLAN_CATALOG[planId]) return res.status(400).json({ error: 'unknown_plan' });
+    const curId = subscriptionInfo(u)?.plan;
+    const fmt = (t) => new Date(t).toLocaleDateString('vi-VN');
+    // Hạ gói: giữ gói cũ đến hết hạn rồi mới chuyển (trừ khi admin chọn "đổi ngay")
+    if (planRank(planId) < planRank(curId) && !req.body?.immediate) {
+      const exp = u.sub_expires_at != null ? Number(u.sub_expires_at) : null;
+      if (!exp || exp <= Date.now()) return res.status(409).json({ error: 'no_expiry', hint: 'Gói hiện tại không có ngày hết hạn trong tương lai: hãy tick "Đổi ngay" hoặc đặt hạn trước.' });
+      db.prepare('UPDATE users SET sub_next_plan = ? WHERE id = ?').run(planId, uid);
+      clearPending(uid);
+      audit(db, 'admin_plan_schedule', { userId: req.user.id, ip: ipOf(req), detail: `${uid} ${curId}->${planId} at ${exp}` });
+      say(uid, `Quản trị viên đã ghi nhận yêu cầu chuyển xuống gói "${PLAN_CATALOG[planId].label}". Gói hiện tại "${PLAN_CATALOG[curId]?.label || curId}" của bạn vẫn được giữ đến hết ngày ${fmt(exp)}; sau đó tài khoản sẽ tự chuyển sang gói "${PLAN_CATALOG[planId].label}".`);
+      return res.json({ ok: true, scheduled: true, switchAt: exp, subscription: subscriptionInfo(db.prepare('SELECT * FROM users WHERE id = ?').get(uid)) });
+    }
     const r = grantPlan(db, uid, planId, { expiresAt: req.body?.expiresAt || 'never', note: 'via_support_chat' });
     if (r.error) return res.status(r.status || 400).json(r);
     clearPending(uid);

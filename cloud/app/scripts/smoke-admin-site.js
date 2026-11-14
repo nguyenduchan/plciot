@@ -168,9 +168,14 @@ try {
   check('ảnh: tin nhắn có kèm mã ảnh', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.image === upl.j.image && m.body === 'lỗi này'));
   // đồng ý / từ chối yêu cầu đổi gói
   check('plan: người dùng gửi yêu cầu kèm gói', (await req(APP, 'POST', '/api/support/messages', { body: 'Tôi muốn tư vấn gói Cơ bản', plan: 'monitor' }, ctok)).status === 200);
+  const again = await req(APP, 'POST', '/api/support/messages', { body: 'Xin tư vấn lại gói này', plan: 'monitor' }, ctok);
+  check('plan: xin lại gói đã đăng ký → 409 already_requested, không tạo tin', again.status === 409 && again.j?.error === 'already_requested');
+  check('plan: /unread báo gói đang chờ', (await req(APP, 'GET', '/api/support/unread', null, ctok)).j?.pendingPlan === 'monitor');
   check('plan: gói không hợp lệ bị bỏ qua (không lưu gợi ý)', (await req(APP, 'POST', '/api/support/messages', { body: 'x', plan: 'hack' }, ctok)).status === 200);
   const th = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
   check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
+  check('báo giá: ước tính = 3 × chi phí vận hành 10 năm / widget (260k/tháng, 500 widget → 188.000đ)', th.j?.quote?.perWidget === 188000 && th.j.quote.total === 188000 * th.j.quote.widgets && th.j.quote.assumptions.msgPerSecPerWidget === 1);
+  check('báo giá: người dùng không thấy báo giá qua API của mình', !JSON.stringify((await req(APP, 'GET', '/api/support/unread', null, ctok)).j).includes('perWidget'));
   check('plan: gói sai bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'nope' }, token)).status === 400);
   check('plan: người dùng thường không tự đồng ý được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'pro' }, ctok)).status === 404);
   const tl = await req(ADMIN, 'GET', '/api/admin/support/threads', null, token);
@@ -219,6 +224,21 @@ try {
   db.prepare('INSERT INTO support_images (user_id, mime, data, ts) VALUES (?, ?, ?, ?)').run(cust.id, 'image/png', Buffer.alloc(31 * 1024 * 1024), Date.now());
   const qi = await rawReq(APP, 'POST', '/api/support/images?cid=cid-img-0001', png, ctok);
   check('hạn mức: vượt dung lượng ảnh / người dùng bị từ chối 413', qi.status === 413);
+  // hạ gói: giữ gói cũ đến hết hạn rồi mới chuyển
+  const exp = Date.now() + 5 * 86400_000;
+  db.prepare("UPDATE users SET sub_plan='factory', sub_expires_at=?, sub_next_plan=NULL WHERE id=?").run(exp, cust.id);
+  const dn = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'free' }, token);
+  const after = db.prepare('SELECT sub_plan, sub_next_plan FROM users WHERE id=?').get(cust.id);
+  check('hạ gói: giữ gói cũ, chỉ lên lịch chuyển', dn.status === 200 && dn.j?.scheduled === true && after.sub_plan === 'factory' && after.sub_next_plan === 'free' && dn.j.switchAt === exp);
+  check('hạ gói: người dùng được báo ngày chuyển', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /vẫn được giữ đến hết ngày/.test(m.body)));
+  db.prepare("UPDATE users SET sub_expires_at=NULL, sub_next_plan=NULL WHERE id=?").run(cust.id);
+  check('hạ gói: gói không có hạn → 409 no_expiry', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'free' }, token)).status === 409);
+  const imm = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'free', immediate: true }, token);
+  check('hạ gói: admin chọn đổi ngay thì chuyển luôn', imm.status === 200 && db.prepare('SELECT sub_plan FROM users WHERE id=?').get(cust.id).sub_plan === 'free');
+  db.prepare("UPDATE users SET sub_plan='factory', sub_expires_at=?, sub_next_plan='free' WHERE id=?").run(Date.now() - 1000, cust.id);
+  await new Promise((r) => setTimeout(r, 62000));
+  const sw = db.prepare('SELECT sub_plan, sub_next_plan FROM users WHERE id=?').get(cust.id);
+  check('hạ gói: hết hạn thì tự chuyển sang gói mới', sw.sub_plan === 'free' && !sw.sub_next_plan);
   check('chat: không có endpoint đơn hàng/thanh toán', (await req(APP, 'POST', '/api/support/order', {}, ctok)).status === 404 && (await req(APP, 'POST', '/api/support/pay', {}, ctok)).status === 404);
 } catch (e) {
   fails++; console.error('LỖI', e.message);

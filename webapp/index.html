@@ -15,7 +15,31 @@
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
-<link rel="stylesheet" href="style.css?v=20261114d">
+<link rel="stylesheet" href="style.css?v=20261114f">
+<!-- Chat hỗ trợ: vùng riêng (toàn màn hình trên điện thoại, ngăn kéo bên phải trên máy tính), mở bằng nút 💬 trên đỉnh -->
+<div id="chat-view" class="chat-view" hidden role="dialog" aria-label="Chat hỗ trợ">
+  <div class="chat-head"><b>Hỗ trợ kỹ thuật &amp; nâng cấp gói</b> <span id="support-badge" class="tag" hidden></span><button type="button" class="fit" id="chat-close" aria-label="Đóng chat">✕</button></div>
+  <div class="panel form" id="support-panel" hidden>
+    <details class="sup-note"><summary class="muted">Lưu ý khi chat</summary>
+      <p class="muted">Nhắn trực tiếp cho quản trị viên để được hỗ trợ kỹ thuật (kèm ảnh chụp màn hình lỗi) hoặc tư vấn nâng cấp gói. Mọi thỏa thuận và thanh toán (nếu có) thực hiện trực tiếp giữa bạn và quản trị viên, ngoài ứng dụng này; ứng dụng không nhận thanh toán và không tạo đơn hàng.</p>
+      <p class="muted">Không gửi mật khẩu, mã Authenticator hay số thẻ trong khung chat. Che thông tin nhạy cảm trong ảnh chụp màn hình trước khi gửi.</p>
+    </details>
+    <select id="support-plan" hidden><option value="">— chọn gói —</option></select>
+    <div id="support-plan-confirm" class="sup-plan" hidden>
+      <p class="muted" id="support-plan-preview"></p>
+      <p class="muted">Đây chỉ là tin nhắn xin tư vấn gửi cho quản trị viên, chưa phải đơn hàng và chưa thanh toán gì.</p>
+      <div class="row"><button type="button" class="primary fit" id="support-plan-send">Gửi yêu cầu tư vấn</button><button type="button" class="fit" id="support-plan-cancel">Hủy</button></div>
+    </div>
+    <div id="support-reload" class="sup-plan" hidden>
+      <p class="muted">Quản trị viên đã đổi gói cho tài khoản của bạn.</p>
+      <div class="row"><button type="button" class="primary fit" id="support-reload-btn">Tải lại để dùng gói mới</button></div>
+    </div>
+    <div class="row"><button type="button" class="fit" id="support-older" hidden>⬆ Xem tin cũ hơn</button></div>
+    <div id="support-log" class="sup-log"></div>
+    <div class="row sup-compose"><textarea id="support-input" rows="2" maxlength="1000" placeholder="Nhập tin nhắn…" style="flex:1"></textarea><button type="button" class="fit" id="support-attach" title="Gửi ảnh chụp màn hình" aria-label="Gửi ảnh chụp màn hình">📷</button><button type="button" class="primary fit" id="support-send">Gửi</button></div>
+    <input type="file" id="support-file" accept="image/png,image/jpeg,image/*" hidden>
+  </div>
+</div>
 <script src="errors.js?v=20261114e"></script>
 <script src="security/session.js"></script>
 <script src="security/boot.js"></script>
@@ -34,7 +58,7 @@
   <div class="content">
     <header>
       <h1 id="title">Tổng quan</h1>
-      <span id="pill" class="pill off">■ Mất kết nối</span>
+      <span class="hdr-r"><button type="button" id="chat-open" class="chat-fab" aria-label="Chat hỗ trợ / nâng cấp gói" title="Chat với quản trị viên" hidden>💬</button><span id="pill" class="pill off">■ Mất kết nối</span></span>
     </header>
     <div id="alarm-bar" class="alarm-bar comm" role="status" aria-live="polite"><span class="ab-i" aria-hidden="true">■</span><span class="ab-t">Đang kết nối…</span></div>
 
@@ -165,32 +189,6 @@
           <div id="plan-table" class="plan-table"></div>
           <div class="row"><button type="button" class="primary" id="plan-copy">Chat để nâng cấp</button></div>
           <p class="muted">Chat với quản trị viên để được tư vấn. Khi đã thỏa thuận xong, quản trị viên nâng gói cho tài khoản của bạn; sau đó tải lại webapp là dùng được, không cần đăng nhập lại.</p>
-        </div>
-        <div class="panel form" id="support-panel" style="margin-top:12px" hidden>
-          <details id="support-details">
-            <summary><b>Hỗ trợ kỹ thuật &amp; nâng cấp gói</b> <span id="support-badge" class="tag" hidden></span></summary>
-            <p class="muted">Nhắn trực tiếp cho quản trị viên để được hỗ trợ kỹ thuật (kèm ảnh chụp màn hình lỗi) hoặc tư vấn nâng cấp gói. Mọi thỏa thuận và thanh toán (nếu có) thực hiện trực tiếp giữa bạn và quản trị viên, ngoài ứng dụng này; ứng dụng không nhận thanh toán và không tạo đơn hàng.</p>
-            <p class="muted">Không gửi mật khẩu, mã Authenticator hay số thẻ trong khung chat.</p>
-            <div id="support-plan-box" class="sup-plan">
-              <label>Muốn được tư vấn gói nào?
-                <select id="support-plan"><option value="">— chọn gói —</option></select>
-              </label>
-              <div id="support-plan-confirm" hidden>
-                <p class="muted" id="support-plan-preview"></p>
-                <p class="muted">Đây chỉ là tin nhắn xin tư vấn gửi cho quản trị viên, chưa phải đơn hàng và chưa thanh toán gì.</p>
-                <div class="row"><button type="button" class="primary fit" id="support-plan-send">Gửi yêu cầu tư vấn</button><button type="button" class="fit" id="support-plan-cancel">Hủy</button></div>
-              </div>
-            </div>
-            <div id="support-reload" class="sup-plan" hidden>
-              <p class="muted">Quản trị viên đã đổi gói cho tài khoản của bạn.</p>
-              <div class="row"><button type="button" class="primary fit" id="support-reload-btn">Tải lại để dùng gói mới</button></div>
-            </div>
-            <div class="row"><button type="button" class="fit" id="support-older" hidden>⬆ Xem tin cũ hơn</button></div>
-            <div id="support-log" class="sup-log"></div>
-            <p class="muted">Có thể gửi ảnh chụp màn hình (nút 📷 hoặc dán ảnh vào ô nhập). Che thông tin nhạy cảm trước khi gửi.</p>
-            <div class="row"><textarea id="support-input" rows="2" maxlength="1000" placeholder="Nhập tin nhắn…" style="flex:1"></textarea><button type="button" class="fit" id="support-attach" title="Gửi ảnh chụp màn hình" aria-label="Gửi ảnh chụp màn hình">📷</button><button type="button" class="primary fit" id="support-send">Gửi</button></div>
-            <input type="file" id="support-file" accept="image/png,image/jpeg,image/*" hidden>
-          </details>
         </div>
         <div class="panel form pro-only" id="admin-link" style="margin-top:12px" hidden>
           <h2>Quản trị</h2>
@@ -350,10 +348,10 @@
 <script src="icons-3d.js?v=2"></script>
 <script src="icons-3d-more.js?v=3"></script>
 <script src="chat-image.js?v=1"></script>
-<script src="support.js?v=10"></script>
-<script src="plan.js?v=20261114f"></script>
+<script src="support.js?v=12"></script>
+<script src="plan.js?v=20261114h"></script>
 <script src="devices.js?v=20261113u"></script>
-<script src="app.js?v=20261114e"></script>
+<script src="app.js?v=20261114f"></script>
 <script src="security/account.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@
   const badge = $('#support-badge');
   let lastId = 0;
   let timer = null;
-  const ERR = { empty_message: 'Hãy nhập nội dung.', rate_limited: 'Bạn gửi quá nhanh, thử lại sau.', duplicate: 'Tin này vừa được gửi rồi.',
+  const ERR = { empty_message: 'Hãy nhập nội dung.', rate_limited: 'Bạn gửi quá nhanh, thử lại sau.', duplicate: 'Tin này vừa được gửi rồi.', already_requested: 'Bạn đã đăng ký tư vấn gói này rồi, đang chờ quản trị viên phản hồi.',
     quota_exceeded: 'Đã hết dung lượng ảnh cho tài khoản này.', busy: 'Hệ thống đang bận, thử lại sau.' };
   const newCid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 36).padEnd(8, '0');
 
@@ -117,21 +117,22 @@
     badge.hidden = !n;
     badge.textContent = n ? `${n} tin mới` : '';
     // Chấm báo trên tab Cài đặt: người dùng không phải mở Cài đặt mới biết admin đã phản hồi
-    const tabBtn = document.querySelector('nav button[data-tab="set"]');
+    const tabBtn = document.querySelector('#chat-open');
     if (tabBtn) {
       let dot = tabBtn.querySelector('.sup-dot');
       if (n && !dot) { dot = document.createElement('i'); dot.className = 'sup-dot'; dot.setAttribute('aria-label', 'Có tin nhắn mới từ quản trị viên'); tabBtn.appendChild(dot); }
       if (!n && dot) dot.remove();
     }
-    if (n && n > lastUnread) (window.toast || (() => {}))('Quản trị viên vừa trả lời bạn (Cài đặt → Hỗ trợ).');
+    if (n && n > lastUnread) (window.toast || (() => {}))('Quản trị viên vừa trả lời bạn (nút 💬 trên đỉnh).');
     lastUnread = n;
   }
   let lastUnread = 0;
+  let pendingReq = '';   // gói đã xin tư vấn và đang chờ admin xử lý (lưu trong DB)
 
   async function pollUnread() {
     try {
       const { ok, data } = await call('GET', '/api/support/unread');
-      if (ok) setBadge(data.unread | 0);
+      if (ok) { setBadge(data.unread | 0); pendingReq = data.pendingPlan || ''; }
     } catch { /* */ }
   }
 
@@ -176,10 +177,22 @@
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   panel.addEventListener('toggle', () => {}, true);
 
-  const det = $('#support-details');
-  det.addEventListener('toggle', () => {
-    if (det.open) { refresh(true); startOpenPolling(); } else stopOpenPolling();
-  });
+  /* Chat là vùng riêng (#chat-view) mở bằng nút 💬 trên đỉnh hoặc "Chat để nâng cấp". `det.open` giữ nguyên tên cũ cho các chỗ gọi. */
+  const view = $('#chat-view');
+  const det = {
+    get open() { return !view.hidden; },
+    set open(v) {
+      v = Boolean(v);
+      if (v === !view.hidden) return;
+      view.hidden = !v;
+      document.body.classList.toggle('chat-on', v);
+      if (v) { fillPlans(); refresh(true); startOpenPolling(); setTimeout(() => { log.scrollTop = log.scrollHeight; }, 60); } else stopOpenPolling();
+    },
+  };
+  $('#chat-open').hidden = false;
+  $('#chat-open').addEventListener('click', () => { det.open = !det.open; });
+  $('#chat-close').addEventListener('click', () => { det.open = false; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && det.open) det.open = false; });
 
   /* ---------- Xin tư vấn nâng cấp gói: chọn gói → xem lại nội dung → "Gửi yêu cầu tư vấn" hoặc "Hủy" ----------
      Chỉ khi bấm "Gửi yêu cầu tư vấn" mới có tin nhắn được gửi. Không tạo đơn, không thanh toán, không giá. */
@@ -207,7 +220,32 @@
     const P = window.PlanUi;
     const target = P?.plans?.find((p) => p.id === planId);
     if (!target) return '';
-    return `Tôi muốn được tư vấn chuyển sang gói "${target.name}". Tài khoản: ${P.username() || session.username || '(tên đăng nhập)'}, gói hiện tại: ${P.currentLabel()}.`;
+    const who = `Tài khoản: ${P.username() || session.username || '(tên đăng nhập)'}, gói hiện tại: ${P.currentLabel()}.`;
+    const d = downgradeInfo(planId);
+    if (d) return `Tôi muốn chuyển xuống gói "${target.name}" khi gói hiện tại hết hạn${d.exp ? ` (${d.date})` : ''}. ${who}`;
+    return `Tôi muốn được tư vấn chuyển sang gói "${target.name}". ${who}`;
+  }
+
+  /** Chọn gói thấp hơn gói đang dùng = hạ gói: vẫn giữ gói cũ đến hết hạn rồi mới chuyển. null nếu không phải hạ gói. */
+  function downgradeInfo(planId) {
+    const P = window.PlanUi;
+    const ids = (P?.plans || []).map((p) => p.id);
+    const cur = P?.current?.();
+    if (!ids.includes(planId) || !ids.includes(cur) || ids.indexOf(planId) >= ids.indexOf(cur)) return null;
+    const exp = P.expiresAt?.() || null;
+    return { exp, date: exp ? new Date(exp).toLocaleDateString('vi-VN') : '' };
+  }
+
+  /** Nội dung bước xem lại: hạ gói thì nói rõ gói cũ giữ tới ngày nào và khi nào chuyển. */
+  function planPreview(planId) {
+    const P = window.PlanUi;
+    const target = P?.plans?.find((p) => p.id === planId)?.name || planId;
+    const cur = P?.currentLabel?.() || '';
+    const d = downgradeInfo(planId);
+    if (!d) return `Sẽ gửi cho quản trị viên: “${planRequestText(planId)}”`;
+    return d.exp
+      ? `Bạn đang dùng gói “${cur}” đến hết ngày ${d.date}. Gói này vẫn được giữ nguyên đến hết hạn; sau ngày đó tài khoản mới chuyển sang gói “${target}”. Gửi yêu cầu để quản trị viên xác nhận.`
+      : `Gói “${cur}” của bạn hiện chưa có ngày hết hạn nên vẫn được giữ nguyên. Quản trị viên sẽ xác nhận với bạn ngày chuyển sang gói “${target}”.`;
   }
 
   let pendingPlan = '';
@@ -225,8 +263,16 @@
   planSel.addEventListener('change', () => {
     pendingPlan = planSel.value;
     pendingText = planRequestText(planSel.value);
-    $('#support-plan-preview').textContent = pendingText ? `Sẽ gửi cho quản trị viên: “${pendingText}”` : '';
+    $('#support-plan-preview').textContent = pendingText ? planPreview(planSel.value) : '';
+    $('#support-plan-send').textContent = downgradeInfo(planSel.value) ? 'Gửi yêu cầu hạ gói' : 'Gửi yêu cầu tư vấn';
     planBox.hidden = !pendingText;
+    // Gói này đã đăng ký tư vấn rồi (đang chờ admin): báo ngay, không cho gửi trùng
+    const dupe = Boolean(pendingText) && planSel.value === pendingReq;
+    $('#support-plan-send').hidden = dupe;
+    if (dupe) {
+      $('#support-plan-preview').textContent = `Bạn đã đăng ký tư vấn gói “${window.PlanUi?.plans?.find((p) => p.id === pendingReq)?.name || pendingReq}” rồi. Yêu cầu đang chờ quản trị viên xử lý, bạn không cần gửi lại.`;
+      (window.toast || (() => {}))('Bạn đã đăng ký gói này rồi, đang chờ quản trị viên.');
+    }
     markSelected(pendingText ? planSel.value : '');
   });
   $('#support-plan-cancel').addEventListener('click', resetPlanChoice);
@@ -236,7 +282,7 @@
     $('#support-plan-send').disabled = true;
     try {
       const { ok, data } = await call('POST', '/api/support/messages', { body, plan: pendingPlan, cid: newCid() });
-      if (ok) { resetPlanChoice(); await refresh(true); } else (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.');
+      if (ok) { resetPlanChoice(); pendingReq = pendingPlan || pendingReq; await refresh(true); pollUnread(); } else { (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.'); if (data.error === 'already_requested') { pendingReq = data.plan; resetPlanChoice(); } }
     } finally { $('#support-plan-send').disabled = false; }
   });
 
@@ -245,8 +291,7 @@
     open() {
       det.open = true;
       fillPlans();
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      planSel.focus();
+      setTimeout(() => $('#support-input').focus({ preventScroll: true }), 100);
     },
     fillPlans,
     /** Chọn sẵn một gói (từ thẻ gói trong Gói dịch vụ): mở khung chat, hiện bước xem lại. Không tự gửi. */
@@ -263,7 +308,6 @@
       }, 120));
     },
   };
-  det.addEventListener('toggle', () => { if (det.open) fillPlans(); });
   document.addEventListener('DOMContentLoaded', fillPlans);
 
   // Hiện ngay tin đã lưu trên máy, rồi hỏi máy chủ phần mới hơn

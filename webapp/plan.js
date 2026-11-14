@@ -40,7 +40,6 @@
   /** Mở khung chat và bộ chọn gói. KHÔNG tự gửi gì: chỉ gửi khi người dùng chọn gói rồi bấm "Gửi yêu cầu tư vấn". Không tạo đơn, không thanh toán. */
   function copyRequest() {
     document.getElementById('plan-sheet')?.remove();
-    if (typeof window.showTab === 'function') window.showTab('set');
     if (window.SupportChat) window.SupportChat.open();
   }
 
@@ -80,7 +79,6 @@
   /** Chạm vào một gói: mở khung chat và chọn sẵn gói đó (hiện bước xem lại; chỉ gửi khi bấm "Gửi yêu cầu tư vấn"). */
   function pickPlan(id) {
     if (!id || id === sub?.plan) return;
-    if (typeof window.showTab === 'function') window.showTab('set');
     window.SupportChat?.choose?.(id);
   }
   document.addEventListener('click', (e) => { const r = e.target.closest?.('#plan-table .plan-row.pick'); if (r) pickPlan(r.dataset.plan); });
@@ -102,5 +100,6 @@
     current: () => sub?.plan || 'free',
     currentLabel: () => sub?.planLabel || 'Miễn phí',
     username: () => username,
+    expiresAt: () => sub?.expiresAt || null,
   };
 }());

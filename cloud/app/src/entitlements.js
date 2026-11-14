@@ -163,6 +163,9 @@ export function subscriptionInfo(user) {
     active: active && !pendingActivation,
     pendingActivation,
     expiresAt: user?.sub_expires_at ?? null,
+    // Hạ gói đã lên lịch: giữ gói hiện tại đến hết hạn rồi tự chuyển sang gói này
+    nextPlan: user?.sub_next_plan && PLAN_CATALOG[user.sub_next_plan] ? user.sub_next_plan : null,
+    nextPlanLabel: user?.sub_next_plan && PLAN_CATALOG[user.sub_next_plan] ? PLAN_CATALOG[user.sub_next_plan].label : null,
     remoteControl,
   };
 }
@@ -190,6 +193,7 @@ export function grantPlan(db, userId, planId, { expiresAt = null, note = '' } = 
     SET sub_plan = ?, sub_expires_at = ?, remote_control = ?, retention_days = ?
     WHERE id = ?
   `).run(planId, exp, plan.remoteControl ? 1 : 0, ret, userId);
+  try { db.prepare('UPDATE users SET sub_next_plan = NULL WHERE id = ?').run(userId); } catch { /* cột chưa có */ }
   return {
     ok: true,
     note: String(note || '').slice(0, 200),
@@ -230,3 +234,6 @@ export function planWidgetLimit(user) {
   const plan = planActive(user) ? effectivePlan(user) : { widgets: FREE_WIDGET_LIMIT };
   return plan.widgets == null ? null : Number(plan.widgets);
 }
+
+/** Thứ hạng gói theo thứ tự khai báo trong PLAN_CATALOG (free < monitor < pro < factory). */
+export const planRank = (id) => Object.keys(PLAN_CATALOG).indexOf(id);

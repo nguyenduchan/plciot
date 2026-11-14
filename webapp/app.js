@@ -179,6 +179,7 @@ function applySubscription(sub) {
   info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có giám sát + điều khiển' : 'điều khiển đang bị tắt cho tài khoản này'}`
     + (sub.widgetLimit != null ? ` · tối đa ${sub.widgetLimit} widget` : ' · không giới hạn widget')
     + ` · hết hạn: ${exp}`
+    + (sub.nextPlanLabel ? ` · sẽ chuyển sang gói “${sub.nextPlanLabel}” sau ngày hết hạn` : '')
     + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));
   window.PlanUi?.update(sub, null);
 }
