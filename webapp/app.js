@@ -164,7 +164,7 @@ function toast(msg, bad) {
 }
 function applyRole(role) {
   S.role = role || 'operator';
-  document.body.classList.toggle('viewer', S.role === 'viewer');
+  document.body.classList.remove('viewer');   // mọi tài khoản đều điều khiển được
   // Link Console chỉ hiện khi server báo là dashboard admin (SĐT allow-list)
   const l = $('#admin-link');
   if (l) l.hidden = !(S.dashboardAdmin || S.role === 'admin');
@@ -186,7 +186,6 @@ function applySubscription(sub) {
 const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
 const CTL_ERR = (e) => (e === 'cancelled' ? '' : window.Ctl.errText(e));
 function sendReg(a, v, desc) {
-  if (S.role === 'viewer') return toast('Tài khoản này chỉ được xem, không điều khiển được. Nhờ quản trị viên cấp quyền vận hành.', true);
   if (viaServer()) {
     if (S.status !== 'online') return toast('Chưa gửi được lệnh vì đang mất kết nối tới thiết bị. Kiểm tra mạng và nguồn thiết bị rồi thử lại.', true);
     const id = Date.now().toString(36);
@@ -230,7 +229,6 @@ function confirmAction(title, text, okLabel) {
 }
 /** Gửi lệnh điều khiển có xác nhận. cf = [tiêu đề, nội dung, chữ nút]; desc = mô tả ghi vào sự kiện. */
 async function command(desc, a, v, cf) {
-  if (S.role === 'viewer') return sendReg(a, v, desc);
   if (cf && !(await confirmAction(cf[0], cf[1], cf[2]))) return;
   sendReg(a, v, desc);
 }

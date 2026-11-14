@@ -24,6 +24,7 @@ import { attachGatewayBundle, bumpConfigRev, ensureMqttForHardware } from './gat
 import { createPairing, listPairings, getPairing, cancelPairing, approvePairing } from './gatewayPairing.js';
 import { previewFromQr } from './userDevices.js';
 import { retentionInfo } from './retention.js';
+import { capacityStatus } from './capacity.js';
 import { revokeDeviceBinding } from './sites.js';
 import { notifyGateway } from './gatewayNotify.js';
 import {
@@ -71,6 +72,18 @@ export function mountAdminOps(app, {
     dataDir: dataDir || process.env.DATA_DIR || './data',
     shellDir: shellDir || process.env.SHELL_DIR || './shell',
   };
+
+  /** Cảnh báo năng lực (CPU/RAM/SSD) khi thêm gateway; chỉ kèm vào phản hồi, không chặn. */
+  const withCapacity = (r, extra = 1) => {
+    if (r?.error) return r;
+    const c = capacityStatus(db, deployPaths.dataDir, { extraGateways: extra });
+    if (c.warnings.length) { console.warn('capacity warning:', c.warnings.join(' | ')); return { ...r, capacityWarnings: c.warnings }; }
+    return r;
+  };
+  app.get('/api/admin/capacity', ...gate, (_req, res) => res.json(capacityStatus(db, deployPaths.dataDir)));
+  setInterval(() => {
+    try { const c = capacityStatus(db, deployPaths.dataDir); if (c.warnings.length) console.warn('capacity warning (định kỳ):', c.warnings.join(' | ')); } catch (e) { console.error('capacity check', e.message); }
+  }, 3600_000).unref?.();
 
   app.get('/api/admin/ops/overview', ...gate, (_req, res) => {
     const users = db.prepare('SELECT COUNT(*) n FROM users').get().n;
@@ -446,7 +459,7 @@ export function mountAdminOps(app, {
       site: req.body?.site, device: req.body?.device, auto: req.body?.auto,
     });
     if (!r.error) audit(db, 'pairing_create', { userId: req.user.id, ip: clientIp(req), detail: r.id });
-    res.status(r.error ? r.status || 400 : 200).json(r);
+    res.status(r.error ? r.status || 400 : 200).json(withCapacity(r));
   });
   app.get('/api/admin/pairings', ...gate, (_req, res) => res.json({ pairings: listPairings(db) }));
   app.get('/api/admin/pairings/:id', ...gate, (req, res) => {
@@ -456,7 +469,7 @@ export function mountAdminOps(app, {
   app.post('/api/admin/pairings/:id/approve', ...writeGate, (req, res) => {
     const r = approvePairing(db, { id: req.params.id, site: req.body?.site, device: req.body?.device, label: req.body?.label });
     if (!r.error) audit(db, 'pairing_approve', { userId: req.user.id, ip: clientIp(req), detail: `${r.pairingId} → ${r.site}/${r.device}` });
-    res.status(r.error ? r.status || 400 : 200).json(r);
+    res.status(r.error ? r.status || 400 : 200).json(withCapacity(r, 0));
   });
   app.delete('/api/admin/pairings/:id', ...writeGate, (req, res) => {
     const r = cancelPairing(db, req.params.id);

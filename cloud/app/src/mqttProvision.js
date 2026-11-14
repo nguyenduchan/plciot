@@ -29,7 +29,7 @@ export function openMqttPass(stored) {
 //   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
 //   acl-monitor  — listener KHÔNG mã hoá: chỉ monitor, không ai (trừ gateway) được ghi cmd
 // Topic duy nhất: gw/{mqttId}/{kind} — mqttId là id ngẫu nhiên server cấp cho gateway (devices.mqtt_id).
-const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config'];
+const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config', 'alert'];
 
 function staticHeader(secure) {
   const lines = [
@@ -84,7 +84,7 @@ export function mqttUsernameFor(userId) {
  */
 export function userAclBlock(mqttUser, mqttIds, role = 'operator', scopes = ['telemetry', 'status', 'ack', 'history'], secure = true) {
   const u = sanitizeId(mqttUser);
-  const control = secure && role !== 'viewer';
+  const control = secure;
   const directWrite = control && !controlViaServer();
   const readKinds = ['telemetry', 'status', 'ack', 'history', 'config'].filter((k) => scopes.includes(k) || (control && k === 'ack') || (k === 'config' && scopes.includes('telemetry')));
   const lines = [`user ${u}`];
@@ -232,7 +232,7 @@ export function mqttClientConfig(db, user) {
     user: user.mqtt_user,
     pass,
     scopes: userScopes(user),
-    canControl: user.role !== 'viewer',
+    canControl: true,
     controlVia: controlViaServer() ? 'server' : 'mqtt',
     site: user.notify_site,
     device: user.notify_device,

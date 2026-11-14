@@ -177,6 +177,9 @@ function validatePayload(kind, text, bufLen, resolved = null) {
       || (text.startsWith('{') && text.length < 200);
     if (!ok && text.length > 64) return { reason: 'policy_status_shape', detail: 'bad status' };
   }
+  if (kind === 'alert' && (!text.startsWith('{') || text.length > 512)) {
+    return { reason: 'policy_alert_shape', detail: 'bad alert' };
+  }
   if (kind === 'cmd') {
     // ingest không nên nhận cmd từ thiết bị giả; cmd chỉ từ ctl
     return { reason: 'cmd_on_ingest_path', detail: 'cmd ignored' };

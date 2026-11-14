@@ -84,6 +84,7 @@
       try { localStorage.removeItem('ctl'); } catch {}
       if (await window.Ctl.unlock(data)) return api(path, method, body, true);
     }
+    if (r.ok && Array.isArray(data.capacityWarnings) && data.capacityWarnings.length) alert('⚠ Cảnh báo năng lực server:\n\n' + data.capacityWarnings.join('\n\n'));
     if (!r.ok) throw new Error(ERR[data.error] || (window.ErrText ? window.ErrText(data.error, r.status) : (data.error || `Lỗi ${r.status}`)));
     return data;
   }

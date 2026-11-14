@@ -104,6 +104,14 @@ public sealed class ScadaHost : IAsyncDisposable
     /// <summary>Hiển thị do giao diện gateway đặt (tên thiết bị, nhãn/đơn vị/kiểu field) để đưa vào bản tin config. null = suy từ tên.</summary>
     public IConfigDescriber? Describer { get; set; }
 
+    AlertEngine? _alertsEngine;
+    AlertEngine _alerts => _alertsEngine ??= new AlertEngine(() => _cfg.Pack.Select(p =>
+    {
+        var v = Describer?.Field(p.Child, p.Field);
+        return (p.Child + "." + p.WireKey, Describer?.DeviceTitle(p.Child) is { Length: > 0 } t ? t : p.Child,
+            string.IsNullOrWhiteSpace(v?.Label) ? p.Field : v!.Label, v?.Unit ?? "", v?.Low, v?.High);
+    }));
+
     /// <summary>Gateway khai báo danh sách thiết bị + field (đọc/ghi) lên &lt;base&gt;/config, retain. Gọi lúc khởi động (và mỗi lần áp cấu hình vì host được khởi động lại).</summary>
     public void PublishConfig()
     {
@@ -130,6 +138,8 @@ public sealed class ScadaHost : IAsyncDisposable
         if (_cfg.CloudEnabled) Core.Trace(_bridge.State == CloudState.Connected ? "GW→Cloud" : "GW→Cloud (chưa nối)", topic, Encoding.UTF8.GetString(payload));
         _bridge.Forward(topic, payload, retain);
         _broker?.PublishAsync(topic, payload, retain, CoreSender);   // HMI MQTT trong LAN thấy cùng dữ liệu
+        if (kind == "telemetry")
+            foreach (var a in _alerts.Evaluate(payload)) OnCorePublish("alert", a, false);   // cảnh báo tính tại gateway, server chỉ chuyển tiếp
     }
 
     // ------------------------------------------------------------------ broker LAN → lõi

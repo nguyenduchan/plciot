@@ -1,6 +1,6 @@
 /**
  * History retention per account (plan).
- *   users.retention_days  NULL → default plan (HISTORY_DEFAULT_DAYS, 3 days)
+ *   users.retention_days  NULL → default plan (HISTORY_DEFAULT_DAYS, 1 day)
  *                         0    → unlimited
  *                         N≥4  → N days (paid tiers are not fixed: any N from 4 up)
  * Several accounts may share a site/device; the longest retention wins.
@@ -10,7 +10,7 @@ export const MIN_PAID_DAYS = 4;
 
 export function defaultDays() {
   const n = Number(process.env.HISTORY_DEFAULT_DAYS);
-  return Number.isInteger(n) && n >= 1 ? n : 3;
+  return Number.isInteger(n) && n >= 1 ? n : 1;
 }
 
 /** Days kept for one account; Infinity = unlimited. */

@@ -22,7 +22,8 @@ export function parseScopes(input) {
 
 export const isRole = (r) => ROLES.includes(r);
 export const isAdmin = (u) => u?.role === 'admin';
-export const canControl = (u) => u?.role === 'admin' || u?.role === 'operator';
+/** Mọi tài khoản đều được điều khiển (role viewer chỉ còn là nhãn); giới hạn nằm ở gói (widget, tần suất data). */
+export const canControl = (u) => Boolean(u);
 
 /** Allow-list username (ADMIN_DASHBOARD_USERS / ADMIN_USERNAMES). Trống = mọi role=admin. */
 export function dashboardAdminUsers() {

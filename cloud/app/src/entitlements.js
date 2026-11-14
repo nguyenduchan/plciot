@@ -15,6 +15,9 @@ import { ipInCidrs, clientIp } from '@plciot/security';
 /** Số widget tối đa của gói miễn phí (vượt quá: làm mờ, không cập nhật data, không điều khiển). */
 export const FREE_WIDGET_LIMIT = Number(process.env.FREE_WIDGET_LIMIT || 5);
 
+/** Gói miễn phí: tối đa 1 message data mỗi 2 giây mỗi gateway (server bỏ bớt phần vượt). Gói khác: không giới hạn thêm. */
+export const FREE_TELEMETRY_MIN_MS = Number(process.env.FREE_TELEMETRY_MIN_MS || 2000);
+
 export const PLAN_CATALOG = Object.freeze({
   // Gói miễn phí (mặc định khi chưa gán gói): có giám sát + điều khiển, nhưng giới hạn số widget (xem FREE_WIDGET_LIMIT).
   free: {
@@ -23,6 +26,7 @@ export const PLAN_CATALOG = Object.freeze({
     remoteControl: true,
     partnerCmd: false,
     widgets: FREE_WIDGET_LIMIT,
+    telemetryMinMs: FREE_TELEMETRY_MIN_MS,
   },
   monitor: {
     label: 'Giám sát',
@@ -214,6 +218,12 @@ export function grantTenantPlan(db, tenantId, planId, { expiresAt = null } = {})
 
 // re-export helpers used by plan.js
 export { parseRetention, setRetention, clientIp };
+
+/** Khoảng cách tối thiểu (ms) giữa hai message data của gateway thuộc user này (0 = không giới hạn). Gói hết hạn → mức miễn phí. */
+export function planTelemetryMinMs(user) {
+  const plan = planActive(user) ? effectivePlan(user) : { telemetryMinMs: FREE_TELEMETRY_MIN_MS };
+  return Number(plan.telemetryMinMs || 0);
+}
 
 /** Số widget tối đa user được dùng (null = không giới hạn). Gói hết hạn quay về mức gói miễn phí. */
 export function planWidgetLimit(user) {

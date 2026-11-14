@@ -13,7 +13,7 @@ import {
   configure, mountAuthentication, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit,
   purgeExpiredAudit, createAppSession, signToken,
 } from '@plciot/security';
-import { mqttClientConfig, provisionUserMqtt } from './mqttProvision.js';
+import { mqttClientConfig, provisionUserMqtt, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
 import { wipeOwnHistory } from './deviceTransfer.js';
 import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
@@ -364,6 +364,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`SHELL_DIR=${SHELL_DIR}`);
   startControlPublisher();
   startBundleSync(db, { dataDir: DATA_DIR, shellDir: SHELL_DIR });
+  // ACL gateway cần cho phép ghi kind 'alert' (sự kiện cảnh báo do gateway tự tính): dựng lại từ DB mỗi lần khởi động
+  try { rebuildAclFromUsers(db); reloadMosquitto(); } catch (e) { console.error('acl rebuild', e.message); }
   startMqttIngest(db);
   startHistoryPurge(db);
 });

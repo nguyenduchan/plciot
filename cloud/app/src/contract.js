@@ -16,7 +16,7 @@ import crypto from 'crypto';
 export const SCHEMA_VERSION = 1;
 /** Schema telemetry IoT (monitor + UI bind). */
 export const TELEMETRY_SCHEMA = 2;
-export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config']);
+export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert']);
 /** Tiền tố topic của mọi gateway. */
 export const GW_NS = 'gw';
 export const DEFAULT_TENANT = 'default';

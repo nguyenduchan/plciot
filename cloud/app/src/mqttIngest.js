@@ -10,7 +10,8 @@ import { isOpsOpen } from './opsFlags.js';
 import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
-import { evaluateTelemetryAlerts, evaluateStatusAlert } from './pushAlerts.js';
+import { planTelemetryMinMs } from './entitlements.js';
+import { evaluateStatusAlert, parseGatewayAlert, forwardGatewayAlert } from './pushAlerts.js';
 
 /** Tem chưa có user? Cache 5 giây để không truy vấn DB cho từng gói telemetry (gateway cũng đã ngừng gửi khi chưa claim). */
 const unclaimedCache = new Map();
@@ -23,6 +24,20 @@ function isUnclaimedGateway(db, site, device) {
   const v = Boolean(r) && !r.claimed_by;
   if (unclaimedCache.size > 5000) unclaimedCache.clear();
   unclaimedCache.set(key, { v, at: now });
+  return v;
+}
+
+/** Giới hạn tần suất theo gói của chủ gateway (cache 5 giây). */
+const planMsCache = new Map();
+function ownerPlanMinMs(db, site, device) {
+  const key = `${site}/${device}`;
+  const now = Date.now();
+  const hit = planMsCache.get(key);
+  if (hit && now - hit.at < 5000) return hit.v;
+  const o = db.prepare('SELECT u.* FROM hardware_devices h JOIN users u ON u.id = h.claimed_by WHERE h.site = ? AND h.device = ?').get(site, device);
+  const v = o ? planTelemetryMinMs(o) : 0;
+  if (planMsCache.size > 5000) planMsCache.clear();
+  planMsCache.set(key, { v, at: now });
   return v;
 }
 
@@ -90,7 +105,7 @@ export function startMqttIngest(db) {
       const parsed = resolveIngestTopic(db, t);
       if (!parsed) return;
       const { site, device, kind } = parsed;
-      if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config'].includes(kind)) return;
+      if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config', 'alert'].includes(kind)) return;
 
       const verdict = evaluateIngest(db, { topic: t, parsed, payloadBuf: buf });
       if (!verdict.allow) {
@@ -147,13 +162,13 @@ export function startMqttIngest(db) {
         } else {
           // schema:2 / d — đánh dấu online; không map conveyor r[]
           noteTelemetry(site, device, 1, now);
-          evaluateTelemetryAlerts(db, { tenantId, site, device, d: canonical.d, now });
         }
 
         const key = `${tenantId}/${site}/${device}`;
-        if (minInterval > 0) {
+        const gap = Math.max(minInterval, ownerPlanMinMs(db, site, device));
+        if (gap > 0) {
           const prev = lastTeleStore.get(key) || 0;
-          if (now - prev < minInterval) return;
+          if (now - prev < gap) return;
           lastTeleStore.set(key, now);
         }
 
@@ -166,6 +181,13 @@ export function startMqttIngest(db) {
           s: r ? (r[8] | 0) : null,
         });
         return;
+      }
+
+      if (kind === 'alert') {
+        // Gateway tự tính cảnh báo: server chỉ chuyển tiếp đúng tài khoản + lưu sự kiện vào DB
+        const alert = parseGatewayAlert(text);
+        if (!alert) return;
+        forwardGatewayAlert(db, { site, device, alert });
       }
 
       if (kind === 'status' && tenantId) {
