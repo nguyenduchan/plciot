@@ -79,6 +79,7 @@ body{padding:16px;max-width:1100px;margin:auto}
       <select id="tpl"><option value="">— chọn mẫu —</option></select>
     </label>
     <div class="row" style="align-items:center;gap:8px"><label style="margin:0;white-space:nowrap">Trả lời vào kênh</label><select id="reply-ch" style="flex:1"><option value="support">Hỗ trợ kỹ thuật</option><option value="upgrade">Nâng cấp gói</option></select></div>
+    <div id="chip" class="sup-chip" hidden></div>
     <div class="row compose" style="align-items:flex-end;gap:8px"><textarea id="input" rows="2" maxlength="1000" placeholder="Nhập tin nhắn…" disabled style="flex:1 1 auto;min-width:0;width:auto;margin:0;resize:vertical;box-sizing:border-box"></textarea><button id="attach" class="fit" type="button" title="Gửi ảnh (hoặc dán ảnh vào ô soạn)" style="width:44px;height:44px;padding:0">📷</button><button id="send" class="primary fit" disabled style="height:44px">Gửi</button></div>
     <input type="file" id="file" accept="image/png,image/jpeg,image/*" hidden>
     <p class="help">Chỉ nhắn văn bản. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p>
@@ -86,6 +87,6 @@ body{padding:16px;max-width:1100px;margin:auto}
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261115d"></script>
+<script src="admin-chat.js?v=20261115e"></script>
 </body>
 </html>

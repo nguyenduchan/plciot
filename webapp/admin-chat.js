@@ -259,7 +259,9 @@
     } catch (e) { msg(e.message, true); } finally { $('#apr-ok').disabled = false; }
   });
 
+  $('#input').addEventListener('input', syncComposer);
   $('#send').addEventListener('click', async () => {
+    if (staged) return sendImage();
     const body = $('#input').value.trim();
     if (!current || !body) return;
     msg(''); $('#send').disabled = true;
@@ -267,24 +269,43 @@
     catch (e) { msg(e.message, true); } finally { $('#send').disabled = false; }
   });
 
-  async function sendImage(file) {
+  /* Ảnh đính kèm kiểu ứng dụng nhắn tin: chọn/dán → ảnh nhỏ trong ô soạn, gõ chú thích, bấm Gửi mới gửi. */
+  let staged = null;
+  function syncComposer() {
+    const chip = $('#chip');
+    $('#attach').hidden = Boolean($('#input').value.trim()) || Boolean(staged);
+    if (staged && !chip.hasChildNodes()) {
+      const img = document.createElement('img'); img.src = staged.url; img.alt = 'Ảnh đính kèm';
+      const sm = document.createElement('small'); sm.textContent = 'Ảnh đính kèm';
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.className = 'fit'; x.setAttribute('aria-label', 'Bỏ ảnh'); x.onclick = unstage;
+      chip.append(img, sm, x);
+    }
+    chip.hidden = !staged;
+  }
+  function unstage() { if (staged) URL.revokeObjectURL(staged.url); staged = null; $('#chip').textContent = ''; $('#file').value = ''; syncComposer(); }
+  async function stageImage(file) {
     if (!current || !file) return;
-    msg(''); $('#attach').disabled = true;
+    try { const blob = await window.ChatImage.prepare(file); unstage(); staged = { blob, url: URL.createObjectURL(blob) }; syncComposer(); $('#input').placeholder = 'Thêm chú thích (tuỳ chọn)…'; $('#input').focus(); }
+    catch (e) { msg(e.message || 'Không đọc được ảnh này.', true); }
+  }
+  async function sendImage() {
+    if (!current || !staged) return;
+    msg(''); $('#send').disabled = true;
     try {
-      const blob = await window.ChatImage.prepare(file);
       const caption = $('#input').value.trim();
       const r = await fetch(`/api/admin/support/threads/${current.userId}/image?channel=${$('#reply-ch').value}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: blob,
+        method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: staged.blob,
       });
       if (!r.ok) throw new Error('Không gửi được ảnh.');
-      $('#input').value = ''; await poll(false); loadThreads().catch(() => {});
-    } catch (e) { msg(e.message || 'Không đọc được ảnh này.', true); } finally { $('#attach').disabled = false; $('#file').value = ''; }
+      $('#input').value = ''; unstage(); $('#input').placeholder = 'Nhập tin nhắn…';
+      await poll(false); loadThreads().catch(() => {});
+    } catch (e) { msg(e.message || 'Không gửi được ảnh.', true); } finally { $('#send').disabled = false; syncComposer(); }
   }
   $('#attach').addEventListener('click', () => { if (current) $('#file').click(); });
-  $('#file').addEventListener('change', (e) => sendImage(e.target.files?.[0]));
+  $('#file').addEventListener('change', (e) => stageImage(e.target.files?.[0]));
   $('#input').addEventListener('paste', (e) => {
     const f = [...(e.clipboardData?.files || [])].find((x) => /^image\//.test(x.type));
-    if (f) { e.preventDefault(); sendImage(f); }
+    if (f) { e.preventDefault(); stageImage(f); }
   });
 
   let ft = null;

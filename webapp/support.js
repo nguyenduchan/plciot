@@ -164,32 +164,61 @@
     } finally { $('#support-send').disabled = false; }
   }
 
-  /** Gửi ảnh chụp màn hình (chọn tệp hoặc dán) vào kênh đang xem. Nội dung ô nhập, nếu có, đi kèm làm chú thích. */
-  async function sendImage(file) {
+  /* Ảnh đính kèm kiểu ứng dụng nhắn tin: chọn/dán ảnh → hiện ảnh nhỏ trong ô soạn (kèm ✕), con trỏ chuyển xuống ô nhập
+     để gõ chú thích; bấm Gửi mới gửi ảnh cùng chú thích. Nút 📷 ẩn khi đang gõ hoặc đã chọn ảnh. */
+  const chip = $('#support-chip');
+  let staged = null;   // { blob, url }
+  function syncComposer() {
+    const has = Boolean(input.value.trim());
+    $('#support-attach').hidden = has || Boolean(staged);
+    if (staged && !chip.hasChildNodes()) {
+      const img = document.createElement('img'); img.src = staged.url; img.alt = 'Ảnh đính kèm';
+      const sm = document.createElement('small'); sm.textContent = 'Ảnh đính kèm';
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Bỏ ảnh'); x.className = 'fit';
+      x.onclick = unstage;
+      chip.append(img, sm, x);
+    }
+    chip.hidden = !staged;
+  }
+  function unstage() { if (staged) URL.revokeObjectURL(staged.url); staged = null; chip.textContent = ''; $('#support-file').value = ''; syncComposer(); }
+  async function stageImage(file) {
     if (!file) return;
-    const btn = $('#support-attach'); btn.disabled = true;
     try {
       const blob = await window.ChatImage.prepare(file);
+      unstage();
+      staged = { blob, url: URL.createObjectURL(blob) };
+      syncComposer();
+      input.placeholder = 'Thêm chú thích (tuỳ chọn)…';
+      input.focus({ preventScroll: true });   // xuống ô nhập để gõ chú thích
+    } catch { toast('Không đọc được ảnh này.'); }
+  }
+  async function sendImage() {
+    if (!staged) return;
+    const btn = $('#support-send'); btn.disabled = true;
+    try {
+      const blob = staged.blob;
       const caption = input.value.trim();
       const cid = newCid();
       const r = await fetch(`${base}/api/support/images?cid=${cid}&channel=${activeCh}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: blob,
       });
       const data = await r.json().catch(() => ({}));
-      if (r.ok) { input.value = ''; await refresh(true); } else toast(data.error === 'rate_limited' ? 'Bạn gửi quá nhiều ảnh, thử lại sau.' : (ERR[data.error] || 'Không gửi được ảnh.'));
-    } catch { toast('Không đọc được ảnh này.'); } finally { btn.disabled = false; $('#support-file').value = ''; }
+      if (r.ok) { input.value = ''; unstage(); input.style.height = 'auto'; input.placeholder = activeCh === 'upgrade' ? 'Trao đổi với quản trị viên về việc nâng cấp gói…' : 'Mô tả vấn đề kỹ thuật bạn gặp…'; await refresh(true); } else toast(data.error === 'rate_limited' ? 'Bạn gửi quá nhiều ảnh, thử lại sau.' : (ERR[data.error] || 'Không gửi được ảnh.'));
+    } catch { toast('Không gửi được ảnh.'); } finally { btn.disabled = false; syncComposer(); }
   }
   $('#support-attach').addEventListener('click', () => $('#support-file').click());
-  $('#support-file').addEventListener('change', (e) => sendImage(e.target.files?.[0]));
+  $('#support-file').addEventListener('change', (e) => stageImage(e.target.files?.[0]));
   input.addEventListener('paste', (e) => {
     const f = [...(e.clipboardData?.files || [])].find((x) => /^image\//.test(x.type));
-    if (f) { e.preventDefault(); sendImage(f); }
+    if (f) { e.preventDefault(); stageImage(f); }
   });
   // Ô soạn tự cao lên theo nội dung (tối đa ~6 dòng), như ứng dụng nhắn tin
   const grow = () => { input.style.height = 'auto'; input.style.height = `${Math.min(140, input.scrollHeight)}px`; };
-  input.addEventListener('input', grow);
-  $('#support-send').addEventListener('click', () => { send().then(grow); });
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  input.addEventListener('input', () => { grow(); syncComposer(); });
+  // Gửi: có ảnh đính kèm thì gửi ảnh + chú thích, không thì gửi chữ
+  const submit = () => (staged ? sendImage() : send()).then(() => { grow(); syncComposer(); });
+  $('#support-send').addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
 
   function startOpenPolling() { clearInterval(timer); timer = setInterval(() => refresh(true), 15000); }
   function stopOpenPolling() { clearInterval(timer); timer = null; }
@@ -201,7 +230,7 @@
     try { localStorage.setItem('chatCh', ch); } catch { /* */ }
     document.querySelectorAll('.chat-tabs button').forEach((b) => { const on = b.dataset.ch === ch; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
     for (const k of Object.keys(panes)) panes[k].hidden = k !== ch;
-    input.placeholder = ch === 'upgrade' ? 'Trao đổi với quản trị viên về việc nâng cấp gói…' : 'Mô tả vấn đề kỹ thuật bạn gặp…';
+    if (!staged) input.placeholder = ch === 'upgrade' ? 'Trao đổi với quản trị viên về việc nâng cấp gói…' : 'Mô tả vấn đề kỹ thuật bạn gặp…';
     olderBtn.hidden = !oldest[ch];
     if (ch === 'upgrade') renderUpgrade();
     if (det.open) { refresh(true); setTimeout(() => { logs[ch].scrollTop = logs[ch].scrollHeight; if (focus) input.focus({ preventScroll: true }); }, 60); }

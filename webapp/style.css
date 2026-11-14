@@ -784,3 +784,11 @@ body.chat-on{overflow:hidden}
 .chat-view .sup-compose{display:flex;gap:8px;align-items:flex-end;margin:0;padding:8px 0 0;border-top:1px solid var(--line)}
 .chat-view .sup-compose textarea{flex:1 1 auto;min-width:0;width:auto;margin:0;border-radius:22px;padding:11px 16px;resize:none;min-height:44px;max-height:140px;line-height:1.35;box-sizing:border-box}
 .chat-view .sup-compose button{flex:none;width:44px;height:44px;min-width:44px;padding:0;border-radius:50%;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+
+/* Ảnh đính kèm kiểu ứng dụng nhắn tin: ảnh thu nhỏ nằm một dòng riêng phía trên ô soạn, nút 📷 ẩn khi đang gõ hoặc đã chọn ảnh */
+.sup-chip{display:flex;align-items:center;gap:8px;margin:6px 0 0;padding:6px;border-radius:12px;box-shadow:0 0 0 1px var(--line,#e5e7eb);width:fit-content;max-width:100%}
+.sup-chip[hidden]{display:none!important}
+.sup-chip img{width:48px;height:48px;object-fit:cover;border-radius:8px;display:block}
+.sup-chip small{opacity:.75;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-chip button{width:28px;height:28px;min-width:28px;padding:0;border-radius:50%;line-height:1}
+.chat-view .sup-compose button[hidden],#support-attach[hidden]{display:none!important}
