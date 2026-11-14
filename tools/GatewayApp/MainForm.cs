@@ -345,6 +345,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             var mqttId = kit.MqttId ?? (kit.TopicBase is { } tb && tb.StartsWith(Contract.GwPrefix + "/") ? tb[(Contract.GwPrefix.Length + 1)..] : null);
             if (!Contract.IsMqttId(mqttId)) throw new InvalidOperationException("server không cấp id MQTT hợp lệ");
             _cfg.MqttId = mqttId!;
+            if (kit.TelemetryMinMs is > 0) { _cfg.CloudTelemetryMinMs = kit.TelemetryMinMs.Value; _cfg.CloudTelemetryFastMs = kit.TelemetryMinMs.Value; }   // gói giới hạn tần suất: tự gửi chậm, không chờ server bỏ bớt
             if (kit.Mqtt != null)
             {
                 _cfg.CloudUser = kit.Mqtt.Username ?? _cfg.CloudUser;

@@ -81,6 +81,7 @@ ok(acl().includes(`topic write gw/${id1}/telemetry`) && acl().includes(`topic re
 ok(deviceByMqttId(db, id1)?.site === SITE, 'A: ingest tra ngược id → thiết bị');
 const enA = enroll(A.qr);
 ok(enA.mqttId === id1 && enA.mqtt?.password, 'A: gateway enroll bằng QR nhận đúng id');
+ok(enA.telemetryMinMs === 2000, 'A: kit báo gateway tự gửi chậm theo gói miễn phí (telemetryMinMs=2000)');
 const qr1 = A.qr, pass1 = enA.mqtt.password;
 
 // ───────── B. đổi QR khi id vẫn còn

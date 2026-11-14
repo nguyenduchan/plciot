@@ -6,6 +6,7 @@
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
 import { shardOf } from './shards.js';
+import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
   decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
 } from '@plciot/security';
@@ -211,6 +212,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     configRev,
     // Tem chưa có user (chưa claim): gateway chỉ đồng bộ setting, KHÔNG gửi telemetry/history (server cũng bỏ nếu gửi)
     claimed: Boolean(hw.claimed_by),
+    // Gateway tự gửi chậm theo gói của chủ (ms giữa hai bản telemetry; 0 = không giới hạn). Chưa có chủ → mức gói miễn phí.
+    telemetryMinMs: telemetryMinMsFor(db, hw),
     mqttId,
     topicBase: base,
     topics,
@@ -243,6 +246,14 @@ function failsOf(key) {
 }
 const noteEnrollFail = (key) => { const a = failsOf(key); a.push(Date.now()); enrollFails.set(key, a); if (enrollFails.size > 5000) enrollFails.delete(enrollFails.keys().next().value); };
 export function resetEnrollFails() { enrollFails.clear(); }
+
+/** Khoảng cách tối thiểu giữa hai bản telemetry theo gói của chủ gateway (chưa claim → gói miễn phí). */
+function telemetryMinMsFor(db, hw) {
+  try {
+    const owner = hw.claimed_by ? db.prepare('SELECT * FROM users WHERE id = ?').get(hw.claimed_by) : null;
+    return owner ? planTelemetryMinMs(owner) : FREE_TELEMETRY_MIN_MS;
+  } catch { return FREE_TELEMETRY_MIN_MS; }
+}
 
 export function enrollGateway(db, body = {}, opts = {}) {
   const fail = (err, site, device) => {

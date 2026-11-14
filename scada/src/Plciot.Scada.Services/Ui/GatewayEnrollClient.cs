@@ -88,6 +88,8 @@ public sealed class GatewayProvisionKit
     public int ConfigRev { get; set; }
     /// <summary>false = tem chưa có user: gateway chỉ đồng bộ setting, không gửi data.</summary>
     public bool? Claimed { get; set; }
+    /// <summary>Khoảng cách tối thiểu (ms) giữa hai bản telemetry theo gói của chủ; gateway tự gửi chậm theo mức này. 0/null = không giới hạn.</summary>
+    public int? TelemetryMinMs { get; set; }
     /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
     public string? MqttId { get; set; }
     public string? TopicBase { get; set; }
