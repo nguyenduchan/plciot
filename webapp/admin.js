@@ -340,6 +340,8 @@
     if (document.hidden || $('#qr-modal')?.classList.contains('on')) return;
     loadHw().catch(() => {}); loadPairings().catch(() => {});
   }, 8000);
+  loadCapacity().catch(() => {});
+  setInterval(() => { if (!document.hidden) loadCapacity().catch(() => {}); }, 60000);
   const PR_STATUS = { open: 'chờ gateway nhập mã', received: 'chờ bạn duyệt', approved: 'đã kết nối', expired: 'hết hạn', cancelled: 'đã huỷ' };
 
   async function loadPairings() {
@@ -426,6 +428,25 @@
       + (r.devices.map((d) => `<div style="margin:8px 0"><b>${PR_ICON[d.icon] || ''} ${esc(d.title)}</b> <code>${esc(d.childId)}</code>${d.color ? ` <span class="tag">${esc(d.color)}</span>` : ''}
         <ul style="margin:4px 0 0 18px;padding:0">${d.widgets.map((w) => `<li>${esc(w.label)} <code>${esc(w.bind || '')}</code> · ${esc(w.kind)}${w.cmd ? ' · điều khiển' : ''}${w.onText || w.offText ? ` · ${esc(w.onText || '')}/${esc(w.offText || '')}` : ''}${w.low != null || w.high != null ? ` · ngưỡng ${w.low ?? '—'}…${w.high ?? '—'}` : ''}</li>`).join('')}</ul></div>`).join('') || '<p class="help">Gateway chưa khai thiết bị con nào.</p>');
   }, 'Xem thử xong (không lưu gì).'));
+
+  async function loadCapacity() {
+    const c = await api('/api/admin/vps-capacity');
+    const col = { ok: '#16a34a', warn: '#d97706', crit: '#dc2626' }[c.level] || '#64748b';
+    const b = $('#cap-badge'); b.textContent = { ok: 'Ổn', warn: 'Chú ý', crit: 'Nguy cấp' }[c.level] || c.level; b.style.cssText = `background:${col};color:#fff`;
+    $('#cap-alerts').innerHTML = c.alerts.map((a) => `<p style="margin:6px 0;padding:8px 10px;border-radius:8px;border:1px solid ${col};color:${col}">⚠ ${esc(a)}</p>`).join('');
+    const gb = (mb) => (mb / 1024).toFixed(1);
+    const bar = (pct, label) => `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between"><span>${esc(label)}</span><b>${pct}%</b></div><div style="height:8px;border-radius:4px;background:var(--line,#e5e7eb)"><div style="height:8px;border-radius:4px;width:${Math.min(100, pct)}%;background:${pct >= c.thresholds.crit ? '#dc2626' : pct >= c.thresholds.warn ? '#d97706' : '#16a34a'}"></div></div></div>`;
+    $('#cap-body').innerHTML =
+      (c.disk ? bar(c.disk.usedPct, `Đĩa thật: ${c.disk.freeGb} GB trống / ${c.disk.totalGb} GB`) : '')
+      + bar(c.db.pctOfUsable, `Cơ sở dữ liệu: ${gb(c.db.mb)} GB / ${c.usableGb} GB dùng được`)
+      + bar(c.projected.pctOfUsable, `Đĩa dự kiến khi các gói đầy thời gian lưu: ${gb(c.projected.mb)} GB`)
+      + `<p style="margin:8px 0">Tổng <b>${c.widgets}</b> widget (cảnh báo ${c.thresholds.wWarn}, mốc chuyển VPS ${c.thresholds.wMax}) · sao lưu trên VPS ${gb(c.backupsMb)} GB`
+      + (c.growthMbPerDay != null ? ` · DB tăng ~${c.growthMbPerDay} MB/ngày${c.daysLeft != null ? `, còn ~${c.daysLeft} ngày đến khi đầy` : ''}` : ' · chưa đủ dữ liệu để ước tốc độ tăng (cần ≥ 2 ngày)')
+      + ` · RAM app ${c.mem.rssMb} MB${c.mem.limitMb ? ` / giới hạn ${c.mem.limitMb} MB` : ''}</p>`
+      + `<table style="width:100%;border-collapse:collapse"><tr><th align="left">Gói</th><th align="right">Người dùng</th><th align="right">Widget</th><th align="right">MB/widget</th><th align="right">Đĩa dự kiến</th></tr>`
+      + c.plans.map((p) => `<tr><td>${esc(p.label)}</td><td align="right">${p.users}</td><td align="right">${p.widgets}</td><td align="right">${p.mbPerWidget}</td><td align="right">${gb(p.projectedMb)} GB</td></tr>`).join('') + '</table>'
+      + `<p class="help" style="margin:8px 0 0">Đĩa dùng được lấy từ <code>PRICING_DISK_USABLE_GB</code> (đặt theo VPS thật). Ngưỡng: <code>CAP_WARN_PCT</code>, <code>CAP_CRIT_PCT</code>, <code>CAP_WIDGETS_WARN</code>, <code>CAP_WIDGETS_MAX</code>.</p>`;
+  }
 
   async function run(fn, okText) {
     msg('');

@@ -30,6 +30,7 @@ import { mountSite } from './siteRoutes.js';
 import { mountPush } from './webPush.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
+import { mountCapacity } from './vpsCapacity.js';
 import { mountActivateApi } from './activateApi.js';
 import { mountUserDevices } from './userDevices.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
@@ -253,6 +254,8 @@ mountAdminOps(app, {
     keyFn: (req) => `${clientIp(req)}:admin-ops:${req.user?.id || 'na'}`,
   }),
 });
+
+mountCapacity(app, { db, requireAuth, requireAdmin, dataDir: DATA_DIR });
 
 /* ---------- Chat hỗ trợ người dùng ↔ admin (chỉ văn bản; xem docs/CHAT-COMPLIANCE.md) ---------- */
 mountSupport(app, { db, requireAuth, requireAdmin });

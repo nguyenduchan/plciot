@@ -10,6 +10,7 @@
 import {
   hashPassword, verifyPassword, signToken, verifyToken, createAppSession, findUserByUsername, countAudit, audit, clientIp,
   rateLimit, generateSecret, otpauthUri, verifyTotp, sealSecret, openSecret,
+  registrationOptions, verifyRegistration, authenticationOptions, verifyAuthentication,
 } from '@plciot/security';
 import { isDashboardAdmin } from './roles.js';
 import { isDirectLocal, isAdminLocalRequest, isInternetAdminUser } from './adminGate.js';
@@ -19,6 +20,13 @@ const truthy = (v) => String(v).toLowerCase() === 'true';
 
 export const adminHost = () => env('ADMIN_HOST').trim().toLowerCase();
 const requireTotp = () => !['false', '0', 'no'].includes(env('ADMIN_REQUIRE_TOTP', 'true').toLowerCase());
+/** Face ID / vân tay (WebAuthn, userVerification bắt buộc) là yếu tố thứ hai của đăng nhập admin. Tắt: ADMIN_REQUIRE_FACEID=false. */
+const requireFaceId = () => !['false', '0', 'no'].includes(env('ADMIN_REQUIRE_FACEID', 'true').toLowerCase());
+const webauthnForAdmin = () => {
+  const host = adminHost();
+  const extra = env('ADMIN_WEBAUTHN_ORIGINS').split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean);   // vd. http://localhost:8080 khi vào qua đường hầm SSH
+  return { rpId: host, origins: [`https://${host}`, ...extra] };
+};
 const sessionSeconds = () => Math.max(1, Number(env('ADMIN_SESSION_HOURS', '8'))) * 3600;
 export const ADMIN_DEVICE = 'admin-site';
 const FAIL_EVENT = 'admin_login_fail';
@@ -84,6 +92,11 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
   const userLimit = rateLimit({ windowMs: 60_000, max: Number(env('RATE_LIMIT_ADMIN_LOGIN_USER', '6')), keyFn: (req) => `${ipOf(req)}:adminlogin:${String(req.body?.username || '').toLowerCase().slice(0, 48)}` });
   const err = (res, status, error, extra = {}) => res.status(status).json({ error, ...extra });
 
+  db.exec(`CREATE TABLE IF NOT EXISTS admin_passkeys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, cred_id TEXT NOT NULL UNIQUE, public_key TEXT NOT NULL, alg INTEGER NOT NULL,
+    counter INTEGER NOT NULL DEFAULT 0, name TEXT, created_at INTEGER NOT NULL, last_used_at INTEGER
+  ); CREATE INDEX IF NOT EXISTS idx_admin_passkeys_user ON admin_passkeys(user_id);`);
+  const faceCreds = (uid) => db.prepare('SELECT * FROM admin_passkeys WHERE user_id = ? ORDER BY id').all(uid);
   const userById = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const failCount = (u) => countAudit(db, u.id, FAIL_EVENT, Date.now() - LOCK_WINDOW);
 
@@ -115,17 +128,17 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
     return res.json({ token, username: user.username, expiresIn: sessionSeconds() });
   }
 
-  const ticketFor = (user) => signToken({ uid: user.id, tv: user.token_version | 0, scope: 'admin_totp_setup' }, jwtSecret, 600);
-  function userFromTicket(ticket) {
+  const ticketFor = (user, scope = 'admin_totp_setup') => signToken({ uid: user.id, tv: user.token_version | 0, scope }, jwtSecret, 600);
+  function userFromTicket(ticket, scope = 'admin_totp_setup') {
     try {
       const p = verifyToken(String(ticket || ''), jwtSecret);
-      if (p.scope !== 'admin_totp_setup') return null;
+      if (p.scope !== scope) return null;
       const u = userById(p.uid);
       return u && !u.disabled && (u.token_version | 0) === (p.tv | 0) ? u : null;
     } catch { return null; }
   }
 
-  app.get('/api/admin-site/config', (_req, res) => res.json({ requireTotp: requireTotp() }));
+  app.get('/api/admin-site/config', (_req, res) => res.json({ requireTotp: requireTotp(), requireFaceId: requireFaceId() }));
 
   /* ---------------- đăng nhập ---------------- */
   app.post('/api/admin-site/login', loginLimit, userLimit, (req, res) => {
@@ -139,6 +152,10 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
     if (!ok || !match) {
       if (user) audit(db, FAIL_EVENT, { userId: user.id, ip: ipOf(req), detail: 'password' });
       return err(res, 401, 'invalid_credentials');
+    }
+    if (requireFaceId()) {   // mật khẩu đúng → bước Face ID (hoặc đăng ký Face ID lần đầu trên máy này)
+      if (faceCreds(user.id).length) return res.json({ faceIdRequired: true, ticket: ticketFor(user, 'admin_faceid') });
+      return res.json({ faceIdSetup: true, ticket: ticketFor(user, 'admin_faceid_setup') });
     }
     if (user.totp_enabled) {
       if (!code) return err(res, 401, 'totp_required');
@@ -170,6 +187,55 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
     issueSession(userById(user.id), req, res, 'totp-enrol');
   });
 
+  /* ---------------- Face ID (WebAuthn) ---------------- */
+  const failFace = (user, req, detail) => audit(db, FAIL_EVENT, { userId: user.id, ip: ipOf(req), detail: `faceid:${detail}` });
+
+  app.post('/api/admin-site/faceid/auth/options', loginLimit, (req, res) => {
+    const user = userFromTicket(req.body?.ticket, 'admin_faceid');
+    if (!user) return err(res, 401, 'ticket_invalid');
+    if (failCount(user) >= LOCK_FAILS) return err(res, 429, 'locked');
+    const allow = faceCreds(user.id).map((c) => c.cred_id);
+    if (!allow.length) return err(res, 400, 'no_faceid');
+    res.json(authenticationOptions({ key: `adminauth:${user.id}`, rpId: webauthnForAdmin().rpId, allow }));
+  });
+
+  app.post('/api/admin-site/faceid/auth/verify', loginLimit, (req, res) => {
+    const user = userFromTicket(req.body?.ticket, 'admin_faceid');
+    if (!user) return err(res, 401, 'ticket_invalid');
+    if (failCount(user) >= LOCK_FAILS) return err(res, 429, 'locked');
+    const cred = req.body?.credential;
+    const stored = db.prepare('SELECT * FROM admin_passkeys WHERE cred_id = ? AND user_id = ?').get(String(cred?.id || ''), user.id);
+    if (!stored) { failFace(user, req, 'unknown'); return err(res, 400, 'unknown_credential'); }
+    let r;
+    try { r = verifyAuthentication(`adminauth:${user.id}`, cred, stored, webauthnForAdmin()); } catch (e) { failFace(user, req, e.message); return err(res, 401, 'faceid_failed'); }
+    db.prepare('UPDATE admin_passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(r.counter, Date.now(), stored.id);
+    issueSession(user, req, res, 'password+faceid');
+  });
+
+  // Đăng ký Face ID: lần đầu bằng vé sau mật khẩu; thêm máy khác bằng phiên admin (xem bên dưới)
+  const faceRegisterOptions = (user) => registrationOptions({ userId: user.id, username: user.username, rpId: webauthnForAdmin().rpId, rpName: 'Admin PLC', exclude: faceCreds(user.id).map((c) => c.cred_id) });
+  function faceRegisterVerify(user, req) {
+    const r = verifyRegistration(user.id, req.body?.credential, webauthnForAdmin());
+    db.prepare('INSERT INTO admin_passkeys (user_id, cred_id, public_key, alg, counter, name, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(user.id, r.credId, r.publicKey, r.alg, r.counter, String(req.body?.name || 'Thiết bị').slice(0, 40), Date.now());
+    audit(db, 'admin_faceid_registered', { userId: user.id, ip: ipOf(req) });
+  }
+
+  app.post('/api/admin-site/faceid/register/options', loginLimit, (req, res) => {
+    const user = userFromTicket(req.body?.ticket, 'admin_faceid_setup');
+    if (!user) return err(res, 401, 'ticket_invalid');
+    if (faceCreds(user.id).length) return err(res, 409, 'faceid_exists');
+    res.json(faceRegisterOptions(user));
+  });
+
+  app.post('/api/admin-site/faceid/register/verify', loginLimit, (req, res) => {
+    const user = userFromTicket(req.body?.ticket, 'admin_faceid_setup');
+    if (!user) return err(res, 401, 'ticket_invalid');
+    if (faceCreds(user.id).length) return err(res, 409, 'faceid_exists');
+    try { faceRegisterVerify(user, req); } catch (e) { failFace(user, req, `reg:${e.message}`); return err(res, 400, 'faceid_failed'); }
+    issueSession(user, req, res, 'password+faceid-enrol');
+  });
+
   /* ---------------- cần phiên admin-site (hoặc đường hầm SSH) ---------------- */
   const adminSession = [requireAuth, requireAdmin, (req, res, next) => {
     const sid = req.tokenPayload?.sid;
@@ -192,12 +258,14 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
     const sessions = db.prepare('SELECT id, device_id, last_seen FROM app_sessions WHERE user_id = ? ORDER BY last_seen DESC LIMIT 20').all(u.id)
       .map((s) => ({ id: s.id.slice(0, 8), device: s.device_id, lastSeen: s.last_seen, current: s.id === req.tokenPayload.sid }));
     const history = db.prepare(
-      "SELECT ts, event, ip, detail FROM audit_log WHERE user_id = ? AND event IN ('login_ok','admin_login_fail','admin_password_changed','admin_totp_changed','admin_sessions_revoked','totp_enabled') ORDER BY ts DESC LIMIT 30",
+      "SELECT ts, event, ip, detail FROM audit_log WHERE user_id = ? AND event IN ('login_ok','admin_login_fail','admin_password_changed','admin_totp_changed','admin_sessions_revoked','totp_enabled','admin_faceid_registered','admin_faceid_removed') ORDER BY ts DESC LIMIT 30",
     ).all(u.id);
     res.json({
       username: u.username,
       totpEnabled: Boolean(u.totp_enabled),
       requireTotp: requireTotp(),
+      requireFaceId: requireFaceId(),
+      faceIds: faceCreds(u.id).map((c) => ({ id: c.id, name: c.name, createdAt: c.created_at, lastUsedAt: c.last_used_at })),
       sessions,
       history,
       server: {
@@ -256,6 +324,25 @@ export function mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret }
     db.prepare('UPDATE users SET totp_secret = totp_pending, totp_pending = NULL, totp_enabled = 1, totp_last_step = ? WHERE id = ?').run(t.step, u.id);
     db.prepare('DELETE FROM app_sessions WHERE user_id = ? AND id != ?').run(u.id, req.tokenPayload.sid || '');
     audit(db, 'admin_totp_changed', { userId: u.id, ip: ipOf(req) });
+    res.json({ ok: true });
+  });
+
+  // Thêm Face ID cho máy khác khi đã đăng nhập (xác nhận lại bằng mật khẩu)
+  app.post('/api/admin-site/faceid/add/options', ...adminSession, write, (req, res) => {
+    const bad = confirm(req.user, { password: req.body?.password }, req);
+    if (bad) return err(res, bad.status, bad.error);
+    res.json(faceRegisterOptions(req.user));
+  });
+  app.post('/api/admin-site/faceid/add/verify', ...adminSession, write, (req, res) => {
+    try { faceRegisterVerify(req.user, req); } catch (e) { return err(res, 400, 'faceid_failed'); }
+    res.json({ ok: true });
+  });
+  app.delete('/api/admin-site/faceid/:id', ...adminSession, write, (req, res) => {
+    const list = faceCreds(req.user.id);
+    if (list.length <= 1 && requireFaceId()) return err(res, 409, 'last_faceid');
+    const n = db.prepare('DELETE FROM admin_passkeys WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id).changes;
+    if (!n) return err(res, 404, 'not_found');
+    audit(db, 'admin_faceid_removed', { userId: req.user.id, ip: ipOf(req) });
     res.json({ ok: true });
   });
 

@@ -7,6 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 
 const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 const RE = /^app-auto-(\d{4})(\d{2})(\d{2})\.db$/;
@@ -39,6 +40,7 @@ export async function backupOnce(db, dataDir, opts = {}) {
   } catch { /* không đọc được dung lượng: cứ sao lưu */ }
   // Sao lưu theo từng đợt trang rồi nhường vòng lặp sự kiện: DB lớn không làm đứng việc nhận tin MQTT.
   await db.backup(tmp, { progress: () => { return 256; } });
+  try { const c = new Database(tmp); c.pragma('journal_mode = DELETE'); c.close(); } catch { /* bản sao lưu vẫn dùng được */ }   // không để lại -wal/-shm khi mở bản sao lưu
   try { fs.chmodSync(tmp, 0o600); } catch { /* Windows */ }
   fs.renameSync(tmp, target);
   const pruned = pruneBackups(dir, { daily: Number(process.env.DB_BACKUP_DAILY || 7), weekly: Number(process.env.DB_BACKUP_WEEKLY || 4) });

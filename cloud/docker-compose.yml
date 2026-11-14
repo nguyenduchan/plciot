@@ -129,6 +129,8 @@ services:
       ADMIN_SSH_LOGIN: ${ADMIN_SSH_LOGIN:-false}
       ADMIN_HOST: ${ADMIN_HOST:-}                       # tên miền admin riêng (docs/ADMIN-SITE.md)
       ADMIN_REQUIRE_TOTP: ${ADMIN_REQUIRE_TOTP:-true}
+      ADMIN_REQUIRE_FACEID: ${ADMIN_REQUIRE_FACEID:-true}      # Face ID/vân tay bắt buộc khi đăng nhập admin (docs/ADMIN-SITE.md)
+      ADMIN_WEBAUTHN_ORIGINS: ${ADMIN_WEBAUTHN_ORIGINS:-}      # thêm origin khi vào qua đường hầm SSH, vd. http://localhost:8080
       ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-8}
       SUPPORT_DAILY_CAP: ${SUPPORT_DAILY_CAP:-100}             # chat hỗ trợ (docs/CHAT-COMPLIANCE.md)
       SUPPORT_RETENTION_DAYS: ${SUPPORT_RETENTION_DAYS:-0}

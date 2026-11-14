@@ -24,12 +24,18 @@
     <p id="error" role="alert" aria-atomic="true"></p>
 
     <form id="step-login" class="step" autocomplete="on">
-      <p class="hint">Đăng nhập bằng tên đăng nhập, mật khẩu và mã Authenticator.</p>
+      <p class="hint">Đăng nhập bằng tên đăng nhập, mật khẩu rồi xác nhận Face ID / vân tay.</p>
       <label>Tên đăng nhập<input id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Tên đăng nhập" required></label>
       <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu" required></label>
       <label id="code-row" class="hidden">Mã Authenticator (6 số)<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456"></label>
       <div class="login-actions"><button type="submit" id="btn-login" class="primary">Đăng nhập</button></div>
     </form>
+
+    <div id="step-face" class="step hidden">
+      <p class="hint" id="face-title" style="font-weight:600"></p>
+      <p class="hint" id="face-hint"></p>
+      <div class="login-actions"><button type="button" id="btn-face" class="primary">Tiếp tục</button></div>
+    </div>
 
     <div id="step-setup" class="step hidden">
       <p class="hint" style="font-weight:600">Bật xác thực hai bước</p>
@@ -43,6 +49,6 @@
 </div>
 <script src="vendor/qrcode-generator.js?v=20261114c"></script>
 <script src="vendor/qr-canvas.js?v=20261114c"></script>
-<script src="admin-login.js?v=20261114c"></script>
+<script src="admin-login.js?v=20261115a"></script>
 </body>
 </html>

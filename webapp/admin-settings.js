@@ -5,6 +5,7 @@
   try { session = JSON.parse(localStorage.getItem('session')); } catch {}
   if (!session?.token) { location.replace('admin-login.html'); return; }
   const ERR = {
+    faceid_failed: 'Không xác nhận được Face ID. Thử lại.', last_faceid: 'Không xoá được Face ID cuối cùng khi đang bắt buộc Face ID.',
     invalid_credentials: 'Sai mật khẩu.', totp_invalid: 'Mã Authenticator sai hoặc đã dùng.', locked: 'Sai quá nhiều lần, thử lại sau 15 phút.',
     password_weak: 'Mật khẩu mới yếu: cần ≥ 10 ký tự, có chữ và số, không chứa tên đăng nhập.', totp_not_pending: 'Chưa tạo khoá mới.',
     admin_session_required: 'Hãy đăng nhập lại bằng trang đăng nhập quản trị.', unauthorized: 'Phiên hết hạn, đăng nhập lại.',
@@ -25,7 +26,7 @@
     return j;
   }
 
-  const EVENT = { login_ok: 'Đăng nhập', admin_login_fail: 'Đăng nhập sai', admin_password_changed: 'Đổi mật khẩu', admin_totp_changed: 'Đổi Authenticator', admin_sessions_revoked: 'Đăng xuất máy khác', totp_enabled: 'Bật Authenticator' };
+  const EVENT = { login_ok: 'Đăng nhập', admin_login_fail: 'Đăng nhập sai', admin_password_changed: 'Đổi mật khẩu', admin_totp_changed: 'Đổi Authenticator', admin_sessions_revoked: 'Đăng xuất máy khác', totp_enabled: 'Bật Authenticator', admin_faceid_registered: 'Đăng ký Face ID', admin_faceid_removed: 'Xoá Face ID' };
   const SERVER = [
     ['Tên miền admin', (s) => s.adminHost || '— (chưa đặt ADMIN_HOST)', () => false],
     ['Thời hạn phiên', (s) => `${s.sessionHours} giờ`, () => false],
@@ -41,10 +42,36 @@
     $('#who').textContent = me.username;
     const t = $('#totp-state'); t.textContent = me.totpEnabled ? 'đã bật' : 'chưa bật'; t.className = `tag ${me.totpEnabled ? 'ok' : 'bad'}`;
     document.querySelectorAll('.totp-need').forEach((e) => { e.style.display = me.totpEnabled ? '' : 'none'; });
+    const fs = $('#face-state'); fs.textContent = me.faceIds.length ? `${me.faceIds.length} máy` : (me.requireFaceId ? 'chưa đăng ký' : 'chưa bật'); fs.className = `tag ${me.faceIds.length ? 'ok' : 'bad'}`;
+    $('#faces').innerHTML = me.faceIds.map((f) => `<tr><td>${esc(f.name || 'Thiết bị')}</td><td>${when(f.createdAt)}</td><td>${f.lastUsedAt ? when(f.lastUsedAt) : '—'}</td><td><button class="fit" type="button" data-face-del="${f.id}">Xoá</button></td></tr>`).join('') || '<tr><td colspan="4">—</td></tr>';
     $('#sessions').innerHTML = me.sessions.map((s) => `<tr><td>${esc(s.device)}${s.current ? ' <span class="tag">phiên này</span>' : ''}</td><td>${when(s.lastSeen)}</td><td></td></tr>`).join('') || '<tr><td colspan="3">—</td></tr>';
     $('#history').innerHTML = me.history.map((h) => `<tr><td>${when(h.ts)}</td><td>${esc(EVENT[h.event] || h.event)}${h.event === 'admin_login_fail' ? ` <span class="tag bad">${esc(h.detail)}</span>` : ''}</td><td>${esc(h.ip)}</td></tr>`).join('') || '<tr><td colspan="3">—</td></tr>';
     $('#server').innerHTML = SERVER.map(([k, f, warn]) => `<tr><td>${k}</td><td>${warn(me.server) ? '⚠ ' : ''}<b>${esc(f(me.server))}</b></td></tr>`).join('');
   }
+
+  const b64uToBuf = (x) => { const t = String(x).replace(/-/g, '+').replace(/_/g, '/'); const b = atob(t + '='.repeat((4 - (t.length % 4)) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)).buffer; };
+  const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  $('#btn-face-add')?.addEventListener('click', async () => {
+    msg('');
+    try {
+      if (!window.PublicKeyCredential) throw new Error('Trình duyệt này không hỗ trợ Face ID / vân tay.');
+      const o = await api('/api/admin-site/faceid/add/options', 'POST', { password: $('#face-pw').value });
+      let cred;
+      try {
+        cred = await navigator.credentials.create({ publicKey: { ...o, challenge: b64uToBuf(o.challenge), user: { ...o.user, id: b64uToBuf(o.user.id) }, hints: ['client-device'], excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })) } });
+      } catch (e) { throw new Error(e?.name === 'NotAllowedError' ? 'Chưa xác nhận được Face ID / vân tay.' : `Không dùng được Face ID (${e?.name || 'lỗi'}).`); }
+      await api('/api/admin-site/faceid/add/verify', 'POST', { name: `Thiết bị ${new Date().toLocaleDateString('vi-VN')}`, credential: { id: cred.id, type: cred.type, response: { clientDataJSON: bufToB64u(cred.response.clientDataJSON), attestationObject: bufToB64u(cred.response.attestationObject) } } });
+      $('#face-pw').value = '';
+      msg('Đã thêm Face ID cho máy này.', 'ok'); await load();
+    } catch (e) { msg(e.message, 'err'); }
+  });
+
+  $('#faces')?.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-face-del]');
+    if (!b || !confirm('Xoá Face ID của máy này?')) return;
+    run(async () => { await api(`/api/admin-site/faceid/${b.dataset.faceDel}`, 'DELETE'); msg('Đã xoá.', 'ok'); await load(); })();
+  });
 
   const run = (fn) => async () => { msg(''); try { await fn(); } catch (e) { msg(e.message, 'err'); } };
 

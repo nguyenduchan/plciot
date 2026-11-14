@@ -25,7 +25,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 
 <div class="panel form">
   <h2>Tài khoản</h2>
-  <p>Đăng nhập: <b id="who"></b> · Authenticator: <span id="totp-state" class="tag"></span></p>
+  <p>Đăng nhập: <b id="who"></b> · Face ID: <span id="face-state" class="tag"></span> · Authenticator: <span id="totp-state" class="tag"></span></p>
+</div>
+
+<div class="panel form">
+  <h2>Face ID / vân tay</h2>
+  <p class="help">Đăng nhập admin = mật khẩu + Face ID của máy đã đăng ký (chỉ dùng cho tên miền admin). Nên đăng ký ít nhất hai máy để không bị khoá ngoài.</p>
+  <table><thead><tr><th>Máy</th><th>Đăng ký</th><th>Dùng gần nhất</th><th></th></tr></thead><tbody id="faces"></tbody></table>
+  <label>Mật khẩu (để thêm máy này)<input id="face-pw" type="password" autocomplete="current-password"></label>
+  <button id="btn-face-add" class="primary fit" type="button">Thêm Face ID cho máy này</button>
 </div>
 
 <div class="panel form">
@@ -72,6 +80,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <script src="vendor/qrcode-generator.js?v=20261114c"></script>
 <script src="vendor/qr-canvas.js?v=20261114c"></script>
 <script src="admin-nav.js?v=20261114c"></script>
-<script src="admin-settings.js?v=20261114c"></script>
+<script src="admin-settings.js?v=20261115a"></script>
 </body>
 </html>

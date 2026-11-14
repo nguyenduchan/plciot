@@ -18,7 +18,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adminsite-'));
 const env = {
   PATH: process.env.PATH, PORT: String(PORT), DATA_DIR: dir, SHELL_DIR: process.env.SHELL_DIR || '/app/shell',
   APP_JWT_SECRET: 'x'.repeat(40), ADMIN_HOST: ADMIN, ADMIN_USERNAMES: 'boss', ADMIN_DASHBOARD_USERS: 'boss',
-  ADMIN_ONLY_CIDRS: '127.0.0.1/32', ADMIN_INTERNET_USERS: 'boss', ADMIN_REQUIRE_TOTP: 'true',
+  ADMIN_ONLY_CIDRS: '127.0.0.1/32', ADMIN_INTERNET_USERS: 'boss', ADMIN_REQUIRE_TOTP: 'true', ADMIN_REQUIRE_FACEID: 'false',
   WEBAPP_PUBLIC_URL: `https://${APP}`, MQTT_SHARDS: '1', NODE_ENV: 'test',
 };
 
