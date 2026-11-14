@@ -120,6 +120,10 @@ export function deviceAclBlock(mqttUser, { mqttId }) {
 export function rebuildAclFromUsers(db) {
   const N = shardCount();
   for (const k of allShards(N)) fs.mkdirSync(configDir(k), { recursive: true });
+  // passwd của nhóm 0 là bản gốc (mọi người dùng/gateway/ingest/ctl): chép sang các nhóm còn lại để ingest, ctl và gateway đăng nhập được ở nhóm của mình
+  if (N > 1 && fs.existsSync(passwdPath(0))) {
+    for (const k of allShards(N)) if (k > 0) fs.copyFileSync(passwdPath(0), passwdPath(k));
+  }
   const users = db.prepare(`
     SELECT id, mqtt_user, notify_site, notify_device, role, monitor_scopes, tenant_id FROM users
     WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND disabled = 0

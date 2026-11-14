@@ -6,6 +6,7 @@
 set -eu
 DOMAIN="${MQTT_DOMAIN:?MQTT_DOMAIN chưa đặt}"
 PEM=/tmp/mqtt.pem
+PERSIST=/persist/mqtt.pem   # self-signed được giữ trong volume để KHÔNG đổi dấu vân tay (CloudPinSha256) mỗi lần tạo lại container
 
 build_from_caddy() {
   crt=$(ls /caddy/caddy/certificates/*/"$DOMAIN"/"$DOMAIN".crt 2>/dev/null | head -n1 || true)
@@ -33,6 +34,7 @@ build_self_signed() {
     -addext "subjectAltName=${san}"
   cat /tmp/mqtt.crt /tmp/mqtt.key > "$PEM"
   chmod 600 "$PEM"
+  mkdir -p /persist 2>/dev/null && cp "$PEM" "$PERSIST" 2>/dev/null || true
   # In SHA-256 (hex) để ghim trên SCADA CloudPinSha256
   openssl x509 -in /tmp/mqtt.crt -outform DER 2>/dev/null | sha256sum | awk '{print "CloudPinSha256="$1}'
 }
@@ -46,6 +48,10 @@ ensure_pem() {
     return 0
   fi
   if [ -f "$PEM" ]; then
+    return 0
+  fi
+  if [ -f "$PERSIST" ]; then
+    cp "$PERSIST" "$PEM" && echo "HAProxy MQTTS: dùng lại chứng chỉ self-signed đã lưu (giữ nguyên CloudPinSha256)"
     return 0
   fi
   build_self_signed

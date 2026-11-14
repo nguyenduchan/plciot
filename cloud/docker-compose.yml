@@ -54,6 +54,7 @@ services:
       - ./config/trusted.lst:/usr/local/etc/haproxy/trusted.lst:ro
       - ./config/haproxy-entrypoint.sh:/usr/local/etc/haproxy/haproxy-entrypoint.sh:ro
       - caddy-data:/caddy:ro
+      - mqtt-cert:/persist   # chứng chỉ self-signed của MQTTS: giữ qua các lần tạo lại container
     depends_on: [mqtt]
     networks: [plciot]
 
@@ -180,6 +181,7 @@ networks:
     name: plciot_net
 
 volumes:
+  mqtt-cert:
   mqtt-data:
     name: plciot_mqtt_data
   caddy-data:

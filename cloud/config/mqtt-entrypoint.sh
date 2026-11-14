@@ -77,6 +77,7 @@ while [ "$k" -lt "$N" ]; do
   if [ -z "${MQTT_DRY_RUN:-}" ]; then
     (
       while :; do
+        chown -R mosquitto:mosquitto "$CONF_DIR" "$DATA_DIR" 2>/dev/null || true   # app (root) có thể vừa ghi passwd/acl nhóm: broker (user mosquitto) phải đọc được
         if [ "$have_taskset" -eq 1 ]; then taskset -c "$core" mosquitto -c "$cfg" || true; else mosquitto -c "$cfg" || true; fi
         echo "Mosquitto nhóm $k thoát, khởi động lại sau 2 s" >&2
         sleep 2
@@ -89,7 +90,7 @@ done
 
 [ -z "${MQTT_DRY_RUN:-}" ] || exit 0
 
-trap 'for p in $(pidof mosquitto); do kill -HUP "$p" 2>/dev/null || true; done' HUP
+trap 'chown -R mosquitto:mosquitto "$CONF_DIR" "$DATA_DIR" 2>/dev/null || true; for p in $(pidof mosquitto); do kill -HUP "$p" 2>/dev/null || true; done' HUP
 trap 'kill $sups 2>/dev/null || true; for p in $(pidof mosquitto); do kill -TERM "$p" 2>/dev/null || true; done; exit 0' TERM INT
 # wait bị trap ngắt trả mã > 128: không để set -e thoát
 while :; do sleep 3600 & wait $! || true; done
