@@ -19,7 +19,7 @@ const env = {
   PATH: process.env.PATH, PORT: String(PORT), DATA_DIR: dir, SHELL_DIR: process.env.SHELL_DIR || '/app/shell',
   APP_JWT_SECRET: 'x'.repeat(40), ADMIN_HOST: ADMIN, ADMIN_USERNAMES: 'boss', ADMIN_DASHBOARD_USERS: 'boss',
   ADMIN_ONLY_CIDRS: '127.0.0.1/32', ADMIN_INTERNET_USERS: 'boss', ADMIN_REQUIRE_TOTP: 'true', ADMIN_REQUIRE_FACEID: 'false',
-  WEBAPP_PUBLIC_URL: `https://${APP}`, MQTT_SHARDS: '1', NODE_ENV: 'test',
+  WEBAPP_PUBLIC_URL: `https://${APP}`, MQTT_SHARDS: '1', NODE_ENV: 'test', SUPPORT_USER_PER_MIN: '500', SUPPORT_IP_PER_MIN: '500',
 };
 
 function req(host, method, url, body, token) {
@@ -190,6 +190,34 @@ try {
   check('plan: admin từ chối', dc.status === 200);
   check('plan: người dùng nhận tin từ chối kèm lý do', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /chưa thể chuyển gói/.test(m.body) && /Chưa nhận được chuyển khoản/.test(m.body)));
   check('plan: từ chối không đổi gói', db.prepare("SELECT sub_plan FROM users WHERE username='other'").get().sub_plan === 'monitor');
+  // Hai kênh chat tách riêng + nút Đồng ý / Không nâng cấp
+  check('kênh: /unread có số chưa đọc theo kênh', (await req(APP, 'GET', '/api/support/unread', null, ctok)).j?.unreadSupport !== undefined && (await req(APP, 'GET', '/api/support/unread', null, ctok)).j?.unreadUpgrade !== undefined);
+  check('kênh: tin mặc định thuộc kênh hỗ trợ kỹ thuật', (await req(APP, 'POST', '/api/support/messages', { body: 'Gateway không lên dữ liệu', channel: 'support' }, ctok)).status === 200 && db.prepare("SELECT channel FROM support_messages WHERE body='Gateway không lên dữ liệu'").get()?.channel === 'support');
+  check('kênh: kênh lạ bị đưa về hỗ trợ', (await req(APP, 'POST', '/api/support/messages', { body: 'thử kênh lạ', channel: 'hack' }, ctok)).status === 200 && db.prepare("SELECT channel FROM support_messages WHERE body='thử kênh lạ'").get()?.channel === 'support');
+  check('nâng cấp: không đồng ý gói đang dùng', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'monitor' }, ctok)).status === 409);
+  check('nâng cấp: gói không tồn tại bị từ chối', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'hack' }, ctok)).status === 400);
+  const acc = await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro', days: 90 }, ctok);
+  check('nâng cấp: bấm Đồng ý → yêu cầu vào kênh nâng cấp', acc.status === 200 && db.prepare("SELECT channel, plan_hint, body FROM support_messages WHERE id=?").get(acc.j.id)?.channel === 'upgrade');
+  const accMsg = db.prepare('SELECT body FROM support_messages WHERE id=?').get(acc.j.id)?.body || '';
+  check('nâng cấp: tin do máy chủ soạn có gói, số ngày, giá tham khảo', /ĐỒNG Ý/.test(accMsg) && /Nâng cao/.test(accMsg) && /90 ngày/.test(accMsg) && /Giá tham khảo/.test(accMsg), accMsg);
+  const unr = await req(APP, 'GET', '/api/support/unread', null, ctok);
+  check('nâng cấp: /unread báo gói chờ + số ngày', unr.j?.pendingPlan === 'pro' && unr.j?.pendingDays === 90);
+  check('nâng cấp: gửi trùng bị báo đã đăng ký', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro', days: 90 }, ctok)).status === 409);
+  check('nâng cấp: số ngày không hợp lệ bị bỏ (không lưu)', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'factory', days: 5 }, ctok)).status === 200 && db.prepare('SELECT days FROM support_requests WHERE user_id=?').get(cust.id)?.days === null);
+  const only = await req(APP, 'GET', '/api/support/messages?channel=upgrade', null, ctok);
+  check('kênh: lọc theo kênh chỉ trả tin nâng cấp', only.j?.messages?.length >= 2 && only.j.messages.every((m) => m.channel === 'upgrade'));
+  const onlyS = await req(APP, 'GET', '/api/support/messages?channel=support', null, ctok);
+  check('kênh: kênh hỗ trợ không lẫn tin nâng cấp', onlyS.j?.messages?.length >= 2 && onlyS.j.messages.every((m) => m.channel === 'support'));
+  const tl2 = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
+  check('admin: thấy kênh của từng tin và số ngày người dùng xin', tl2.j?.messages?.some((m) => m.channel === 'upgrade') && tl2.j?.requestedDays === null);
+  await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}`, { body: 'Đã nhận yêu cầu nâng cấp', channel: 'upgrade' }, token);
+  check('admin: trả lời vào kênh nâng cấp', db.prepare("SELECT channel FROM support_messages WHERE body='Đã nhận yêu cầu nâng cấp'").get()?.channel === 'upgrade');
+  const wd = await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'decline' }, ctok);
+  check('nâng cấp: bấm Không / rút lại → xoá yêu cầu chờ', wd.status === 200 && wd.j?.withdrawn === 'factory' && !db.prepare('SELECT 1 FROM support_requests WHERE user_id=?').get(cust.id));
+  check('nâng cấp: Không / rút lại KHÔNG tạo tin nhắn (chỉ Đồng ý mới gửi)', !db.prepare("SELECT 1 FROM support_messages WHERE body LIKE '%không nâng cấp nữa%'").get());
+  check('nâng cấp: Không khi chưa có yêu cầu thì không tạo tin', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'decline' }, ctok)).j?.none === true);
+  check('nâng cấp: quyết định lạ bị từ chối', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'buy' }, ctok)).status === 400);
+  check('nâng cấp: tên miền admin không có API này', (await req(ADMIN, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro' }, ctok)).status === 404);
   // giới hạn số tin / người dùng (cũ nhất bị xoá, mới nhất còn)
   const ins = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)');
   for (let i = 0; i < 230; i++) ins.run(cust.id, `bulk${i}`, Date.now());

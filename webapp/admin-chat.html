@@ -65,6 +65,7 @@ body{padding:16px;max-width:1100px;margin:auto}
       <div id="quote" class="help hidden" style="margin:6px 0;padding:8px;border-radius:10px;background:var(--accbg)"><div id="quote-text"></div><div class="row" style="margin-top:6px"><button id="quote-fill" class="fit" type="button">Chèn ước tính vào ô soạn</button></div></div>
       <label>Gói sẽ gán<select id="apr-plan"></select></label>
       <label class="hidden" id="apr-now-row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="apr-now" style="width:auto"> Đổi ngay (bỏ qua hạn gói hiện tại — chỉ dùng khi hạ gói)</label>
+      <label>Số ngày lưu lịch sử (người dùng xin; để trống = theo gói)<input id="apr-days" type="number" min="4" max="3650" step="1" inputmode="numeric"></label>
       <label>Lý do (chỉ dùng khi từ chối, tuỳ chọn)<input id="apr-reason" maxlength="300" autocomplete="off"></label>
       <div class="row"><button id="apr-yes" class="primary fit" type="button">Đồng ý — gán gói</button><button id="apr-no" class="fit" type="button">Từ chối</button></div>
       <div id="apr-confirm" class="hidden">
@@ -77,14 +78,14 @@ body{padding:16px;max-width:1100px;margin:auto}
     <label>Mẫu tin nhắn (chỉ điền sẵn vào ô soạn, bạn chỉnh rồi tự bấm Gửi)
       <select id="tpl"><option value="">— chọn mẫu —</option></select>
     </label>
-    <textarea id="input" rows="4" maxlength="1000" placeholder="Nhập tin nhắn…" disabled></textarea>
-    <div class="row"><button id="attach" class="fit" type="button" title="Gửi ảnh (hoặc dán ảnh vào ô soạn)">📷 Ảnh</button><button id="send" class="primary fit" disabled>Gửi</button></div>
+    <div class="row" style="align-items:center;gap:8px"><label style="margin:0;white-space:nowrap">Trả lời vào kênh</label><select id="reply-ch" style="flex:1"><option value="support">Hỗ trợ kỹ thuật</option><option value="upgrade">Nâng cấp gói</option></select></div>
+    <div class="row compose" style="align-items:flex-end;gap:8px"><textarea id="input" rows="2" maxlength="1000" placeholder="Nhập tin nhắn…" disabled style="flex:1 1 auto;min-width:0;width:auto;margin:0;resize:vertical;box-sizing:border-box"></textarea><button id="attach" class="fit" type="button" title="Gửi ảnh (hoặc dán ảnh vào ô soạn)" style="width:44px;height:44px;padding:0">📷</button><button id="send" class="primary fit" disabled style="height:44px">Gửi</button></div>
     <input type="file" id="file" accept="image/png,image/jpeg,image/*" hidden>
     <p class="help">Chỉ nhắn văn bản. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p>
   </div>
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261115c"></script>
+<script src="admin-chat.js?v=20261115d"></script>
 </body>
 </html>

@@ -21,6 +21,7 @@
       if (!r.ok) return;
       const j = await r.json(); prices = j.prices; priceWidgets = j.widgets;
       renderTable();
+      window.dispatchEvent(new Event('plan-prices'));
     } catch { /* không có giá: vẫn hiện bảng gói */ }
   }
 
@@ -131,6 +132,9 @@
     currentLabel: () => sub?.planLabel || 'Miễn phí',
     username: () => username,
     selectedDays: () => days,
+    setDays: (d) => { if (DAYS.includes(Number(d)) && Number(d) !== days) { days = Number(d); loadPrices(); } },
+    allowedDays: DAYS,
+    priceOf: (id) => ({ q: prices?.[id] || null, widgets: priceWidgets, days }),
     expiresAt: () => sub?.expiresAt || null,
   };
 }());

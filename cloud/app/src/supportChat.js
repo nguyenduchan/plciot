@@ -15,7 +15,7 @@
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
-import { quotesForWidgets, pricingAssumptions, pricesByDays, ALLOWED_DAYS } from './pricing.js';
+import { quotesForWidgets, pricingAssumptions, pricesByDays, priceByDays, ALLOWED_DAYS } from './pricing.js';
 import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG, setRemoteControl } from './entitlements.js';
@@ -70,6 +70,12 @@ export function initSupport(db) {
   if (!cols.includes('plan_hint')) db.exec('ALTER TABLE support_messages ADD COLUMN plan_hint TEXT');
   // Mã do client sinh khi gửi: gửi lại khi rớt mạng không tạo tin trùng
   if (!cols.includes('cid')) db.exec('ALTER TABLE support_messages ADD COLUMN cid TEXT');
+  // Hai kênh tách biệt để khỏi nhầm: 'support' = hỏi kỹ thuật, 'upgrade' = trao đổi nâng cấp gói
+  if (!cols.includes('channel')) db.exec("ALTER TABLE support_messages ADD COLUMN channel TEXT NOT NULL DEFAULT 'support'");
+  const acols = db.prepare('PRAGMA table_info(support_archive)').all().map((c) => c.name);
+  if (!acols.includes('channel')) db.exec("ALTER TABLE support_archive ADD COLUMN channel TEXT NOT NULL DEFAULT 'support'");
+  const rcols = db.prepare('PRAGMA table_info(support_requests)').all().map((c) => c.name);
+  if (!rcols.includes('days')) db.exec('ALTER TABLE support_requests ADD COLUMN days INTEGER');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_support_cid ON support_messages(user_id, cid) WHERE cid IS NOT NULL');
 
   // Mặc định KHÔNG xoá chữ theo thời gian (tránh mất dữ liệu). Ảnh chiếm dung lượng nhất: mặc định xoá sau 730 ngày (0 = giữ mãi).
@@ -87,7 +93,7 @@ export function initSupport(db) {
         const u = db.prepare('SELECT sub_next_plan FROM users WHERE id = ?').get(id);
         const r = grantPlan(db, id, u.sub_next_plan, { expiresAt: 'never', note: 'scheduled_downgrade' });
         if (r.ok) {
-          db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)')
+          db.prepare("INSERT INTO support_messages (user_id, from_admin, body, ts, channel) VALUES (?, 1, ?, ?, 'upgrade')")
             .run(id, `Gói trước đã hết hạn, tài khoản của bạn đã tự chuyển sang gói "${PLAN_CATALOG[u.sub_next_plan].label}" như đã thông báo. Bạn tải lại ứng dụng để cập nhật.`, Date.now());
           audit(db, 'plan_scheduled_switch', { userId: id, detail: `${id} -> ${u.sub_next_plan}` });
         }
@@ -121,7 +127,9 @@ export function cleanBody(raw) {
 /** Mã gửi do client sinh: 8..40 ký tự chữ/số/gạch. */
 const cleanCid = (raw) => { const s = String(raw ?? ''); return /^[A-Za-z0-9_-]{8,40}$/.test(s) ? s : null; };
 
-const view = (m) => ({ id: m.id, from: m.from_admin ? 'admin' : 'user', body: m.body, ts: m.ts, image: m.image_id || null });
+const CHANNELS = ['support', 'upgrade'];
+const cleanChannel = (v, d = null) => (CHANNELS.includes(String(v)) ? String(v) : d);
+const view = (m) => ({ id: m.id, from: m.from_admin ? 'admin' : 'user', body: m.body, ts: m.ts, image: m.image_id || null, channel: m.channel || 'support' });
 
 /* Ảnh chụp màn hình: chỉ JPEG/PNG (kiểm byte đầu tệp), tối đa 2 MB; client đã thu nhỏ + xoá EXIF bằng canvas. */
 const IMG_MAX = Number(process.env.SUPPORT_IMAGE_MAX_BYTES || 2 * 1024 * 1024);
@@ -137,7 +145,7 @@ const rawImage = express.raw({ type: ['image/jpeg', 'image/png'], limit: IMG_MAX
 
 export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   const ipOf = clientIp;
-  const sendLimit = rateLimit({ windowMs: 60_000, max: 8, keyFn: (req) => `${ipOf(req)}:support:${req.user?.id || 'na'}` });
+  const sendLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.SUPPORT_USER_PER_MIN || 8), keyFn: (req) => `${ipOf(req)}:support:${req.user?.id || 'na'}` });
   const adminSendLimit = rateLimit({ windowMs: 60_000, max: 30, keyFn: (req) => `${ipOf(req)}:support-admin:${req.user?.id || 'na'}` });
   // Chống nhiều tài khoản từ một IP, và cầu dao toàn cục chống làm đầy DB khi bị tấn công phân tán
   const ipLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.SUPPORT_IP_PER_MIN || 30), keyFn: (req) => `${ipOf(req)}:support-ip` });
@@ -164,8 +172,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     db.transaction(() => {
       const cut = db.prepare('SELECT id FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?').get(uid, MAX_PER_USER)?.id;
       if (!cut) return;
-      db.prepare(`INSERT OR IGNORE INTO support_archive (id, user_id, from_admin, body, ts, image_id, archived_ts)
-        SELECT id, user_id, from_admin, body, ts, image_id, ? FROM support_messages WHERE user_id = ? AND id <= ?`).run(Date.now(), uid, cut);
+      db.prepare(`INSERT OR IGNORE INTO support_archive (id, user_id, from_admin, body, ts, image_id, archived_ts, channel)
+        SELECT id, user_id, from_admin, body, ts, image_id, ?, channel FROM support_messages WHERE user_id = ? AND id <= ?`).run(Date.now(), uid, cut);
       db.prepare('DELETE FROM support_messages WHERE user_id = ? AND id <= ?').run(uid, cut);
       // Kho lưu trữ cũng có trần để DB không phình vô hạn: vượt thì bỏ tin lưu trữ cũ nhất (và ảnh mồ côi)
       const ac = db.prepare('SELECT COUNT(*) AS n FROM support_archive WHERE user_id = ?').get(uid).n;
@@ -180,35 +188,40 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   }
 
   /** Lịch sử cũ (tin hiển thị + kho lưu trữ) có id < before, theo thứ tự đọc. */
-  function history(uid, before, limit) {
+  function history(uid, before, limit, channel) {
     const lim = Math.min(100, Math.max(1, Number(limit) || 50));
     const b = Number(before) > 0 ? Number(before) : Number.MAX_SAFE_INTEGER;
-    const rows = db.prepare(`SELECT id, from_admin, body, ts, image_id FROM (
-        SELECT id, from_admin, body, ts, image_id FROM support_messages WHERE user_id = ? AND id < ?
+    const ch = cleanChannel(channel);
+    const rows = db.prepare(`SELECT id, from_admin, body, ts, image_id, channel FROM (
+        SELECT id, from_admin, body, ts, image_id, channel FROM support_messages WHERE user_id = ? AND id < ?
         UNION ALL
-        SELECT id, from_admin, body, ts, image_id FROM support_archive WHERE user_id = ? AND id < ?)
-      ORDER BY id DESC LIMIT ?`).all(uid, b, uid, b, lim + 1);
+        SELECT id, from_admin, body, ts, image_id, channel FROM support_archive WHERE user_id = ? AND id < ?)
+      ${ch ? 'WHERE channel = ?' : ''}
+      ORDER BY id DESC LIMIT ?`).all(...[uid, b, uid, b, ...(ch ? [ch] : []), lim + 1]);
     return { messages: rows.slice(0, lim).reverse().map(view), more: rows.length > lim };
   }
 
   /* ---------------- người dùng ---------------- */
   app.get('/api/support/messages', requireAuth, (req, res) => {
     const after = Math.max(0, Number(req.query.after) || 0);
-    const rows = db.prepare('SELECT * FROM support_messages WHERE user_id = ? AND id > ? ORDER BY id ASC LIMIT 200').all(req.user.id, after);
+    const ch = cleanChannel(req.query.channel);   // không truyền = cả hai kênh
+    const mark = cleanChannel(req.query.mark);    // read=1&mark=<kênh>: chỉ đánh dấu đã đọc tin của kênh đang xem
+    const rows = db.prepare(`SELECT * FROM support_messages WHERE user_id = ? AND id > ?${ch ? ' AND channel = ?' : ''} ORDER BY id ASC LIMIT 200`).all(...[req.user.id, after, ...(ch ? [ch] : [])]);
     if (String(req.query.read) === '1') {
-      db.prepare('UPDATE support_messages SET read_ts = ? WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL').run(Date.now(), req.user.id);
+      db.prepare(`UPDATE support_messages SET read_ts = ? WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL${mark ? ' AND channel = ?' : ''}`).run(...[Date.now(), req.user.id, ...(mark ? [mark] : [])]);
     }
     res.json({ messages: rows.map(view) });
   });
 
   app.get('/api/support/history', requireAuth, (req, res) => {
-    res.json(history(req.user.id, req.query.before, req.query.limit));
+    res.json(history(req.user.id, req.query.before, req.query.limit, req.query.channel));
   });
 
   app.get('/api/support/unread', requireAuth, (req, res) => {
-    const n = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL').get(req.user.id).n;
-    const pr = db.prepare('SELECT plan, ts FROM support_requests WHERE user_id = ?').get(req.user.id);
-    res.json({ unread: n, pendingPlan: pr?.plan || null });
+    const per = db.prepare("SELECT channel, COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL GROUP BY channel").all(req.user.id);
+    const by = Object.fromEntries(per.map((r) => [r.channel, r.n]));
+    const pr = db.prepare('SELECT plan, days, ts FROM support_requests WHERE user_id = ?').get(req.user.id);
+    res.json({ unread: (by.support || 0) + (by.upgrade || 0), unreadSupport: by.support || 0, unreadUpgrade: by.upgrade || 0, pendingPlan: pr?.plan || null, pendingDays: pr?.days ?? null });
   });
 
   app.post('/api/support/messages', requireAuth, ...userLimits, sendLimit, (req, res) => {
@@ -231,9 +244,49 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const same = db.prepare('SELECT 1 FROM support_messages WHERE user_id = ? AND from_admin = 0 AND body = ? AND ts > ? LIMIT 1').get(req.user.id, body, Date.now() - 60_000);
     if (same) return res.status(429).json({ error: 'duplicate' });
     const hint = PLAN_CATALOG[String(req.body?.plan || '')] ? String(req.body.plan) : null;
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint, cid) VALUES (?, 0, ?, ?, ?, ?)').run(req.user.id, body, Date.now(), hint, cid);
+    const channel = hint ? 'upgrade' : cleanChannel(req.body?.channel, 'support');
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint, cid, channel) VALUES (?, 0, ?, ?, ?, ?, ?)').run(req.user.id, body, Date.now(), hint, cid, channel);
     if (hint) db.prepare('INSERT INTO support_requests (user_id, plan, ts) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan, ts = excluded.ts').run(req.user.id, hint, Date.now());
     trim(req.user.id);
+    res.json({ ok: true, id: Number(r.lastInsertRowid) });
+  });
+
+  /* Người dùng bấm "Đồng ý nâng cấp" hoặc "Không nâng cấp" sau khi xem chi tiết gói trong kênh Nâng cấp.
+     Nội dung tin do MÁY CHỦ soạn từ lựa chọn (gói, số ngày) nên admin thấy đúng cái người dùng đã thấy. Không tạo đơn, không thanh toán. */
+  app.post('/api/support/upgrade/respond', requireAuth, ...userLimits, sendLimit, (req, res) => {
+    const decision = String(req.body?.decision || '');
+    const uid = req.user.id;
+    if (decision === 'decline') {
+      const pr = db.prepare('SELECT plan FROM support_requests WHERE user_id = ?').get(uid);
+      if (!pr) return res.json({ ok: true, none: true });
+      // Chỉ "Đồng ý" mới tạo tin nhắn. Rút lại/Không nâng cấp chỉ xoá yêu cầu chờ (admin thấy thẻ "chờ xử lý" biến mất), không gửi tin.
+      db.prepare('DELETE FROM support_requests WHERE user_id = ?').run(uid);
+      audit(db, 'support_upgrade_withdrawn', { userId: uid, ip: ipOf(req), detail: pr.plan });
+      return res.json({ ok: true, withdrawn: pr.plan });
+    }
+    if (decision !== 'accept') return res.status(400).json({ error: 'bad_decision' });
+    const planId = String(req.body?.plan || '');
+    if (!PLAN_CATALOG[planId]) return res.status(400).json({ error: 'unknown_plan' });
+    const cur = subscriptionInfo(req.user);
+    if (cur?.plan === planId) return res.status(409).json({ error: 'already_on_plan' });
+    if (db.prepare('SELECT 1 FROM support_requests WHERE user_id = ? AND plan = ?').get(uid, planId)) return res.status(409).json({ error: 'already_requested', plan: planId });
+    if (usage().msgs >= GLOBAL_MESSAGES) return res.status(503).json({ error: 'busy' });
+    const today = db.prepare("SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 0 AND ts > ?").get(uid, Date.now() - 86400_000).n;
+    if (today >= DAILY_CAP) return res.status(429).json({ error: 'rate_limited' });
+    const label = PLAN_CATALOG[planId].label;
+    const paid = planId === 'monitor' || planId === 'pro';
+    const dReq = Number(req.body?.days);
+    const days = paid && ALLOWED_DAYS.includes(dReq) ? dReq : null;
+    let widgets = 0;
+    try { widgets = applyWidgetLimit(listUserDevices(db, req.user).map(deviceToUiNode), null).total; } catch { /* */ }
+    const q = priceByDays(planId, widgets, days || 30);
+    let priceTxt = '';
+    if (q?.eligible) priceTxt = q.kind === 'one_time' ? ` Giá tham khảo đã hiển thị: ${q.total.toLocaleString('vi-VN')}đ trả một lần.` : q.kind === 'monthly' ? ` Giá tham khảo đã hiển thị: ${q.total.toLocaleString('vi-VN')}đ/tháng cho ${widgets} widget.` : '';
+    const down = planRank(planId) < planRank(cur?.plan);
+    const text = `${down ? `Tôi ĐỒNG Ý chuyển xuống gói "${label}" khi gói hiện tại hết hạn` : `Tôi ĐỒNG Ý nâng cấp lên gói "${label}"`}${days ? `, lưu lịch sử ${days} ngày` : ''}.${priceTxt} Tài khoản: ${req.user.username}, gói hiện tại: ${cur?.planLabel || 'Miễn phí'}. Xin quản trị viên xác nhận.`;
+    const r = db.prepare("INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint, cid, channel) VALUES (?, 0, ?, ?, ?, ?, 'upgrade')").run(uid, text, Date.now(), planId, cleanCid(req.body?.cid));
+    db.prepare('INSERT INTO support_requests (user_id, plan, ts, days) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan, ts = excluded.ts, days = excluded.days').run(uid, planId, Date.now(), days);
+    trim(uid);
     res.json({ ok: true, id: Number(r.lastInsertRowid) });
   });
 
@@ -257,7 +310,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
              (SELECT body FROM support_messages WHERE user_id = u.id ORDER BY id DESC LIMIT 1) AS last_body,
              (SELECT ts FROM support_messages WHERE user_id = u.id ORDER BY id DESC LIMIT 1) AS last_ts,
              (SELECT from_admin FROM support_messages WHERE user_id = u.id ORDER BY id DESC LIMIT 1) AS last_from_admin,
-             (SELECT COUNT(*) FROM support_messages WHERE user_id = u.id AND from_admin = 0 AND read_ts IS NULL) AS unread
+             (SELECT COUNT(*) FROM support_messages WHERE user_id = u.id AND from_admin = 0 AND read_ts IS NULL) AS unread,
+             (SELECT COUNT(*) FROM support_messages WHERE user_id = u.id AND from_admin = 0 AND read_ts IS NULL AND channel = 'upgrade') AS unread_upgrade
       FROM users u
       WHERE ${where.join(' AND ')}
       ORDER BY last_ts DESC LIMIT ? OFFSET ?`).all(...args, limit, offset);
@@ -266,7 +320,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
         const u = db.prepare('SELECT * FROM users WHERE id = ?').get(r.user_id);
         let plan = null;
         try { plan = subscriptionInfo(u)?.planLabel || null; } catch { /* */ }
-        return { userId: r.user_id, username: r.username, plan, lastBody: String(r.last_body || '📷 Ảnh').slice(0, 120), lastTs: r.last_ts, lastFromAdmin: Boolean(r.last_from_admin), unread: r.unread,
+        return { userId: r.user_id, username: r.username, plan, lastBody: String(r.last_body || '📷 Ảnh').slice(0, 120), lastTs: r.last_ts, lastFromAdmin: Boolean(r.last_from_admin), unread: r.unread, unreadUpgrade: r.unread_upgrade, unreadSupport: r.unread - r.unread_upgrade,
           pendingPlan: db.prepare('SELECT plan FROM support_requests WHERE user_id = ?').get(r.user_id)?.plan || null };
       }),
       unread: db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE from_admin = 0 AND read_ts IS NULL').get().n,
@@ -284,11 +338,11 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     db.prepare('UPDATE support_messages SET read_ts = ? WHERE user_id = ? AND from_admin = 0 AND read_ts IS NULL').run(Date.now(), uid);
     let plan = null;
     try { plan = subscriptionInfo(u)?.planLabel || null; } catch { /* */ }
-    const asked = db.prepare('SELECT plan AS plan_hint FROM support_requests WHERE user_id = ?').get(uid);
+    const asked = db.prepare('SELECT plan AS plan_hint, days FROM support_requests WHERE user_id = ?').get(uid);
     res.json({
       profile: profileOf(u),
       userId: uid, username: u.username, plan, planId: subscriptionInfo(u)?.plan || null,
-      requestedPlan: asked?.plan_hint || null,
+      requestedPlan: asked?.plan_hint || null, requestedDays: asked?.days ?? null,
       quotes: (() => { try { return quotesForWidgets(applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total); } catch { return null; } })(),
       pricing: pricingAssumptions(),
       expiresAt: subscriptionInfo(u)?.expiresAt ?? null,
@@ -373,7 +427,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   app.get('/api/admin/support/threads/:uid/history', ...adminOnly, (req, res) => {
     const uid = Number(req.params.uid);
     if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(uid)) return res.status(404).json({ error: 'user_not_found' });
-    res.json(history(uid, req.query.before, req.query.limit));
+    res.json(history(uid, req.query.before, req.query.limit, req.query.channel));
   });
 
   // Xuất toàn bộ hội thoại để đối soát: ?format=txt (mặc định) hoặc json (&images=1 kèm ảnh base64)
@@ -399,14 +453,14 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
       res.set('Content-Disposition', `attachment; filename="chat-${safe}.json"`);
       return res.json({ username: u.username, exportedAt: Date.now(), messages: out });
     }
-    const txt = rows.map((m) => `[${new Date(m.ts).toISOString()}] ${m.from_admin ? 'Admin' : u.username}: ${m.image_id ? `[ảnh #${m.image_id}] ` : ''}${m.body}`).join('\n');
+    const txt = rows.map((m) => `[${new Date(m.ts).toISOString()}] ${m.from_admin ? 'Admin' : u.username}${m.channel === 'upgrade' ? ' (nâng cấp)' : ''}: ${m.image_id ? `[ảnh #${m.image_id}] ` : ''}${m.body}`).join('\n');
     res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="chat-${safe}.txt"`, 'X-Content-Type-Options': 'nosniff' });
     return res.send(txt + '\n');
   });
 
   /* Đồng ý / Từ chối yêu cầu tư vấn đổi gói. Đồng ý = admin gán gói THỦ CÔNG (như Console) + nhắn xác nhận bằng chữ.
      Từ chối = nhắn lý do bằng chữ. Không lưu "đơn hàng", không có trạng thái thanh toán. */
-  const say = (uid, text) => { db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)').run(uid, text, Date.now()); trim(uid); };
+  const say = (uid, text, channel = 'upgrade') => { db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, channel) VALUES (?, 1, ?, ?, ?)').run(uid, text, Date.now(), channel); trim(uid); };
   const clearPending = (uid) => db.prepare('DELETE FROM support_requests WHERE user_id = ?').run(uid);
 
   app.post('/api/admin/support/threads/:uid/approve', ...adminOnly, adminSendLimit, (req, res) => {
@@ -429,6 +483,11 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     }
     const r = grantPlan(db, uid, planId, { expiresAt: req.body?.expiresAt || 'never', note: 'via_support_chat' });
     if (r.error) return res.status(r.status || 400).json(r);
+    const rd = Number(req.body?.retentionDays);
+    if (req.body?.retentionDays !== undefined && req.body.retentionDays !== '' && req.body.retentionDays !== null) {
+      if (!Number.isInteger(rd) || rd < 4 || rd > 3650) return res.status(400).json({ error: 'invalid_retention' });
+      db.prepare('UPDATE users SET retention_days = ? WHERE id = ?').run(rd, uid);
+    }
     clearPending(uid);
     audit(db, 'admin_plan_grant', { userId: req.user.id, ip: ipOf(req), detail: `${uid} ${planId} never via_chat` });
     say(uid, `Quản trị viên đã đồng ý và chuyển tài khoản của bạn sang gói "${PLAN_CATALOG[planId].label}". Bạn tải lại ứng dụng là dùng được ngay, không cần đăng nhập lại.`);
@@ -450,7 +509,9 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(uid)) return res.status(404).json({ error: 'user_not_found' });
     const body = cleanBody(req.body?.body);
     if (!body) return res.status(400).json({ error: 'empty_message' });
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)').run(uid, body, Date.now());
+    const lastUser = db.prepare('SELECT channel FROM support_messages WHERE user_id = ? AND from_admin = 0 ORDER BY id DESC LIMIT 1').get(uid);
+    const channel = cleanChannel(req.body?.channel, lastUser?.channel || 'support');
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, channel) VALUES (?, 1, ?, ?, ?)').run(uid, body, Date.now(), channel);
     trim(uid);
     audit(db, 'support_reply', { userId: req.user.id, ip: ipOf(req), detail: `to:${uid}` });
     res.json({ ok: true, id: Number(r.lastInsertRowid) });
@@ -459,6 +520,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   /* ---------------- ảnh chụp màn hình ---------------- */
   /** Lưu ảnh + tin nhắn kèm theo. Trả { status, json }. */
   function saveImage(req, userId, fromAdmin, dailyCap) {
+    const channel = cleanChannel(req.query.channel, 'support');
     const buf = req.body;
     const mime = imageMime(buf);
     if (!mime) return { status: 400, json: { error: 'bad_image' } };
@@ -479,8 +541,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (usage().imgBytes + buf.length > GLOBAL_IMG_BYTES || usage().msgs >= GLOBAL_MESSAGES) return { status: 503, json: { error: 'busy' } };
     const now = Date.now();
     const img = db.prepare('INSERT INTO support_images (user_id, mime, data, ts) VALUES (?, ?, ?, ?)').run(userId, mime, buf, now);
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, image_id, cid) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(userId, fromAdmin, caption, now, Number(img.lastInsertRowid), cid);
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, image_id, cid, channel) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(userId, fromAdmin, caption, now, Number(img.lastInsertRowid), cid, channel);
     usageCache.imgBytes += buf.length;
     trim(userId);
     return { status: 200, json: { ok: true, id: Number(r.lastInsertRowid), image: Number(img.lastInsertRowid) } };

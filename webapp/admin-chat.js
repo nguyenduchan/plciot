@@ -45,6 +45,7 @@
   function rowOf(m) {
     const row = document.createElement('div'); row.className = `sup-msg ${m.from}`; row.dataset.id = m.id;
     const who = document.createElement('small'); who.textContent = `${m.from === 'admin' ? 'Quản trị viên' : (current?.username || 'Người dùng')} · ${when(m.ts)}`;
+    if (m.channel === 'upgrade') { const t = document.createElement('span'); t.className = 'tag'; t.style.marginLeft = '6px'; t.textContent = 'Nâng cấp'; who.append(t); }
     const txt = document.createElement('div'); txt.className = 'sup-text'; txt.textContent = m.body;
     row.append(who);
     if (m.image) window.ChatImage.attach(row, `/api/admin/support/images/${m.image}`, session.token);
@@ -131,6 +132,7 @@
       const j = await api(`/api/admin/support/threads/${current.userId}?after=${lastId}`);
       if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); renderProfile(j.profile, j.plans, j.planId); }
       addMessages(j.messages);
+      if (first) { const lu = [...(j.messages || [])].reverse().find((m) => m.from === 'user'); $('#reply-ch').value = lu?.channel === 'upgrade' || j.requestedPlan ? 'upgrade' : 'support'; }
     } catch (e) { msg(e.message, true); }
   }
 
@@ -196,6 +198,7 @@
     if (j.requestedPlan && j.requestedPlan !== j.planId) sel.value = j.requestedPlan;
     else sel.value = [...sel.options].find((o) => !o.disabled)?.value || '';
     $('#apr-asked').textContent = j.requestedPlan ? `Người dùng đang xin tư vấn gói: ${planLabels[j.requestedPlan] || j.requestedPlan}.` : 'Người dùng chưa chọn gói cụ thể.';
+    $('#apr-days').value = j.requestedDays || '';
     window._quotes = j.quotes || null; window._pricing = j.pricing || null;
     showQuote();
     $('#apr').classList.remove('hidden'); $('#apr-confirm').classList.add('hidden'); pendingAction = null;
@@ -249,7 +252,7 @@
     if (!current || !pendingAction) return;
     msg(''); $('#apr-ok').disabled = true;
     try {
-      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value, immediate: $('#apr-now').checked });
+      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value, immediate: $('#apr-now').checked, retentionDays: $('#apr-days').value.trim() === '' ? undefined : Number($('#apr-days').value) });
       else await api(`/api/admin/support/threads/${current.userId}/decline`, 'POST', { reason: $('#apr-reason').value.trim() });
       $('#apr-reason').value = '';
       lastId = 0; oldestId = 0; $('#log').textContent = ''; await poll(true); loadThreads().catch(() => {});
@@ -260,7 +263,7 @@
     const body = $('#input').value.trim();
     if (!current || !body) return;
     msg(''); $('#send').disabled = true;
-    try { await api(`/api/admin/support/threads/${current.userId}`, 'POST', { body }); $('#input').value = ''; await poll(false); loadThreads().catch(() => {}); }
+    try { await api(`/api/admin/support/threads/${current.userId}`, 'POST', { body, channel: $('#reply-ch').value }); $('#input').value = ''; await poll(false); loadThreads().catch(() => {}); }
     catch (e) { msg(e.message, true); } finally { $('#send').disabled = false; }
   });
 
@@ -270,7 +273,7 @@
     try {
       const blob = await window.ChatImage.prepare(file);
       const caption = $('#input').value.trim();
-      const r = await fetch(`/api/admin/support/threads/${current.userId}/image${caption ? `?caption=${encodeURIComponent(caption)}` : ''}`, {
+      const r = await fetch(`/api/admin/support/threads/${current.userId}/image?channel=${$('#reply-ch').value}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: blob,
       });
       if (!r.ok) throw new Error('Không gửi được ảnh.');

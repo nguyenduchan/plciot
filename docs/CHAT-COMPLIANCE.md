@@ -90,3 +90,9 @@ Chạy `cloud/app/scripts/bench-capacity.js` (broker mosquitto riêng + DB tạm
 - **CPU/RAM không phải điểm nghẽn:** hàng nghìn widget vẫn còn dư (chưa tính policy/tra cứu thiết bị của app thật; nên chia thêm 2–3 lần để an toàn).
 - **Đĩa mới là giới hạn thật:** mỗi tin chiếm ~**252 byte** trong DB (cả chỉ mục) → 1 widget 1 tin/giây = ~**22 MB/ngày**, ~650 MB/tháng. Với 30 GB trống và chừa 50%: khoảng **690 widget nếu lưu 1 ngày**, nhưng chỉ khoảng **23 widget nếu lưu 30 ngày**, và gói lưu không giới hạn sẽ đầy đĩa. Muốn nhiều widget hơn: lưu thưa lịch sử (ví dụ 1 mẫu/10 giây, gói đã có cơ chế `planTelemetryMinMs`) hoặc thêm đĩa.
 - Vì vậy `PRICING_CAPACITY_WIDGETS=500` hợp lý cho gói lưu 1 ngày (Miễn phí/Cơ bản); gói Nâng cao/Nhà máy cần tính riêng theo đĩa.
+
+## Hai kênh chat và nút Đồng ý / Không nâng cấp
+- Chat có **hai kênh tách riêng** để khỏi nhầm (cột `support_messages.channel`): **Hỗ trợ kỹ thuật** (mọi gói, gửi ngay, chỉ hỏi kỹ thuật) và **Nâng cấp gói** (chi tiết gói + trao đổi). Mỗi kênh có huy hiệu tin mới riêng; admin thấy nhãn kênh trên từng tin và chọn kênh khi trả lời (mặc định theo kênh của tin người dùng gần nhất).
+- Trong Cài đặt → Gói dịch vụ, chạm thẻ gói chỉ **đánh dấu ✓**; bấm *Chat để nâng cấp* mở kênh Nâng cấp với **thẻ chi tiết gói** (dành cho ai, số widget, lịch sử, widget của người dùng, giá tham khảo theo số ngày lưu). Có hai nút: **Đồng ý nâng cấp** và **Không nâng cấp**.
+- **Chỉ "Đồng ý" mới tạo tin nhắn.** Máy chủ tự soạn tin từ lựa chọn (gói, số ngày, giá tham khảo đã hiển thị) qua `POST /api/support/upgrade/respond` nên admin thấy đúng điều người dùng đã thấy. "Không nâng cấp"/"Rút lại" chỉ bỏ chọn hoặc xoá yêu cầu chờ, không gửi tin.
+- Đồng ý chỉ là **yêu cầu**: gói không đổi cho đến khi admin xác nhận trong chat (khung "Đồng ý — gán gói", có ô số ngày lưu người dùng đã xin). Không giỏ hàng, không thanh toán, không tự kích hoạt.
