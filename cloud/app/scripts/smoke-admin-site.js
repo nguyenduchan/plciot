@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Smoke test trang admin riêng: chạy server tách biệt (DATA_DIR tạm, cổng 3099) rồi gọi HTTP với header Host.
  *   docker exec plciot-app node scripts/smoke-admin-site.js
  * Không đụng DB thật.
@@ -173,13 +173,22 @@ try {
   check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
   check('plan: gói sai bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'nope' }, token)).status === 400);
   check('plan: người dùng thường không tự đồng ý được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'pro' }, ctok)).status === 404);
+  const tl = await req(ADMIN, 'GET', '/api/admin/support/threads', null, token);
+  check('chờ: yêu cầu lưu trong DB, admin thấy "chờ xử lý"', db.prepare('SELECT plan FROM support_requests WHERE user_id=?').get(cust.id)?.plan === 'monitor' && tl.j?.threads?.find((t) => t.userId === cust.id)?.pendingPlan === 'monitor' && tl.j.pending >= 1);
   const ap = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'monitor' }, token);
   check('plan: admin đồng ý → gói được gán', ap.status === 200 && ap.j?.subscription?.plan === 'monitor');
+  check('chờ: đồng ý xong thì hết chờ', !db.prepare('SELECT 1 FROM support_requests WHERE user_id=?').get(cust.id));
   check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Giám sát/.test(m.body)));
   const dc = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/decline`, { reason: 'Chưa nhận được chuyển khoản' }, token);
   check('plan: admin từ chối', dc.status === 200);
   check('plan: người dùng nhận tin từ chối kèm lý do', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /chưa thể chuyển gói/.test(m.body) && /Chưa nhận được chuyển khoản/.test(m.body)));
   check('plan: từ chối không đổi gói', db.prepare("SELECT sub_plan FROM users WHERE username='other'").get().sub_plan === 'monitor');
+  // giới hạn số tin / người dùng (cũ nhất bị xoá, mới nhất còn)
+  const ins = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)');
+  for (let i = 0; i < 230; i++) ins.run(cust.id, `bulk${i}`, Date.now());
+  await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}`, { body: 'tin-moi-nhat' }, token);
+  const cnt = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id=?').get(cust.id).n;
+  check('giới hạn: mỗi người dùng tối đa 200 tin, giữ tin mới nhất', cnt === 200 && db.prepare("SELECT 1 FROM support_messages WHERE user_id=? AND body='tin-moi-nhat'").get(cust.id) && !db.prepare("SELECT 1 FROM support_messages WHERE user_id=? AND body='bulk0'").get(cust.id));
   check('chat: không có endpoint đơn hàng/thanh toán', (await req(APP, 'POST', '/api/support/order', {}, ctok)).status === 404 && (await req(APP, 'POST', '/api/support/pay', {}, ctok)).status === 404);
 } catch (e) {
   fails++; console.error('LỖI', e.message);

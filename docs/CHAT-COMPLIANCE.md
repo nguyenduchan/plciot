@@ -28,7 +28,7 @@ Không đưa vào chat: mật khẩu, mã Authenticator, số thẻ, mã OTP. Kh
 ## Việc ngoài phần mềm (vẫn bắt buộc)
 - **Kê khai doanh thu và nộp thuế** (GTGT/TNCN/TNDN tùy tư cách) cho mọi khoản thu từ bán gói.
 - **Lập hóa đơn điện tử** theo quy định hiện hành khi cung cấp dịch vụ và nhận tiền (hỏi kế toán về thời điểm và loại hóa đơn).
-- Lưu lịch sử trao đổi/ chuyển khoản để đối soát. Chat tự xóa sau `SUPPORT_RETENTION_DAYS` (mặc định 365 ngày); nếu cần giữ lâu hơn cho kế toán, tăng giá trị này.
+- Lưu lịch sử trao đổi/ chuyển khoản để đối soát. Chat KHÔNG tự xóa theo thời gian (`SUPPORT_RETENTION_DAYS=0`); mỗi người dùng giữ tối đa `SUPPORT_MAX_MESSAGES` tin (mặc định 200, tin cũ nhất bị xóa trước). Yêu cầu tư vấn đổi gói đang chờ lưu trong bảng `support_requests` (1/người dùng) tới khi admin Đồng ý/Từ chối.
 - Thông báo bảo vệ dữ liệu cá nhân: nội dung chat là dữ liệu của người dùng, chỉ admin được phân quyền đọc.
 
 ## Điều cần xin ý kiến lại trước khi thêm tính năng
@@ -37,7 +37,8 @@ Nếu sau này muốn **thanh toán trong app, tự kích hoạt gói, hoặc hi
 ## Cấu hình
 ```env
 SUPPORT_DAILY_CAP=100          # tin người dùng gửi tối đa mỗi 24 giờ
-SUPPORT_RETENTION_DAYS=365     # tự xóa tin cũ (kể cả ảnh)
+SUPPORT_RETENTION_DAYS=0       # 0 = không xóa theo thời gian
+SUPPORT_MAX_MESSAGES=200       # số tin tối đa / người dùng
 SUPPORT_IMAGE_DAILY=20         # ảnh người dùng gửi tối đa mỗi 24 giờ
 SUPPORT_IMAGE_MAX_BYTES=2097152
 ```

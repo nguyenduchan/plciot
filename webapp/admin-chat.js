@@ -65,6 +65,7 @@
       const el = document.createElement('div'); el.className = `th${current?.userId === t.userId ? ' on' : ''}`;
       const b = document.createElement('b'); b.textContent = t.username;
       if (t.plan) { const p = document.createElement('span'); p.className = 'tag'; p.textContent = t.plan; b.append(' ', p); }
+      if (t.pendingPlan) { const q = document.createElement('span'); q.className = 'tag'; q.textContent = 'chờ xử lý'; b.append(' ', q); }
       if (t.unread) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `${t.unread} mới`; b.append(' ', n); }
       const s = document.createElement('small'); s.textContent = `${t.lastFromAdmin ? 'Bạn: ' : ''}${t.lastBody}`;
       el.append(b, s); el.addEventListener('click', () => open(t.userId, t.username)); box.appendChild(el);
