@@ -25,7 +25,8 @@ body{padding:16px;max-width:1100px;margin:auto}
 .sup-msg small{display:block;color:var(--mut);font-size:11px;margin-bottom:2px}
 .sup-text{white-space:pre-wrap;word-break:break-word;font-size:14px}
 #msg{min-height:1.3em;font-size:14px;margin:0 0 8px}#msg.err{color:var(--bad)}
-.hidden{display:none!important}
+.hidden{display:none!important}/* Ảnh trong khung chat: rõ ràng, rộng gần hết bong bóng, bấm để phóng to */
+.sup-msg.has-img{width:min(92%,380px)}.sup-msg .sup-img{margin:4px 0}.sup-msg .sup-photo{display:block;width:100%;height:auto;max-height:60vh;object-fit:contain;border-radius:10px;background:#0002;cursor:zoom-in}.sup-msg.pending{opacity:.75}#sup-zoom{position:fixed;inset:0;z-index:200;background:#000e;display:flex;overflow:auto;padding:0;cursor:zoom-out;-webkit-overflow-scrolling:touch}#sup-zoom img{display:block;flex:none;margin:auto;max-width:none;max-height:none;border-radius:0;cursor:zoom-out}#sup-zoom.fit img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}#sup-zoom .sup-zoom-x{position:fixed;top:10px;right:10px;width:40px;height:40px;border-radius:50%;border:0;background:#000a;color:#fff;font-size:18px;z-index:201;cursor:pointer}
 </style>
 </head>
 <body>
@@ -86,7 +87,7 @@ body{padding:16px;max-width:1100px;margin:auto}
   </div>
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
-<script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261115e"></script>
+<script src="chat-image.js?v=20261115b"></script>
+<script src="admin-chat.js?v=20261115f"></script>
 </body>
 </html>

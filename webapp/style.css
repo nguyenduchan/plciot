@@ -792,3 +792,10 @@ body.chat-on{overflow:hidden}
 .sup-chip small{opacity:.75;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-chip button{width:28px;height:28px;min-width:28px;padding:0;border-radius:50%;line-height:1}
 .chat-view .sup-compose button[hidden],#support-attach[hidden]{display:none!important}
+
+/* Ảnh trong khung chat: rõ ràng, rộng gần hết bong bóng, bấm để phóng to */
+.sup-msg.has-img{width:min(92%,380px)}
+.sup-msg .sup-img{margin:4px 0}
+.sup-msg .sup-photo{display:block;width:100%;height:auto;max-height:60vh;object-fit:contain;border-radius:10px;background:#0002;cursor:zoom-in}
+.sup-msg.pending{opacity:.75}
+#sup-zoom{position:fixed;inset:0;z-index:200;background:#000e;display:flex;overflow:auto;padding:0;cursor:zoom-out;-webkit-overflow-scrolling:touch}#sup-zoom img{display:block;flex:none;margin:auto;max-width:none;max-height:none;border-radius:0;cursor:zoom-out}#sup-zoom.fit img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}#sup-zoom .sup-zoom-x{position:fixed;top:10px;right:10px;width:40px;height:40px;border-radius:50%;border:0;background:#000a;color:#fff;font-size:18px;z-index:201;cursor:pointer}

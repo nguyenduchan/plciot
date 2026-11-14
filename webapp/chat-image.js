@@ -45,11 +45,35 @@
       if (!r.ok) throw new Error('x');
       const obj = URL.createObjectURL(await r.blob());
       const img = document.createElement('img');
-      img.src = obj; img.alt = 'Ảnh chụp màn hình'; img.style.cssText = 'max-width:100%;max-height:260px;border-radius:8px;cursor:zoom-in;display:block';
-      img.addEventListener('click', () => window.open(obj, '_blank', 'noopener'));
+      img.src = obj; img.alt = 'Ảnh chụp màn hình'; img.className = 'sup-photo';
+      img.addEventListener('click', () => zoom(obj));
       holder.textContent = ''; holder.appendChild(img);
     } catch { holder.textContent = 'Không tải được ảnh.'; }
   }
 
-  window.ChatImage = { prepare, attach };
+  /** Bấm ảnh trong chat: mở ngay trong trang ở KÍCH THƯỚC GỐC (cuộn để xem phần còn lại).
+   *  Bấm vào ảnh để chuyển qua lại "vừa màn hình" ↔ "kích thước gốc"; bấm nền, nút ✕ hoặc Esc để đóng. */
+  function zoom(src) {
+    document.getElementById('sup-zoom')?.remove();
+    const o = document.createElement('div'); o.id = 'sup-zoom';
+    const im = document.createElement('img'); im.src = src; im.alt = 'Ảnh kích thước gốc';
+    im.addEventListener('click', (e) => { e.stopPropagation(); o.classList.toggle('fit'); });
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'sup-zoom-x'; x.textContent = '✕'; x.setAttribute('aria-label', 'Đóng ảnh');
+    const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    x.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+    o.addEventListener('click', close); document.addEventListener('keydown', onKey);
+    o.append(im, x);
+    document.body.appendChild(o);
+  }
+
+  /** Hiện ngay ảnh cục bộ (trước khi lên máy chủ) để người gửi thấy tin của mình rõ ràng lập tức. */
+  function preview(container, objectUrl) {
+    const holder = document.createElement('div'); holder.className = 'sup-img';
+    const img = document.createElement('img'); img.src = objectUrl; img.alt = 'Ảnh đang gửi'; img.className = 'sup-photo';
+    img.addEventListener('click', () => zoom(objectUrl));
+    holder.appendChild(img); container.appendChild(holder);
+  }
+
+  window.ChatImage = { prepare, attach, preview, zoom };
 })();

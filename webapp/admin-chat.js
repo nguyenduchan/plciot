@@ -48,7 +48,7 @@
     if (m.channel === 'upgrade') { const t = document.createElement('span'); t.className = 'tag'; t.style.marginLeft = '6px'; t.textContent = 'Nâng cấp'; who.append(t); }
     const txt = document.createElement('div'); txt.className = 'sup-text'; txt.textContent = m.body;
     row.append(who);
-    if (m.image) window.ChatImage.attach(row, `/api/admin/support/images/${m.image}`, session.token);
+    if (m.image) { row.classList.add('has-img'); window.ChatImage.attach(row, `/api/admin/support/images/${m.image}`, session.token); }
     if (m.body) row.append(txt);
     return row;
   }
@@ -291,15 +291,21 @@
   async function sendImage() {
     if (!current || !staged) return;
     msg(''); $('#send').disabled = true;
+    const caption = $('#input').value.trim();
+    const pend = document.createElement('div'); pend.className = 'sup-msg admin has-img pending';
+    const pw = document.createElement('small'); pw.textContent = 'Quản trị viên · đang gửi…'; pend.append(pw);
+    const pobj = URL.createObjectURL(staged.blob); window.ChatImage.preview(pend, pobj);
+    if (caption) { const pt = document.createElement('div'); pt.className = 'sup-text'; pt.textContent = caption; pend.append(pt); }
+    const lg = $('#log'); lg.appendChild(pend); lg.scrollTop = lg.scrollHeight;
     try {
-      const caption = $('#input').value.trim();
       const r = await fetch(`/api/admin/support/threads/${current.userId}/image?channel=${$('#reply-ch').value}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: staged.blob,
       });
+      pend.remove();
       if (!r.ok) throw new Error('Không gửi được ảnh.');
       $('#input').value = ''; unstage(); $('#input').placeholder = 'Nhập tin nhắn…';
       await poll(false); loadThreads().catch(() => {});
-    } catch (e) { msg(e.message || 'Không gửi được ảnh.', true); } finally { $('#send').disabled = false; syncComposer(); }
+    } catch (e) { pend.remove(); msg(e.message || 'Không gửi được ảnh.', true); } finally { URL.revokeObjectURL(pobj); $('#send').disabled = false; syncComposer(); }
   }
   $('#attach').addEventListener('click', () => { if (current) $('#file').click(); });
   $('#file').addEventListener('change', (e) => stageImage(e.target.files?.[0]));

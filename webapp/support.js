@@ -82,7 +82,7 @@
     txt.className = 'sup-text';
     txt.textContent = m.body;   // textContent: không hiểu HTML, không thành link
     row.append(who);
-    if (m.image) window.ChatImage?.attach(row, `${base}/api/support/images/${m.image}`, session.token);
+    if (m.image) { row.classList.add('has-img'); window.ChatImage?.attach(row, `${base}/api/support/images/${m.image}`, session.token); }
     if (m.body) row.append(txt);
     return row;
   }
@@ -195,16 +195,23 @@
   async function sendImage() {
     if (!staged) return;
     const btn = $('#support-send'); btn.disabled = true;
+    const blob = staged.blob;
+    const caption = input.value.trim();
+    // Hiện NGAY ảnh + chữ trong khung chat (đang gửi…); tin thật từ máy chủ thay thế khi gửi xong
+    const pend = document.createElement('div'); pend.className = 'sup-msg user has-img pending';
+    const pw = document.createElement('small'); pw.textContent = 'Bạn · đang gửi…'; pend.append(pw);
+    const pobj = URL.createObjectURL(blob); window.ChatImage.preview(pend, pobj);
+    if (caption) { const pt = document.createElement('div'); pt.className = 'sup-text'; pt.textContent = caption; pend.append(pt); }
+    const lg = logs[activeCh]; lg.appendChild(pend); lg.scrollTop = lg.scrollHeight;
     try {
-      const blob = staged.blob;
-      const caption = input.value.trim();
       const cid = newCid();
       const r = await fetch(`${base}/api/support/images?cid=${cid}&channel=${activeCh}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: blob,
       });
       const data = await r.json().catch(() => ({}));
+      pend.remove();
       if (r.ok) { input.value = ''; unstage(); input.style.height = 'auto'; input.placeholder = activeCh === 'upgrade' ? 'Trao đổi với quản trị viên về việc nâng cấp gói…' : 'Mô tả vấn đề kỹ thuật bạn gặp…'; await refresh(true); } else toast(data.error === 'rate_limited' ? 'Bạn gửi quá nhiều ảnh, thử lại sau.' : (ERR[data.error] || 'Không gửi được ảnh.'));
-    } catch { toast('Không gửi được ảnh.'); } finally { btn.disabled = false; syncComposer(); }
+    } catch { pend.remove(); toast('Không gửi được ảnh.'); } finally { URL.revokeObjectURL(pobj); btn.disabled = false; syncComposer(); }
   }
   $('#support-attach').addEventListener('click', () => $('#support-file').click());
   $('#support-file').addEventListener('change', (e) => stageImage(e.target.files?.[0]));
