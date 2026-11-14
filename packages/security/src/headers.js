@@ -18,6 +18,9 @@ export function securityHeaders(_req, res, next) {
 export function buildCorsOptions() {
   const raw = process.env.CORS_ORIGINS || process.env.WEBAPP_PUBLIC_URL || '';
   const allowed = raw.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
+  // Trang admin riêng (ADMIN_HOST) là một origin khác: tự cho phép để đăng nhập từ chính tên miền đó không bị 403.
+  const adminHost = String(process.env.ADMIN_HOST || '').trim().toLowerCase();
+  if (adminHost && allowed.length) allowed.push(`https://${adminHost}`);
   // Không có Origin (curl / health) thì cho qua
   return {
     origin(origin, cb) {
