@@ -519,7 +519,9 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const bank = String(process.env.PAYMENT_BANK_NAME || '').trim();
     const acc = String(process.env.PAYMENT_ACCOUNT_NO || '').trim();
     const holder = String(process.env.PAYMENT_ACCOUNT_NAME || '').trim();
-    const configured = Boolean(bank && acc && holder);
+    // Giá trị ví dụ (chứa "VÍ DỤ"/"EXAMPLE" hoặc số tài khoản toàn số 0) chỉ để xem trước, KHÔNG gửi cho khách thật
+    const isExample = /v[ií]\s*d[uụ]|example/i.test(`${bank} ${holder}`) || /^0+$/.test(acc);
+    const configured = Boolean(bank && acc && holder) && !isExample;
     if (planId === 'free') return { ok: true, configured, amount: 0, text: `Gói "${label}" miễn phí, bạn không cần thanh toán gì. Nếu cần thêm thông tin, cứ nhắn tại đây.` };
     let amountTxt = null;
     if (q?.eligible && q.kind === 'monthly') amountTxt = `${vnd(q.total)}/tháng (${widgets} widget${days ? `, lưu lịch sử ${days} ngày` : ''})`;
@@ -534,7 +536,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
       'Sau khi chuyển khoản, bạn nhắn lại “Đã chuyển khoản” tại đây (có thể gửi kèm ảnh biên lai). Quản trị viên kiểm tra và kích hoạt gói cho bạn; gói chỉ đổi khi quản trị viên xác nhận trong chat.',
       'Việc chuyển khoản thực hiện ngoài ứng dụng, giá trên màn hình chỉ để tham khảo. Cần hỗ trợ thêm, bạn cứ nhắn tại đây.',
     ];
-    return { ok: true, configured, amount: amountTxt ? q.total : null, priceReason: q && !q.eligible ? q.reason : null, text: lines.join('\n') };
+    return { ok: true, configured, isExample, amount: amountTxt ? q.total : null, priceReason: q && !q.eligible ? q.reason : null, text: lines.join('\n') };
   }
 
   // Giá gợi ý cho một gói + số ngày lưu theo số widget của người dùng (admin xem để báo giá; không gửi gì)
@@ -561,6 +563,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const uid = Number(req.params.uid);
     const g = buildPaymentGuide(uid, String(req.body?.plan || ''), req.body?.days);
     if (g.error) return res.status(g.status).json({ error: g.error });
+    if (g.isExample) return res.status(409).json({ error: 'payment_example', hint: 'Đang dùng thông tin ngân hàng VÍ DỤ trong cloud/.env: hãy thay bằng tài khoản thật rồi triển khai lại.' });
     if (!g.configured && g.amount !== 0) return res.status(409).json({ error: 'payment_not_configured', hint: 'Chưa đặt PAYMENT_BANK_NAME, PAYMENT_ACCOUNT_NO, PAYMENT_ACCOUNT_NAME trong cloud/.env của máy chủ.' });
     if (g.amount == null) return res.status(409).json({ error: 'no_price', hint: g.priceReason || 'Gói/số ngày này chưa tính được giá: đổi gói hoặc số ngày lưu rồi thử lại.' });
     say(uid, g.text, 'upgrade');

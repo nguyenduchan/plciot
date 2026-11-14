@@ -18,6 +18,7 @@
   ];
 
   const ERR = { empty_message: 'Hãy nhập nội dung.', user_not_found: 'Không tìm thấy người dùng.', rate_limited: 'Gửi quá nhanh, chờ một chút.', no_expiry: 'Gói hiện tại không có ngày hết hạn: tick "Đổi ngay" nếu muốn hạ gói luôn.', quota_exceeded: 'Vượt hạn mức dung lượng.', busy: 'Hệ thống đang quá tải, thử lại sau.',
+    payment_example: 'Đang dùng thông tin ngân hàng VÍ DỤ: thay PAYMENT_* trong cloud/.env của máy chủ bằng tài khoản thật rồi triển khai lại thì mới gửi được cho khách.',
     payment_not_configured: 'Chưa cấu hình tài khoản ngân hàng: đặt PAYMENT_BANK_NAME, PAYMENT_ACCOUNT_NO, PAYMENT_ACCOUNT_NAME trong cloud/.env của máy chủ rồi triển khai lại.', no_price: 'Gói hoặc số ngày lưu này chưa tính được giá: đổi gói / số ngày lưu rồi thử lại.', unknown_plan: 'Gói không hợp lệ.',
     admin_session_required: 'Đăng nhập lại.', unauthorized: 'Phiên hết hạn, đăng nhập lại.', session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.' };
   const msg = (t, bad) => { const m = $('#msg'); m.textContent = t || ''; m.className = bad ? 'err' : ''; };
