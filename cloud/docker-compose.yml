@@ -9,9 +9,14 @@ services:
     image: eclipse-mosquitto:2
     container_name: plciot-mqtt
     restart: unless-stopped
-    mem_limit: 128m
-    cpus: 0.5
-    pids_limit: 64
+    # Số tiến trình Mosquitto theo MQTT_SHARDS (mqtt-entrypoint.sh tự tạo + ghim mỗi tiến trình một core bằng taskset, nên không cần giới hạn cpus).
+    # RAM: container cần ~64 MB cho mỗi nhóm (đặt MQTT_MEM_LIMIT theo số nhóm).
+    mem_limit: ${MQTT_MEM_LIMIT:-128m}
+    pids_limit: 128
+    entrypoint: ["/bin/sh", "/mosquitto/config/mqtt-entrypoint.sh"]
+    environment:
+      MQTT_SHARDS: ${MQTT_SHARDS:-1}                      # số tiến trình Mosquitto (1..16 hoặc auto = số core - MQTT_RESERVE_CORES)
+      MQTT_RESERVE_CORES: ${MQTT_RESERVE_CORES:-1}         # chỉ dùng khi MQTT_SHARDS=auto: core dành cho app/haproxy/hệ điều hành
     ports:                       # loopback only (thử trên máy); Internet vào MQTT qua HAProxy hoặc tunnel
       - "127.0.0.1:21883:1883"   # không mã hoá → MONITOR ONLY
       - "127.0.0.1:29001:9001"   # không mã hoá → MONITOR ONLY
@@ -34,6 +39,8 @@ services:
     entrypoint: ["/bin/sh", "/usr/local/etc/haproxy/haproxy-entrypoint.sh"]
     environment:
       MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
+      MQTT_SHARDS: ${MQTT_SHARDS:-1}                      # số tiến trình Mosquitto (1..16 hoặc auto = số core - MQTT_RESERVE_CORES)
+      MQTT_RESERVE_CORES: ${MQTT_RESERVE_CORES:-1}         # chỉ dùng khi MQTT_SHARDS=auto: core dành cho app/haproxy/hệ điều hành
       MQTT_PUBLIC_IP: ${MQTT_PUBLIC_IP:-}
       MAX_CONN_PER_IP: ${MAX_CONN_PER_IP:-30}
       MAX_CONN_RATE: ${MAX_CONN_RATE:-60}
@@ -41,7 +48,7 @@ services:
       MAX_BYTES_10S: ${MAX_BYTES_10S:-262144}
       MAX_TLS_RATE: ${MAX_TLS_RATE:-100}
     ports:
-      - "${PUB_PORT_MQTTS:-48263}:8883"   # mqtts:// — CONTROL theo ACL
+      - "${PUB_PORT_MQTTS:-48263}-${PUB_PORT_MQTTS_END:-48278}:8883-8898"   # mqtts:// — nhóm k nghe cổng gốc + k (tối đa 16 nhóm); CONTROL theo ACL
     volumes:
       - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
       - ./config/trusted.lst:/usr/local/etc/haproxy/trusted.lst:ro
@@ -70,7 +77,8 @@ services:
       WEBAPP_PUBLIC_URL: ${WEBAPP_PUBLIC_URL:-https://plc.dieukhientudong.net}
       MQTT_URL: mqtt://mqtt:1883
       MQTT_INGEST_URL: mqtt://mqtt:1885   # listener nội bộ có hàng đợi lớn của broker (xem config/mosquitto.conf)
-      MQTT_SHARDS: ${MQTT_SHARDS:-1}   # số nhóm Mosquitto (1 = một broker); xem docs/SHARDING.md
+      MQTT_SHARDS: ${MQTT_SHARDS:-1}   # số nhóm Mosquitto: số (1..16) hoặc auto; phải giống service mqtt; xem docs/SHARDING.md
+      MQTT_RESERVE_CORES: ${MQTT_RESERVE_CORES:-1}
       MQTT_USER: ${MQTT_NOTIFY_USER:-ingest}
       MQTT_PASS: ${MQTT_NOTIFY_PASS:-}
       MQTT_INGEST: ${MQTT_INGEST:-true}

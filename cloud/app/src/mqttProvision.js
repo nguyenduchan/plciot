@@ -29,7 +29,7 @@ export function openMqttPass(stored) {
 //   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
 //   acl-monitor  — listener KHÔNG mã hoá: chỉ monitor, không ai (trừ gateway) được ghi cmd
 // Topic duy nhất: gw/{mqttId}/{kind} — mqttId là id ngẫu nhiên server cấp cho gateway (devices.mqtt_id).
-import { shardCount, shardOf, allShards, shardContainer, shardSubdir, shardPort } from './shards.js';
+import { shardCount, shardOf, allShards, shardContainer, shardSubdir, shardConfigDirInContainer } from './shards.js';
 
 const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config', 'alert'];
 
@@ -176,7 +176,7 @@ export function setMosquittoPassword(username, password) {
     } catch (e1) {
       try {
         execFileSync('docker', [
-          'exec', shardContainer(k), 'mosquitto_passwd', '-b', '/mosquitto/config/passwd', user, password,
+          'exec', shardContainer(), 'mosquitto_passwd', '-b', shardConfigDirInContainer(k) + '/passwd', user, password,
         ], { stdio: 'pipe' });
         last = { ok: true, via: 'docker' };
       } catch (e2) {
@@ -188,12 +188,8 @@ export function setMosquittoPassword(username, password) {
 }
 
 export function reloadMosquitto() {
-  let res = { ok: true };
-  for (const k of allShards()) {
-    const r = reloadOne(shardContainer(k));
-    if (!r.ok) res = r;
-  }
-  return res;
+  // Một container chứa mọi nhóm: SIGHUP tới container, mqtt-entrypoint.sh chuyển cho từng tiến trình Mosquitto
+  return reloadOne(shardContainer());
 }
 
 function reloadOne(container) {

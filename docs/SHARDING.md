@@ -1,27 +1,26 @@
-# Chia nhóm Mosquitto (mỗi nhóm một tiến trình, một core)
+# Chia nhóm Mosquitto: số tiến trình theo cấu hình, tạo tự động
 
-Mosquitto đơn luồng. Để dùng nhiều core: chạy N tiến trình, mỗi tiến trình giữ một tập gateway cố định.
+Mosquitto đơn luồng. Để dùng nhiều core: chạy N tiến trình, mỗi tiến trình giữ một tập gateway cố định. **N chỉ là một biến cấu hình** (file `cloud/.env`):
 
-- **Nhóm của gateway** = 8 hex đầu của `mqttId` mod `MQTT_SHARDS` (`cloud/app/src/shards.js`). Gateway tự nối đúng nhóm vì kit enroll/QR trả cổng công khai `48263 + nhóm`.
-- **Người xem** (webapp) nối **một kết nối MQTT mỗi nhóm** chứa gateway của họ: `GET /api/me` → `mqtt.shards = { count, of: {<mqttId>: nhóm}, endpoints: {<nhóm>: {...}} }`. ACL nhóm nào chỉ chứa các `mqttId` thuộc nhóm đó.
-- **Server**: ingest nối mọi nhóm (một kết nối/nhóm, xử lý chung một luồng + ghi lô); lệnh điều khiển gửi tới đúng nhóm.
-- Mỗi nhóm có `config/shard<k>/{mosquitto.conf,acl,acl-monitor,passwd}`; nhóm 0 giữ `config/` và container `plciot-mqtt`.
-- `passwd` được ghi vào mọi nhóm; quyền thật nằm ở ACL từng nhóm (user/gateway không có khối ACL ở nhóm nào thì không làm được gì ở đó).
+```bash
+MQTT_SHARDS=1        # 1..16 tiến trình, hoặc auto = số core - MQTT_RESERVE_CORES
+MQTT_RESERVE_CORES=1 # chỉ dùng khi auto: core dành cho app ingest/haproxy/hệ điều hành
+MQTT_MEM_LIMIT=128m  # RAM container mqtt: ~64 MB cho mỗi nhóm
+```
+
+Sau khi đổi: `.\cloud\scripts\sync-vps.ps1 -Build` (hoặc `docker compose up -d --build`). Không phải sửa compose/haproxy bằng tay.
+
+## Cái gì tự tạo theo MQTT_SHARDS
+- **Broker** (`config/mqtt-entrypoint.sh`): trong container `plciot-mqtt` chạy N tiến trình Mosquitto, mỗi tiến trình ghim một core bằng `taskset`, tự khởi động lại nếu chết, nhận SIGHUP để tải lại ACL. Cấu hình mỗi nhóm sinh từ `config/mosquitto.conf`: cổng = cổng gốc + 10×k, `passwd`/`acl`/dữ liệu riêng (nhóm 0 giữ đường dẫn cũ, nhóm k ở `config/shard<k>/`), `memory_limit` chia đều theo RAM container. N=1 chạy thẳng như trước.
+- **HAProxy** (`config/haproxy-entrypoint.sh`): mỗi nhóm k ≥ 1 có cổng mqtts công khai **cổng gốc + k** (tối đa 16 nhóm, dải cổng `PUB_PORT_MQTTS`…`PUB_PORT_MQTTS_END`, mặc định 48263–48278; mở dải này ở tường lửa) và wss ở đường dẫn `/mqtt-k`. Nhóm ≥ 1 chỉ có kênh mã hoá.
+- **Server** (`cloud/app/src/shards.js`): nhóm của gateway = 8 hex đầu của `mqttId` mod N; sinh ACL/passwd từng nhóm; ingest nối mọi nhóm; lệnh điều khiển tới đúng nhóm; kit enroll cấp cổng của nhóm. `GET /api/me` trả `mqtt.shards = { count, of: {<mqttId>: nhóm}, endpoints }` để webapp mở một kết nối MQTT mỗi nhóm có gateway của người dùng.
 
 ## Số nhóm: bằng số CPU hay CPU − 1?
-- Cùng máy với app ingest + haproxy + DB + hệ điều hành: **CPU − 1** (core còn lại cho app ingest, đang là điểm nghẽn).
-- Máy chỉ chạy broker: **bằng số CPU**, mỗi tiến trình ghim một core (`cpuset`).
+- Cùng máy với app ingest + haproxy + DB + hệ điều hành: **CPU − 1** (`MQTT_SHARDS=auto`, mặc định dành 1 core).
+- Máy chỉ chạy broker: **bằng số CPU** (`MQTT_SHARDS=auto` + `MQTT_RESERVE_CORES=0`).
 - VPS 2 core: 1 nhóm — chia nhóm chưa có lợi ở máy này.
 
-## Bật chia nhóm
-```bash
-cd cloud/app
-node scripts/gen-shards.js --cores 4 --reserve 1 --out ../shards-out   # chỉ ghi file mẫu, không đụng cấu hình chạy
-```
-1. Gộp `shards-out/haproxy.shards.cfg` vào `config/haproxy.cfg`, mở thêm cổng `48263+k` ở service haproxy, thêm `Caddyfile.shards`.
-2. Chép `shards-out/shard<k>/` vào `cloud/config/`, chạy compose có thêm `docker-compose.shards.yml`.
-3. Đặt `MQTT_SHARDS=N` cho service app, khởi động lại: ACL/passwd từng nhóm được dựng lại.
-4. **Gateway đã cấp**: đổi N làm thay đổi nhóm của nhiều gateway → cấp lại cấu hình (QR/kit) trước khi đổi, hoặc chỉ tăng N khi chưa có gateway thật.
-5. Webapp cần mở nhiều kết nối theo `mqtt.shards` (chưa làm: hiện webapp dùng một kết nối `cfg.url`).
-
-Kiểm tra: `node scripts/smoke-shards.js`.
+## Lưu ý khi đổi N
+- Đổi N làm đổi nhóm của nhiều gateway đã cấp: gateway phải được cấp lại cấu hình (cổng mqtts mới nằm trong kit/QR). Chỉ nên tăng N khi chưa có nhiều gateway thật, hoặc cấp lại tem hàng loạt.
+- Webapp cần mở nhiều kết nối theo `mqtt.shards` (chưa làm: hiện webapp dùng một kết nối `cfg.url`).
+- Kiểm tra cấu hình tự động (container tạm, không đụng dịch vụ thật): `bash cloud/scripts/test-mqtt-shards.sh` (broker), `bash cloud/scripts/test-haproxy-shards.sh` (haproxy hợp lệ với mọi N, **chạy trước khi triển khai**) và `node scripts/smoke-shards.js` (server).

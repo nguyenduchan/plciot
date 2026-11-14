@@ -53,7 +53,58 @@ ensure_pem() {
 
 ensure_pem
 
-haproxy -W -db -f /usr/local/etc/haproxy/haproxy.cfg &
+# Chia nhóm Mosquitto (MQTT_SHARDS, "auto" = số core − MQTT_RESERVE_CORES; phải khớp config/mqtt-entrypoint.sh):
+# mỗi nhóm k ≥ 1 có cổng mqtts nghe :8883+k (công khai = cổng gốc + k) và wss ở đường dẫn /mqtt-k, sinh tự động vào /tmp/haproxy.shards.cfg.
+# Nhóm 0 dùng cấu hình tĩnh trong haproxy.cfg (như trước). Nhóm ≥ 1 chỉ có kênh mã hoá (không có mqtt/ws thuần).
+SHARDS_CFG=/tmp/haproxy.shards.cfg
+: > "$SHARDS_CFG"
+N="${MQTT_SHARDS:-1}"
+if [ "$N" = "auto" ]; then N=$(( $(nproc 2>/dev/null || echo 1) - ${MQTT_RESERVE_CORES:-1} )); fi
+case "$N" in ''|*[!0-9]*) N=1 ;; esac
+[ "$N" -ge 1 ] || N=1
+[ "$N" -le 16 ] || N=16
+k=1
+while [ "$k" -lt 16 ]; do
+  # backend wss luôn được khai báo cho k=1..15 (haproxy.cfg có use_backend tĩnh cho /mqtt-k); nhóm chưa dùng thì disabled → 503
+  if [ "$k" -lt "$N" ]; then ws_state="check inter 5s"; else ws_state="disabled"; fi
+  cat >> "$SHARDS_CFG" <<EOF
+
+backend mqtt_ws_secure_$k
+    mode http
+    server mqtt mqtt:$((9002 + 10 * k)) resolvers docker init-addr libc,none $ws_state
+EOF
+  if [ "$k" -lt "$N" ]; then
+    cat >> "$SHARDS_CFG" <<EOF
+
+backend mqtt_tcp_secure_$k
+    server mqtt mqtt:$((1884 + 10 * k)) resolvers docker init-addr libc,none check inter 5s
+
+frontend mqtt_tls_$k
+    bind :$((8883 + k)) ssl crt /tmp/mqtt.pem alpn mqtt
+    mode tcp
+    tcp-request connection accept if { src -f /usr/local/etc/haproxy/trusted.lst }
+    tcp-request connection track-sc0 src table t_abuse
+    tcp-request connection sc-inc-gpc0(0) if { sc0_conn_rate gt 300 }
+    tcp-request connection reject if { sc0_get_gpc0 gt 0 }
+    tcp-request connection reject if { sc0_conn_cur gt 30 }
+    tcp-request connection reject if { sc0_conn_rate gt 60 }
+    tcp-request connection reject if { sc0_bytes_in_rate gt 262144 }
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req.len ge 14 } { req.payload(0,1),hex -m str 10 }
+    tcp-request content reject
+    default_backend mqtt_tcp_secure_$k
+EOF
+  fi
+  k=$((k + 1))
+done
+echo "HAProxy: $N nhóm Mosquitto (nhóm >= 1: mqtts :8884.. và wss /mqtt-k)"
+
+# Chỉ kiểm tra cấu hình (không chạy): HAPROXY_CHECK_ONLY=1 → dùng khi kiểm thử/triển khai thử
+if [ -n "${HAPROXY_CHECK_ONLY:-}" ]; then
+  exec haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg -f "$SHARDS_CFG"
+fi
+
+haproxy -W -db -f /usr/local/etc/haproxy/haproxy.cfg -f "$SHARDS_CFG" &
 pid=$!
 trap 'kill -TERM $pid' TERM INT
 (

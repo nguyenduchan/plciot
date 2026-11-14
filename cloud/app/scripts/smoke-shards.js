@@ -4,7 +4,7 @@
  *  - shardOf ổn định + phân đều, N=1 luôn nhóm 0
  *  - ACL/passwd từng nhóm: gateway chỉ ở đúng nhóm của nó, người xem chỉ ở nhóm có gateway của họ (xem nhiều nhóm)
  *  - endpoint gateway: cổng công khai = gốc + nhóm
- *  - gen-shards: số nhóm = core - reserve, ghim core riêng, cấu hình sinh ra đúng
+ *  - cấu hình tự động: auto = số core - dành riêng, giới hạn 1..16, cổng nội bộ = gốc + 10k
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -37,8 +37,17 @@ const cnt = [0, 0, 0];
 for (const id of ids) cnt[sh.shardOf(id)] += 1;
 ok(cnt.every((c) => c > 800 && c < 1200), `phân đều 3 nhóm (${cnt.join('/')})`);
 ok(sh.shardOf(ids[5]) === sh.shardOf(ids[5]) && sh.shardOf(ids[5], 1) === 0 && sh.shardOf('', 3) === 0, 'ổn định; N=1 và id rỗng → nhóm 0');
-ok(sh.shardContainer(0) === 'no-such-container-for-test' && sh.shardContainer(2) === 'no-such-container-for-test-2' && sh.shardHost(2) === 'mqtt-2', 'tên container/host theo nhóm');
-ok(sh.shardUrls('X_URLS', 'X_URL', 1885).join() === 'mqtt://mqtt:1885,mqtt://mqtt-1:1885,mqtt://mqtt-2:1885', 'URL nội bộ mỗi nhóm một host');
+ok(sh.shardContainer() === 'no-such-container-for-test' && sh.shardHost() === 'mqtt', 'mọi nhóm cùng một container/host (mỗi nhóm một tiến trình)');
+ok(sh.shardUrls('X_URLS', 'X_URL', 1885).join() === 'mqtt://mqtt:1885,mqtt://mqtt:1895,mqtt://mqtt:1905', 'URL nội bộ: cổng gốc + 10k');
+ok(sh.shardConfigDirInContainer(0) === '/mosquitto/config' && sh.shardConfigDirInContainer(2) === '/mosquitto/config/shard2', 'thư mục cấu hình từng nhóm trong container');
+const cores = (await import('node:os')).cpus().length;
+process.env.MQTT_SHARDS = 'auto'; delete process.env.MQTT_RESERVE_CORES;
+ok(sh.shardCount() === Math.max(1, Math.min(16, cores - 1)), `auto = số core - 1 (${cores} core → ${sh.shardCount()} nhóm)`);
+process.env.MQTT_RESERVE_CORES = '0';
+ok(sh.shardCount() === Math.max(1, Math.min(16, cores)), 'auto với reserve 0 = số core');
+process.env.MQTT_SHARDS = '99'; ok(sh.shardCount() === 16, 'tối đa 16 nhóm');
+process.env.MQTT_SHARDS = 'abc'; ok(sh.shardCount() === 1, 'giá trị sai → 1 nhóm');
+process.env.MQTT_SHARDS = '3';
 
 const db = new Database(path.join(tmp, 't.db'));
 db.exec(`
@@ -104,17 +113,6 @@ for (const k of [0, 1, 2]) if (has(k) !== owned.has(k)) usersOk = false;
 ok(usersOk, `người xem chỉ có mặt ở nhóm có gateway của họ (nhóm ${[...owned].join(',')})`);
 const cfg = mqttClientConfig(db, db.prepare("SELECT * FROM users WHERE username = 'viewer'").get());
 ok(cfg?.shards?.count === 3 && Object.keys(cfg.shards.endpoints || {}).length === owned.size, 'client config có endpoint từng nhóm của người xem');
-
-// gen-shards
-const gen = await import('./gen-shards.js');
-const p4 = gen.planShards({ cores: 4, reserve: 1 });
-ok(p4.length === 3 && p4.map((p) => p.cpuset).join() === '1,2,3', '4 core, dành 1 → 3 nhóm ghim core 1,2,3');
-ok(gen.planShards({ cores: 4, reserve: 0 }).length === 4, 'máy chỉ chạy broker: bằng số core');
-ok(gen.planShards({ cores: 2, reserve: 1 }).length === 1, '2 core, dành 1 → 1 nhóm');
-const compose = gen.renderCompose(p4);
-ok(compose.includes('plciot-mqtt-2') && compose.includes('cpuset: "3"') && compose.includes('./config/shard1:/mosquitto/config'), 'compose có nhóm 1..2, ghim core, thư mục riêng');
-const hp = gen.renderHaproxy(p4, 48263);
-ok(hp.includes('bind :8884 ssl') && hp.includes('bind :8885 ssl') && hp.includes('mqtt-2:1884'), 'haproxy: cổng 8883+k → đúng container nhóm');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 if (failed) { console.error(`\n${failed} lỗi`); process.exit(1); }
