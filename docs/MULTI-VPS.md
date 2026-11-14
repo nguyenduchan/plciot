@@ -1,6 +1,6 @@
 # Thiết kế: nhiều VPS theo gói (Vietnix giá rẻ / Viettel-FPT giá cao)
 
-Trạng thái: **thiết kế, chưa cài đặt**. Mục tiêu: gói Miễn phí/Cơ bản chạy trên VPS rẻ (Vietnix), gói Nâng cao/Nhà máy chạy trên VPS đắt hơn, đĩa lớn hơn (Viettel/FPT), mà người dùng **không phải đổi địa chỉ web**.
+Trạng thái: **thiết kế, chưa cài đặt**. **Quyết định (2026-11-14): chưa thêm VPS; dùng một VPS Vietnix cho đến khi đạt 1.000 widget đang giám sát**, lúc đó mới bắt đầu giai đoạn 2. Trước mốc này chỉ cần theo dõi đĩa (xem mục *Một VPS đến 1.000 widget*). Mục tiêu: gói Miễn phí/Cơ bản chạy trên VPS rẻ (Vietnix), gói Nâng cao/Nhà máy chạy trên VPS đắt hơn, đĩa lớn hơn (Viettel/FPT), mà người dùng **không phải đổi địa chỉ web**.
 
 ## Nguyên tắc
 - **Mặt phẳng điều khiển (một nơi duy nhất)**: tài khoản, gói, chat, admin, web/app, sao lưu chính. Địa chỉ web `plc.dieukhientudong.net` và `adminplc…` không đổi.
@@ -75,3 +75,8 @@ Khi nâng/hạ gói làm đổi node (Cơ bản ↔ Nâng cao):
 1. Bắt đầu **giai đoạn 2 trực tiếp cho thiết bị mới** thay vì làm giai đoạn 1 riêng, vì chỉ giai đoạn 2 mới tiết kiệm đĩa. Giai đoạn 1 là bước đệm nhỏ chứ không phải đích.
 2. Chốt trước: giá + đĩa thật của VPS Vietnix và Viettel/FPT, và cách gateway nhận cấu hình broker mới.
 3. Chỉ làm khi số khách thực sự cần: với vài khách hiện nay, một VPS 260k vẫn đủ; chia node làm tăng chi phí cố định (hai VPS) trước khi giảm được chi phí biến đổi.
+
+## Một VPS đến 1.000 widget
+- CPU: đo được ≥ 4.000 widget (chưa tính policy), mức an toàn dùng 1.500 → 1.000 widget còn dư.
+- **Đĩa mới là giới hạn.** Với ~15 GB dùng được: Cơ bản ~15 MiB/widget, Nâng cao ~62 MiB, Nhà máy ~313 MiB. 1.000 widget toàn Cơ bản chỉ ~15 GB, nhưng chỉ cần ~50 widget Nhà máy là đã ~15 GB. Vì vậy mốc "1.000 widget" chỉ đúng khi phần lớn là Miễn phí/Cơ bản; **cần theo dõi đĩa dự kiến theo gói, không chỉ số widget**.
+- Quy tắc kích hoạt giai đoạn 2: tổng widget ≥ 1.000, **hoặc** đĩa dự kiến ≥ 70% phần dùng được, **hoặc** CPU ingest ≥ 60% một nhân kéo dài — cái nào tới trước.
