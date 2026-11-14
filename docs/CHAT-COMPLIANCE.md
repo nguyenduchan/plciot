@@ -76,3 +76,17 @@ Người dùng (và admin) gửi được ảnh trong chat: nút 📷 hoặc dá
 - **Báo giá:** trong khung "Xử lý yêu cầu đổi gói" admin thấy ước tính theo số widget của người dùng: `giá mỗi widget = 3 × chi phí vận hành server của 1 widget trong 10 năm`, với chi phí 1 widget = `PRICING_VPS_VND_MONTH × 12 × 10 ÷ PRICING_CAPACITY_WIDGETS` (mỗi widget 1 tin/giây). Mặc định 260.000đ/tháng, sức chứa 500 widget → 188.000đ/widget. `PRICING_CAPACITY_WIDGETS` là **ước tính, chưa đo**: nên đo thử tải thật rồi đặt lại. Nếu nâng VPS lên 600.000đ/tháng thì đặt lại cả hai biến theo sức chứa mới.
 - Số tiền **không hiện trong app người dùng** (tránh bị coi là website giới thiệu/bán dịch vụ cần thông báo Bộ Công Thương); nút "Chèn ước tính vào ô soạn" chỉ điền sẵn, admin tự chỉnh và bấm Gửi. Không có đơn hàng, không thanh toán trong hệ thống.
 - **Hạ gói:** chọn gói thấp hơn thì gói cũ **vẫn giữ đến hết hạn**, app báo ngày chuyển. Admin "Đồng ý" sẽ lên lịch (`users.sub_next_plan`), hết hạn hệ thống tự chuyển và nhắn người dùng. Gói không có ngày hết hạn: admin phải tick "Đổi ngay" hoặc đặt hạn.
+
+### Đo sức chứa thật (VPS 2 CPU / 2 GB, 14/11/2026)
+
+Chạy `cloud/app/scripts/bench-capacity.js` (broker mosquitto riêng + DB tạm, không đụng hệ thống thật), mỗi widget 1 tin/giây, đường nhận như ingest (parse + ghi lô SQLite):
+
+| Widget (tin/giây) | CPU phía app (1 nhân) | CPU broker | Ghi chú |
+|---|---|---|---|
+| 1.000 | 7% | ~1% | |
+| 4.000 | 24% | ~2% | |
+| ~7.000 | 37% | ~4% | trình phát tải tự nó đã chạm trần, chưa tới giới hạn của app |
+
+- **CPU/RAM không phải điểm nghẽn:** hàng nghìn widget vẫn còn dư (chưa tính policy/tra cứu thiết bị của app thật; nên chia thêm 2–3 lần để an toàn).
+- **Đĩa mới là giới hạn thật:** mỗi tin chiếm ~**252 byte** trong DB (cả chỉ mục) → 1 widget 1 tin/giây = ~**22 MB/ngày**, ~650 MB/tháng. Với 30 GB trống và chừa 50%: khoảng **690 widget nếu lưu 1 ngày**, nhưng chỉ khoảng **23 widget nếu lưu 30 ngày**, và gói lưu không giới hạn sẽ đầy đĩa. Muốn nhiều widget hơn: lưu thưa lịch sử (ví dụ 1 mẫu/10 giây, gói đã có cơ chế `planTelemetryMinMs`) hoặc thêm đĩa.
+- Vì vậy `PRICING_CAPACITY_WIDGETS=500` hợp lý cho gói lưu 1 ngày (Miễn phí/Cơ bản); gói Nâng cao/Nhà máy cần tính riêng theo đĩa.
