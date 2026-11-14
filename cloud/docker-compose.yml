@@ -129,6 +129,9 @@ services:
       ADMIN_SSH_LOGIN: ${ADMIN_SSH_LOGIN:-false}
       ADMIN_HOST: ${ADMIN_HOST:-}                       # tên miền admin riêng (docs/ADMIN-SITE.md)
       ADMIN_REQUIRE_TOTP: ${ADMIN_REQUIRE_TOTP:-true}
+      PAYMENT_BANK_NAME: ${PAYMENT_BANK_NAME:-}              # thông tin chuyển khoản cho nút "Tạo hướng dẫn thanh toán" (admin chat)
+      PAYMENT_ACCOUNT_NO: ${PAYMENT_ACCOUNT_NO:-}
+      PAYMENT_ACCOUNT_NAME: ${PAYMENT_ACCOUNT_NAME:-}
       ADMIN_REQUIRE_FACEID: ${ADMIN_REQUIRE_FACEID:-true}      # Face ID/vân tay bắt buộc khi đăng nhập admin (docs/ADMIN-SITE.md)
       ADMIN_WEBAUTHN_ORIGINS: ${ADMIN_WEBAUTHN_ORIGINS:-}      # thêm origin khi vào qua đường hầm SSH, vd. http://localhost:8080
       ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-8}
