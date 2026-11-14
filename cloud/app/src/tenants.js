@@ -2,6 +2,7 @@
  * Đăng ký tenant (công ty solution) + thiết bị IoT MQTTS.
  * User app (điện thoại) vẫn dùng users.notify_*; thiết bị gateway/partner dùng bảng devices.
  */
+import { shardOf } from './shards.js';
 import crypto from 'crypto';
 import {
   DEFAULT_TENANT, GW_NS, KINDS,
@@ -134,7 +135,7 @@ export function provisionDevice(db, tenant, body = {}, { rotate = false, actor =
 
   const fresh = db.prepare('SELECT * FROM devices WHERE id = ?').get(row.id);
   const base = topicBase({ mqttId: fresh.mqtt_id });
-  const endpoints = mqttPublicEndpoints();
+  const endpoints = mqttPublicEndpoints(shardOf(fresh.mqtt_id));
 
   return {
     ok: true,

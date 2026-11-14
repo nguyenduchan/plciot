@@ -5,6 +5,7 @@
  * POST /api/v1/gateway/enroll  → mqtt + topics + pack (+ password)
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
+import { shardOf } from './shards.js';
 import {
   decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
 } from '@plciot/security';
@@ -179,7 +180,7 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
   // Topic dùng id MQTT NGẪU NHIÊN do server cấp (lưu trong devices.mqtt_id), không chứa tên site/device
   const mqttId = mqttResult?.device?.mqttId;
   const base = mqttResult?.device?.topicBase;
-  const endpoints = mqttPublicEndpoints();
+  const endpoints = mqttPublicEndpoints(shardOf(mqttId));   // nhiều nhóm broker: gateway nối đúng nhóm của nó
   const mqtt = mqttResult?.mqtt ? { ...mqttResult.mqtt } : { ...endpoints, useTls: true };
   if (!includePassword) delete mqtt.password;
 

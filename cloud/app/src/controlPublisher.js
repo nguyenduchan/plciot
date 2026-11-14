@@ -1,20 +1,22 @@
 import mqtt from 'mqtt';
 import { topicOf, withSchema } from './contract.js';
+import { shardOf, allShards, shardUrls } from './shards.js';
 
 /**
  * Kênh duy nhất được phép ghi …/cmd (user MQTT `ctl`, xem mqttProvision.js).
  * Điện thoại không còn quyền ghi cmd: lệnh phải đi qua /api/control/cmd để bị kiểm tra step-up.
  */
-let client = null;
+const clients = new Map();   // nhóm broker → kết nối điều khiển
 let override = null;
 const CONNECT_WAIT_MS = 2500;
 
 /** Dùng trong test: thay đường publish thật. */
 export function setPublisher(fn) { override = fn; }
 
-function ensure() {
-  if (client) return client;
-  client = mqtt.connect(process.env.MQTT_CONTROL_URL || 'mqtt://mqtt:1884' /* listener nội bộ có quyền cmd */, {
+function ensure(shard = 0) {
+  if (clients.has(shard)) return clients.get(shard);
+  const urls = shardUrls('MQTT_CONTROL_URLS', 'MQTT_CONTROL_URL', 1884);
+  const client = mqtt.connect(urls[shard] || urls[0] /* listener nội bộ có quyền cmd */, {
     username: process.env.MQTT_CONTROL_USER || 'ctl',
     password: process.env.MQTT_CONTROL_PASS || '',
     clientId: `plciot-ctl-${Math.random().toString(16).slice(2, 8)}`,
@@ -24,12 +26,13 @@ function ensure() {
     keepalive: 15,
   });
   client.on('error', (e) => console.error('control mqtt', e.message));
+  clients.set(shard, client);
   return client;
 }
 
 /** Kết nối sẵn lúc server khởi động để lệnh đầu tiên không rơi vào lúc chưa kết nối. */
 export function startControlPublisher() {
-  if (!override) ensure();
+  if (!override) for (const k of allShards()) ensure(k);
 }
 
 /** Nếu đang kết nối dở (vừa khởi động / đang tự nối lại) thì chờ một chút thay vì từ chối ngay. */
@@ -52,7 +55,7 @@ export async function publishCmd(site, device, cmd, opts = {}) {
   // ts = lúc server phát lệnh (ms epoch): gateway dùng để đo thời gian server → gateway
   const payload = withSchema({ ...cmd, ts: Date.now() });
   if (override) return override(site, device, payload, opts);
-  const c = ensure();
+  const c = ensure(shardOf(opts.mqttId));   // lệnh tới đúng nhóm broker chứa gateway
   await whenConnected(c);
   const topic = topicOf({ mqttId: opts.mqttId }, 'cmd');
   return new Promise((resolve, reject) => {

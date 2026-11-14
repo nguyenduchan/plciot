@@ -90,7 +90,7 @@ const cmd = (uid, body, h) => call('POST', '/api/control/cmd', uid, body, h);
 let r = await cmd(uOp, { a: 6, v: 1 });
 ok(r.status === 401 && r.body.error === 'step_up_required' && r.body.reason === 'no_factor', 'chưa đăng ký yếu tố: bị chặn (no_factor)');
 r = await cmd(uViewer, { a: 6, v: 1 });
-ok(r.status === 403, 'viewer không được điều khiển');
+ok(r.status !== 403, 'viewer cũng điều khiển được (mọi tài khoản đều được, vẫn qua step-up)');
 r = await cmd(uOp, { a: 99, v: 1 });
 ok(r.status === 400, 'thanh ghi ngoài whitelist bị từ chối');
 r = await cmd(uOp, { a: 7, v: 70000 });

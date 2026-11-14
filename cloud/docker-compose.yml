@@ -9,7 +9,7 @@ services:
     image: eclipse-mosquitto:2
     container_name: plciot-mqtt
     restart: unless-stopped
-    mem_limit: 64m
+    mem_limit: 128m
     cpus: 0.5
     pids_limit: 64
     ports:                       # loopback only (thử trên máy); Internet vào MQTT qua HAProxy hoặc tunnel
@@ -69,6 +69,8 @@ services:
       APP_JWT_SECRET: ${APP_JWT_SECRET}
       WEBAPP_PUBLIC_URL: ${WEBAPP_PUBLIC_URL:-https://plc.dieukhientudong.net}
       MQTT_URL: mqtt://mqtt:1883
+      MQTT_INGEST_URL: mqtt://mqtt:1885   # listener nội bộ có hàng đợi lớn của broker (xem config/mosquitto.conf)
+      MQTT_SHARDS: ${MQTT_SHARDS:-1}   # số nhóm Mosquitto (1 = một broker); xem docs/SHARDING.md
       MQTT_USER: ${MQTT_NOTIFY_USER:-ingest}
       MQTT_PASS: ${MQTT_NOTIFY_PASS:-}
       MQTT_INGEST: ${MQTT_INGEST:-true}

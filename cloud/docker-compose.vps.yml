@@ -12,7 +12,7 @@ services:
     image: eclipse-mosquitto:2
     container_name: plciot-mqtt
     restart: unless-stopped
-    mem_limit: 64m
+    mem_limit: 128m
     cpus: 0.5
     pids_limit: 64
     volumes:                     # không mở cổng ra ngoài; chỉ Caddy trong mạng nội bộ truy cập được

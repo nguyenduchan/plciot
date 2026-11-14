@@ -83,9 +83,11 @@ export function withSchema(obj) {
 }
 
 /** Endpoint công khai trả cho partner/firmware khi provision. */
-export function mqttPublicEndpoints() {
+export function mqttPublicEndpoints(shard = 0) {
   const host = process.env.MQTT_PUBLIC_HOST || process.env.MQTT_DOMAIN || '';
-  const mqttsPort = Number(process.env.MQTT_PUBLIC_MQTTS_PORT || process.env.PUB_PORT_MQTTS || 8883);
+  // Nhiều nhóm broker: nhóm k nghe cổng công khai gốc + k, và WebSocket ở đường dẫn /mqtt-k (nhóm 0 giữ như cũ)
+  const mqttsPort = Number(process.env.MQTT_PUBLIC_MQTTS_PORT || process.env.PUB_PORT_MQTTS || 8883) + (shard | 0);
+  const wssSuffix = shard > 0 ? `-${shard | 0}` : '';
   const wssUrl = process.env.MQTT_PUBLIC_WSS
     || (host ? `wss://${host}` : (process.env.WEBAPP_PUBLIC_URL || '').replace(/^https/i, 'wss').replace(/\/$/, '') + '-mqtt');
   return {
@@ -93,7 +95,7 @@ export function mqttPublicEndpoints() {
     /** SHA-256 (hex, không dấu :) của chứng chỉ TLS broker khi tự ký; gateway ghim đúng chứng chỉ này (CloudPinSha256). Rỗng = chứng chỉ CA thật. */
     pinSha256: (process.env.MQTT_PUBLIC_PIN_SHA256 || '').replace(/[:\s]/g, '').toLowerCase() || null,
     mqtts: host ? `mqtts://${host}:${mqttsPort}` : (process.env.MQTT_PUBLIC_MQTTS || null),
-    wss: process.env.MQTT_PUBLIC_WSS || (host ? `wss://${host}/mqtt` : null),
+    wss: process.env.MQTT_PUBLIC_WSS || (host ? `wss://${host}/mqtt${wssSuffix}` : null),
     /** Listener nội bộ Docker — không đưa cho thiết bị ngoài. */
     internalPlain: process.env.MQTT_URL || 'mqtt://mqtt:1883',
     internalControl: process.env.MQTT_CONTROL_URL || 'mqtt://mqtt:1884',

@@ -46,7 +46,7 @@ Base topic: **`gw/<mqttId>`** — một dạng duy nhất.
 
 - Cấp một lần, **giữ nguyên khi xoay mật khẩu MQTT**; chỉ đổi khi cấp lại thiết bị (thu hồi + enroll mới).
 - Ingest tra ngược `gw/<id>/<kind>` → thiết bị trong DB; id lạ, đã thu hồi hoặc bị khoá thì **bỏ gói** (không ghi gì).
-- ACL Mosquitto: mỗi gateway chỉ ghi `gw/<id của mình>/{telemetry,status,ack,history,config}` và đọc `gw/<id>/cmd`; user app chỉ đọc topic của gateway được xem; chỉ `ctl` ghi `gw/+/cmd`.
+- ACL Mosquitto: mỗi gateway chỉ ghi `gw/<id của mình>/{telemetry,status,ack,history,config,alert}` và đọc `gw/<id>/cmd`; user app chỉ đọc topic của gateway được xem; chỉ `ctl` ghi `gw/+/cmd`.
 - **Đã bỏ** hẳn `plc/<site>/<device>` và `iot/<tenant>/<site>/<device>` trên cloud (không còn song song). Gateway/firmware cũ phải **đăng ký lại** để nhận id (firmware: đặt `MQTT_ID` trong `config.h`). Gateway chưa đăng ký chỉ dùng topic cục bộ `plc/<site>/<device>` trên broker LAN của chính nó (cloud không nhận dạng).
 - DB cũ: lần mở đầu tiên server thêm cột `mqtt_id` và cấp id ngẫu nhiên cho thiết bị đã có (`ensureMqttIdColumn`).
 
@@ -58,6 +58,7 @@ Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PAR
 | `<base>/history` | gw → app | `{"c":[49],"s":giây,"n":số giờ,"r":giây chạy,"m":[49]}` mỗi 60 s (lịch sử theo giờ do PLC giữ) | có |
 | `<base>/status` | gw → app | `online` / `plc_fault` / `offline` (LWT) | có |
 | `<base>/cmd` | app → gw | `{"schema":1,"id":"x","a":4,"v":5}` ghi D4 = 5 (chỉ user `ctl`) | không |
+| `<base>/alert` | gw → app | `{"schema":1,"k":"tank1.level","lv":"high","v":95.2,"txt":"Bồn nước: Mức nước vượt ngưỡng cao (95.2 %)","ts":…}` — cảnh báo ngưỡng low/high do **gateway tự tính** (`AlertEngine`, báo khi chuyển trạng thái, tối thiểu 5 phút giữa hai lần cùng mức); server chỉ lưu vào DB và chuyển tiếp Web Push tới đúng tài khoản của gateway | không |
 | `<base>/ack` | gw → app | `{"id":"x","ok":true}` | không |
 | `<base>/cmd` (đọc) | app → gw | `{"id":"x","op":"read","a":100,"n":4}` → ack `{"id":"x","ok":true,"a":100,"v":[..4 số..]}` | không |
 
@@ -68,7 +69,7 @@ app không thể giả mạo telemetry; chỉ `ctl` (app server) được ghi l�
 PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thực: app tính mốc của giờ hiện tại từ `s` (giây đã trôi qua) và đồng hồ của máy người dùng. Khi PLC mất điện, thời gian tắt máy không được đếm, nên một khung giờ có thể dài hơn 60 phút thực.
 
 ## Lịch sử trên server (app ingest)
-`plciot-app` subscribe `gw/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 3 ngày (`HISTORY_DEFAULT_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
+`plciot-app` subscribe `gw/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 1 ngày (`HISTORY_DEFAULT_DAYS`); lịch sử đăng nhập/điều khiển (`audit_log`) giữ 365 ngày (`AUDIT_RETENTION_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
 
 Webapp (đã đăng nhập) khi mở gọi `GET /api/history/telemetry?site=&dev=&since=` (Bearer JWT), ghi vào IndexedDB để xem offline / khi app từng đóng. Live vẫn qua MQTT trực tiếp.
 

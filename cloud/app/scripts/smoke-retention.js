@@ -31,7 +31,9 @@ const p10 = mk('84900000002', 's10');
 const unl = mk('84900000003', 'sunl');
 for (const s of ['sfree', 's10', 'sunl', 'sorphan']) [1, 2.9, 3.5, 9, 50].forEach((d) => ev(s, d));
 
-ok(R.defaultDays() === 3, 'default is 3 days');
+ok(R.defaultDays() === 1, 'mặc định (không đặt biến môi trường) là 1 ngày');
+process.env.HISTORY_DEFAULT_DAYS = '3';   // các kiểm tra bên dưới thử cơ chế theo gói với mặc định 3 ngày
+ok(R.defaultDays() === 3, 'HISTORY_DEFAULT_DAYS ghi đè được mặc định');
 ok(R.parseRetention('3').error && R.parseRetention('4').value === 4 && R.parseRetention('unlimited').value === 0 && R.parseRetention('default').value === null, 'plan parsing (>=4, unlimited, default)');
 R.setRetention(db, p10.id, 10);
 R.setRetention(db, unl.id, 0);

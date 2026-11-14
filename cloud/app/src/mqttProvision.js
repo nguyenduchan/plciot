@@ -29,6 +29,8 @@ export function openMqttPass(stored) {
 //   acl          — listener đã mã hoá (qua TLS): monitor + control tuỳ vai trò
 //   acl-monitor  — listener KHÔNG mã hoá: chỉ monitor, không ai (trừ gateway) được ghi cmd
 // Topic duy nhất: gw/{mqttId}/{kind} — mqttId là id ngẫu nhiên server cấp cho gateway (devices.mqtt_id).
+import { shardCount, shardOf, allShards, shardContainer, shardSubdir, shardPort } from './shards.js';
+
 const DEVICE_WRITE_KINDS = ['telemetry', 'status', 'ack', 'history', 'config', 'alert'];
 
 function staticHeader(secure) {
@@ -49,20 +51,21 @@ function staticHeader(secure) {
   return lines.join('\n');
 }
 
-function configDir() {
-  return path.resolve(process.env.MQTT_CONFIG_DIR || path.join(process.env.DATA_DIR || './data', '..', '..', 'config'));
+function configDir(shard = 0) {
+  const base = path.resolve(process.env.MQTT_CONFIG_DIR || path.join(process.env.DATA_DIR || './data', '..', '..', 'config'));
+  return shardSubdir(shard) ? path.join(base, shardSubdir(shard)) : base;
 }
 
-function aclPath() {
-  return path.join(configDir(), 'acl');
+function aclPath(shard = 0) {
+  return path.join(configDir(shard), 'acl');
 }
 
-function aclMonitorPath() {
-  return path.join(configDir(), 'acl-monitor');
+function aclMonitorPath(shard = 0) {
+  return path.join(configDir(shard), 'acl-monitor');
 }
 
-function passwdPath() {
-  return path.join(configDir(), 'passwd');
+function passwdPath(shard = 0) {
+  return path.join(configDir(shard), 'passwd');
 }
 
 export function randomMqttPassword() {
@@ -115,8 +118,8 @@ export function deviceAclBlock(mqttUser, { mqttId }) {
  * Keeps gw + ingest (+ ctl trên kênh mã hoá); drops shared wildcard "app".
  */
 export function rebuildAclFromUsers(db) {
-  const dir = configDir();
-  fs.mkdirSync(dir, { recursive: true });
+  const N = shardCount();
+  for (const k of allShards(N)) fs.mkdirSync(configDir(k), { recursive: true });
   const users = db.prepare(`
     SELECT id, mqtt_user, notify_site, notify_device, role, monitor_scopes, tenant_id FROM users
     WHERE mqtt_user IS NOT NULL AND mqtt_user != '' AND disabled = 0
@@ -130,49 +133,70 @@ export function rebuildAclFromUsers(db) {
   } catch {
     devices = [];
   }
-  let secure = staticHeader(true);
-  let plain = staticHeader(false);
-  for (const u of users) {
-    const scopes = userScopes(u);
+  // Mỗi nhóm có ACL riêng: người xem chỉ có mặt ở nhóm nào chứa gateway của họ (xem nhiều nhóm = có mặt ở nhiều nhóm),
+  // gateway chỉ có mặt ở đúng nhóm của nó. N=1: giống hành vi cũ (mọi user đều có khối ACL).
+  const userIds = users.map((u) => {
     const tenant = u.tenant_id || DEFAULT_TENANT;
-    const ids = gatewaysOfUser(db, { ...u, tenant_id: tenant }).map((g) => g.mqttId).filter(Boolean);   // mọi gateway user đã thêm
-    secure += userAclBlock(u.mqtt_user, ids, u.role, scopes, true);
-    plain += userAclBlock(u.mqtt_user, ids, u.role, scopes, false);
+    return { u, ids: gatewaysOfUser(db, { ...u, tenant_id: tenant }).map((g) => g.mqttId).filter(Boolean) };   // mọi gateway user đã thêm
+  });
+  for (const k of allShards(N)) {
+    let secure = staticHeader(true);
+    let plain = staticHeader(false);
+    for (const { u, ids } of userIds) {
+      const mine = N > 1 ? ids.filter((id) => shardOf(id, N) === k) : ids;
+      if (N > 1 && !mine.length) continue;
+      const scopes = userScopes(u);
+      secure += userAclBlock(u.mqtt_user, mine, u.role, scopes, true);
+      plain += userAclBlock(u.mqtt_user, mine, u.role, scopes, false);
+    }
+    for (const d of devices) {
+      if (shardOf(d.mqtt_id, N) !== k) continue;
+      const block = deviceAclBlock(d.mqtt_user, { mqttId: d.mqtt_id });
+      // Thiết bị được publish trên cả listener (monitor-only vẫn nhận telemetry)
+      secure += block;
+      plain += block;
+    }
+    fs.writeFileSync(aclPath(k), secure, 'utf8');
+    fs.writeFileSync(aclMonitorPath(k), plain, 'utf8');
   }
-  for (const d of devices) {
-    const block = deviceAclBlock(d.mqtt_user, { mqttId: d.mqtt_id });
-    // Thiết bị được publish trên cả listener (monitor-only vẫn nhận telemetry)
-    secure += block;
-    plain += block;
-  }
-  fs.writeFileSync(aclPath(), secure, 'utf8');
-  fs.writeFileSync(aclMonitorPath(), plain, 'utf8');
   return users.length + devices.length;
 }
 
 /** Set/update password in mosquitto passwd (shared config volume). */
 export function setMosquittoPassword(username, password) {
+  // Ghi vào passwd của MỌI nhóm: quyền thật do ACL từng nhóm quyết định (không có khối ACL ở nhóm nào thì không đọc/ghi được gì ở đó)
   const user = sanitizeId(username, 60);
-  const pp = passwdPath();
-  try {
-    if (!fs.existsSync(pp)) fs.writeFileSync(pp, '');
-    execFileSync('mosquitto_passwd', ['-b', pp, user, password], { stdio: 'pipe' });
-    return { ok: true, via: 'local' };
-  } catch (e1) {
-    const container = process.env.MQTT_DOCKER_CONTAINER || 'plciot-mqtt';
+  let last = { ok: true, via: 'local' };
+  for (const k of allShards()) {
+    const pp = passwdPath(k);
     try {
-      execFileSync('docker', [
-        'exec', container, 'mosquitto_passwd', '-b', '/mosquitto/config/passwd', user, password,
-      ], { stdio: 'pipe' });
-      return { ok: true, via: 'docker' };
-    } catch (e2) {
-      return { ok: false, error: e2.message || e1.message || 'mosquitto_passwd failed' };
+      if (!fs.existsSync(pp)) fs.writeFileSync(pp, '');
+      execFileSync('mosquitto_passwd', ['-b', pp, user, password], { stdio: 'pipe' });
+      last = { ok: true, via: 'local' };
+    } catch (e1) {
+      try {
+        execFileSync('docker', [
+          'exec', shardContainer(k), 'mosquitto_passwd', '-b', '/mosquitto/config/passwd', user, password,
+        ], { stdio: 'pipe' });
+        last = { ok: true, via: 'docker' };
+      } catch (e2) {
+        return { ok: false, error: e2.message || e1.message || 'mosquitto_passwd failed' };
+      }
     }
   }
+  return last;
 }
 
 export function reloadMosquitto() {
-  const container = process.env.MQTT_DOCKER_CONTAINER || 'plciot-mqtt';
+  let res = { ok: true };
+  for (const k of allShards()) {
+    const r = reloadOne(shardContainer(k));
+    if (!r.ok) res = r;
+  }
+  return res;
+}
+
+function reloadOne(container) {
   try {
     execFileSync('docker', ['kill', '-s', 'HUP', container], { stdio: 'pipe' });
     return { ok: true };
@@ -240,7 +264,18 @@ export function mqttClientConfig(db, user) {
     mqttId,
     topicBase: base,
     topicBases: [...new Set([base, ...gatewaysOfUser(db, user).map((g) => (g.mqttId ? topicBase({ mqttId: g.mqttId }) : null))].filter(Boolean))],   // mọi gateway user đã thêm
-    endpoints: mqttPublicEndpoints(),
+    endpoints: mqttPublicEndpoints(shardOf(mqttId)),
+    shards: shardCount() > 1 ? clientShards(db, user, mqttId) : undefined,
     contract: contractInfo(),
   };
+}
+
+/** Nhiều nhóm broker: webapp mở một kết nối MQTT tới mỗi nhóm có gateway của user. { <mqttId>: <nhóm> } + endpoint từng nhóm. */
+function clientShards(db, user, currentId) {
+  const N = shardCount();
+  const ids = [...new Set([currentId, ...gatewaysOfUser(db, user).map((g) => g.mqttId)].filter(Boolean))];
+  const of = {};
+  for (const id of ids) of[id] = shardOf(id, N);
+  const used = [...new Set(Object.values(of))].sort((a, b) => a - b);
+  return { count: N, of, endpoints: Object.fromEntries(used.map((k) => [k, mqttPublicEndpoints(k)])) };
 }

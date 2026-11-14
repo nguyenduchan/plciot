@@ -113,7 +113,7 @@ const sc = blockIn('acl', op2.id);
 ok(sc.includes('/telemetry') && sc.includes('/ack') && !sc.includes('/status') && !sc.includes('write'), 'kênh mã hoá: telemetry + ack (để xác nhận lệnh), không ghi');
 ok(A.updateUser(db, admin, op2.id, { scopes: ['telemetry', 'secrets'] }, ctx).error === 'invalid_scopes', 'scope lạ bị từ chối');
 r = A.updateUser(db, admin, op2.id, { role: 'viewer', scopes: [] }, ctx);
-ok(r.ok && !blockIn('acl', op2.id).includes('topic'), 'viewer không scope nào: không có quyền gì');
+ok(r.ok && !blockIn('acl', op2.id).includes('/telemetry'), 'viewer không scope nào: không đọc được số liệu (vẫn điều khiển được, nhận ack)');
 
 // bảo vệ admin cuối
 ok(A.updateUser(db, admin, admin.id, { role: 'viewer' }, ctx).error === 'last_admin', 'không tự hạ quyền admin cuối');

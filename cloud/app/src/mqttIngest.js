@@ -1,3 +1,4 @@
+import { shardCount, shardUrls } from './shards.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
 import { purgeByPlan, defaultDays } from './retention.js';
@@ -78,28 +79,45 @@ export function startMqttIngest(db) {
   const prevStatus = new Map();
   const prevAlarm = new Map();
   const lastTeleStore = new Map();
-  const insert = db.transaction((row) => insertEvent(db, row));
+  // Hàng đợi do BROKER giữ (phiên persistent + QoS 1, xem mosquitto.conf listener 1883): app xử lý tới đâu nhận tới đó, broker xếp phần còn lại
+  // và giữ cả khi app khởi động lại. App chỉ gom ghi: các message cùng một lượt đọc socket được ghi trong MỘT transaction SQLite.
+  let batchRows = [];
+  let flushScheduled = false;
+  const insertMany = db.transaction((rows) => { for (const r of rows) insertEvent(db, r); });
+  const flush = () => {
+    flushScheduled = false;
+    if (!batchRows.length) return;
+    const rows = batchRows; batchRows = [];
+    try { insertMany(rows); } catch (e) { console.error('ingest batch insert', e.message); }
+  };
+  const insert = (row) => { batchRows.push(row); if (!flushScheduled) { flushScheduled = true; setImmediate(flush); } };
 
   setInterval(() => {
     const s = takeRejectStats();
     if (Object.keys(s).length) console.warn('ingest policy deny', s);
   }, 60_000);
 
-  const client = mqtt.connect(url, {
-    username,
-    password,
-    clientId: `plciot-ingest-${Math.random().toString(16).slice(2, 8)}`,
-    reconnectPeriod: 5000,
-  });
-
-  client.on('connect', () => {
-    client.subscribe(topics, (err) => {
-      if (err) console.error('ingest subscribe', err);
-      else console.log('MQTT ingest subscribed', topics.join(', '), minInterval ? `min ${minInterval}ms` : 'all msgs');
+  // Mỗi nhóm broker một kết nối ingest (MQTT_SHARDS=1: đúng một kết nối như cũ). Tất cả dùng chung MỘT luồng xử lý + ghi lô.
+  const ingestUrls = process.env.MQTT_INGEST_URL && shardCount() <= 1 ? [process.env.MQTT_INGEST_URL] : shardUrls('MQTT_INGEST_URLS', 'MQTT_INGEST_URL', 1885);
+  const clients = ingestUrls.map((u, k) => {
+    const c = mqtt.connect(u || url, {
+      username,
+      password,
+      clientId: (process.env.MQTT_INGEST_CLIENT_ID || 'plciot-ingest') + (k ? `-${k}` : ''),   // cố định + clean:false → broker giữ hàng đợi khi app tắt/khởi động lại
+      clean: false,
+      reconnectPeriod: 5000,
     });
+    c.on('connect', () => {
+      c.subscribe(topics, { qos: 1 }, (err) => {
+        if (err) console.error(`ingest subscribe (nhóm ${k})`, err);
+        else console.log(`MQTT ingest subscribed (nhóm ${k})`, topics.join(', '), minInterval ? `min ${minInterval}ms` : 'all msgs');
+      });
+    });
+    return c;
   });
+  const client = clients[0];
 
-  client.on('message', (t, buf) => {
+  const processMessage = (t, buf, ts) => {
     try {
       if (!isOpsOpen('mqtt_ingest_open')) return;
       const parsed = resolveIngestTopic(db, t);
@@ -125,7 +143,7 @@ export function startMqttIngest(db) {
 
       const sub = verdict.sub;
       const tenantId = sub.tenantId || DEFAULT_TENANT;
-      const now = Date.now();
+      const now = ts;   // giờ message ĐẾN broker app (không phải giờ xử lý), để lịch sử đúng thời điểm
       const text = buf.toString();
 
       if (kind === 'config') {
@@ -215,9 +233,11 @@ export function startMqttIngest(db) {
     } catch (e) {
       console.error('ingest message', e.message);
     }
-  });
-
-  client.on('error', (e) => console.error('ingest mqtt', e.message));
+  };
+  for (const c of clients) {
+    c.on('message', (t, buf) => processMessage(t, buf, Date.now()));
+    c.on('error', (e) => console.error('ingest mqtt', e.message));
+  }
   return client;
 }
 
