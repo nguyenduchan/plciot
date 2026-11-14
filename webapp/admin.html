@@ -45,20 +45,34 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   #qr-modal .no-print{display:none!important}
   #qr-sheet{box-shadow:none;max-width:none}
 }
+.adm-tabs{display:flex;gap:6px;margin:0 0 12px;padding:4px;border-radius:12px;box-shadow:0 0 0 1px var(--line);position:sticky;top:0;z-index:5;background:var(--bg);overflow-x:auto}
+.adm-tabs button{flex:1;white-space:nowrap;padding:9px 10px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.adm-tabs button.on{background:var(--accbg);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.adm-pane[hidden]{display:none!important}
+.pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;font-size:13px}
+.pager button{width:auto}
 </style>
 </head>
 <body>
 <div class="top"><h1>Quản trị</h1></div>
 <p id="msg"></p>
 
+<div class="adm-tabs" role="tablist">
+  <button type="button" role="tab" data-at="gw" class="on">Gateway <span class="tag" id="at-gw-n"></span></button>
+  <button type="button" role="tab" data-at="add">Thêm gateway</button>
+  <button type="button" role="tab" data-at="users">Người dùng <span class="tag" id="at-users-n"></span></button>
+  <button type="button" role="tab" data-at="cap">Sức chứa <span class="tag" id="at-cap-dot"></span></button>
+</div>
+
+<div class="adm-pane" data-at="cap" hidden>
 <div class="panel" id="cap-panel" style="max-width:none;margin-bottom:14px">
   <h2>Sức chứa VPS <span id="cap-badge" class="tag"></span></h2>
   <div id="cap-alerts"></div>
   <div id="cap-body" class="help">Đang tải…</div>
 </div>
+</div>
 
-<div class="cols">
-<div class="col">
+<div class="adm-pane" data-at="add" hidden>
 <div class="panel form" id="pr-panel" style="max-width:none;margin-bottom:14px">
   <h2>Thêm gateway</h2>
   <p class="help">Nhập site rồi bấm <b>Tạo mã</b>. Người lắp đặt chỉ cần nhập mã vào GatewayApp: gateway và server tự cấp tem, MQTT và đồng bộ setting. Dùng điện thoại? Mở <a href="activate.html">trang kích hoạt</a>.</p>
@@ -77,7 +91,7 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   <div id="pr-review" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px"></div>
 </div>
 </div>
-<div class="col">
+<div class="adm-pane" data-at="gw">
 <div class="panel" id="dup-panel" style="max-width:none;margin-bottom:14px" hidden>
   <h2>⚠ Nghi gateway bị chép (hai máy cùng ID)</h2>
   <p class="help">Thiết bị liên tục đổi trạng thái online/offline: thường do hai máy cùng dùng một tài khoản MQTT. Kiểm tra máy, nếu đúng thì dùng "Thu hồi &amp; cấp QR mới".</p>
@@ -85,12 +99,17 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 </div>
 <div class="panel" style="max-width:none;margin-bottom:14px">
   <h2>Gateway đã đăng ký (<span id="hw-count">0</span>)</h2>
+  <input id="hw-q" placeholder="Tìm theo tên, site, thiết bị, người dùng, ID máy…" autocomplete="off" style="width:100%;margin-bottom:8px">
   <div id="hw-list">Đang tải…</div>
+  <div class="pager" id="hw-pager"></div>
 </div>
+</div>
+<div class="adm-pane" data-at="users" hidden>
 <div class="panel" style="max-width:none">
-  <h2>Danh sách (<span id="count">0</span>)</h2>
+  <h2>Người dùng (<span id="count">0</span>)</h2>
+  <input id="u-q" placeholder="Tìm theo tên đăng nhập, site, thiết bị, vai trò…" autocomplete="off" style="width:100%;margin-bottom:8px">
   <div id="list">Đang tải…</div>
-</div>
+  <div class="pager" id="u-pager"></div>
 </div>
 </div>
 <div id="qr-modal" role="dialog" aria-modal="true">
@@ -115,6 +134,6 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <script src="security/security-client.js?v=20261114c"></script>
 <script src="control.js?v=20261114c"></script>
 <script src="admin-nav.js?v=20261114c"></script>
-<script src="admin.js?v=20261115b"></script>
+<script src="admin.js?v=20261115c"></script>
 </body>
 </html>

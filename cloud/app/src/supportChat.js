@@ -240,7 +240,18 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   /* ---------------- quản trị viên (đường dẫn /api/admin/* nên chịu cổng tên miền + phiên admin) ---------------- */
   const adminOnly = [requireAuth, requireAdmin];
 
-  app.get('/api/admin/support/threads', ...adminOnly, (_req, res) => {
+  app.get('/api/admin/support/threads', ...adminOnly, (req, res) => {
+    // ?q= (tên) &filter=unread|pending &limit= (mặc định 40, tối đa 100) &offset= : không tải hết khi số hội thoại lớn
+    const q = String(req.query.q || '').trim().toLowerCase().replace(/[%_]/g, '').slice(0, 48);
+    const filter = String(req.query.filter || '');
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const where = ['EXISTS (SELECT 1 FROM support_messages WHERE user_id = u.id)'];
+    const args = [];
+    if (q) { where.push('LOWER(u.username) LIKE ?'); args.push(`%${q}%`); }
+    if (filter === 'unread') where.push('EXISTS (SELECT 1 FROM support_messages WHERE user_id = u.id AND from_admin = 0 AND read_ts IS NULL)');
+    if (filter === 'pending') where.push('EXISTS (SELECT 1 FROM support_requests WHERE user_id = u.id)');
+    const totalThreads = db.prepare(`SELECT COUNT(*) AS n FROM users u WHERE ${where.join(' AND ')}`).get(...args).n;
     const rows = db.prepare(`
       SELECT u.id AS user_id, u.username, u.role,
              (SELECT body FROM support_messages WHERE user_id = u.id ORDER BY id DESC LIMIT 1) AS last_body,
@@ -248,8 +259,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
              (SELECT from_admin FROM support_messages WHERE user_id = u.id ORDER BY id DESC LIMIT 1) AS last_from_admin,
              (SELECT COUNT(*) FROM support_messages WHERE user_id = u.id AND from_admin = 0 AND read_ts IS NULL) AS unread
       FROM users u
-      WHERE EXISTS (SELECT 1 FROM support_messages WHERE user_id = u.id)
-      ORDER BY last_ts DESC LIMIT 200`).all();
+      WHERE ${where.join(' AND ')}
+      ORDER BY last_ts DESC LIMIT ? OFFSET ?`).all(...args, limit, offset);
     res.json({
       threads: rows.map((r) => {
         const u = db.prepare('SELECT * FROM users WHERE id = ?').get(r.user_id);
@@ -258,7 +269,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
         return { userId: r.user_id, username: r.username, plan, lastBody: String(r.last_body || '📷 Ảnh').slice(0, 120), lastTs: r.last_ts, lastFromAdmin: Boolean(r.last_from_admin), unread: r.unread,
           pendingPlan: db.prepare('SELECT plan FROM support_requests WHERE user_id = ?').get(r.user_id)?.plan || null };
       }),
-      unread: rows.reduce((a, r) => a + r.unread, 0),
+      unread: db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE from_admin = 0 AND read_ts IS NULL').get().n,
+      total: totalThreads, offset, limit,
       pending: db.prepare('SELECT COUNT(*) AS n FROM support_requests').get().n,
     });
   });

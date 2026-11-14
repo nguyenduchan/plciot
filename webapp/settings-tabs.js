@@ -14,5 +14,6 @@
   bar.addEventListener('click', (e) => { const b = e.target.closest('button[data-sub]'); if (b) show(b.dataset.sub); });
   let saved = 'acct'; try { saved = localStorage.getItem(KEY) || 'acct'; } catch { /* */ }
   show(saved, { remember: false });
+  document.getElementById('support-open')?.addEventListener('click', () => window.SupportChat?.support?.());
   window.SettingsTabs = { show };
 }());

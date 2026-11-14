@@ -480,12 +480,21 @@ export function mountAdminOps(app, {
   /* ---------- Thiết bị cứng (QR claim): chỉ device đã add mới được user quét ---------- */
   const sendHw = (res, r) => (r?.error ? res.status(r.status || 400).json(r) : res.json(r));
 
-  app.get('/api/admin/hardware', ...gate, (_req, res) => {
+  app.get('/api/admin/hardware', ...gate, (req, res) => {
     const configured = Boolean(process.env.CLAIM_ROOT_PUBLIC_KEY && process.env.CLAIM_ROOT_PRIVATE_KEY);
     // Gắn ID MQTT (do server cấp) + setting gateway đã khai vào từng tem: một dòng = ID máy (hw) ↔ ID MQTT ↔ site/device ↔ setting
     const mqttOf = db.prepare("SELECT mqtt_id, status FROM devices WHERE site = ? AND device = ? ORDER BY id DESC LIMIT 1");
     const cfgOf = db.prepare('SELECT rev, devices, updated_at FROM gateway_configs WHERE site = ? AND device = ?');
-    const devices = listHardwareDevices(db).map((d) => {
+    // ?q=&limit=&offset= : lọc + phân trang (khi số gateway lớn, chỉ làm giàu thông tin cho trang đang xem). Không có limit = trả tất cả như cũ.
+    const all = listHardwareDevices(db);
+    const q = String(req.query.q || '').trim().toLowerCase();
+    let rows = all;
+    if (q) rows = all.filter((d) => [d.label, d.site, d.device, d.profile, d.note, d.claimedUsername, d.activatedHw].some((v) => String(v || '').toLowerCase().includes(q)));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 0)) || null;
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const total = rows.length;
+    if (limit) rows = rows.slice(offset, offset + limit);
+    const devices = rows.map((d) => {
       let mq = null; let cf = null;
       try { mq = mqttOf.get(d.site, d.device); } catch { /* bảng devices chưa có */ }
       try { cf = cfgOf.get(d.site, d.device); } catch { /* chưa có setting */ }
@@ -501,7 +510,7 @@ export function mountAdminOps(app, {
         config: cf ? { rev: cf.rev, devices: children, fields, updatedAt: cf.updated_at } : null,
       };
     });
-    res.json({ configured, devices });
+    res.json({ configured, devices, total, offset, limit, sites: [...new Set(all.map((d) => d.site))].slice(0, 500) });
   });
 
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {

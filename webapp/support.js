@@ -299,6 +299,12 @@
         }, 120));
       } else setTimeout(() => $('#support-input').focus({ preventScroll: true }), 100);
     },
+    /** Mở chat để liên hệ hỗ trợ (không liên quan gói): chỉ mở và đặt con trỏ vào ô soạn, không đụng tới gói đang chọn. */
+    support() {
+      det.open = true;
+      fillPlans();
+      setTimeout(() => $('#support-input').focus({ preventScroll: true }), 100);
+    },
     /** Chỉ ĐÁNH DẤU gói được chọn (✓), KHÔNG mở chat; chat chỉ mở khi bấm "Chat để nâng cấp". Chọn lại gói đang chọn = bỏ chọn. */
     select(planId) {
       fillPlans();

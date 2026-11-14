@@ -36,7 +36,13 @@ body{padding:16px;max-width:1100px;margin:auto}
     <h2>Cuộc trò chuyện</h2>
     <label>Nhắn người dùng mới<input id="find" placeholder="Gõ tên đăng nhập…" autocomplete="off"></label>
     <div id="found"></div>
-    <div id="threads" style="margin-top:8px">Đang tải…</div>
+    <div class="row" style="gap:6px;margin-top:8px">
+      <input id="th-q" placeholder="Tìm trong cuộc trò chuyện…" autocomplete="off" style="flex:1">
+      <select id="th-filter" style="width:auto"><option value="">Tất cả</option><option value="unread">Chưa đọc</option><option value="pending">Chờ xử lý gói</option></select>
+    </div>
+    <div id="threads" style="margin-top:8px;max-height:60vh;overflow:auto">Đang tải…</div>
+    <p class="help" id="th-count" style="margin:6px 0"></p>
+    <div class="row"><button id="th-more" class="fit hidden" type="button">Tải thêm</button></div>
   </div>
   <div class="panel form" id="conv">
     <h2 id="who">Chọn một cuộc trò chuyện</h2>
@@ -79,6 +85,6 @@ body{padding:16px;max-width:1100px;margin:auto}
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261115b"></script>
+<script src="admin-chat.js?v=20261115c"></script>
 </body>
 </html>

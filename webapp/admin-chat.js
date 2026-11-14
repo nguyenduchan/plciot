@@ -86,22 +86,34 @@
     } catch (e) { msg(e.message, true); }
   });
 
+  /* Danh sách hội thoại: tải theo trang (40/trang, tối đa 100 trong một lần xem), lọc/tìm phía máy chủ, không dựng lại cả nghìn dòng. */
+  const TH_PAGE = 40; const TH_MAX = 100;
+  let thLoaded = TH_PAGE; let thTimer = null;
+  function threadEl(t) {
+    const el = document.createElement('div'); el.className = `th${current?.userId === t.userId ? ' on' : ''}`;
+    const b = document.createElement('b'); b.textContent = t.username;
+    if (t.plan) { const p = document.createElement('span'); p.className = 'tag'; p.textContent = t.plan; b.append(' ', p); }
+    if (t.pendingPlan) { const q = document.createElement('span'); q.className = 'tag'; q.textContent = 'chờ xử lý'; b.append(' ', q); }
+    if (t.unread) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `${t.unread} mới`; b.append(' ', n); }
+    const s = document.createElement('small'); s.textContent = `${t.lastFromAdmin ? 'Bạn: ' : ''}${t.lastBody}`;
+    el.append(b, s); el.addEventListener('click', () => open(t.userId, t.username));
+    return el;
+  }
   async function loadThreads() {
-    const j = await api('/api/admin/support/threads');
+    const q = ($('#th-q')?.value || '').trim(); const f = $('#th-filter')?.value || '';
+    const j = await api(`/api/admin/support/threads?limit=${Math.min(TH_MAX, thLoaded)}&offset=0&q=${encodeURIComponent(q)}&filter=${encodeURIComponent(f)}`);
     const box = $('#threads'); box.textContent = '';
-    if (!j.threads.length) { box.textContent = 'Chưa có cuộc trò chuyện.'; box.className = 'help'; return j; }
-    box.className = '';
-    for (const t of j.threads) {
-      const el = document.createElement('div'); el.className = `th${current?.userId === t.userId ? ' on' : ''}`;
-      const b = document.createElement('b'); b.textContent = t.username;
-      if (t.plan) { const p = document.createElement('span'); p.className = 'tag'; p.textContent = t.plan; b.append(' ', p); }
-      if (t.pendingPlan) { const q = document.createElement('span'); q.className = 'tag'; q.textContent = 'chờ xử lý'; b.append(' ', q); }
-      if (t.unread) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `${t.unread} mới`; b.append(' ', n); }
-      const s = document.createElement('small'); s.textContent = `${t.lastFromAdmin ? 'Bạn: ' : ''}${t.lastBody}`;
-      el.append(b, s); el.addEventListener('click', () => open(t.userId, t.username)); box.appendChild(el);
-    }
+    if (!j.threads.length) { box.textContent = q || f ? 'Không có cuộc trò chuyện phù hợp.' : 'Chưa có cuộc trò chuyện.'; box.className = 'help'; }
+    else { box.className = ''; const frag = document.createDocumentFragment(); for (const t of j.threads) frag.appendChild(threadEl(t)); box.appendChild(frag); }
+    $('#th-count').textContent = j.total ? `Hiện ${j.threads.length} / ${j.total} cuộc trò chuyện${j.unread ? ` · ${j.unread} tin chưa đọc` : ''}${j.pending ? ` · ${j.pending} yêu cầu đổi gói đang chờ` : ''}` : '';
+    const more = $('#th-more');
+    more.classList.toggle('hidden', !(j.total > j.threads.length && j.threads.length < TH_MAX));
+    if (j.total > TH_MAX && j.threads.length >= TH_MAX) $('#th-count').textContent += ' · dùng ô tìm kiếm để thu hẹp';
     return j;
   }
+  $('#th-more')?.addEventListener('click', () => { thLoaded = Math.min(TH_MAX, thLoaded + TH_PAGE); loadThreads().catch((e) => msg(e.message, true)); });
+  $('#th-filter')?.addEventListener('change', () => { thLoaded = TH_PAGE; loadThreads().catch((e) => msg(e.message, true)); });
+  $('#th-q')?.addEventListener('input', () => { clearTimeout(thTimer); thTimer = setTimeout(() => { thLoaded = TH_PAGE; loadThreads().catch((e) => msg(e.message, true)); }, 300); });
 
   async function open(userId, username) {
     current = { userId, username }; lastId = 0; oldestId = 0; $('#log').textContent = '';
@@ -289,5 +301,5 @@
   });
 
   loadThreads().catch((e) => msg(e.message, true));
-  setInterval(() => loadThreads().catch(() => {}), 30000);
+  setInterval(() => { if (!document.hidden) loadThreads().catch(() => {}); }, 30000);
 })();

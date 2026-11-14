@@ -100,8 +100,38 @@
   const scopeBoxes = (sel, attr) => scopesAll.map((s) =>
     `<label><input type="checkbox" ${attr}="${s}"${sel.includes(s) ? ' checked' : ''}> ${SCOPE_LABEL[s] || s}</label>`).join('');
 
+  /* Phân trang + tìm kiếm phía máy chủ: chỉ tải/dựng 25 dòng mỗi lần, không treo khi có nhiều gateway/người dùng. */
+  const PAGE = 25;
+  const pg = { u: { q: '', off: 0, total: 0 }, hw: { q: '', off: 0, total: 0 } };
+  function renderPager(sel, st, reload) {
+    const el = $(sel); if (!el) return;
+    const pages = Math.max(1, Math.ceil(st.total / PAGE)); const cur = Math.floor(st.off / PAGE) + 1;
+    if (st.total <= PAGE) { el.textContent = ''; return; }
+    el.innerHTML = `<button type="button" data-d="-1"${cur <= 1 ? ' disabled' : ''}>‹ Trước</button><span>Trang ${cur}/${pages} · ${st.total} mục</span><button type="button" data-d="1"${cur >= pages ? ' disabled' : ''}>Sau ›</button>`;
+    el.onclick = (e) => { const b = e.target.closest('button[data-d]'); if (!b) return; st.off = Math.max(0, st.off + Number(b.dataset.d) * PAGE); reload().catch((er) => msg(er.message, 'err')); };
+  }
+  const debounce = (fn, ms = 300) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const qs = (st) => `limit=${PAGE}&offset=${st.off}&q=${encodeURIComponent(st.q)}`;
+
+  const TABS = ['gw', 'add', 'users', 'cap'];
+  let curTab = 'gw';
+  function showAdminTab(name) {
+    if (!TABS.includes(name)) name = 'gw';
+    curTab = name;
+    document.querySelectorAll('.adm-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.at === name));
+    document.querySelectorAll('.adm-pane').forEach((p) => { p.hidden = p.dataset.at !== name; });
+    try { localStorage.setItem('admTab', name); } catch { /* */ }
+    if (name === 'cap') loadCapacity().catch(() => {});
+    if (name === 'add') loadPairings().catch(() => {});
+    if (name === 'gw') { loadHw().catch(() => {}); loadDup().catch(() => {}); }
+  }
+  document.querySelector('.adm-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-at]'); if (b) showAdminTab(b.dataset.at); });
+  $('#hw-q')?.addEventListener('input', debounce((e) => { pg.hw.q = e.target.value.trim(); pg.hw.off = 0; loadHw().catch((er) => msg(er.message, 'err')); }));
+  $('#u-q')?.addEventListener('input', debounce((e) => { pg.u.q = e.target.value.trim(); pg.u.off = 0; loadUsers().catch((er) => msg(er.message, 'err')); }));
+
   function render() {
-    $('#count').textContent = users.length;
+    $('#count').textContent = pg.u.total; const nb = $('#at-users-n'); if (nb) nb.textContent = pg.u.total;
+    renderPager('#u-pager', pg.u, loadUsers);
     $('#list').innerHTML = users.map((u) => `
       <div class="u${u.disabled ? ' dis' : ''}" data-id="${u.id}">
         <div><b>${esc(u.username)}</b> <span class="tag ${u.role}">${u.role}</span>${u.disabled ? ' <span class="tag viewer">đã khoá</span>' : ''}
@@ -124,7 +154,8 @@
   }
 
   function renderHw() {
-    $('#hw-count').textContent = hwDevices.length;
+    $('#hw-count').textContent = pg.hw.total; const nb = $('#at-gw-n'); if (nb) nb.textContent = pg.hw.total;
+    renderPager('#hw-pager', pg.hw, loadHw);
     $('#hw-list').innerHTML = hwDevices.map((d) => `
       <div class="hw" data-site="${esc(d.site)}" data-device="${esc(d.device)}">
         <div><b>${esc(d.label || `${d.site}/${d.device}`)}</b>
@@ -186,8 +217,10 @@
   function closeQr() { $('#qr-modal').classList.remove('on'); }
 
   async function loadHw() {
-    const j = await api('/api/admin/hardware');
+    const j = await api(`/api/admin/hardware?${qs(pg.hw)}`);
     hwDevices = j.devices || [];
+    pg.hw.total = j.total ?? hwDevices.length;
+    if (!hwDevices.length && pg.hw.off > 0) { pg.hw.off = Math.max(0, pg.hw.off - PAGE); return loadHw(); }
     const cfg = $('#hw-cfg');
     if (cfg) {
       cfg.textContent = j.configured
@@ -197,7 +230,7 @@
     }
     renderHw();
     const ps = $('#pr-sites');
-    if (ps) ps.innerHTML = [...new Set(hwDevices.map((d) => d.site))].map((x) => `<option value="${esc(x)}">`).join('');
+    if (ps) ps.innerHTML = [...new Set([...(j.sites || []), ...hwDevices.map((d) => d.site)])].map((x) => `<option value="${esc(x)}">`).join('');
     const sel = $('#act-dev');
     if (sel) {
       const cur = sel.value;
@@ -317,12 +350,18 @@
     } catch { /* giữ fallback */ }
   }
 
+  async function loadUsers() {
+    const j = await api(`/api/admin/users?${qs(pg.u)}`);
+    roles = j.roles; users = j.users; scopesAll = j.scopes || scopesAll;
+    pg.u.total = j.total ?? users.length;
+    if (!users.length && pg.u.off > 0) { pg.u.off = Math.max(0, pg.u.off - PAGE); return loadUsers(); }
+    render();
+  }
+
   async function load() {
     try {
       await loadTypes();
-      const j = await api('/api/admin/users');
-      roles = j.roles; users = j.users; scopesAll = j.scopes || scopesAll;
-      render();
+      await loadUsers();
       await loadHw();
       await loadPairings().catch(() => {});
       await loadDup();
@@ -338,10 +377,12 @@
   // Tự làm mới danh sách gateway + mã ghép cặp (gateway vừa nhập mã là hiện ngay, không cần tải lại trang)
   setInterval(() => {
     if (document.hidden || $('#qr-modal')?.classList.contains('on')) return;
-    loadHw().catch(() => {}); loadPairings().catch(() => {});
+    if (curTab === 'gw') loadHw().catch(() => {});
+    if (curTab === 'add') loadPairings().catch(() => {});
   }, 8000);
   loadCapacity().catch(() => {});
-  setInterval(() => { if (!document.hidden) loadCapacity().catch(() => {}); }, 60000);
+  setInterval(() => { if (!document.hidden && (curTab === 'cap' || !document.querySelector('#at-cap-dot')?.dataset.set)) loadCapacity().catch(() => {}); }, 60000);
+  { let st = 'gw'; try { st = localStorage.getItem('admTab') || 'gw'; } catch { /* */ } showAdminTab(st); }
   const PR_STATUS = { open: 'chờ gateway nhập mã', received: 'chờ bạn duyệt', approved: 'đã kết nối', expired: 'hết hạn', cancelled: 'đã huỷ' };
 
   async function loadPairings() {
@@ -432,6 +473,7 @@
   async function loadCapacity() {
     const c = await api('/api/admin/vps-capacity');
     const col = { ok: '#16a34a', warn: '#d97706', crit: '#dc2626' }[c.level] || '#64748b';
+    const dot = $('#at-cap-dot'); if (dot) { dot.dataset.set = '1'; dot.textContent = { ok: 'Ổn', warn: 'Chú ý', crit: 'Nguy cấp' }[c.level] || ''; dot.style.cssText = `background:${col};color:#fff`; }
     const b = $('#cap-badge'); b.textContent = { ok: 'Ổn', warn: 'Chú ý', crit: 'Nguy cấp' }[c.level] || c.level; b.style.cssText = `background:${col};color:#fff`;
     $('#cap-alerts').innerHTML = c.alerts.map((a) => `<p style="margin:6px 0;padding:8px 10px;border-radius:8px;border:1px solid ${col};color:${col}">⚠ ${esc(a)}</p>`).join('');
     const gb = (mb) => (mb / 1024).toFixed(1);

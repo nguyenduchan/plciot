@@ -210,8 +210,16 @@ const adminWrite = rateLimit({
   keyFn: (req) => `${clientIp(req)}:admin:${req.user?.id || 'na'}`,
 });
 
-app.get('/api/admin/users', ...adminOnly, (_req, res) => {
-  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, users: listUsers(db) });
+app.get('/api/admin/users', ...adminOnly, (req, res) => {
+  // ?q=&limit=&offset= : lọc theo tên/site/thiết bị/vai trò + phân trang (không có limit = trả tất cả như cũ)
+  let users = listUsers(db);
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (q) users = users.filter((u) => [u.username, u.site, u.device, u.role].some((v) => String(v || '').toLowerCase().includes(q)));
+  const total = users.length;
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 0)) || null;
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  if (limit) users = users.slice(offset, offset + limit);
+  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, users, total, offset, limit });
 });
 
 app.post('/api/admin/users', ...adminOnly, adminWrite, reauth, (req, res) => {
