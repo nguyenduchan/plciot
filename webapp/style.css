@@ -466,7 +466,7 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .plan-banner button { margin-left: auto; min-height: 36px; }
 .plan-table { display: grid; gap: 8px; margin: 8px 0 12px; }
 .plan-row { padding: 10px 12px; border-radius: 12px; background: var(--panel2, #1e2530); display: grid; gap: 2px; }
-.plan-row.cur { outline: 2px solid var(--accent, #3b82f6); }
+.plan-row.cur { outline: 2px solid color-mix(in srgb, var(--ok, #22c55e) 65%, transparent); }   /* gói đang dùng: viền xanh lá (khác viền xanh dương của gói được chọn) */
 .plan-row small { opacity: .75; }
 .plan-row { position: relative; }
 .plan-row.pick { cursor: pointer; padding-right: 44px; }
@@ -475,7 +475,12 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .plan-row.pick.sel { outline: 2px solid var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, var(--panel2, #1e2530)); }
 .plan-row.pick.sel::after { content: '✓'; opacity: 1; background: var(--accent, #3b82f6); color: #fff; font-weight: 800; font-size: 14px; line-height: 18px; text-align: center; }
 .plan-row.pick.sel .pick-tag { display: none; }
-.plan-row.pick:hover, .plan-row.pick:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 0; }
+/* Chỉ MỘT viền xanh dương: gói đang được chọn (.sel). Hover chỉ đổi nền và chỉ trên thiết bị có chuột (trên điện thoại hover dính lại sau khi chạm → trông như nhiều gói cùng được khoanh). */
+@media (hover: hover) { .plan-row.pick:hover { background: color-mix(in srgb, var(--accent, #3b82f6) 8%, var(--panel2, #1e2530)); } }
+.plan-row.pick:focus { outline: none; }
+.plan-row.pick:focus-visible:not(.sel) { outline: 2px dotted var(--accent, #3b82f6); }
+.sup-flash { animation: supflash 1.6s ease-out; }
+@keyframes supflash { 0% { box-shadow: 0 0 0 3px var(--accent, #3b82f6); } 100% { box-shadow: 0 0 0 3px transparent; } }
 .plan-row .pick-tag { opacity: .8; text-transform: none; font-weight: 600; }
 #sub-panel.plan-flash { animation: planflash 1.1s ease 2; }
 @keyframes planflash { 50% { box-shadow: 0 0 0 3px var(--accent, #3b82f6); } }

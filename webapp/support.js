@@ -256,7 +256,11 @@
       if (![...planSel.options].some((o) => o.value === planId && !o.disabled)) return;
       planSel.value = planId;
       planSel.dispatchEvent(new Event('change'));
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Cuộn xuống bước xem lại + nút "Gửi yêu cầu tư vấn" (đợi khung chat mở xong rồi mới cuộn, nếu không trên điện thoại cuộn bị lệch)
+      requestAnimationFrame(() => setTimeout(() => {
+        planBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        planBox.classList.remove('sup-flash'); void planBox.offsetWidth; planBox.classList.add('sup-flash');
+      }, 120));
     },
   };
   det.addEventListener('toggle', () => { if (det.open) fillPlans(); });
