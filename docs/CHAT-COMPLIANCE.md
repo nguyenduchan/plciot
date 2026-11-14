@@ -45,3 +45,27 @@ SUPPORT_IMAGE_MAX_BYTES=2097152
 
 ## Ảnh chụp màn hình
 Người dùng (và admin) gửi được ảnh trong chat: nút 📷 hoặc dán ảnh vào ô nhập. Ảnh được thu nhỏ và vẽ lại bằng canvas ở trình duyệt (xoá EXIF), chỉ nhận JPEG/PNG đúng định dạng, tối đa 2 MB; chỉ chủ cuộc trò chuyện và admin xem được; tự xóa cùng tin nhắn. Ảnh biên lai chuyển khoản gửi qua chat vẫn là liên lạc thủ công, hợp lệ như hướng dẫn ở trên. Nhắc người dùng che thông tin nhạy cảm (mật khẩu, mã OTP, số thẻ) trước khi gửi.
+
+
+## Lưu trữ & chống đầy DB
+
+**Ba lớp lưu trữ**
+
+| Lớp | Nơi | Quy tắc |
+|---|---|---|
+| Hiển thị | `support_messages` | `SUPPORT_MAX_MESSAGES` (200) tin gần nhất / người dùng |
+| Lưu trữ | `support_archive` | Tin cũ hơn được **chuyển** sang (không xoá), tối đa `SUPPORT_ARCHIVE_MAX` (5000) / người dùng. Xem qua nút "Tin cũ hơn" (người dùng + admin) |
+| Sao lưu | `data/backups/app-auto-YYYYMMDD.db` | Mỗi ngày 1 bản (`db.backup`, an toàn khi đang ghi), giữ 7 bản ngày + 4 bản tuần. Bản **ngoài VPS**: `cloud/scripts/pull-backup.ps1` (chạy trên PC, nên đặt lịch hằng tuần) |
+
+- Admin xuất cả hội thoại (gồm kho lưu trữ) bằng nút "Xuất hội thoại" (`/api/admin/support/threads/:uid/export`, có ghi audit `support_export`).
+- Yêu cầu tư vấn đổi gói chờ xử lý: bảng `support_requests` (1/người dùng), xoá khi admin Đồng ý/Từ chối.
+- Xoá tài khoản (`purgeUserAccount`) xoá luôn `support_messages/archive/images/requests` của người đó. Nếu kế toán yêu cầu giữ ảnh chuyển khoản, hãy xuất trước khi xoá.
+- Trên máy người dùng: bộ nhớ đệm IndexedDB `plciot-chat-<id>` (tối đa 200 tin, chỉ chữ; máy chủ vẫn là nguồn sự thật), tự xoá khi đăng xuất.
+- File sao lưu chứa băm mật khẩu và bí mật TOTP: quyền 0600, giữ ở nơi được mã hoá, không chia sẻ.
+
+**Chống spam / làm đầy DB** (đều đặt được bằng biến môi trường, xem `cloud/docker-compose.yml`)
+
+- Giới hạn tốc độ: 8 tin/phút/người dùng, 6 ảnh/phút, `SUPPORT_IP_PER_MIN` (30) mỗi IP (chặn nhiều tài khoản từ một IP), `SUPPORT_GLOBAL_PER_MIN` (300) toàn cục (cầu dao khi bị tấn công phân tán). Trần/ngày: `SUPPORT_DAILY_CAP` (100 tin), `SUPPORT_IMAGE_DAILY` (20 ảnh).
+- Chặn tin giống hệt trong 60 giây (`duplicate`). Mã gửi `cid` do client sinh: gửi lại khi rớt mạng không tạo tin trùng.
+- Ảnh: chỉ JPEG/PNG đúng byte đầu tệp, tối đa 2 MB; `SUPPORT_USER_IMAGE_BYTES` (30 MB) / người dùng; `SUPPORT_GLOBAL_IMAGE_BYTES` (1 GB) và `SUPPORT_GLOBAL_MESSAGES` (300000) toàn hệ thống → vượt thì trả `busy` (503) cho tin/ảnh mới, chat cũ vẫn xem được. `SUPPORT_IMAGE_ARCHIVE_DAYS` (730): ảnh quá hạn bị xoá, tin chữ vẫn giữ.
+- Mọi endpoint chat đều yêu cầu đăng nhập (không có endpoint ẩn danh làm đầy DB). Tấn công cấp mạng (DDoS) do Cloudflare chặn ở phía trước; tầng ứng dụng chỉ giữ giới hạn tốc độ như trên.

@@ -1,11 +1,17 @@
 /**
- * Kênh chat hỗ trợ giữa người dùng và quản trị viên (hỏi về nâng gói, sự cố…).
+ * Kênh chat hỗ trợ giữa người dùng và quản trị viên (hỏi về nâng gói, hỗ trợ kỹ thuật, sự cố…).
  *
  * RÀNG BUỘC PHÁP LÝ (docs/CHAT-COMPLIANCE.md) — giữ nguyên để không thành "website thương mại điện tử bán hàng":
- *  - Chỉ tin nhắn VĂN BẢN thuần. Không nút đặt/mua gói, không giỏ hàng, không tạo đơn, không bảng giá trong chat.
+ *  - Chỉ tin nhắn VĂN BẢN thuần (+ ảnh chụp màn hình). Không nút đặt/mua gói, không giỏ hàng, không tạo đơn, không bảng giá trong chat.
  *  - Không tích hợp cổng thanh toán, không sinh link/QR thanh toán, không ghi nhận thanh toán trong hệ thống.
  *  - Thỏa thuận giá + chuyển khoản làm thủ công giữa người với người ngoài hệ thống; admin tự gán gói sau khi nhận tiền.
  *  - Phía máy chủ không có endpoint nào tạo đơn/thanh toán từ chat; giao diện hiển thị bằng textContent (không tự biến chữ thành link/nút).
+ *
+ * LƯU TRỮ & CHỐNG ĐẦY DB (docs/CHAT-COMPLIANCE.md):
+ *  - support_messages: tối đa SUPPORT_MAX_MESSAGES tin gần nhất / người dùng (hiển thị mặc định).
+ *  - support_archive : tin cũ hơn được CHUYỂN vào đây (không xoá), tối đa SUPPORT_ARCHIVE_MAX / người dùng.
+ *  - Ảnh ở support_images: hạn dung lượng / người dùng, hạn toàn hệ thống, hạn tuổi riêng (SUPPORT_IMAGE_ARCHIVE_DAYS).
+ *  - Chống spam: giới hạn tốc độ theo người dùng + IP + toàn cục, chặn tin trùng, cầu dao toàn cục.
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
@@ -13,8 +19,11 @@ import { subscriptionInfo, grantPlan, listPlans, PLAN_CATALOG } from './entitlem
 
 const MAX_LEN = 1000;
 const DAILY_CAP = Number(process.env.SUPPORT_DAILY_CAP || 100);
-// Số tin tối đa lưu cho MỖI người dùng (cũ nhất bị xoá, kèm ảnh không còn tin nào dùng)
 const MAX_PER_USER = Math.max(20, Number(process.env.SUPPORT_MAX_MESSAGES || 200));
+const ARCHIVE_MAX = Math.max(MAX_PER_USER, Number(process.env.SUPPORT_ARCHIVE_MAX || 5000));
+const USER_IMG_BYTES = Number(process.env.SUPPORT_USER_IMAGE_BYTES || 30 * 1024 * 1024);
+const GLOBAL_IMG_BYTES = Number(process.env.SUPPORT_GLOBAL_IMAGE_BYTES || 1024 * 1024 * 1024);
+const GLOBAL_MESSAGES = Number(process.env.SUPPORT_GLOBAL_MESSAGES || 300000);
 
 export function initSupport(db) {
   db.exec(`
@@ -34,29 +43,47 @@ export function initSupport(db) {
       data BLOB NOT NULL,
       ts INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_support_images_user ON support_images(user_id);
+    CREATE TABLE IF NOT EXISTS support_archive (
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      from_admin INTEGER NOT NULL DEFAULT 0,
+      body TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      image_id INTEGER,
+      archived_ts INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_archive_user ON support_archive(user_id, id);
+    -- Yêu cầu tư vấn đổi gói đang chờ admin (tối đa 1 / người dùng). KHÔNG phải đơn hàng: không giá, không thanh toán.
+    CREATE TABLE IF NOT EXISTS support_requests (
+      user_id INTEGER PRIMARY KEY,
+      plan TEXT NOT NULL,
+      ts INTEGER NOT NULL
+    );
   `);
-  // Yêu cầu tư vấn đổi gói đang chờ admin (mỗi người dùng tối đa 1, lưu bền trong DB). Chỉ là hàng đợi tư vấn:
-  // KHÔNG phải đơn hàng, không có giá/thanh toán; xoá khi admin Đồng ý hoặc Từ chối.
-  db.exec(`CREATE TABLE IF NOT EXISTS support_requests (
-    user_id INTEGER PRIMARY KEY,
-    plan TEXT NOT NULL,
-    ts INTEGER NOT NULL
-  )`);
   const cols = db.prepare('PRAGMA table_info(support_messages)').all().map((c) => c.name);
   if (!cols.includes('image_id')) db.exec('ALTER TABLE support_messages ADD COLUMN image_id INTEGER');
-  // Gợi ý gói người dùng muốn được tư vấn (chỉ để admin chọn sẵn trong ô chọn; KHÔNG phải đơn hàng, không có trạng thái xử lý)
   if (!cols.includes('plan_hint')) db.exec('ALTER TABLE support_messages ADD COLUMN plan_hint TEXT');
-  // Mặc định KHÔNG xoá theo thời gian (tránh mất dữ liệu); chỉ giới hạn số tin / người dùng. Đặt > 0 nếu muốn tự xoá tin cũ.
+  // Mã do client sinh khi gửi: gửi lại khi rớt mạng không tạo tin trùng
+  if (!cols.includes('cid')) db.exec('ALTER TABLE support_messages ADD COLUMN cid TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_support_cid ON support_messages(user_id, cid) WHERE cid IS NOT NULL');
+
+  // Mặc định KHÔNG xoá chữ theo thời gian (tránh mất dữ liệu). Ảnh chiếm dung lượng nhất: mặc định xoá sau 730 ngày (0 = giữ mãi).
   const days = Math.max(0, Number(process.env.SUPPORT_RETENTION_DAYS || 0));
+  const imgDays = Math.max(0, Number(process.env.SUPPORT_IMAGE_ARCHIVE_DAYS ?? 730));
   const purge = () => {
     try {
-      const cutoff = Date.now() - days * 86400_000;
-      db.prepare('DELETE FROM support_messages WHERE ts < ?').run(cutoff);
-      db.prepare('DELETE FROM support_images WHERE ts < ?').run(cutoff);
+      if (days > 0) {
+        const cutoff = Date.now() - days * 86400_000;
+        db.prepare('DELETE FROM support_messages WHERE ts < ?').run(cutoff);
+        db.prepare('DELETE FROM support_archive WHERE ts < ?').run(cutoff);
+        db.prepare('DELETE FROM support_images WHERE ts < ?').run(cutoff);
+      }
+      if (imgDays > 0) db.prepare('DELETE FROM support_images WHERE ts < ?').run(Date.now() - imgDays * 86400_000);
     } catch (e) { console.error('support purge', e.message); }
   };
-  if (days > 0) purge();
-  if (days > 0) setInterval(purge, 3600_000).unref?.();
+  purge();
+  setInterval(purge, 3600_000).unref?.();
 }
 
 /** Chuẩn hoá nội dung: chuỗi văn bản, bỏ ký tự điều khiển, 1..1000 ký tự. Trả null nếu rỗng. */
@@ -65,6 +92,9 @@ export function cleanBody(raw) {
   if (!s) return null;
   return s.slice(0, MAX_LEN);
 }
+
+/** Mã gửi do client sinh: 8..40 ký tự chữ/số/gạch. */
+const cleanCid = (raw) => { const s = String(raw ?? ''); return /^[A-Za-z0-9_-]{8,40}$/.test(s) ? s : null; };
 
 const view = (m) => ({ id: m.id, from: m.from_admin ? 'admin' : 'user', body: m.body, ts: m.ts, image: m.image_id || null });
 
@@ -83,15 +113,58 @@ const rawImage = express.raw({ type: ['image/jpeg', 'image/png'], limit: IMG_MAX
 export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   const ipOf = clientIp;
   const sendLimit = rateLimit({ windowMs: 60_000, max: 8, keyFn: (req) => `${ipOf(req)}:support:${req.user?.id || 'na'}` });
-  /** Giữ tối đa MAX_PER_USER tin / người dùng: xoá tin cũ nhất và ảnh mồ côi. */
+  const adminSendLimit = rateLimit({ windowMs: 60_000, max: 30, keyFn: (req) => `${ipOf(req)}:support-admin:${req.user?.id || 'na'}` });
+  // Chống nhiều tài khoản từ một IP, và cầu dao toàn cục chống làm đầy DB khi bị tấn công phân tán
+  const ipLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.SUPPORT_IP_PER_MIN || 30), keyFn: (req) => `${ipOf(req)}:support-ip` });
+  const globalLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.SUPPORT_GLOBAL_PER_MIN || 300), keyFn: () => 'support-global' });
+  const userLimits = [ipLimit, globalLimit];
+
+  /** Mức dùng toàn hệ thống (cache 30 giây để mỗi request không phải quét bảng). */
+  let usageCache = { at: 0, msgs: 0, imgBytes: 0 };
+  function usage() {
+    if (Date.now() - usageCache.at > 30_000) {
+      usageCache = {
+        at: Date.now(),
+        msgs: db.prepare('SELECT COUNT(*) AS n FROM support_messages').get().n + db.prepare('SELECT COUNT(*) AS n FROM support_archive').get().n,
+        imgBytes: db.prepare('SELECT COALESCE(SUM(length(data)), 0) AS n FROM support_images').get().n,
+      };
+    }
+    return usageCache;
+  }
+
+  /** Giữ tối đa MAX_PER_USER tin hiển thị: tin cũ hơn CHUYỂN sang kho lưu trữ (không xoá). */
   function trim(uid) {
     const n = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ?').get(uid).n;
     if (n <= MAX_PER_USER) return;
-    db.prepare(`DELETE FROM support_messages WHERE user_id = ? AND id <= (
-      SELECT id FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`).run(uid, uid, MAX_PER_USER);
-    db.prepare('DELETE FROM support_images WHERE user_id = ? AND id NOT IN (SELECT image_id FROM support_messages WHERE user_id = ? AND image_id IS NOT NULL)').run(uid, uid);
+    db.transaction(() => {
+      const cut = db.prepare('SELECT id FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?').get(uid, MAX_PER_USER)?.id;
+      if (!cut) return;
+      db.prepare(`INSERT OR IGNORE INTO support_archive (id, user_id, from_admin, body, ts, image_id, archived_ts)
+        SELECT id, user_id, from_admin, body, ts, image_id, ? FROM support_messages WHERE user_id = ? AND id <= ?`).run(Date.now(), uid, cut);
+      db.prepare('DELETE FROM support_messages WHERE user_id = ? AND id <= ?').run(uid, cut);
+      // Kho lưu trữ cũng có trần để DB không phình vô hạn: vượt thì bỏ tin lưu trữ cũ nhất (và ảnh mồ côi)
+      const ac = db.prepare('SELECT COUNT(*) AS n FROM support_archive WHERE user_id = ?').get(uid).n;
+      if (ac > ARCHIVE_MAX) {
+        const acut = db.prepare('SELECT id FROM support_archive WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?').get(uid, ARCHIVE_MAX)?.id;
+        if (acut) db.prepare('DELETE FROM support_archive WHERE user_id = ? AND id <= ?').run(uid, acut);
+      }
+      db.prepare(`DELETE FROM support_images WHERE user_id = ? AND id NOT IN (
+        SELECT image_id FROM support_messages WHERE user_id = ? AND image_id IS NOT NULL
+        UNION SELECT image_id FROM support_archive WHERE user_id = ? AND image_id IS NOT NULL)`).run(uid, uid, uid);
+    })();
   }
-  const adminSendLimit = rateLimit({ windowMs: 60_000, max: 30, keyFn: (req) => `${ipOf(req)}:support-admin:${req.user?.id || 'na'}` });
+
+  /** Lịch sử cũ (tin hiển thị + kho lưu trữ) có id < before, theo thứ tự đọc. */
+  function history(uid, before, limit) {
+    const lim = Math.min(100, Math.max(1, Number(limit) || 50));
+    const b = Number(before) > 0 ? Number(before) : Number.MAX_SAFE_INTEGER;
+    const rows = db.prepare(`SELECT id, from_admin, body, ts, image_id FROM (
+        SELECT id, from_admin, body, ts, image_id FROM support_messages WHERE user_id = ? AND id < ?
+        UNION ALL
+        SELECT id, from_admin, body, ts, image_id FROM support_archive WHERE user_id = ? AND id < ?)
+      ORDER BY id DESC LIMIT ?`).all(uid, b, uid, b, lim + 1);
+    return { messages: rows.slice(0, lim).reverse().map(view), more: rows.length > lim };
+  }
 
   /* ---------------- người dùng ---------------- */
   app.get('/api/support/messages', requireAuth, (req, res) => {
@@ -103,18 +176,31 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     res.json({ messages: rows.map(view) });
   });
 
+  app.get('/api/support/history', requireAuth, (req, res) => {
+    res.json(history(req.user.id, req.query.before, req.query.limit));
+  });
+
   app.get('/api/support/unread', requireAuth, (req, res) => {
     const n = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 1 AND read_ts IS NULL').get(req.user.id).n;
     res.json({ unread: n });
   });
 
-  app.post('/api/support/messages', requireAuth, sendLimit, (req, res) => {
+  app.post('/api/support/messages', requireAuth, ...userLimits, sendLimit, (req, res) => {
     const body = cleanBody(req.body?.body);
     if (!body) return res.status(400).json({ error: 'empty_message' });
+    const cid = cleanCid(req.body?.cid);
+    if (cid) {   // gửi lại cùng mã (rớt mạng): trả tin đã có, không tạo trùng
+      const ex = db.prepare('SELECT id FROM support_messages WHERE user_id = ? AND cid = ?').get(req.user.id, cid);
+      if (ex) return res.json({ ok: true, id: ex.id, duplicate: true });
+    }
+    if (usage().msgs >= GLOBAL_MESSAGES) return res.status(503).json({ error: 'busy' });
     const today = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 0 AND ts > ?').get(req.user.id, Date.now() - 86400_000).n;
     if (today >= DAILY_CAP) return res.status(429).json({ error: 'rate_limited' });
+    // Chặn gửi đi gửi lại cùng một nội dung (spam)
+    const same = db.prepare('SELECT 1 FROM support_messages WHERE user_id = ? AND from_admin = 0 AND body = ? AND ts > ? LIMIT 1').get(req.user.id, body, Date.now() - 60_000);
+    if (same) return res.status(429).json({ error: 'duplicate' });
     const hint = PLAN_CATALOG[String(req.body?.plan || '')] ? String(req.body.plan) : null;
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint) VALUES (?, 0, ?, ?, ?)').run(req.user.id, body, Date.now(), hint);
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint, cid) VALUES (?, 0, ?, ?, ?, ?)').run(req.user.id, body, Date.now(), hint, cid);
     if (hint) db.prepare('INSERT INTO support_requests (user_id, plan, ts) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan, ts = excluded.ts').run(req.user.id, hint, Date.now());
     trim(req.user.id);
     res.json({ ok: true, id: Number(r.lastInsertRowid) });
@@ -164,6 +250,41 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     });
   });
 
+  // Lịch sử cũ của một người dùng (kể cả kho lưu trữ), phân trang theo id
+  app.get('/api/admin/support/threads/:uid/history', ...adminOnly, (req, res) => {
+    const uid = Number(req.params.uid);
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(uid)) return res.status(404).json({ error: 'user_not_found' });
+    res.json(history(uid, req.query.before, req.query.limit));
+  });
+
+  // Xuất toàn bộ hội thoại để đối soát: ?format=txt (mặc định) hoặc json (&images=1 kèm ảnh base64)
+  app.get('/api/admin/support/threads/:uid/export', ...adminOnly, (req, res) => {
+    const uid = Number(req.params.uid);
+    const u = db.prepare('SELECT username FROM users WHERE id = ?').get(uid);
+    if (!u) return res.status(404).json({ error: 'user_not_found' });
+    const rows = db.prepare(`SELECT id, from_admin, body, ts, image_id FROM (
+        SELECT id, from_admin, body, ts, image_id FROM support_messages WHERE user_id = ?
+        UNION ALL SELECT id, from_admin, body, ts, image_id FROM support_archive WHERE user_id = ?) ORDER BY id ASC`).all(uid, uid);
+    audit(db, 'support_export', { userId: req.user.id, ip: ipOf(req), detail: `to:${uid}` });
+    const safe = String(u.username).replace(/[^\w.-]/g, '_');
+    if (String(req.query.format) === 'json') {
+      const withImg = String(req.query.images) === '1';
+      const out = rows.map((m) => {
+        const o = view(m);
+        if (withImg && m.image_id) {
+          const im = db.prepare('SELECT mime, data FROM support_images WHERE id = ? AND user_id = ?').get(m.image_id, uid);
+          if (im) o.imageData = `data:${im.mime};base64,${im.data.toString('base64')}`;
+        }
+        return o;
+      });
+      res.set('Content-Disposition', `attachment; filename="chat-${safe}.json"`);
+      return res.json({ username: u.username, exportedAt: Date.now(), messages: out });
+    }
+    const txt = rows.map((m) => `[${new Date(m.ts).toISOString()}] ${m.from_admin ? 'Admin' : u.username}: ${m.image_id ? `[ảnh #${m.image_id}] ` : ''}${m.body}`).join('\n');
+    res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="chat-${safe}.txt"`, 'X-Content-Type-Options': 'nosniff' });
+    return res.send(txt + '\n');
+  });
+
   /* Đồng ý / Từ chối yêu cầu tư vấn đổi gói. Đồng ý = admin gán gói THỦ CÔNG (như Console) + nhắn xác nhận bằng chữ.
      Từ chối = nhắn lý do bằng chữ. Không lưu "đơn hàng", không có trạng thái thanh toán. */
   const say = (uid, text) => { db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)').run(uid, text, Date.now()); trim(uid); };
@@ -210,14 +331,26 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const buf = req.body;
     const mime = imageMime(buf);
     if (!mime) return { status: 400, json: { error: 'bad_image' } };
+    const cid = cleanCid(req.query.cid);
+    if (cid) {
+      const ex = db.prepare('SELECT id, image_id FROM support_messages WHERE user_id = ? AND cid = ?').get(userId, cid);
+      if (ex) return { status: 200, json: { ok: true, id: ex.id, image: ex.image_id, duplicate: true } };
+    }
     const caption = cleanBody(req.query.caption) || '';
     const used = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = ? AND image_id IS NOT NULL AND ts > ?')
       .get(userId, fromAdmin, Date.now() - 86400_000).n;
     if (used >= dailyCap) return { status: 429, json: { error: 'rate_limited' } };
+    // Hạn mức dung lượng: mỗi người dùng và toàn hệ thống (chống làm đầy đĩa/DB bằng ảnh)
+    if (!fromAdmin) {
+      const mine = db.prepare('SELECT COALESCE(SUM(length(data)), 0) AS n FROM support_images WHERE user_id = ?').get(userId).n;
+      if (mine + buf.length > USER_IMG_BYTES) return { status: 413, json: { error: 'quota_exceeded' } };
+    }
+    if (usage().imgBytes + buf.length > GLOBAL_IMG_BYTES || usage().msgs >= GLOBAL_MESSAGES) return { status: 503, json: { error: 'busy' } };
     const now = Date.now();
     const img = db.prepare('INSERT INTO support_images (user_id, mime, data, ts) VALUES (?, ?, ?, ?)').run(userId, mime, buf, now);
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, image_id) VALUES (?, ?, ?, ?, ?)')
-      .run(userId, fromAdmin, caption, now, Number(img.lastInsertRowid));
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, image_id, cid) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(userId, fromAdmin, caption, now, Number(img.lastInsertRowid), cid);
+    usageCache.imgBytes += buf.length;
     trim(userId);
     return { status: 200, json: { ok: true, id: Number(r.lastInsertRowid), image: Number(img.lastInsertRowid) } };
   }
@@ -228,7 +361,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
   }
   const imgLimit = rateLimit({ windowMs: 60_000, max: 6, keyFn: (req) => `${ipOf(req)}:support-img:${req.user?.id || 'na'}` });
 
-  app.post('/api/support/images', requireAuth, imgLimit, rawImage, (req, res) => {
+  app.post('/api/support/images', requireAuth, ...userLimits, imgLimit, rawImage, (req, res) => {
     const r = saveImage(req, req.user.id, 0, IMG_DAILY_USER);
     res.status(r.status).json(r.json);
   });

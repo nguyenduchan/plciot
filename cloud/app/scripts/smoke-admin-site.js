@@ -189,6 +189,36 @@ try {
   await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}`, { body: 'tin-moi-nhat' }, token);
   const cnt = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id=?').get(cust.id).n;
   check('giới hạn: mỗi người dùng tối đa 200 tin, giữ tin mới nhất', cnt === 200 && db.prepare("SELECT 1 FROM support_messages WHERE user_id=? AND body='tin-moi-nhat'").get(cust.id) && !db.prepare("SELECT 1 FROM support_messages WHERE user_id=? AND body='bulk0'").get(cust.id));
+  // kho lưu trữ: tin cũ được chuyển (không mất), xem được qua history và export
+  check('kho: tin cũ nằm trong support_archive', db.prepare("SELECT COUNT(*) AS n FROM support_archive WHERE user_id=?").get(cust.id).n > 0 && !!db.prepare("SELECT 1 FROM support_archive WHERE user_id=? AND body='bulk0'").get(cust.id));
+  const hist = await req(APP, 'GET', '/api/support/history?limit=100', null, ctok);
+  check('kho: người dùng xem lịch sử cũ qua /history (phân trang)', hist.status === 200 && Array.isArray(hist.j?.messages) && hist.j.messages.length === 100 && hist.j.more === true);
+  const oldest = hist.j.messages[0].id;
+  let cur = oldest; let found = false; let pages = 0; let more = true; let ordered = true;
+  while (more && pages++ < 10) {
+    const pg = await req(APP, 'GET', `/api/support/history?before=${cur}&limit=100`, null, ctok);
+    if (!pg.j?.messages?.length) break;
+    if (pg.j.messages.some((m) => m.body === 'bulk0')) found = true;
+    if (!pg.j.messages.every((m) => m.id < cur)) ordered = false;
+    cur = pg.j.messages[0].id; more = pg.j.more;
+  }
+  check('kho: lật trang cũ hơn tới tin bulk0, hết thì more=false', found && ordered && more === false);
+  const ah = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/history?limit=5`, null, token);
+  check('kho: admin xem lịch sử cũ', ah.status === 200 && ah.j?.messages?.length === 5);
+  const ex = await rawReq(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/export`, Buffer.alloc(0), token);
+  check('kho: admin xuất hội thoại gồm cả kho lưu trữ', ex.status === 200 && ex.b.toString().includes('bulk0') && /attachment/.test('attachment'));
+  check('kho: người dùng thường không xuất được', (await req(APP, 'GET', `/api/admin/support/threads/${cust.id}/export`, null, ctok)).status === 404);
+  // chống spam / trùng
+  const cid = 'cid-test-0001';
+  const c1 = await req(APP, 'POST', '/api/support/messages', { body: 'thử cid', cid }, ctok);
+  const c2 = await req(APP, 'POST', '/api/support/messages', { body: 'thử cid', cid }, ctok);
+  check('chống trùng: gửi lại cùng cid không tạo tin mới', c1.status === 200 && c2.status === 200 && c2.j?.duplicate === true && c1.j.id === c2.j.id);
+  const dup = await req(APP, 'POST', '/api/support/messages', { body: 'thử cid' }, ctok);
+  check('chống spam: cùng nội dung trong 60 giây bị chặn', dup.status === 429 && dup.j?.error === 'duplicate');
+  // hạn mức ảnh: nhét sẵn vào DB tới sát trần rồi thử gửi thêm
+  db.prepare('INSERT INTO support_images (user_id, mime, data, ts) VALUES (?, ?, ?, ?)').run(cust.id, 'image/png', Buffer.alloc(31 * 1024 * 1024), Date.now());
+  const qi = await rawReq(APP, 'POST', '/api/support/images?cid=cid-img-0001', png, ctok);
+  check('hạn mức: vượt dung lượng ảnh / người dùng bị từ chối 413', qi.status === 413);
   check('chat: không có endpoint đơn hàng/thanh toán', (await req(APP, 'POST', '/api/support/order', {}, ctok)).status === 404 && (await req(APP, 'POST', '/api/support/pay', {}, ctok)).status === 404);
 } catch (e) {
   fails++; console.error('LỖI', e.message);

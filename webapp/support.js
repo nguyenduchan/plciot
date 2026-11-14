@@ -9,6 +9,8 @@
   let session = null;
   try { session = JSON.parse(localStorage.getItem('session')); } catch {}
   const panel = $('#support-panel');
+  // Đã đăng xuất: xoá bộ nhớ đệm chat trên máy (máy dùng chung không để lộ nội dung)
+  if (!session?.token) { try { indexedDB.databases?.().then((l) => (l || []).forEach((d) => /^plciot-chat-/.test(d.name) && indexedDB.deleteDatabase(d.name))); } catch {} }
   if (!panel || !session?.token || session.demo) return;
   panel.hidden = false;
 
@@ -18,7 +20,34 @@
   const badge = $('#support-badge');
   let lastId = 0;
   let timer = null;
-  const ERR = { empty_message: 'Hãy nhập nội dung.', rate_limited: 'Bạn gửi quá nhanh, thử lại sau.' };
+  const ERR = { empty_message: 'Hãy nhập nội dung.', rate_limited: 'Bạn gửi quá nhanh, thử lại sau.', duplicate: 'Tin này vừa được gửi rồi.',
+    quota_exceeded: 'Đã hết dung lượng ảnh cho tài khoản này.', busy: 'Hệ thống đang bận, thử lại sau.' };
+  const newCid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 36).padEnd(8, '0');
+
+  /* Bộ nhớ đệm trên máy (IndexedDB, theo từng tài khoản). Máy chủ vẫn là nguồn sự thật: chỉ để mở nhanh và xem được khi mất mạng. */
+  const CACHE_MAX = 200;
+  const cache = (() => {
+    // Khoá theo id người dùng trong token: không có thì tắt bộ nhớ đệm (không bao giờ trộn nội dung giữa các tài khoản)
+    let uid = null;
+    try { const p = JSON.parse(atob(session.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); uid = p.sub ?? p.id ?? p.uid ?? null; } catch { /* */ }
+    const name = `plciot-chat-${uid}`;
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((resolve) => {
+      if (uid == null) return resolve(null);
+      try {
+        const rq = indexedDB.open(name, 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('m', { keyPath: 'id' });
+        rq.onsuccess = () => resolve(rq.result);
+        rq.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    }));
+    const tx = async (mode, fn) => { const d = await open(); if (!d) return null; return new Promise((res) => { try { const t = d.transaction('m', mode); const r = fn(t.objectStore('m')); t.oncomplete = () => res(r?.result ?? null); t.onerror = () => res(null); } catch { res(null); } }); };
+    return {
+      all: () => tx('readonly', (st) => st.getAll()),
+      put: (list) => tx('readwrite', (st) => { list.forEach((m) => st.put(m)); }),
+      async trim() { const a = await this.all(); if (a && a.length > CACHE_MAX) { const del = a.sort((x, y) => x.id - y.id).slice(0, a.length - CACHE_MAX); await tx('readwrite', (st) => { del.forEach((m) => st.delete(m.id)); }); } },
+    };
+  })();
 
   async function call(method, path, body) {
     const r = await fetch(base + path, {
@@ -38,29 +67,49 @@
   }
   $('#support-reload-btn').addEventListener('click', () => location.reload());
 
-  function addMessages(list) {
-    for (const m of list) {
-      if (loadedOnce && m.from === 'admin' && m.id > lastId && /đã đồng ý và chuyển tài khoản/.test(m.body)) showReloadBanner();
-      lastId = Math.max(lastId, m.id);
-      const row = document.createElement('div');
-      row.className = `sup-msg ${m.from}`;
-      const who = document.createElement('small');
-      who.textContent = `${m.from === 'admin' ? 'Quản trị viên' : 'Bạn'} · ${new Date(m.ts).toLocaleString('vi-VN')}`;
-      const txt = document.createElement('div');
-      txt.className = 'sup-text';
-      txt.textContent = m.body;   // textContent: không hiểu HTML, không thành link
-      row.append(who);
-      if (m.image) window.ChatImage?.attach(row, `${base}/api/support/images/${m.image}`, session.token);
-      if (m.body) row.append(txt);
-      log.appendChild(row);
-    }
-    if (list.length) log.scrollTop = log.scrollHeight;
+  function rowOf(m) {
+    const row = document.createElement('div');
+    row.className = `sup-msg ${m.from}`;
+    const who = document.createElement('small');
+    who.textContent = `${m.from === 'admin' ? 'Quản trị viên' : 'Bạn'} · ${new Date(m.ts).toLocaleString('vi-VN')}`;
+    const txt = document.createElement('div');
+    txt.className = 'sup-text';
+    txt.textContent = m.body;   // textContent: không hiểu HTML, không thành link
+    row.append(who);
+    if (m.image) window.ChatImage?.attach(row, `${base}/api/support/images/${m.image}`, session.token);
+    if (m.body) row.append(txt);
+    return row;
   }
+  let oldestId = 0;
+  function addMessages(list, fromCache) {
+    for (const m of list) {
+      if (!fromCache && loadedOnce && m.from === 'admin' && m.id > lastId && /đã đồng ý và chuyển tài khoản/.test(m.body)) showReloadBanner();
+      lastId = Math.max(lastId, m.id);
+      if (!oldestId || m.id < oldestId) oldestId = m.id;
+      log.appendChild(rowOf(m));
+    }
+    if (list.length) { log.scrollTop = log.scrollHeight; if (!fromCache) { cache.put(list).then(() => cache.trim()); } }
+  }
+
+  /** Xem tin cũ hơn (kể cả kho lưu trữ trên máy chủ), chèn lên đầu khung. */
+  const olderBtn = $('#support-older');
+  olderBtn.addEventListener('click', async () => {
+    olderBtn.disabled = true;
+    try {
+      const { ok, data } = await call('GET', `/api/support/history?before=${oldestId || ''}&limit=50`);
+      if (ok) {
+        const h = log.scrollHeight;
+        for (const m of [...data.messages].reverse()) { log.prepend(rowOf(m)); oldestId = Math.min(oldestId || m.id, m.id); }
+        log.scrollTop = log.scrollHeight - h;
+        olderBtn.hidden = !data.more;
+      }
+    } catch { /* offline */ } finally { olderBtn.disabled = false; }
+  });
 
   async function refresh(markRead) {
     try {
       const { ok, data } = await call('GET', `/api/support/messages?after=${lastId}${markRead ? '&read=1' : ''}`);
-      if (ok) { addMessages(data.messages || []); loadedOnce = true; if (markRead) setBadge(0); }
+      if (ok) { addMessages(data.messages || []); loadedOnce = true; olderBtn.hidden = !oldestId; if (markRead) setBadge(0); }
     } catch { /* offline */ }
   }
 
@@ -86,13 +135,15 @@
     } catch { /* */ }
   }
 
+  let pendingCid = {};
   async function send() {
     const body = input.value.trim();
     if (!body) return;
     $('#support-send').disabled = true;
+    if (pendingCid.body !== body) pendingCid = { body, cid: newCid() };   // gửi lại cùng nội dung = cùng mã → máy chủ không tạo tin trùng
     try {
-      const { ok, data } = await call('POST', '/api/support/messages', { body });
-      if (ok) { input.value = ''; await refresh(true); } else (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.');
+      const { ok, data } = await call('POST', '/api/support/messages', { body, cid: pendingCid.cid });
+      if (ok) { input.value = ''; pendingCid = {}; await refresh(true); } else (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.');
     } finally { $('#support-send').disabled = false; }
   }
 
@@ -103,11 +154,12 @@
     try {
       const blob = await window.ChatImage.prepare(file);
       const caption = input.value.trim();
-      const r = await fetch(`${base}/api/support/images${caption ? `?caption=${encodeURIComponent(caption)}` : ''}`, {
+      const cid = newCid();
+      const r = await fetch(`${base}/api/support/images?cid=${cid}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: blob,
       });
       const data = await r.json().catch(() => ({}));
-      if (r.ok) { input.value = ''; await refresh(true); } else (window.toast || alert)(data.error === 'rate_limited' ? 'Bạn gửi quá nhiều ảnh, thử lại sau.' : 'Không gửi được ảnh.');
+      if (r.ok) { input.value = ''; await refresh(true); } else (window.toast || alert)(data.error === 'rate_limited' ? 'Bạn gửi quá nhiều ảnh, thử lại sau.' : (ERR[data.error] || 'Không gửi được ảnh.'));
     } catch { (window.toast || alert)('Không đọc được ảnh này.'); } finally { btn.disabled = false; $('#support-file').value = ''; }
   }
   $('#support-attach').addEventListener('click', () => $('#support-file').click());
@@ -173,7 +225,7 @@
     if (!body) return;
     $('#support-plan-send').disabled = true;
     try {
-      const { ok, data } = await call('POST', '/api/support/messages', { body, plan: pendingPlan });
+      const { ok, data } = await call('POST', '/api/support/messages', { body, plan: pendingPlan, cid: newCid() });
       if (ok) { resetPlanChoice(); await refresh(true); } else (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.');
     } finally { $('#support-plan-send').disabled = false; }
   });
@@ -191,7 +243,10 @@
   det.addEventListener('toggle', () => { if (det.open) fillPlans(); });
   document.addEventListener('DOMContentLoaded', fillPlans);
 
-  refresh(false);
+  // Hiện ngay tin đã lưu trên máy, rồi hỏi máy chủ phần mới hơn
+  cache.all().then((list) => {
+    if (list?.length && !lastId) addMessages(list.sort((a, b) => a.id - b.id), true);
+  }).finally(() => refresh(false));
   pollUnread();
   setInterval(() => { if (!det.open) pollUnread(); }, 60000);
 })();

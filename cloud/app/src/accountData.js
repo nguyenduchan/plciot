@@ -23,6 +23,10 @@ const USER_TABLES = [
   'stations',
   'recovery_enrollments',
   'login_attempts',
+  'support_messages',
+  'support_archive',
+  'support_images',
+  'support_requests',
 ];
 
 function syncBroker(db) {
