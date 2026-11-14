@@ -39,16 +39,14 @@
 
   function requestText() {
     const cur = sub?.planLabel || 'Miễn phí';
-    return `Yêu cầu nâng gói dịch vụ PLCIOT\nTài khoản: ${username || '(tên đăng nhập)'}\nGói hiện tại: ${cur}\nĐề nghị nâng lên: Giám sát + điều khiển (không giới hạn widget)`;
+    return `Xin chào, tôi muốn được tư vấn nâng cấp gói. Tài khoản: ${username || '(tên đăng nhập)'}, gói hiện tại: ${cur}.`;
   }
 
-  async function copyRequest() {
-    const t = requestText();
-    try { await navigator.clipboard.writeText(t); } catch {
-      const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); } catch { /* */ } ta.remove();
-    }
-    (window.toast || (() => {}))('Đã sao chép yêu cầu nâng gói — gửi cho quản trị viên.');
+  /** Mở khung chat với quản trị viên, chỉ điền sẵn lời nhắn (người dùng tự bấm Gửi). Không tạo đơn, không thanh toán. */
+  function copyRequest() {
+    document.getElementById('plan-sheet')?.remove();
+    if (typeof window.showTab === 'function') window.showTab('set');
+    if (window.SupportChat) window.SupportChat.open(requestText());
   }
 
   function show(code) {
@@ -61,12 +59,12 @@
       <p>${reasonText(code)}</p>
       <p class="note">Cách xử lý:</p>
       <ol>
-        <li>Bấm <b>Nâng gói</b> để mở mục Gói dịch vụ trong Cài đặt.</li>
-        <li>Bấm <b>Sao chép yêu cầu</b> và gửi cho quản trị viên.</li>
+        <li>Bấm <b>Xem gói</b> để mở mục Gói dịch vụ trong Cài đặt.</li>
+        <li>Bấm <b>Chat để nâng cấp</b> để nhắn trực tiếp cho quản trị viên.</li>
         <li>Khi quản trị viên đã nâng gói, tải lại trang là dùng được ngay (không cần đăng nhập lại).</li>
         ${locked ? '<li>Hoặc gỡ bớt thiết bị để tổng số widget trong giới hạn của gói.</li>' : ''}
       </ol>
-      <div class="row"><button type="button" class="primary" id="ps-up">Nâng gói</button><button type="button" class="fit" id="ps-copy">Sao chép yêu cầu</button><button type="button" class="fit" id="ps-close">Đóng</button></div>
+      <div class="row"><button type="button" class="primary" id="ps-up">Xem gói</button><button type="button" class="fit" id="ps-copy">Chat để nâng cấp</button><button type="button" class="fit" id="ps-close">Đóng</button></div>
     </div>`;
     document.body.appendChild(el);
     el.addEventListener('click', (e) => { if (e.target === el) el.remove(); });

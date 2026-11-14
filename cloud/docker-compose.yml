@@ -130,6 +130,8 @@ services:
       ADMIN_HOST: ${ADMIN_HOST:-}                       # tên miền admin riêng (docs/ADMIN-SITE.md)
       ADMIN_REQUIRE_TOTP: ${ADMIN_REQUIRE_TOTP:-true}
       ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-8}
+      SUPPORT_DAILY_CAP: ${SUPPORT_DAILY_CAP:-100}             # chat hỗ trợ (docs/CHAT-COMPLIANCE.md)
+      SUPPORT_RETENTION_DAYS: ${SUPPORT_RETENTION_DAYS:-365}
       # PHASE TEST: nâng tạm tài khoản test lên admin. PRODUCTION: đặt rỗng.
       TEST_ADMIN_USERNAMES: ${TEST_ADMIN_USERNAMES:-}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}

@@ -302,7 +302,7 @@
     const byId = Object.fromEntries(dashboard.devices.map((d) => [d.id, d]));
     const pl = dashboard.plan;
     const banner = pl && pl.locked > 0
-      ? `<div class="plan-banner" id="plan-banner">🔒 <span>Gói ${esc(pl.label || 'Miễn phí')} chỉ dùng ${pl.widgetLimit} widget — ${pl.locked} widget đang bị khoá (làm mờ, không cập nhật dữ liệu).</span><button type="button" class="primary" id="plan-up">Nâng gói</button></div>`
+      ? `<div class="plan-banner" id="plan-banner">🔒 <span>Gói ${esc(pl.label || 'Miễn phí')} chỉ dùng ${pl.widgetLimit} widget — ${pl.locked} widget đang bị khoá (làm mờ, không cập nhật dữ liệu).</span><button type="button" class="primary" id="plan-up">Chat để nâng cấp</button></div>`
       : '';
     const sig = structSig(order, byId, banner);
     if (sig === lastSig && host.querySelector('.dev-card')) { patchLive(host, order, byId); return; }   // chỉ số liệu đổi: vá tại chỗ

@@ -57,7 +57,13 @@ try {
     const ks = Object.keys(row).filter((k) => cols.includes(k));
     db.prepare(`INSERT INTO users (${ks.join(',')}) VALUES (${ks.map(() => '?').join(',')})`).run(...ks.map((k) => row[k]));
   } else db.prepare('UPDATE users SET login_password_hash = ?, role = ? WHERE username = ?').run(row.login_password_hash, 'admin', 'boss');
-  db.prepare("INSERT OR IGNORE INTO users (username, role, login_password_hash, setup_complete, folder_path, notify_site, notify_device) VALUES ('other','admin',?,1,'u_other','s','d')").run(row.login_password_hash);
+  if (!db.prepare("SELECT 1 FROM users WHERE username = 'other'").get()) {
+    const r2 = { ...row, username: 'other' };
+    const need2 = db.prepare('PRAGMA table_info(users)').all().filter((c) => c.notnull && c.dflt_value == null && c.name !== 'id').map((c) => c.name);
+    for (const n of need2) if (!(n in r2)) r2[n] = n.includes('folder') ? 'u_other' : 'x';
+    const ks2 = Object.keys(r2).filter((k) => cols.includes(k));
+    db.prepare(`INSERT INTO users (${ks2.join(',')}) VALUES (${ks2.map(() => '?').join(',')})`).run(...ks2.map((k) => r2[k]));
+  }
 
   // 1) cổng theo tên miền
   check('admin host: trang đăng nhập', (await req(ADMIN, 'GET', '/admin-login.html')).status === 200);
@@ -122,6 +128,45 @@ try {
   const jwt = (await import('jsonwebtoken')).default.sign({ scope: 'full', uid: plain.id, tv: plain.token_version | 0, sid }, env.APP_JWT_SECRET, { expiresIn: 600 });
   const viaApp = await req(ADMIN, 'GET', '/api/admin/users', null, jwt);
   check('token đăng nhập của app không dùng được ở tên miền admin', viaApp.status === 401 && viaApp.j?.error === 'admin_session_required');
+
+  // 7) chat hỗ trợ: người dùng (tên miền app) ↔ admin (tên miền admin), chỉ văn bản
+  const cust = db.prepare("SELECT id, token_version FROM users WHERE username='other'").get();
+  const csid = 'e'.repeat(48);
+  db.prepare('INSERT INTO app_sessions (id, user_id, device_id, last_seen) VALUES (?,?,?,?)').run(csid, cust.id, 'phone-2', Date.now());
+  const JWT = (await import('jsonwebtoken')).default;
+  const ctok = JWT.sign({ scope: 'full', uid: cust.id, tv: cust.token_version | 0, sid: csid }, env.APP_JWT_SECRET, { expiresIn: 600 });
+  check('chat: tin rỗng bị từ chối', (await req(APP, 'POST', '/api/support/messages', { body: '   ' }, ctok)).status === 400);
+  const html = '<script>alert(1)</script> https://pay.example/x';
+  check('chat: người dùng gửi tin', (await req(APP, 'POST', '/api/support/messages', { body: html }, ctok)).status === 200);
+  check('chat: tên miền admin không có API chat của người dùng', (await req(ADMIN, 'GET', '/api/support/messages', null, ctok)).status === 404);
+  const thr = await req(ADMIN, 'GET', '/api/admin/support/threads', null, token);
+  check('chat: admin thấy cuộc trò chuyện chưa đọc', thr.status === 200 && thr.j?.unread >= 1 && thr.j.threads[0]?.username === 'other');
+  const conv = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
+  check('chat: nội dung giữ nguyên dạng văn bản (không lọc/biến đổi thành link)', conv.j?.messages?.[0]?.body === html);
+  check('chat: người dùng thường không dùng được API admin chat', (await req(APP, 'GET', '/api/admin/support/threads', null, ctok)).status === 404);
+  check('chat: admin trả lời', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}`, { body: 'Xin chào' }, token)).status === 200);
+  const unread = await req(APP, 'GET', '/api/support/unread', null, ctok);
+  check('chat: người dùng thấy 1 tin chưa đọc', unread.j?.unread === 1);
+  const mine = await req(APP, 'GET', '/api/support/messages?read=1', null, ctok);
+  check('chat: người dùng đọc được và đánh dấu đã đọc', mine.j?.messages?.length === 2 && (await req(APP, 'GET', '/api/support/unread', null, ctok)).j?.unread === 0);
+  // ảnh chụp màn hình
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), Buffer.alloc(64, 7)]);
+  const rawReq = (host, method, url, buf, tok, type = 'image/png') => new Promise((resolve, reject) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: url, headers: { Host: host, 'CF-Connecting-IP': '9.9.9.9', 'X-Forwarded-For': '9.9.9.9', 'Content-Type': type, 'Content-Length': buf.length, Authorization: `Bearer ${tok}` } }, (res) => {
+      const ch = []; res.on('data', (c) => ch.push(c)); res.on('end', () => { const b = Buffer.concat(ch); let j = null; try { j = JSON.parse(b.toString()); } catch { /* ảnh */ } resolve({ status: res.statusCode, j, b, type: res.headers['content-type'] }); });
+    });
+    r.on('error', reject); r.end(buf);
+  });
+  const upl = await rawReq(APP, 'POST', '/api/support/images?caption=' + encodeURIComponent('lỗi này'), png, ctok);
+  check('ảnh: người dùng gửi PNG hợp lệ', upl.status === 200 && upl.j?.image);
+  check('ảnh: tệp không phải ảnh bị từ chối', (await rawReq(APP, 'POST', '/api/support/images', Buffer.from('<html>not an image at all</html>'), ctok, 'image/png')).status === 400);
+  check('ảnh: người dùng xem được ảnh của mình', (await rawReq(APP, 'GET', `/api/support/images/${upl.j.image}`, Buffer.alloc(0), ctok)).type === 'image/png');
+  const view = await rawReq(ADMIN, 'GET', `/api/admin/support/images/${upl.j.image}`, Buffer.alloc(0), token);
+  check('ảnh: admin xem được ảnh người dùng gửi', view.status === 200 && view.type === 'image/png' && view.b.equals(png));
+  const adminImg = await rawReq(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/image`, png, token);
+  check('ảnh: admin gửi ảnh cho người dùng', adminImg.status === 200);
+  check('ảnh: tin nhắn có kèm mã ảnh', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.image === upl.j.image && m.body === 'lỗi này'));
+  check('chat: không có endpoint đơn hàng/thanh toán', (await req(APP, 'POST', '/api/support/order', {}, ctok)).status === 404 && (await req(APP, 'POST', '/api/support/pay', {}, ctok)).status === 404);
 } catch (e) {
   fails++; console.error('LỖI', e.message);
 } finally {

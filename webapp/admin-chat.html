@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="robots" content="noindex,nofollow">
+<title>Hỗ trợ người dùng — Quản trị PLC</title>
+<link rel="icon" href="icon.svg?v=3">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:16px;max-width:1100px;margin:auto}
+.cols{display:grid;grid-template-columns:minmax(240px,1fr) minmax(320px,2fr);gap:14px;align-items:start}
+@media(max-width:800px){.cols{grid-template-columns:1fr}}
+.panel{max-width:none;margin:0}
+.help{font-size:13px;color:var(--mut);line-height:1.5}
+.th{display:grid;gap:2px;padding:10px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}
+.th:hover,.th.on{background:var(--accbg)}
+.th small{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accbg);color:var(--acc)}
+.tag.new{background:#dc262622;color:var(--bad)}
+#log{height:380px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:4px}
+.sup-msg{max-width:88%;padding:8px 12px;border-radius:12px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+.sup-msg.admin{align-self:flex-end;background:var(--accbg)}
+.sup-msg small{display:block;color:var(--mut);font-size:11px;margin-bottom:2px}
+.sup-text{white-space:pre-wrap;word-break:break-word;font-size:14px}
+#msg{min-height:1.3em;font-size:14px;margin:0 0 8px}#msg.err{color:var(--bad)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<h1 style="font-size:20px;margin:0 0 10px">Hỗ trợ người dùng</h1>
+<p id="msg"></p>
+<div class="cols">
+  <div class="panel form">
+    <h2>Cuộc trò chuyện</h2>
+    <label>Nhắn người dùng mới<input id="find" placeholder="Gõ tên đăng nhập…" autocomplete="off"></label>
+    <div id="found"></div>
+    <div id="threads" style="margin-top:8px">Đang tải…</div>
+  </div>
+  <div class="panel form" id="conv">
+    <h2 id="who">Chọn một cuộc trò chuyện</h2>
+    <p class="help hidden" id="plan-line"></p>
+    <div id="log"></div>
+    <label>Mẫu tin nhắn (chỉ điền sẵn vào ô soạn, bạn chỉnh rồi tự bấm Gửi)
+      <select id="tpl"><option value="">— chọn mẫu —</option></select>
+    </label>
+    <textarea id="input" rows="4" maxlength="1000" placeholder="Nhập tin nhắn…" disabled></textarea>
+    <div class="row"><button id="attach" class="fit" type="button" title="Gửi ảnh (hoặc dán ảnh vào ô soạn)">📷 Ảnh</button><button id="send" class="primary fit" disabled>Gửi</button></div>
+    <input type="file" id="file" accept="image/png,image/jpeg,image/*" hidden>
+    <p class="help">Chỉ nhắn văn bản. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p>
+  </div>
+</div>
+<script src="admin-nav.js"></script>
+<script src="chat-image.js"></script>
+<script src="admin-chat.js"></script>
+</body>
+</html>

@@ -708,3 +708,10 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 /* sóng nước của icon 3D (bồn…) không nằm trong .ic-water nên cần luật riêng; nhịp nhấp nháy sâu hơn để nhìn rõ */
 
 /* nước dâng/hạ trong bồn, thuỷ ngân nhiệt kế lên/xuống (icon 3D) */
+
+/* Chat hỗ trợ (support.js): văn bản thuần */
+.sup-log{max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:4px}
+.sup-msg{max-width:88%;padding:8px 12px;border-radius:12px;background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+.sup-msg.user{align-self:flex-end;background:var(--accbg)}
+.sup-msg small{display:block;color:var(--mut);font-size:11px;margin-bottom:2px}
+.sup-text{white-space:pre-wrap;word-break:break-word;font-size:14px}

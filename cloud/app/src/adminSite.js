@@ -30,11 +30,11 @@ const hostOf = (req) => String(req.headers.host || '').toLowerCase().replace(/:\
 /** Trang tĩnh chỉ có trên tên miền admin. */
 const ADMIN_PAGES = new Set([
   '/admin-login.html', '/admin-login.js', '/admin-settings.html', '/admin-settings.js',
-  '/admin.html', '/admin.js', '/console.html', '/console.js', '/admin-nav.js',
+  '/admin.html', '/admin.js', '/console.html', '/console.js', '/admin-nav.js', '/admin-chat.html', '/admin-chat.js',
 ]);
 /** Tệp dùng chung mà trang admin cần (có trên cả hai tên miền). */
 const SHARED_FILES = new Set([
-  '/style.css', '/icon.svg', '/icon-180.png', '/icon-192.png', '/errors.js', '/control.js', '/plan.js', '/favicon.ico',
+  '/style.css', '/icon.svg', '/icon-180.png', '/icon-192.png', '/errors.js', '/control.js', '/plan.js', '/chat-image.js', '/favicon.ico',
 ]);
 const ADMIN_API_PREFIXES = ['/api/admin-site/', '/api/admin/', '/api/health', '/api/me', '/api/logout', '/api/login/activity', '/api/control/'];
 

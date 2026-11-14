@@ -4,7 +4,7 @@
   let s = null;
   try { s = JSON.parse(localStorage.getItem('session')); } catch {}
   const here = location.pathname.split('/').pop() || 'admin.html';
-  const items = [['admin.html', 'Người dùng & gateway'], ['console.html', 'Console IoT'], ['admin-settings.html', 'Cài đặt']];
+  const items = [['admin.html', 'Người dùng & gateway'], ['console.html', 'Console IoT'], ['admin-chat.html', 'Hỗ trợ'], ['admin-settings.html', 'Cài đặt']];
   const bar = document.createElement('nav');
   bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:6px;border-radius:12px;background:var(--card,#fff);box-shadow:0 0 0 1px var(--line,#ddd)';
   bar.innerHTML = items.map(([h, t]) => `<a href="${h}" style="padding:8px 12px;border-radius:9px;text-decoration:none;font-weight:600;font-size:14px;${h === here ? 'background:var(--accbg,#e6f4f1);color:var(--acc,#0f766e)' : 'color:var(--mut,#667)'}">${t}</a>`).join('')
@@ -18,5 +18,11 @@
     try { localStorage.removeItem('session'); localStorage.removeItem('ctl'); } catch {}
     location.replace('admin-login.html');
   });
+  // Số tin chưa đọc trên mục "Hỗ trợ"
+  const chatLink = bar.querySelector('a[href="admin-chat.html"]');
+  const unread = () => fetch('/api/admin/support/threads', { headers: auth() }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+    if (j && chatLink) chatLink.textContent = j.unread ? `Hỗ trợ (${j.unread})` : 'Hỗ trợ';
+  }).catch(() => {});
+  if (s?.token) { unread(); setInterval(unread, 30000); }
   if (s?.token) setInterval(() => { fetch('/api/login/activity', { method: 'POST', headers: auth() }).catch(() => {}); }, 60000);
 })();

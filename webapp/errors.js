@@ -55,7 +55,7 @@
     sub_role: ['Vai trò của bạn chỉ được xem, không được điều khiển.', 'Nhờ quản trị viên đổi vai trò.'],
     sub_control_lan_only: ['Tài khoản chỉ được điều khiển khi ở cùng mạng nội bộ với nhà máy.', 'Kết nối Wi-Fi của nhà máy rồi thử lại.'],
     subscription_denied: ['Tài khoản không được phép điều khiển.', 'Nhờ quản trị viên kiểm tra gói đăng ký.'],
-    widget_locked: ['Widget này bị khoá vì vượt giới hạn widget của gói.', 'Bấm "Nâng gói" hoặc gỡ bớt thiết bị.'],
+    widget_locked: ['Widget này bị khoá vì vượt giới hạn widget của gói.', 'Bấm "Chat để nâng cấp" để liên hệ quản trị viên, hoặc gỡ bớt thiết bị.'],
     forbidden_gateway: ['Gateway này không thuộc tài khoản của bạn.', 'Tải lại trang rồi thử lại.'],
     remote_control_paused: ['Hệ thống đang tạm dừng điều khiển từ xa.', 'Thử lại sau ít phút.'],
     mqtt_unavailable: ['Máy chủ chưa gửi được lệnh tới thiết bị.', 'Thử lại sau ít phút.'],

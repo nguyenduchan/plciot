@@ -19,6 +19,7 @@ import { exportAccountData, deleteOwnAccount } from './accountData.js';
 import { isDashboardAdmin, userScopes, canControl } from './roles.js';
 import { adminLocalOnly, adminInternetGuard, isDirectLocal } from './adminGate.js';
 import { adminSiteGate, mountAdminSite, adminHost } from './adminSite.js';
+import { initSupport, mountSupport } from './supportChat.js';
 import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
@@ -57,6 +58,7 @@ configure({
 
 const db = openDb(DATA_DIR);
 applyBootstrapAdmins(db);
+initSupport(db);
 setInterval(() => { try { purgeIncompleteUsers(db); } catch (e) { console.error('purgeIncompleteUsers', e.message); } }, 3600_000).unref?.();
 setInterval(() => { try { purgeExpiredAudit(db); } catch (e) { console.error('purgeExpiredAudit', e.message); } }, 3600_000).unref?.();
 try { purgeExpiredAudit(db); } catch { /* ignore */ }
@@ -249,6 +251,9 @@ mountAdminOps(app, {
     keyFn: (req) => `${clientIp(req)}:admin-ops:${req.user?.id || 'na'}`,
   }),
 });
+
+/* ---------- Chat hỗ trợ người dùng ↔ admin (chỉ văn bản; xem docs/CHAT-COMPLIANCE.md) ---------- */
+mountSupport(app, { db, requireAuth, requireAdmin });
 
 app.get('/api/history/telemetry', requireAuth, (req, res) => {
   // Always bind to the authenticated user's site/device (client query cannot pivot to another tenant)
