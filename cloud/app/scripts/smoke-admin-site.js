@@ -218,6 +218,19 @@ try {
   check('nâng cấp: Không khi chưa có yêu cầu thì không tạo tin', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'decline' }, ctok)).j?.none === true);
   check('nâng cấp: quyết định lạ bị từ chối', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'buy' }, ctok)).status === 400);
   check('nâng cấp: tên miền admin không có API này', (await req(ADMIN, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro' }, ctok)).status === 404);
+  // Nút "Tạo hướng dẫn thanh toán": soạn từ cấu hình ngân hàng, GỬI vào chat khách; chưa cấu hình thì không gửi
+  const before = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id=?').get(cust.id).n;
+  const noCfg = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro', days: 30 }, token);
+  check('thanh toán: chưa cấu hình ngân hàng → không gửi cho khách', noCfg.status === 409 && noCfg.j?.error === 'payment_not_configured' && db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id=?').get(cust.id).n === before);
+  const prev = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/payment-guide?plan=pro&days=30`, null, token);
+  check('thanh toán: xem trước có gói, số tiền, nội dung chuyển khoản', prev.status === 200 && /gói "Nâng cao"/.test(prev.j?.text) && /đ\/tháng/.test(prev.j.text) && /Nội dung chuyển khoản: other Nâng cao/.test(prev.j.text) && prev.j.configured === false);
+  check('thanh toán: gói lạ bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'hack' }, token)).status === 400);
+  check('thanh toán: người dùng thường không gọi được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro' }, ctok)).status === 404 || (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro' }, ctok)).status === 403);
+  const freeG = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'free' }, token);
+  check('thanh toán: gói miễn phí gửi tin "không cần thanh toán"', freeG.status === 200 && db.prepare("SELECT body, channel FROM support_messages WHERE user_id=? AND from_admin=1 ORDER BY id DESC LIMIT 1").get(cust.id)?.channel === 'upgrade');
+  const pq = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=monitor&days=90`, null, token);
+  check('giá gợi ý cho admin: gói + số ngày + số widget; Cơ bản không quá 30 ngày', pq.status === 200 && pq.j?.kind === 'monthly' && pq.j.eligible === false && typeof pq.j.widgets === 'number' && pq.j.days === 90);
+  check('giá gợi ý: gói lạ bị từ chối, người dùng thường không gọi được', (await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=x`, null, token)).status === 400 && [403, 404].includes((await req(APP, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=pro`, null, ctok)).status));
   // giới hạn số tin / người dùng (cũ nhất bị xoá, mới nhất còn)
   const ins = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)');
   for (let i = 0; i < 230; i++) ins.run(cust.id, `bulk${i}`, Date.now());

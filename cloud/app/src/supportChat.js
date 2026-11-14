@@ -490,8 +490,82 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     }
     clearPending(uid);
     audit(db, 'admin_plan_grant', { userId: req.user.id, ip: ipOf(req), detail: `${uid} ${planId} never via_chat` });
-    say(uid, `Quản trị viên đã đồng ý và chuyển tài khoản của bạn sang gói "${PLAN_CATALOG[planId].label}". Bạn tải lại ứng dụng là dùng được ngay, không cần đăng nhập lại.`);
+    const after = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+    const info = subscriptionInfo(after) || {};
+    const extra = [
+      (planId === 'monitor' || planId === 'pro') && after.retention_days ? `lưu lịch sử ${after.retention_days} ngày` : null,
+      info.expiresAt ? `dùng đến hết ngày ${fmt(info.expiresAt)}` : 'không giới hạn thời hạn',
+    ].filter(Boolean).join(', ');
+    say(uid, `Quản trị viên đã đồng ý và chuyển tài khoản của bạn sang gói "${PLAN_CATALOG[planId].label}" (${extra}). Bạn tải lại ứng dụng là dùng được ngay, không cần đăng nhập lại. Cần hỗ trợ thêm, bạn cứ nhắn tại đây.`);
     res.json({ ok: true, subscription: r.subscription });
+  });
+
+  /* Nút "Tạo hướng dẫn thanh toán": máy chủ soạn nội dung chuyển khoản THỦ CÔNG và GỬI vào chat của khách (kênh Nâng cấp).
+     Thông tin ngân hàng lấy từ biến môi trường PAYMENT_BANK_NAME / PAYMENT_ACCOUNT_NO / PAYMENT_ACCOUNT_NAME (không lưu trong mã).
+     Không có thanh toán trong ứng dụng: khách tự chuyển khoản ngoài hệ thống rồi nhắn lại để admin kích hoạt gói.
+     Chưa cấu hình tài khoản, hoặc không tính được số tiền → KHÔNG gửi (tránh gửi chỗ trống cho khách). */
+  function buildPaymentGuide(uid, planId, daysRaw) {
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+    if (!u) return { status: 404, error: 'user_not_found' };
+    if (!PLAN_CATALOG[planId]) return { status: 400, error: 'unknown_plan' };
+    const label = PLAN_CATALOG[planId].label;
+    const paid = planId === 'monitor' || planId === 'pro';
+    const d = Number(daysRaw);
+    const days = paid ? (ALLOWED_DAYS.includes(d) ? d : (u.retention_days || 30)) : null;
+    let widgets = 0;
+    try { widgets = applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total; } catch { /* */ }
+    const q = priceByDays(planId, widgets, days || 30);
+    const vnd = (n) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
+    const bank = String(process.env.PAYMENT_BANK_NAME || '').trim();
+    const acc = String(process.env.PAYMENT_ACCOUNT_NO || '').trim();
+    const holder = String(process.env.PAYMENT_ACCOUNT_NAME || '').trim();
+    const configured = Boolean(bank && acc && holder);
+    if (planId === 'free') return { ok: true, configured, amount: 0, text: `Gói "${label}" miễn phí, bạn không cần thanh toán gì. Nếu cần thêm thông tin, cứ nhắn tại đây.` };
+    let amountTxt = null;
+    if (q?.eligible && q.kind === 'monthly') amountTxt = `${vnd(q.total)}/tháng (${widgets} widget${days ? `, lưu lịch sử ${days} ngày` : ''})`;
+    else if (q?.eligible && q.kind === 'one_time') amountTxt = `${vnd(q.total)} trả một lần cho ${q.years} năm (${widgets} widget)`;
+    const lines = [
+      `Hướng dẫn thanh toán gói "${label}" cho tài khoản ${u.username}:`,
+      `- Gói: ${label}${days ? `, lưu lịch sử ${days} ngày` : ''}`,
+      `- Số tiền: ${amountTxt || '[admin điền số tiền]'}`,
+      `- Chuyển khoản tới: ${bank || '[Ngân hàng]'} — Số tài khoản: ${acc || '[số tài khoản]'} — Chủ tài khoản: ${holder || '[tên chủ tài khoản]'}`,
+      `- Nội dung chuyển khoản: ${u.username} ${label}`,
+      '',
+      'Sau khi chuyển khoản, bạn nhắn lại “Đã chuyển khoản” tại đây (có thể gửi kèm ảnh biên lai). Quản trị viên kiểm tra và kích hoạt gói cho bạn; gói chỉ đổi khi quản trị viên xác nhận trong chat.',
+      'Việc chuyển khoản thực hiện ngoài ứng dụng, giá trên màn hình chỉ để tham khảo. Cần hỗ trợ thêm, bạn cứ nhắn tại đây.',
+    ];
+    return { ok: true, configured, amount: amountTxt ? q.total : null, priceReason: q && !q.eligible ? q.reason : null, text: lines.join('\n') };
+  }
+
+  // Giá gợi ý cho một gói + số ngày lưu theo số widget của người dùng (admin xem để báo giá; không gửi gì)
+  app.get('/api/admin/support/threads/:uid/price', ...adminOnly, (req, res) => {
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(req.params.uid));
+    if (!u) return res.status(404).json({ error: 'user_not_found' });
+    const planId = String(req.query.plan || '');
+    if (!PLAN_CATALOG[planId]) return res.status(400).json({ error: 'unknown_plan' });
+    let widgets = 0;
+    try { widgets = applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total; } catch { /* */ }
+    const d = Number(req.query.days) || u.retention_days || 30;
+    res.json({ ...priceByDays(planId, widgets, d), widgets });
+  });
+
+  // Xem trước (không gửi)
+  app.get('/api/admin/support/threads/:uid/payment-guide', ...adminOnly, (req, res) => {
+    const g = buildPaymentGuide(Number(req.params.uid), String(req.query.plan || ''), req.query.days);
+    if (g.error) return res.status(g.status).json({ error: g.error });
+    res.json(g);
+  });
+
+  // Gửi vào chat khách
+  app.post('/api/admin/support/threads/:uid/payment-guide', ...adminOnly, adminSendLimit, (req, res) => {
+    const uid = Number(req.params.uid);
+    const g = buildPaymentGuide(uid, String(req.body?.plan || ''), req.body?.days);
+    if (g.error) return res.status(g.status).json({ error: g.error });
+    if (!g.configured && g.amount !== 0) return res.status(409).json({ error: 'payment_not_configured', hint: 'Chưa đặt PAYMENT_BANK_NAME, PAYMENT_ACCOUNT_NO, PAYMENT_ACCOUNT_NAME trong cloud/.env của máy chủ.' });
+    if (g.amount == null) return res.status(409).json({ error: 'no_price', hint: g.priceReason || 'Gói/số ngày này chưa tính được giá: đổi gói hoặc số ngày lưu rồi thử lại.' });
+    say(uid, g.text, 'upgrade');
+    audit(db, 'support_payment_guide', { userId: req.user.id, ip: ipOf(req), detail: `to:${uid} plan:${String(req.body?.plan)}` });
+    res.json({ ok: true, amount: g.amount });
   });
 
   app.post('/api/admin/support/threads/:uid/decline', ...adminOnly, adminSendLimit, (req, res) => {

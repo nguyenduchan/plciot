@@ -33,6 +33,26 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
   #back-btn{display:inline-flex;align-items:center}
 }
 .panel{max-width:none;margin:0}
+.conv-tabs{display:flex;gap:6px;padding:6px 10px 0}
+.conv-tabs button{flex:1;min-width:0;margin:0;padding:8px 6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.conv-tabs button.on{background:var(--accbg);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.ch-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.ch-pane[hidden]{display:none!important}
+#log-up{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:0;padding:10px}
+.apr-actions button{flex:1;margin:0;padding:10px 6px;font-size:14px}
+#upg-panel{max-height:34vh;overflow:auto;padding:6px 10px;border-bottom:1px solid var(--line)}
+#upg-panel #apr{margin:0!important;padding:0!important;box-shadow:none!important}
+#apr-who{margin:0 0 6px!important;padding:0!important;background:none!important;font-size:13px!important;gap:2px 12px!important}
+#apr-asked{display:none}
+.apr-price{margin:0 0 6px;padding:6px 10px;border-radius:10px;background:var(--accbg);font-size:13px;line-height:1.4}
+.apr-line{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:13px}.apr-line span{white-space:nowrap;color:var(--mut)}.apr-line select{flex:1;min-width:0;margin:0;padding:8px 10px}
+.apr-actions{margin:0 0 4px!important}
+.apr-actions button{padding:8px 4px!important;font-size:13px!important}
+.qr{padding:4px 0 6px!important}
+.apr-more{margin:6px 0}.apr-more>summary{font-size:13px;color:var(--mut);cursor:pointer}
+#reply-ch[hidden]{display:none!important}
+.qr{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px}
+.qr button{flex:none;width:auto;margin:0;padding:7px 12px;font-size:13px;border-radius:99px;white-space:nowrap}
 .help{font-size:13px;color:var(--mut);line-height:1.5}
 .th{display:grid;gap:2px;padding:10px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}
 .th:hover,.th.on{background:var(--accbg)}
@@ -87,26 +107,40 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
         </details>
       </div>
       <p class="help hidden" id="plan-line"></p>
+      <details class="help"><summary>Lưu ý</summary><p class="help">Chỉ nhắn văn bản và ảnh. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p></details>
+    </div>
+    <div class="conv-tabs" role="tablist" aria-label="Kênh chat">
+      <button type="button" role="tab" data-ch="support" class="on">🛠 Hỗ trợ kỹ thuật <span class="tag new" id="tb-support" hidden></span></button>
+      <button type="button" role="tab" data-ch="upgrade">⭐ Nâng cấp gói <span class="tag new" id="tb-upgrade" hidden></span></button>
+    </div>
+    <div id="pane-support" class="ch-pane"><div id="log"></div></div>
+    <div id="pane-upgrade" class="ch-pane" hidden>
+      <div id="upg-panel">
       <div id="apr" class="hidden" style="margin:8px 0;padding:10px;border-radius:12px;box-shadow:0 0 0 1px var(--line)">
-        <b>Xử lý yêu cầu đổi gói</b>
+        <div id="apr-who" style="margin:6px 0;padding:6px 10px;border-radius:10px;background:var(--accbg);font-size:13px;line-height:1.4;display:flex;flex-wrap:wrap;gap:2px 14px"></div>
+        <div id="apr-price" class="apr-price"></div>
         <p class="help" id="apr-asked"></p>
-        <div id="quote" class="help hidden" style="margin:6px 0;padding:8px;border-radius:10px;background:var(--accbg)"><div id="quote-text"></div><div class="row" style="margin-top:6px"><button id="quote-fill" class="fit" type="button">Chèn ước tính vào ô soạn</button></div></div>
-        <label>Gói sẽ gán<select id="apr-plan"></select></label>
-        <label class="hidden" id="apr-now-row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="apr-now" style="width:auto"> Đổi ngay (bỏ qua hạn gói hiện tại — chỉ dùng khi hạ gói)</label>
-        <label>Số ngày lưu lịch sử (người dùng xin; để trống = theo gói)<input id="apr-days" type="number" min="4" max="3650" step="1" inputmode="numeric"></label>
-        <label>Lý do (chỉ dùng khi từ chối, tuỳ chọn)<input id="apr-reason" maxlength="300" autocomplete="off"></label>
-        <div class="row"><button id="apr-yes" class="primary fit" type="button">Đồng ý — gán gói</button><button id="apr-no" class="fit" type="button">Từ chối</button></div>
+        <div class="apr-line"><span>Gói sẽ gán</span><select id="apr-plan"></select></div>
+        <div class="row apr-actions"><button id="apr-yes" class="primary" type="button" title="Gán gói cho khách và tự động nhắn xác nhận vào kênh Nâng cấp">✓ Nâng cấp</button><button id="apr-no" type="button" title="Từ chối và tự động nhắn báo cho khách (kèm lý do nếu có)">✕ Từ chối</button><button id="apr-pay" type="button" title="Soạn hướng dẫn chuyển khoản (tài khoản ngân hàng, số tiền, nội dung) và gửi vào chat của khách">💳 Thanh toán</button></div>
         <div id="apr-confirm" class="hidden">
           <p class="help" id="apr-confirm-text"></p>
           <div class="row"><button id="apr-ok" class="primary fit" type="button">Xác nhận</button><button id="apr-cancel" class="fit" type="button">Hủy</button></div>
         </div>
+        <div id="qr" class="qr" aria-label="Trả lời nhanh (gửi ngay cho khách)"></div>
+        <details class="apr-more"><summary>Tuỳ chọn &amp; gợi ý giá</summary>
+        <label>Hết hạn (để trống = không giới hạn)<input id="apr-exp" type="date"></label>
+        <label>Số ngày lưu lịch sử (người dùng xin; để trống = theo gói)<input id="apr-days" type="number" min="4" max="3650" step="1" inputmode="numeric"></label>
+        <label class="hidden" id="apr-now-row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="apr-now" style="width:auto"> Đổi ngay (bỏ qua hạn gói hiện tại — chỉ dùng khi hạ gói)</label>
+        <label>Lý do (chỉ dùng khi từ chối, tuỳ chọn)<input id="apr-reason" maxlength="300" autocomplete="off"></label>
+        <div id="quote" class="help hidden" style="margin:6px 0;padding:8px;border-radius:10px;background:var(--accbg)"><div id="quote-text"></div><div class="row" style="margin-top:6px"><button id="quote-fill" class="fit" type="button">Chèn ước tính vào ô soạn</button></div></div>
+        </details>
       </div>
-      <details class="help"><summary>Lưu ý</summary><p class="help">Chỉ nhắn văn bản và ảnh. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p></details>
+      </div>
+      <div id="log-up"></div>
     </div>
-    <div id="log"></div>
     <div class="composer">
       <div class="cmp-opts">
-        <select id="reply-ch" aria-label="Kênh trả lời"><option value="support">Kênh: Hỗ trợ kỹ thuật</option><option value="upgrade">Kênh: Nâng cấp gói</option></select>
+        <select id="reply-ch" aria-label="Kênh trả lời" hidden><option value="support">Kênh: Hỗ trợ kỹ thuật</option><option value="upgrade">Kênh: Nâng cấp gói</option></select>
         <select id="tpl" aria-label="Mẫu tin nhắn"><option value="">Mẫu tin…</option></select>
       </div>
       <div id="chip" class="sup-chip" hidden></div>
@@ -117,6 +151,6 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261115b"></script>
-<script src="admin-chat.js?v=20261115h"></script>
+<script src="admin-chat.js?v=20261115o"></script>
 </body>
 </html>

@@ -18,6 +18,7 @@
   ];
 
   const ERR = { empty_message: 'Hãy nhập nội dung.', user_not_found: 'Không tìm thấy người dùng.', rate_limited: 'Gửi quá nhanh, chờ một chút.', no_expiry: 'Gói hiện tại không có ngày hết hạn: tick "Đổi ngay" nếu muốn hạ gói luôn.', quota_exceeded: 'Vượt hạn mức dung lượng.', busy: 'Hệ thống đang quá tải, thử lại sau.',
+    payment_not_configured: 'Chưa cấu hình tài khoản ngân hàng: đặt PAYMENT_BANK_NAME, PAYMENT_ACCOUNT_NO, PAYMENT_ACCOUNT_NAME trong cloud/.env của máy chủ rồi triển khai lại.', no_price: 'Gói hoặc số ngày lưu này chưa tính được giá: đổi gói / số ngày lưu rồi thử lại.', unknown_plan: 'Gói không hợp lệ.',
     admin_session_required: 'Đăng nhập lại.', unauthorized: 'Phiên hết hạn, đăng nhập lại.', session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.' };
   const msg = (t, bad) => { const m = $('#msg'); m.textContent = t || ''; m.className = bad ? 'err' : ''; };
   const when = (t) => new Date(t).toLocaleString('vi-VN');
@@ -45,31 +46,50 @@
   function rowOf(m) {
     const row = document.createElement('div'); row.className = `sup-msg ${m.from}`; row.dataset.id = m.id;
     const who = document.createElement('small'); who.textContent = `${m.from === 'admin' ? 'Quản trị viên' : (current?.username || 'Người dùng')} · ${when(m.ts)}`;
-    if (m.channel === 'upgrade') { const t = document.createElement('span'); t.className = 'tag'; t.style.marginLeft = '6px'; t.textContent = 'Nâng cấp'; who.append(t); }
     const txt = document.createElement('div'); txt.className = 'sup-text'; txt.textContent = m.body;
     row.append(who);
     if (m.image) { row.classList.add('has-img'); window.ChatImage.attach(row, `/api/admin/support/images/${m.image}`, session.token); }
     if (m.body) row.append(txt);
     return row;
   }
-  let oldestId = 0;
-  function addMessages(list) {
-    const log = $('#log');
-    for (const m of list) {
-      lastId = Math.max(lastId, m.id);
-      if (!oldestId || m.id < oldestId) oldestId = m.id;
-      log.appendChild(rowOf(m));
-    }
-    if (list.length) log.scrollTop = log.scrollHeight;
+  /* Hai tab kênh như webapp: Hỗ trợ kỹ thuật (chat thường) / Nâng cấp gói (duyệt + trả lời nhanh tự động). */
+  let activeTab = 'support';
+  const oldest = { support: 0, upgrade: 0 }; const unseen = { support: 0, upgrade: 0 };
+  const logOf = (ch) => (ch === 'upgrade' ? $('#log-up') : $('#log'));
+  const PH = { support: 'Nhập tin nhắn kỹ thuật…', upgrade: 'Nhắn về việc nâng cấp gói…' };
+  function badges() { for (const ch of ['support', 'upgrade']) { const b = $(`#tb-${ch}`); b.hidden = !unseen[ch]; b.textContent = unseen[ch] ? `${unseen[ch]} mới` : ''; } }
+  function resetLogs() { lastId = 0; oldest.support = oldest.upgrade = 0; unseen.support = unseen.upgrade = 0; $('#log').textContent = ''; $('#log-up').textContent = ''; badges(); }
+  function setTab(ch) {
+    activeTab = ch === 'upgrade' ? 'upgrade' : 'support';
+    document.querySelectorAll('.conv-tabs button').forEach((b) => { const on = b.dataset.ch === activeTab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    $('#pane-support').hidden = activeTab !== 'support'; $('#pane-upgrade').hidden = activeTab !== 'upgrade';
+    $('#reply-ch').value = activeTab;
+    if (!staged) $('#input').placeholder = PH[activeTab];
+    unseen[activeTab] = 0; badges(); syncPend();
+    const lg = logOf(activeTab); lg.scrollTop = lg.scrollHeight;
   }
-  /** Tải tin cũ hơn (kể cả kho lưu trữ) và chèn lên đầu. */
+  document.querySelector('.conv-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-ch]'); if (b) setTab(b.dataset.ch); });
+  function addMessages(list, initial) {
+    const touched = new Set();
+    for (const m of list) {
+      const ch = m.channel === 'upgrade' ? 'upgrade' : 'support';
+      lastId = Math.max(lastId, m.id);
+      if (!oldest[ch] || m.id < oldest[ch]) oldest[ch] = m.id;
+      logOf(ch).appendChild(rowOf(m)); touched.add(ch);
+      if (!initial && m.from === 'user' && ch !== activeTab) unseen[ch]++;
+    }
+    for (const ch of touched) { const lg = logOf(ch); lg.scrollTop = lg.scrollHeight; }
+    badges();
+  }
+  /** Tải tin cũ hơn (kể cả kho lưu trữ) của kênh đang xem và chèn lên đầu. */
   async function loadOlder() {
     if (!current) return;
+    const ch = activeTab;
     $('#older').disabled = true;
     try {
-      const j = await api(`/api/admin/support/threads/${current.userId}/history?before=${oldestId || ''}&limit=50`);
-      const log = $('#log'); const h = log.scrollHeight;
-      for (const m of [...j.messages].reverse()) { log.prepend(rowOf(m)); oldestId = Math.min(oldestId || m.id, m.id); }
+      const j = await api(`/api/admin/support/threads/${current.userId}/history?before=${oldest[ch] || ''}&limit=50&channel=${ch}`);
+      const log = logOf(ch); const h = log.scrollHeight;
+      for (const m of [...j.messages].reverse()) { log.prepend(rowOf(m)); oldest[ch] = Math.min(oldest[ch] || m.id, m.id); }
       log.scrollTop = log.scrollHeight - h;
       $('#older').disabled = !j.more;
       if (!j.messages.length) msg('Không còn tin cũ hơn.');
@@ -95,7 +115,8 @@
     const b = document.createElement('b'); b.textContent = t.username;
     if (t.plan) { const p = document.createElement('span'); p.className = 'tag'; p.textContent = t.plan; b.append(' ', p); }
     if (t.pendingPlan) { const q = document.createElement('span'); q.className = 'tag'; q.textContent = 'chờ xử lý'; b.append(' ', q); }
-    if (t.unread) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `${t.unread} mới`; b.append(' ', n); }
+    if (t.unreadSupport) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `🛠 ${t.unreadSupport}`; b.append(' ', n); }
+    if (t.unreadUpgrade) { const n = document.createElement('span'); n.className = 'tag new'; n.textContent = `⭐ ${t.unreadUpgrade}`; b.append(' ', n); }
     const s = document.createElement('small'); s.textContent = `${t.lastFromAdmin ? 'Bạn: ' : ''}${t.lastBody}`;
     el.append(b, s); el.addEventListener('click', () => open(t.userId, t.username));
     return el;
@@ -117,7 +138,7 @@
   $('#th-q')?.addEventListener('input', () => { clearTimeout(thTimer); thTimer = setTimeout(() => { thLoaded = TH_PAGE; loadThreads().catch((e) => msg(e.message, true)); }, 300); });
 
   async function open(userId, username) {
-    current = { userId, username }; lastId = 0; oldestId = 0; $('#log').textContent = '';
+    current = { userId, username }; resetLogs(); setTab('support');
     document.body.classList.add('in-conv'); $('#info').classList.add('hidden'); $('#info-btn').classList.remove('on');
     $('#older').disabled = false; $('#export').disabled = false;
     $('#who').textContent = username;
@@ -132,20 +153,34 @@
     try {
       const j = await api(`/api/admin/support/threads/${current.userId}?after=${lastId}`);
       if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); renderProfile(j.profile, j.plans, j.planId); pendBar(j); }
-      addMessages(j.messages);
-      if (first) { const lu = [...(j.messages || [])].reverse().find((m) => m.from === 'user'); $('#reply-ch').value = lu?.channel === 'upgrade' || j.requestedPlan ? 'upgrade' : 'support'; }
+      addMessages(j.messages, first);
+      if (first) { const lu = [...(j.messages || [])].reverse().find((m) => m.from === 'user'); setTab(lu?.channel === 'upgrade' || j.requestedPlan ? 'upgrade' : 'support'); }
     } catch (e) { msg(e.message, true); }
   }
 
   /* ---------- Bố cục kiểu ứng dụng nhắn tin: khung chat chiếm hết chỗ, thông tin/xử lý gói nằm trong ngăn ℹ ---------- */
+  let pendOn = false;
+  const syncPend = () => $('#pend-bar').classList.toggle('hidden', !pendOn || activeTab === 'upgrade');
   function pendBar(j) {
     const bar = $('#pend-bar'); const lbl = (j.plans || []).find((p) => p.id === j.requestedPlan)?.label || j.requestedPlan;
-    bar.classList.toggle('hidden', !j.requestedPlan);
-    $('#pend-text').textContent = j.requestedPlan ? `Yêu cầu đổi gói: ${lbl}${j.requestedDays ? ` · lưu ${j.requestedDays} ngày` : ''}` : '';
+    pendOn = Boolean(j.requestedPlan); syncPend();
+    $('#pend-text').textContent = j.requestedPlan ? `${j.username} · ${j.plan || 'chưa gán'}${j.expiresAt ? ` (đến ${new Date(j.expiresAt).toLocaleDateString('vi-VN')})` : ''} → xin: ${lbl}${j.requestedDays ? ` · lưu ${j.requestedDays} ngày` : ''}` : '';
   }
   const toggleInfo = (open) => { const i = $('#info'); const on = open ?? i.classList.contains('hidden'); i.classList.toggle('hidden', !on); $('#info-btn').classList.toggle('on', on); if (on) i.scrollTop = 0; };
   $('#info-btn').addEventListener('click', () => { if (current) toggleInfo(); });
-  $('#pend-open').addEventListener('click', () => { toggleInfo(true); $('#apr').scrollIntoView({ block: 'start' }); });
+  $('#pend-open').addEventListener('click', () => { setTab('upgrade'); $('#upg-panel').scrollTop = 0; });
+  $('#apr-pay')?.addEventListener('click', async () => {
+    if (!current) return;
+    msg(''); const btn = $('#apr-pay'); btn.disabled = true;
+    try {
+      const d = Number($('#apr-days').value);
+      const label = $('#apr-plan').selectedOptions[0]?.textContent || $('#apr-plan').value;
+      if (!confirm(`Gửi hướng dẫn thanh toán gói "${label}" cho ${current.username} vào chat?`)) return;
+      await api(`/api/admin/support/threads/${current.userId}/payment-guide`, 'POST', { plan: $('#apr-plan').value, days: d || undefined });
+      setTab('upgrade'); await poll(false); loadThreads().catch(() => {});
+      msg('Đã gửi hướng dẫn thanh toán cho khách. Bạn có thể chat thêm.');
+    } catch (e) { msg(e.message, true); } finally { btn.disabled = false; }
+  });
   $('#back-btn').addEventListener('click', () => { document.body.classList.remove('in-conv'); });
   { const inp = $('#input'); inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = `${Math.min(140, inp.scrollHeight)}px`; }); }
 
@@ -212,8 +247,14 @@
     else sel.value = [...sel.options].find((o) => !o.disabled)?.value || '';
     $('#apr-asked').textContent = j.requestedPlan ? `Người dùng đang xin tư vấn gói: ${planLabels[j.requestedPlan] || j.requestedPlan}.` : 'Người dùng chưa chọn gói cụ thể.';
     $('#apr-days').value = j.requestedDays || '';
+    $('#apr-exp').value = '';
+    { const pr = j.profile || {}; const dd = j.expiresAt ? Math.ceil((j.expiresAt - Date.now()) / 86400000) : null;
+      const w = $('#apr-who'); w.textContent = '';
+      for (const [k, v] of [['Người dùng', `${j.username} (#${j.userId})`], ['Gói hiện tại', j.plan || 'chưa gán'], ['Hết hạn', j.expiresAt ? `${new Date(j.expiresAt).toLocaleDateString('vi-VN')}${dd != null ? (dd >= 0 ? ` (còn ${dd} ngày)` : ` (quá hạn ${-dd} ngày)`) : ''}` : 'không hết hạn'], ['Widget', pr.widgets != null ? String(pr.widgets) : '—']]) {
+        const row = document.createElement('div'); const b = document.createElement('b'); b.textContent = `${k}: `; row.append(b, document.createTextNode(v)); w.appendChild(row);
+      } }
     window._quotes = j.quotes || null; window._pricing = j.pricing || null;
-    showQuote();
+    showQuote(); loadPrice();
     $('#apr').classList.remove('hidden'); $('#apr-confirm').classList.add('hidden'); pendingAction = null;
     $('#apr-now').checked = false; $('#apr-now-row').classList.toggle('hidden', !isDown(sel.value));
   }
@@ -250,6 +291,23 @@
     $('#quote-text').textContent = `Gợi ý tham khảo (chỉ admin thấy) cho ${q.widgets} widget hiện có: ${quoteLine(q)}${q.overCap ? ` ⚠ Vượt giới hạn ${q.widgetCap} widget của gói.` : ''} ${f}`;
   }
   $('#apr-plan').addEventListener('change', showQuote);
+  /* Thông tin tính giá: gói đang chọn × số widget của người dùng × số ngày lưu (admin sửa ở Tuỳ chọn) */
+  let priceTimer = null;
+  async function loadPrice() {
+    const el = $('#apr-price'); if (!current) { el.textContent = ''; return; }
+    try {
+      const d = Number($('#apr-days').value);
+      const q = await api(`/api/admin/support/threads/${current.userId}/price?plan=${encodeURIComponent($('#apr-plan').value)}${d ? `&days=${d}` : ''}`);
+      const m = (n) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
+      let t;
+      if (q.kind === 'free') t = 'Miễn phí';
+      else if (q.kind === 'one_time') t = `${m(q.total)} trả một lần ${q.years} năm (${q.widgets} widget × ${m(q.perWidget)})`;
+      else t = `${m(q.total)}/tháng (${q.widgets} widget × ${m(q.perWidget)}${q.minMonth && q.total === q.minMonth ? `, tối thiểu ${m(q.minMonth)}` : ''}, lưu ${q.days} ngày)`;
+      el.textContent = `Giá gợi ý ${q.label}: ${t}${q.eligible ? '' : ` ⚠ ${q.reason}`}`;
+    } catch { el.textContent = ''; }
+  }
+  $('#apr-plan').addEventListener('change', loadPrice);
+  $('#apr-days').addEventListener('input', () => { clearTimeout(priceTimer); priceTimer = setTimeout(loadPrice, 350); });
   $('#quote-fill').addEventListener('click', () => {
     const q = window._quotes?.[$('#apr-plan').value]; if (!q || !current) return;
     const body = q.kind === 'one_time'
@@ -265,12 +323,30 @@
     if (!current || !pendingAction) return;
     msg(''); $('#apr-ok').disabled = true;
     try {
-      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value, immediate: $('#apr-now').checked, retentionDays: $('#apr-days').value.trim() === '' ? undefined : Number($('#apr-days').value) });
+      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value, immediate: $('#apr-now').checked, expiresAt: $('#apr-exp').value ? Date.parse(`${$('#apr-exp').value}T23:59:59`) : undefined, retentionDays: $('#apr-days').value.trim() === '' ? undefined : Number($('#apr-days').value) });
       else await api(`/api/admin/support/threads/${current.userId}/decline`, 'POST', { reason: $('#apr-reason').value.trim() });
       $('#apr-reason').value = '';
-      lastId = 0; oldestId = 0; $('#log').textContent = ''; await poll(true); loadThreads().catch(() => {});
+      resetLogs(); await poll(true); loadThreads().catch(() => {});
     } catch (e) { msg(e.message, true); } finally { $('#apr-ok').disabled = false; }
   });
+
+  /* Nút trả lời nhanh trong tab Nâng cấp: bấm là gửi NGAY tin soạn sẵn cho khách (kênh Nâng cấp). Admin vẫn chat thêm bình thường. */
+  const QUICK = [
+    ['Đã nhận yêu cầu', 'Mình đã nhận yêu cầu nâng cấp gói của bạn và đang kiểm tra. Mình sẽ phản hồi bạn trong ít phút.'],
+    ['Cần thêm thông tin', 'Để báo đúng gói, bạn cho mình biết thêm: số widget cần giám sát và thời gian cần lưu lịch sử (7, 30, 90, 180 hay 365 ngày) nhé.'],
+    ['Nhắc chuyển khoản', 'Hiện mình chưa thấy khoản chuyển khoản của bạn. Nếu bạn đã chuyển, hãy gửi giúp mình ảnh biên lai tại đây (nút 📷) để mình đối soát nhé.'],
+    ['Đã nhận tiền, đang kích hoạt', 'Mình đã nhận được thanh toán của bạn và đang kích hoạt gói. Bạn chờ một chút rồi tải lại ứng dụng nhé. Cảm ơn bạn!'],
+  ];
+  for (const [label, text] of QUICK) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = text;
+    b.addEventListener('click', async () => {
+      if (!current) return;
+      msg(''); b.disabled = true;
+      try { await api(`/api/admin/support/threads/${current.userId}`, 'POST', { body: text, channel: 'upgrade' }); await poll(false); loadThreads().catch(() => {}); msg(`Đã gửi: “${label}”.`); }
+      catch (e) { msg(e.message, true); } finally { b.disabled = false; }
+    });
+    $('#qr').appendChild(b);
+  }
 
   $('#input').addEventListener('input', syncComposer);
   $('#send').addEventListener('click', async () => {
@@ -309,14 +385,14 @@
     const pw = document.createElement('small'); pw.textContent = 'Quản trị viên · đang gửi…'; pend.append(pw);
     const pobj = URL.createObjectURL(staged.blob); window.ChatImage.preview(pend, pobj);
     if (caption) { const pt = document.createElement('div'); pt.className = 'sup-text'; pt.textContent = caption; pend.append(pt); }
-    const lg = $('#log'); lg.appendChild(pend); lg.scrollTop = lg.scrollHeight;
+    const lg = logOf(activeTab); lg.appendChild(pend); lg.scrollTop = lg.scrollHeight;
     try {
       const r = await fetch(`/api/admin/support/threads/${current.userId}/image?channel=${$('#reply-ch').value}${caption ? `&caption=${encodeURIComponent(caption)}` : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'image/jpeg' }, body: staged.blob,
       });
       pend.remove();
       if (!r.ok) throw new Error('Không gửi được ảnh.');
-      $('#input').value = ''; unstage(); $('#input').placeholder = 'Nhập tin nhắn…';
+      $('#input').value = ''; unstage(); $('#input').placeholder = PH[activeTab];
       await poll(false); loadThreads().catch(() => {});
     } catch (e) { pend.remove(); msg(e.message || 'Không gửi được ảnh.', true); } finally { URL.revokeObjectURL(pobj); $('#send').disabled = false; syncComposer(); }
   }
