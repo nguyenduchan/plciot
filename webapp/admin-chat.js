@@ -21,7 +21,15 @@
     payment_example: 'Đang dùng thông tin ngân hàng VÍ DỤ: thay PAYMENT_* trong cloud/.env của máy chủ bằng tài khoản thật rồi triển khai lại thì mới gửi được cho khách.',
     payment_not_configured: 'Chưa cấu hình tài khoản ngân hàng: đặt PAYMENT_BANK_NAME, PAYMENT_ACCOUNT_NO, PAYMENT_ACCOUNT_NAME trong cloud/.env của máy chủ rồi triển khai lại.', no_price: 'Gói hoặc số ngày lưu này chưa tính được giá: đổi gói / số ngày lưu rồi thử lại.', unknown_plan: 'Gói không hợp lệ.',
     admin_session_required: 'Đăng nhập lại.', unauthorized: 'Phiên hết hạn, đăng nhập lại.', session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.' };
-  const msg = (t, bad) => { const m = $('#msg'); m.textContent = t || ''; m.className = bad ? 'err' : ''; };
+  // Thông báo hiện NGAY trong khung hội thoại khi đang mở một cuộc trò chuyện (ở ngoài danh sách thì dùng dòng trên cùng)
+  let noteT = null;
+  const msg = (t, bad) => {
+    const inConv = Boolean(current);
+    const m = $('#msg'); m.textContent = inConv ? '' : (t || ''); m.className = bad ? 'err' : '';
+    const n = $('#conv-note'); clearTimeout(noteT);
+    n.textContent = inConv ? (t || '') : ''; n.className = `conv-note${bad ? ' err' : ''}${inConv && t ? '' : ' hidden'}`;
+    if (inConv && t && !bad) noteT = setTimeout(() => n.classList.add('hidden'), 8000);
+  };
   const when = (t) => new Date(t).toLocaleString('vi-VN');
   let current = null; let lastId = 0; let timer = null;
 
@@ -32,7 +40,7 @@
       try { localStorage.removeItem('session'); } catch {}
       location.replace('admin-login.html');
     }
-    if (!r.ok) throw new Error(ERR[j.error] || j.error || `Lỗi ${r.status}`);
+    if (!r.ok) { const e = new Error(ERR[j.error] || j.error || `Lỗi ${r.status}`); e.code = j.error; throw e; }
     return j;
   }
 
@@ -175,9 +183,22 @@
     msg(''); const btn = $('#apr-pay'); btn.disabled = true;
     try {
       const d = Number($('#apr-days').value);
-      const label = $('#apr-plan').selectedOptions[0]?.textContent || $('#apr-plan').value;
+      const plan = $('#apr-plan').value;
+      const label = $('#apr-plan').selectedOptions[0]?.textContent || plan;
+      const g = await api(`/api/admin/support/threads/${current.userId}/payment-guide?plan=${encodeURIComponent(plan)}${d ? `&days=${d}` : ''}`);
+      if (!g.configured && g.amount !== 0) {
+        // Chưa có thông tin ngân hàng thật (hoặc đang là ví dụ): KHÔNG gửi, nhưng soạn sẵn vào ô tin nhắn để bạn thấy nội dung, sửa rồi tự bấm Gửi
+        const inp = $('#input'); inp.value = inp.value.trim() ? `${inp.value.trim()}
+
+${g.text}` : g.text;
+        inp.dispatchEvent(new Event('input')); inp.focus(); inp.scrollTop = 0;
+        return msg(g.isExample
+          ? 'Đang dùng thông tin ngân hàng VÍ DỤ nên chưa tự gửi. Đã soạn nội dung vào ô tin nhắn bên dưới: sửa lại tài khoản thật rồi bấm Gửi (hoặc đặt PAYMENT_* trong cloud/.env để gửi bằng một lần bấm).'
+          : 'Chưa cấu hình tài khoản ngân hàng nên chưa tự gửi. Đã soạn nội dung vào ô tin nhắn bên dưới: điền chỗ [ ] rồi bấm Gửi.', true);
+      }
+      if (g.amount == null) return msg(g.priceReason || 'Gói hoặc số ngày lưu này chưa tính được giá: đổi gói hoặc số ngày rồi thử lại.', true);
       if (!confirm(`Gửi hướng dẫn thanh toán gói "${label}" cho ${current.username} vào chat?`)) return;
-      await api(`/api/admin/support/threads/${current.userId}/payment-guide`, 'POST', { plan: $('#apr-plan').value, days: d || undefined });
+      await api(`/api/admin/support/threads/${current.userId}/payment-guide`, 'POST', { plan, days: d || undefined });
       setTab('upgrade'); await poll(false); loadThreads().catch(() => {});
       msg('Đã gửi hướng dẫn thanh toán cho khách. Bạn có thể chat thêm.');
     } catch (e) { msg(e.message, true); } finally { btn.disabled = false; }

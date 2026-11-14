@@ -33,6 +33,8 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
   #back-btn{display:inline-flex;align-items:center}
 }
 .panel{max-width:none;margin:0}
+.conv-note{margin:6px 10px 0;padding:8px 10px;border-radius:10px;background:var(--accbg);font-size:13px;line-height:1.4}
+.conv-note.err{background:#dc262622;color:var(--bad)}
 .conv-tabs{display:flex;gap:6px;padding:6px 10px 0}
 .conv-tabs button{flex:1;min-width:0;margin:0;padding:8px 6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .conv-tabs button.on{background:var(--accbg);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
@@ -109,6 +111,7 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
       <p class="help hidden" id="plan-line"></p>
       <details class="help"><summary>Lưu ý</summary><p class="help">Chỉ nhắn văn bản và ảnh. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p></details>
     </div>
+    <div id="conv-note" class="conv-note hidden" role="status"></div>
     <div class="conv-tabs" role="tablist" aria-label="Kênh chat">
       <button type="button" role="tab" data-ch="support" class="on">🛠 Hỗ trợ kỹ thuật <span class="tag new" id="tb-support" hidden></span></button>
       <button type="button" role="tab" data-ch="upgrade">⭐ Nâng cấp gói <span class="tag new" id="tb-upgrade" hidden></span></button>
@@ -151,6 +154,6 @@ body{padding:0 12px;max-width:1100px;margin:auto;display:flex;flex-direction:col
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261115b"></script>
-<script src="admin-chat.js?v=20261115p"></script>
+<script src="admin-chat.js?v=20261115r"></script>
 </body>
 </html>
