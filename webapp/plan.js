@@ -11,10 +11,10 @@
   let sub = null; let plan = null; let username = '';
 
   const PLANS = [
-    { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lưu dữ liệu theo mặc định', ctl: true },
-    { id: 'monitor', name: 'Giám sát', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu theo mặc định', ctl: true },
-    { id: 'pro', name: 'Giám sát + điều khiển', widgets: 'không giới hạn widget', retention: 'lưu 30 ngày', ctl: true },
-    { id: 'factory', name: 'Nhà máy / partner', widgets: 'không giới hạn widget', retention: 'lưu không giới hạn', ctl: true },
+    { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lưu dữ liệu 1 ngày', ctl: true },
+    { id: 'monitor', name: 'Cơ bản', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu 1 ngày', ctl: true },
+    { id: 'pro', name: 'Nâng cao', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu 30 ngày', ctl: true },
+    { id: 'factory', name: 'Nhà máy / partner', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu không giới hạn', ctl: true },
   ];
 
   function reasonText(code) {
@@ -73,7 +73,8 @@
     if (!host) return;
     const cur = sub?.plan;
     host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để xin tư vấn</span>'}
-      <small>Giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small></div>`).join('');
+      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small></div>`).join('');
+    window.dispatchEvent(new Event('plan-table-rendered'));
   }
 
   /** Chạm vào một gói: mở khung chat và chọn sẵn gói đó (hiện bước xem lại; chỉ gửi khi bấm "Gửi yêu cầu tư vấn"). */

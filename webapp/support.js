@@ -211,13 +211,23 @@
   }
 
   let pendingPlan = '';
-  function resetPlanChoice() { planSel.value = ''; pendingText = ''; pendingPlan = ''; planBox.hidden = true; }
+  /** Đánh dấu ✓ trên thẻ gói đang được chọn trong bảng Gói dịch vụ (đồng bộ với ô chọn gói). */
+  function markSelected(id) {
+    document.querySelectorAll('#plan-table .plan-row').forEach((r) => {
+      const on = Boolean(id) && r.dataset.plan === id;
+      r.classList.toggle('sel', on);
+      r.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  window.addEventListener('plan-table-rendered', () => markSelected(planSel.value));
+  function resetPlanChoice() { planSel.value = ''; pendingText = ''; pendingPlan = ''; planBox.hidden = true; markSelected(''); }
 
   planSel.addEventListener('change', () => {
     pendingPlan = planSel.value;
     pendingText = planRequestText(planSel.value);
     $('#support-plan-preview').textContent = pendingText ? `Sẽ gửi cho quản trị viên: “${pendingText}”` : '';
     planBox.hidden = !pendingText;
+    markSelected(pendingText ? planSel.value : '');
   });
   $('#support-plan-cancel').addEventListener('click', resetPlanChoice);
   $('#support-plan-send').addEventListener('click', async () => {

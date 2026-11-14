@@ -176,7 +176,7 @@ function applySubscription(sub) {
   if (!sub) { panel.hidden = true; return; }
   panel.hidden = false;
   const exp = sub.expiresAt ? new Date(sub.expiresAt).toLocaleDateString() : 'không hết hạn';
-  info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'giám sát + điều khiển' : 'chỉ giám sát'}`
+  info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có giám sát + điều khiển' : 'điều khiển đang bị tắt cho tài khoản này'}`
     + (sub.widgetLimit != null ? ` · tối đa ${sub.widgetLimit} widget` : ' · không giới hạn widget')
     + ` · hết hạn: ${exp}`
     + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));

@@ -167,7 +167,7 @@ try {
   check('ảnh: admin gửi ảnh cho người dùng', adminImg.status === 200);
   check('ảnh: tin nhắn có kèm mã ảnh', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.image === upl.j.image && m.body === 'lỗi này'));
   // đồng ý / từ chối yêu cầu đổi gói
-  check('plan: người dùng gửi yêu cầu kèm gói', (await req(APP, 'POST', '/api/support/messages', { body: 'Tôi muốn tư vấn gói Giám sát', plan: 'monitor' }, ctok)).status === 200);
+  check('plan: người dùng gửi yêu cầu kèm gói', (await req(APP, 'POST', '/api/support/messages', { body: 'Tôi muốn tư vấn gói Cơ bản', plan: 'monitor' }, ctok)).status === 200);
   check('plan: gói không hợp lệ bị bỏ qua (không lưu gợi ý)', (await req(APP, 'POST', '/api/support/messages', { body: 'x', plan: 'hack' }, ctok)).status === 200);
   const th = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
   check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
@@ -178,7 +178,7 @@ try {
   const ap = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'monitor' }, token);
   check('plan: admin đồng ý → gói được gán', ap.status === 200 && ap.j?.subscription?.plan === 'monitor');
   check('chờ: đồng ý xong thì hết chờ', !db.prepare('SELECT 1 FROM support_requests WHERE user_id=?').get(cust.id));
-  check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Giám sát/.test(m.body)));
+  check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Cơ bản/.test(m.body)));
   const dc = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/decline`, { reason: 'Chưa nhận được chuyển khoản' }, token);
   check('plan: admin từ chối', dc.status === 200);
   check('plan: người dùng nhận tin từ chối kèm lý do', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /chưa thể chuyển gói/.test(m.body) && /Chưa nhận được chuyển khoản/.test(m.body)));

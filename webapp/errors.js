@@ -48,8 +48,8 @@
     not_found: ['Không tìm thấy mục này (có thể đã bị xoá).', 'Tải lại trang rồi thử lại.'],
     last_admin: ['Không thể xoá hoặc hạ quyền quản trị viên cuối cùng.', 'Hãy cấp quyền quản trị cho người khác trước.'],
     // --- quyền điều khiển (gói đăng ký) ---
-    sub_pending_activation: ['Tài khoản chưa được kích hoạt gói điều khiển.', 'Nhờ quản trị viên gán gói "Giám sát + điều khiển" cho tài khoản của bạn.'],
-    sub_plan_monitor_only: ['Gói hiện tại chỉ cho xem, không được điều khiển.', 'Nhờ quản trị viên nâng lên gói "Giám sát + điều khiển".'],
+    sub_pending_activation: ['Tài khoản chưa được kích hoạt gói điều khiển.', 'Nhờ quản trị viên gán gói cho tài khoản của bạn.'],
+    sub_plan_monitor_only: ['Điều khiển từ xa đang bị tắt cho tài khoản này.', 'Nhờ quản trị viên bật lại điều khiển (mọi gói đều có điều khiển).'],
     sub_plan_expired: ['Gói đăng ký đã hết hạn.', 'Nhờ quản trị viên gia hạn.'],
     sub_remote_control_off: ['Điều khiển từ xa đang bị tắt cho tài khoản này.', 'Nhờ quản trị viên bật lại.'],
     sub_role: ['Vai trò của bạn chỉ được xem, không được điều khiển.', 'Nhờ quản trị viên đổi vai trò.'],

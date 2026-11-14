@@ -29,13 +29,13 @@ export const PLAN_CATALOG = Object.freeze({
     telemetryMinMs: FREE_TELEMETRY_MIN_MS,
   },
   monitor: {
-    label: 'Giám sát',
+    label: 'Cơ bản',
     retention: 'default', // HISTORY_DEFAULT_DAYS
     remoteControl: true,   // mọi gói đều có giám sát + điều khiển
     partnerCmd: false,
   },
   pro: {
-    label: 'Giám sát + điều khiển',
+    label: 'Nâng cao',
     retention: 30,
     remoteControl: true,
     partnerCmd: false,
