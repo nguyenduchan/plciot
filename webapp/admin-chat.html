@@ -45,6 +45,7 @@ body{padding:16px;max-width:1100px;margin:auto}
       <details id="prof-edit" style="margin-top:8px"><summary>Cập nhật thông tin</summary>
         <label>Gói<select id="pf-plan"></select></label>
         <label>Hết hạn (để trống = không hết hạn)<input id="pf-exp" type="date"></label>
+        <label>Số ngày lưu lịch sử (để trống = theo gói; tối thiểu 4)<input id="pf-days" type="number" min="4" max="3650" step="1" inputmode="numeric"></label>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pf-rc" style="width:auto"> Cho phép điều khiển từ xa</label>
         <label>Ghi chú của admin (chỉ admin thấy)<textarea id="pf-note" rows="3" maxlength="1000"></textarea></label>
         <div class="row"><button id="pf-save" class="primary fit" type="button">Lưu thay đổi</button></div>
@@ -78,6 +79,6 @@ body{padding:16px;max-width:1100px;margin:auto}
 </div>
 <script src="admin-nav.js?v=20261114c"></script>
 <script src="chat-image.js?v=20261114c"></script>
-<script src="admin-chat.js?v=20261115a"></script>
+<script src="admin-chat.js?v=20261115b"></script>
 </body>
 </html>

@@ -9,6 +9,29 @@
 (function () {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let sub = null; let plan = null; let username = '';
+  let days = 30; let prices = null; let priceWidgets = null;
+  const DAYS = [7, 30, 90, 180, 365];
+  const vnd = (n) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
+
+  async function loadPrices() {
+    let session = null; try { session = JSON.parse(localStorage.getItem('session')); } catch { /* */ }
+    if (!session?.token || session.demo) return;
+    try {
+      const r = await fetch(`${session.apiBase || location.origin}/api/support/prices?days=${days}`, { headers: { Authorization: `Bearer ${session.token}` } });
+      if (!r.ok) return;
+      const j = await r.json(); prices = j.prices; priceWidgets = j.widgets;
+      renderTable();
+    } catch { /* không có giá: vẫn hiện bảng gói */ }
+  }
+
+  function priceLine(id) {
+    const q = prices?.[id];
+    if (!q) return '';
+    if (q.kind === 'free') return '<small class="price">Giá: <b>miễn phí</b></small>';
+    if (!q.eligible) return `<small class="price off">${esc(q.reason || 'Không phù hợp với lựa chọn hiện tại.')}</small>`;
+    if (q.kind === 'one_time') return `<small class="price">Giá: <b>${vnd(q.total)}</b> trả một lần cho ${q.years} năm${priceWidgets ? ` (${priceWidgets} widget` : ''}${q.equivalentPerMonth ? `, ≈ ${vnd(q.equivalentPerMonth)}/tháng)` : priceWidgets ? ')' : ''}</small>`;
+    return `<small class="price">Giá: <b>${vnd(q.total)}/tháng</b>${priceWidgets ? ` cho ${priceWidgets} widget` : ''} · ${vnd(q.perWidget)}/widget</small>`;
+  }
 
   const PLANS = [
     { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lịch sử 1 mẫu/2 giây, lưu 1 ngày', fit: 'Dùng thử, 1 trạm bơm nhỏ', ctl: true },
@@ -30,6 +53,7 @@
   function goUpgrade() {
     document.getElementById('plan-sheet')?.remove();
     if (typeof window.showTab === 'function') window.showTab('set');
+    window.SettingsTabs?.show('plan');
     const p = document.getElementById('sub-panel');
     if (p) {
       p.hidden = false;
@@ -71,22 +95,28 @@
     const host = document.getElementById('plan-table');
     if (!host) return;
     const cur = sub?.plan;
-    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để xin tư vấn</span>'}
-      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small><small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
+    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để chọn</span>'}
+      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small>${priceLine(p.id)}<small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
+    let box = document.getElementById('plan-days-box');
+    if (!box) { box = document.createElement('div'); box.id = 'plan-days-box'; host.insertAdjacentElement('afterend', box); }
+    box.innerHTML = `<label>Thời gian lưu lịch sử (gói Cơ bản / Nâng cao)<select id="plan-days">${DAYS.map((d) => `<option value="${d}"${d === days ? ' selected' : ''}>${d} ngày</option>`).join('')}</select></label>
+      <p class="help">Giá chỉ để tham khảo, chưa phải đơn đặt hàng. Gói chỉ được kích hoạt sau khi bạn chat với quản trị viên và được xác nhận.</p>`;
     window.dispatchEvent(new Event('plan-table-rendered'));
   }
 
-  /** Chạm vào một gói: mở khung chat và chọn sẵn gói đó (hiện bước xem lại; chỉ gửi khi bấm "Gửi yêu cầu tư vấn"). */
+  /** Chạm vào một gói: chỉ chọn (✓), KHÔNG nhảy sang chat. Bấm "Chat để nâng cấp" mới mở chat với gói đã chọn. */
   function pickPlan(id) {
     if (!id || id === sub?.plan) return;
-    window.SupportChat?.choose?.(id);
+    window.SupportChat?.select?.(id);
   }
   document.addEventListener('click', (e) => { const r = e.target.closest?.('#plan-table .plan-row.pick'); if (r) pickPlan(r.dataset.plan); });
   document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('#plan-table .plan-row.pick')) { e.preventDefault(); pickPlan(e.target.dataset.plan); } });
 
+  document.addEventListener('change', (e) => { if (e.target?.id === 'plan-days') { days = Number(e.target.value) || 30; loadPrices(); } });
+
   function update(s, p, name) {
     sub = s || sub; plan = p || plan; if (name) username = name;
-    renderTable();
+    renderTable(); loadPrices();
     window.SupportChat?.fillPlans?.();   // bộ chọn gói trong chat: đánh dấu gói đang dùng
   }
 
@@ -100,6 +130,7 @@
     current: () => sub?.plan || 'free',
     currentLabel: () => sub?.planLabel || 'Miễn phí',
     username: () => username,
+    selectedDays: () => days,
     expiresAt: () => sub?.expiresAt || null,
   };
 }());

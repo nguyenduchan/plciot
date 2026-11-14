@@ -27,3 +27,9 @@ Tất cả có thể đặt lại bằng biến môi trường: `PRICING_VPS_VND
 - `retention.js` → `thinOldTelemetry`: mỗi giờ gộp telemetry cũ hơn 30 ngày của gói không giới hạn còn 1 mẫu/5 phút (`smoke-thin.js`).
 - `pricing.js`: tính gợi ý giá; admin chọn gói là thấy giá và có nút điền sẵn vào ô soạn.
 - Tài khoản đã được gán gói trước đây giữ nguyên số ngày lưu đã ghi lúc gán; gán lại gói để áp dụng thời gian lưu mới (Cơ bản 7 ngày).
+
+## Giá theo số ngày lưu hiển thị cho người dùng
+- Trong *Cài đặt → Gói dịch vụ* mỗi thẻ gói hiện giá cho số widget của chính người dùng; ô chọn **Thời gian lưu lịch sử** (7/30/90/180/365 ngày) đổi giá của gói Cơ bản và Nâng cao. Nhà máy/partner là giá trả một lần cho 10 năm (chi tiết 30 ngày), không đổi theo ô chọn. Cơ bản lưu tối đa 30 ngày, Nâng cao tối đa 365 ngày (`BASIC_MAX_DAYS`, `PRO_MAX_DAYS`); vượt thì thẻ báo "không phù hợp".
+- Giá/widget/tháng = làm tròn lên (giá sàn(ngày) × K + `PRICE_FEE_PER_WIDGET`), tháng = MAX(mức tối thiểu của gói, widget × giá/widget). Xem `pricing.js: priceByDays`, kiểm tra `scripts/smoke-pricing.js`, bảng tính `BANG-TINH-GIA.xlsx`.
+- **Giá chỉ để tham khảo; gói KHÔNG tự kích hoạt.** Người dùng chọn gói (✓, không nhảy sang chat), bấm *Chat để nâng cấp* → tin nhắn có gói và số ngày → admin xác nhận và gán trong khung thông tin người dùng (gói, hạn, **số ngày lưu**). Không có giỏ hàng, nút mua hay thanh toán trong app.
+- Cần xác minh quy định thương mại điện tử hiện hành (Nghị định 52/2013 sửa bởi 85/2021; có nguồn nói đã được thay bằng 248/2026/NĐ-CP) trước khi công khai giá.

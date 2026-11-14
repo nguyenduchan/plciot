@@ -151,9 +151,11 @@
     for (const p of plans || []) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; sel.appendChild(o); }
     if (planId) sel.value = planId;
     $('#pf-exp').value = pr.expiresAt ? new Date(pr.expiresAt).toISOString().slice(0, 10) : '';
+    $('#pf-days').value = pr.unlimitedHistory ? '' : (pr.retentionDays ?? ''); box.dataset.days = pr.unlimitedHistory ? '' : String(pr.retentionDays ?? '');
     $('#pf-rc').checked = pr.remoteControl === true; $('#pf-note').value = pr.note || '';
     box.dataset.planId = planId || ''; box.dataset.exp = pr.expiresAt || ''; box.dataset.rc = pr.remoteControl === true ? '1' : '0'; box.dataset.note = pr.note || '';
   }
+  const pr0Unlimited = (box) => box.dataset.days === '';
   $('#pf-save')?.addEventListener('click', async () => {
     if (!current) return;
     const box = $('#prof'); const body = {};
@@ -161,6 +163,7 @@
     const exp = expStr ? Date.parse(`${expStr}T23:59:59`) : null;
     const planChanged = plan !== box.dataset.planId; const expChanged = String(exp || '') !== String(box.dataset.exp || '');
     if (planChanged || expChanged) { body.planId = plan; body.expiresAt = exp; }
+    if ($('#pf-days').value.trim() !== box.dataset.days && !(pr0Unlimited(box) && !$('#pf-days').value.trim())) body.retentionDays = $('#pf-days').value.trim() === '' ? null : Number($('#pf-days').value);
     if (($('#pf-rc').checked ? '1' : '0') !== box.dataset.rc) body.remoteControl = $('#pf-rc').checked;
     if ($('#pf-note').value !== box.dataset.note) body.note = $('#pf-note').value;
     if (!Object.keys(body).length) return msg('Chưa có gì thay đổi.');

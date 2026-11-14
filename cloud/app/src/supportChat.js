@@ -15,7 +15,7 @@
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
-import { quotesForWidgets, pricingAssumptions } from './pricing.js';
+import { quotesForWidgets, pricingAssumptions, pricesByDays, ALLOWED_DAYS } from './pricing.js';
 import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG, setRemoteControl } from './entitlements.js';
@@ -314,6 +314,14 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     };
   }
 
+  // Bảng giá theo số ngày lưu cho CHÍNH người dùng đang đăng nhập (theo số widget của họ). Chỉ để xem; không tạo đơn, không thanh toán.
+  app.get('/api/support/prices', requireAuth, rateLimit({ windowMs: 60_000, max: 60, keyFn: (req) => `${ipOf(req)}:prices:${req.user?.id || 'na'}` }), (req, res) => {
+    const days = Number(req.query.days) || 30;
+    let widgets = 0;
+    try { widgets = applyWidgetLimit(listUserDevices(db, req.user).map(deviceToUiNode), null).total; } catch { /* */ }
+    res.json({ days, allowedDays: ALLOWED_DAYS, widgets, prices: pricesByDays(widgets, days) });
+  });
+
   app.post('/api/admin/support/threads/:uid/profile', ...adminOnly, adminSendLimit, (req, res) => {
     const uid = Number(req.params.uid);
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
@@ -337,6 +345,12 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
       if (exp !== null && (!Number.isFinite(exp) || exp < Date.now() - 86_400_000)) return res.status(400).json({ error: 'invalid_expiry' });
       grantPlan(db, uid, cur, { expiresAt: exp, note: `admin-profile:${req.user.username}` });
       changed.push(`expiry=${exp ? new Date(exp).toISOString().slice(0, 10) : 'none'}`);
+    }
+    if (b.retentionDays !== undefined) {   // số ngày lưu theo yêu cầu của người dùng (đặt SAU khi gán gói vì gán gói đặt lại số ngày theo gói)
+      const dN = b.retentionDays === null || b.retentionDays === '' ? null : Number(b.retentionDays);
+      if (dN !== null && (!Number.isInteger(dN) || dN < 4 || dN > 3650)) return res.status(400).json({ error: 'invalid_retention' });
+      db.prepare('UPDATE users SET retention_days = ? WHERE id = ?').run(dN, uid);
+      changed.push(`retention=${dN ?? 'theo gói'}`);
     }
     if (b.remoteControl !== undefined) { setRemoteControl(db, uid, Boolean(b.remoteControl)); changed.push(`remoteControl=${Boolean(b.remoteControl)}`); }
     if (changed.length) audit(db, 'support_profile_update', { userId: req.user.id, ip: clientIp(req), detail: `${u.username}: ${changed.join(', ')}` });

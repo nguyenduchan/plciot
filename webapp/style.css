@@ -755,3 +755,11 @@ body.chat-on{overflow:hidden}
 #support-plan[hidden] { display: none !important; }
 
 .plan-row small.fit { display: block; opacity: .9; font-style: italic; }
+
+.plan-row small.price{display:block;margin-top:2px}.plan-row small.price b{color:var(--acc,#2563eb)}.plan-row small.price.off{opacity:.7;font-style:italic}
+#plan-days-box{margin:10px 0}#plan-days-box select{width:100%}
+
+.set-tabs{display:flex;gap:6px;margin:0 0 12px;padding:4px;border-radius:12px;box-shadow:0 0 0 1px var(--line,#e5e7eb);position:sticky;top:0;z-index:5;background:var(--bg,#fff)}
+.set-tabs button{flex:1;min-width:0;padding:9px 6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.set-tabs button.on{background:var(--accbg,#e8f0fe);color:var(--acc,#2563eb);box-shadow:inset 0 0 0 1px var(--acc,#2563eb)}
+.set-pane[hidden]{display:none!important}

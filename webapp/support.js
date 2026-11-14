@@ -223,7 +223,8 @@
     const who = `Tài khoản: ${P.username() || session.username || '(tên đăng nhập)'}, gói hiện tại: ${P.currentLabel()}.`;
     const d = downgradeInfo(planId);
     if (d) return `Tôi muốn chuyển xuống gói "${target.name}" khi gói hiện tại hết hạn${d.exp ? ` (${d.date})` : ''}. ${who}`;
-    return `Tôi muốn được tư vấn chuyển sang gói "${target.name}". ${who}`;
+    const dayTxt = (planId === 'monitor' || planId === 'pro') && P.selectedDays ? `, lưu lịch sử ${P.selectedDays()} ngày` : '';
+    return `Tôi muốn được tư vấn chuyển sang gói "${target.name}"${dayTxt}. ${who}`;
   }
 
   /** Chọn gói thấp hơn gói đang dùng = hạ gói: vẫn giữ gói cũ đến hết hạn rồi mới chuyển. null nếu không phải hạ gói. */
@@ -291,7 +292,20 @@
     open() {
       det.open = true;
       fillPlans();
-      setTimeout(() => $('#support-input').focus({ preventScroll: true }), 100);
+      if (planSel.value && !planBox.hidden) {   // đã chọn gói ở mục Gói dịch vụ: hiện bước xem lại + nút gửi
+        requestAnimationFrame(() => setTimeout(() => {
+          planBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          planBox.classList.remove('sup-flash'); void planBox.offsetWidth; planBox.classList.add('sup-flash');
+        }, 120));
+      } else setTimeout(() => $('#support-input').focus({ preventScroll: true }), 100);
+    },
+    /** Chỉ ĐÁNH DẤU gói được chọn (✓), KHÔNG mở chat; chat chỉ mở khi bấm "Chat để nâng cấp". Chọn lại gói đang chọn = bỏ chọn. */
+    select(planId) {
+      fillPlans();
+      if (planSel.value === planId) { resetPlanChoice(); return; }
+      if (![...planSel.options].some((o) => o.value === planId && !o.disabled)) return;
+      planSel.value = planId;
+      planSel.dispatchEvent(new Event('change'));
     },
     fillPlans,
     /** Chọn sẵn một gói (từ thẻ gói trong Gói dịch vụ): mở khung chat, hiện bước xem lại. Không tự gửi. */
