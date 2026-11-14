@@ -166,6 +166,20 @@ try {
   const adminImg = await rawReq(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/image`, png, token);
   check('ảnh: admin gửi ảnh cho người dùng', adminImg.status === 200);
   check('ảnh: tin nhắn có kèm mã ảnh', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.image === upl.j.image && m.body === 'lỗi này'));
+  // đồng ý / từ chối yêu cầu đổi gói
+  check('plan: người dùng gửi yêu cầu kèm gói', (await req(APP, 'POST', '/api/support/messages', { body: 'Tôi muốn tư vấn gói Giám sát', plan: 'monitor' }, ctok)).status === 200);
+  check('plan: gói không hợp lệ bị bỏ qua (không lưu gợi ý)', (await req(APP, 'POST', '/api/support/messages', { body: 'x', plan: 'hack' }, ctok)).status === 200);
+  const th = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
+  check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
+  check('plan: gói sai bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'nope' }, token)).status === 400);
+  check('plan: người dùng thường không tự đồng ý được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'pro' }, ctok)).status === 404);
+  const ap = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'monitor' }, token);
+  check('plan: admin đồng ý → gói được gán', ap.status === 200 && ap.j?.subscription?.plan === 'monitor');
+  check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Giám sát/.test(m.body)));
+  const dc = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/decline`, { reason: 'Chưa nhận được chuyển khoản' }, token);
+  check('plan: admin từ chối', dc.status === 200);
+  check('plan: người dùng nhận tin từ chối kèm lý do', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /chưa thể chuyển gói/.test(m.body) && /Chưa nhận được chuyển khoản/.test(m.body)));
+  check('plan: từ chối không đổi gói', db.prepare("SELECT sub_plan FROM users WHERE username='other'").get().sub_plan === 'monitor');
   check('chat: không có endpoint đơn hàng/thanh toán', (await req(APP, 'POST', '/api/support/order', {}, ctok)).status === 404 && (await req(APP, 'POST', '/api/support/pay', {}, ctok)).status === 404);
 } catch (e) {
   fails++; console.error('LỖI', e.message);

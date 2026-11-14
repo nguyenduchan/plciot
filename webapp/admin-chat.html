@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Hỗ trợ người dùng — Quản trị PLC</title>
 <link rel="icon" href="icon.svg?v=3">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261114c">
 <style>
 body{padding:16px;max-width:1100px;margin:auto}
 .cols{display:grid;grid-template-columns:minmax(240px,1fr) minmax(320px,2fr);gap:14px;align-items:start}
@@ -41,6 +41,17 @@ body{padding:16px;max-width:1100px;margin:auto}
   <div class="panel form" id="conv">
     <h2 id="who">Chọn một cuộc trò chuyện</h2>
     <p class="help hidden" id="plan-line"></p>
+    <div id="apr" class="hidden" style="margin:8px 0;padding:10px;border-radius:12px;box-shadow:0 0 0 1px var(--line)">
+      <b>Xử lý yêu cầu đổi gói</b>
+      <p class="help" id="apr-asked"></p>
+      <label>Gói sẽ gán<select id="apr-plan"></select></label>
+      <label>Lý do (chỉ dùng khi từ chối, tuỳ chọn)<input id="apr-reason" maxlength="300" autocomplete="off"></label>
+      <div class="row"><button id="apr-yes" class="primary fit" type="button">Đồng ý — gán gói</button><button id="apr-no" class="fit" type="button">Từ chối</button></div>
+      <div id="apr-confirm" class="hidden">
+        <p class="help" id="apr-confirm-text"></p>
+        <div class="row"><button id="apr-ok" class="primary fit" type="button">Xác nhận</button><button id="apr-cancel" class="fit" type="button">Hủy</button></div>
+      </div>
+    </div>
     <div id="log"></div>
     <label>Mẫu tin nhắn (chỉ điền sẵn vào ô soạn, bạn chỉnh rồi tự bấm Gửi)
       <select id="tpl"><option value="">— chọn mẫu —</option></select>
@@ -51,8 +62,8 @@ body{padding:16px;max-width:1100px;margin:auto}
     <p class="help">Chỉ nhắn văn bản. Thỏa thuận giá và nhận tiền chuyển khoản thực hiện ngoài hệ thống; sau khi thấy tiền về, gán gói ở <a href="console.html">Console → Gói / Subscribe</a>. Xem <code>docs/CHAT-COMPLIANCE.md</code>.</p>
   </div>
 </div>
-<script src="admin-nav.js"></script>
-<script src="chat-image.js"></script>
-<script src="admin-chat.js"></script>
+<script src="admin-nav.js?v=20261114c"></script>
+<script src="chat-image.js?v=20261114c"></script>
+<script src="admin-chat.js?v=20261114c"></script>
 </body>
 </html>

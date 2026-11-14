@@ -51,6 +51,9 @@ export function adminSiteGate(req, res, next) {
   const p = req.path;
   const nf = () => res.status(404).type('text/plain').send('Not found');
   if (hostOf(req) === ah) {
+    // Cloudflare tự gắn max-age 4 giờ cho .js/.css; trang admin phải luôn lấy bản mới sau khi triển khai.
+    const setHeader = res.setHeader.bind(res);
+    res.setHeader = (k, v) => setHeader(k, String(k).toLowerCase() === 'cache-control' ? 'no-store' : v);
     if (p === '/') return res.redirect(302, '/admin-login.html');
     if (isApi(p)) return apiAllowedOnAdminHost(p) ? next() : nf();
     if (ADMIN_PAGES.has(p) || SHARED_FILES.has(p) || p.startsWith('/vendor/') || p.startsWith('/security/')) return next();

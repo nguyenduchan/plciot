@@ -715,3 +715,6 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .sup-msg.user{align-self:flex-end;background:var(--accbg)}
 .sup-msg small{display:block;color:var(--mut);font-size:11px;margin-bottom:2px}
 .sup-text{white-space:pre-wrap;word-break:break-word;font-size:14px}
+.sup-plan{margin:10px 0;padding:10px;border-radius:12px;box-shadow:0 0 0 1px var(--line)}
+nav button{position:relative}
+.sup-dot{position:absolute;top:6px;right:calc(50% - 20px);width:9px;height:9px;border-radius:50%;background:var(--bad,#dc2626);box-shadow:0 0 0 2px var(--bg,#fff)}

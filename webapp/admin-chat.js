@@ -85,10 +85,47 @@
     if (!current) return;
     try {
       const j = await api(`/api/admin/support/threads/${current.userId}?after=${lastId}`);
-      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); }
+      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); }
       addMessages(j.messages);
     } catch (e) { msg(e.message, true); }
   }
+
+  /* ---------- Đồng ý / Từ chối yêu cầu đổi gói (gán gói thủ công + nhắn chữ; không đơn hàng, không thanh toán) ---------- */
+  let planLabels = {}; let pendingAction = null;
+  function fillApprove(j) {
+    planLabels = Object.fromEntries((j.plans || []).map((p) => [p.id, p.label]));
+    const sel = $('#apr-plan'); sel.textContent = '';
+    for (const p of j.plans || []) {
+      const o = document.createElement('option'); o.value = p.id;
+      o.textContent = p.label + (p.id === j.planId ? ' (đang dùng)' : ''); o.disabled = p.id === j.planId; sel.appendChild(o);
+    }
+    if (j.requestedPlan && j.requestedPlan !== j.planId) sel.value = j.requestedPlan;
+    else sel.value = [...sel.options].find((o) => !o.disabled)?.value || '';
+    $('#apr-asked').textContent = j.requestedPlan ? `Người dùng đang xin tư vấn gói: ${planLabels[j.requestedPlan] || j.requestedPlan}.` : 'Người dùng chưa chọn gói cụ thể.';
+    $('#apr').classList.remove('hidden'); $('#apr-confirm').classList.add('hidden'); pendingAction = null;
+  }
+  function askConfirm(kind) {
+    const sel = $('#apr-plan');
+    if (kind === 'yes' && !sel.value) return msg('Hãy chọn gói.', true);
+    pendingAction = kind;
+    $('#apr-confirm-text').textContent = kind === 'yes'
+      ? `Gán gói “${planLabels[sel.value] || sel.value}” cho ${current.username} và nhắn xác nhận? Chỉ bấm khi bạn đã tự kiểm tra tiền về ngoài hệ thống.`
+      : `Từ chối yêu cầu của ${current.username} và gửi tin nhắn báo?`;
+    $('#apr-confirm').classList.remove('hidden');
+  }
+  $('#apr-yes').addEventListener('click', () => askConfirm('yes'));
+  $('#apr-no').addEventListener('click', () => askConfirm('no'));
+  $('#apr-cancel').addEventListener('click', () => { pendingAction = null; $('#apr-confirm').classList.add('hidden'); });
+  $('#apr-ok').addEventListener('click', async () => {
+    if (!current || !pendingAction) return;
+    msg(''); $('#apr-ok').disabled = true;
+    try {
+      if (pendingAction === 'yes') await api(`/api/admin/support/threads/${current.userId}/approve`, 'POST', { plan: $('#apr-plan').value });
+      else await api(`/api/admin/support/threads/${current.userId}/decline`, 'POST', { reason: $('#apr-reason').value.trim() });
+      $('#apr-reason').value = '';
+      lastId = 0; $('#log').textContent = ''; await poll(true); loadThreads().catch(() => {});
+    } catch (e) { msg(e.message, true); } finally { $('#apr-ok').disabled = false; }
+  });
 
   $('#send').addEventListener('click', async () => {
     const body = $('#input').value.trim();

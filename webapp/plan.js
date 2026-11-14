@@ -14,7 +14,7 @@
     { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lưu dữ liệu theo mặc định', ctl: true },
     { id: 'monitor', name: 'Giám sát', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu theo mặc định', ctl: true },
     { id: 'pro', name: 'Giám sát + điều khiển', widgets: 'không giới hạn widget', retention: 'lưu 30 ngày', ctl: true },
-    { id: 'factory', name: 'Nhà máy / đối tác', widgets: 'không giới hạn widget', retention: 'lưu không giới hạn', ctl: true },
+    { id: 'factory', name: 'Nhà máy / partner', widgets: 'không giới hạn widget', retention: 'lưu không giới hạn', ctl: true },
   ];
 
   function reasonText(code) {
@@ -37,16 +37,11 @@
     }
   }
 
-  function requestText() {
-    const cur = sub?.planLabel || 'Miễn phí';
-    return `Xin chào, tôi muốn được tư vấn nâng cấp gói. Tài khoản: ${username || '(tên đăng nhập)'}, gói hiện tại: ${cur}.`;
-  }
-
-  /** Mở khung chat với quản trị viên, chỉ điền sẵn lời nhắn (người dùng tự bấm Gửi). Không tạo đơn, không thanh toán. */
+  /** Mở khung chat và bộ chọn gói. KHÔNG tự gửi gì: chỉ gửi khi người dùng chọn gói rồi bấm "Gửi yêu cầu tư vấn". Không tạo đơn, không thanh toán. */
   function copyRequest() {
     document.getElementById('plan-sheet')?.remove();
     if (typeof window.showTab === 'function') window.showTab('set');
-    if (window.SupportChat) window.SupportChat.open(requestText());
+    if (window.SupportChat) window.SupportChat.open();
   }
 
   function show(code) {
@@ -84,11 +79,18 @@
   function update(s, p, name) {
     sub = s || sub; plan = p || plan; if (name) username = name;
     renderTable();
+    window.SupportChat?.fillPlans?.();   // bộ chọn gói trong chat: đánh dấu gói đang dùng
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('plan-copy')?.addEventListener('click', copyRequest);
     renderTable();
   });
-  window.PlanUi = { show, goUpgrade, update, copyRequest };
+  window.PlanUi = {
+    show, goUpgrade, update, copyRequest,
+    plans: PLANS,
+    current: () => sub?.plan || 'free',
+    currentLabel: () => sub?.planLabel || 'Miễn phí',
+    username: () => username,
+  };
 }());

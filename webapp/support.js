@@ -30,8 +30,17 @@
     return { ok: r.ok, data };
   }
 
+  let loadedOnce = false;
+  /** Admin vừa đồng ý đổi gói: mời người dùng tải lại để dùng gói mới ngay (không cần đăng nhập lại). */
+  function showReloadBanner() {
+    const b = $('#support-reload');
+    b.hidden = false;
+  }
+  $('#support-reload-btn').addEventListener('click', () => location.reload());
+
   function addMessages(list) {
     for (const m of list) {
+      if (loadedOnce && m.from === 'admin' && m.id > lastId && /đã đồng ý và chuyển tài khoản/.test(m.body)) showReloadBanner();
       lastId = Math.max(lastId, m.id);
       const row = document.createElement('div');
       row.className = `sup-msg ${m.from}`;
@@ -51,14 +60,24 @@
   async function refresh(markRead) {
     try {
       const { ok, data } = await call('GET', `/api/support/messages?after=${lastId}${markRead ? '&read=1' : ''}`);
-      if (ok) { addMessages(data.messages || []); if (markRead) setBadge(0); }
+      if (ok) { addMessages(data.messages || []); loadedOnce = true; if (markRead) setBadge(0); }
     } catch { /* offline */ }
   }
 
   function setBadge(n) {
     badge.hidden = !n;
     badge.textContent = n ? `${n} tin mới` : '';
+    // Chấm báo trên tab Cài đặt: người dùng không phải mở Cài đặt mới biết admin đã phản hồi
+    const tabBtn = document.querySelector('nav button[data-tab="set"]');
+    if (tabBtn) {
+      let dot = tabBtn.querySelector('.sup-dot');
+      if (n && !dot) { dot = document.createElement('i'); dot.className = 'sup-dot'; dot.setAttribute('aria-label', 'Có tin nhắn mới từ quản trị viên'); tabBtn.appendChild(dot); }
+      if (!n && dot) dot.remove();
+    }
+    if (n && n > lastUnread) (window.toast || (() => {}))('Quản trị viên vừa trả lời bạn (Cài đặt → Hỗ trợ).');
+    lastUnread = n;
   }
+  let lastUnread = 0;
 
   async function pollUnread() {
     try {
@@ -110,15 +129,67 @@
     if (det.open) { refresh(true); startOpenPolling(); } else stopOpenPolling();
   });
 
-  /** Mở khung chat (từ mục Gói dịch vụ): chỉ điền sẵn nội dung gợi ý, người dùng tự bấm Gửi. */
+  /* ---------- Xin tư vấn nâng cấp gói: chọn gói → xem lại nội dung → "Gửi yêu cầu tư vấn" hoặc "Hủy" ----------
+     Chỉ khi bấm "Gửi yêu cầu tư vấn" mới có tin nhắn được gửi. Không tạo đơn, không thanh toán, không giá. */
+  const planSel = $('#support-plan');
+  const planBox = $('#support-plan-confirm');
+  let pendingText = '';
+
+  function fillPlans() {
+    const P = window.PlanUi;
+    if (!P?.plans) return;
+    const cur = P.current();
+    const keep = planSel.value;
+    planSel.length = 1;
+    for (const p of P.plans) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name + (p.id === cur ? ' (đang dùng)' : '');
+      o.disabled = p.id === cur;
+      planSel.appendChild(o);
+    }
+    if ([...planSel.options].some((o) => o.value === keep && !o.disabled)) planSel.value = keep;
+  }
+
+  function planRequestText(planId) {
+    const P = window.PlanUi;
+    const target = P?.plans?.find((p) => p.id === planId);
+    if (!target) return '';
+    return `Tôi muốn được tư vấn chuyển sang gói "${target.name}". Tài khoản: ${P.username() || session.username || '(tên đăng nhập)'}, gói hiện tại: ${P.currentLabel()}.`;
+  }
+
+  let pendingPlan = '';
+  function resetPlanChoice() { planSel.value = ''; pendingText = ''; pendingPlan = ''; planBox.hidden = true; }
+
+  planSel.addEventListener('change', () => {
+    pendingPlan = planSel.value;
+    pendingText = planRequestText(planSel.value);
+    $('#support-plan-preview').textContent = pendingText ? `Sẽ gửi cho quản trị viên: “${pendingText}”` : '';
+    planBox.hidden = !pendingText;
+  });
+  $('#support-plan-cancel').addEventListener('click', resetPlanChoice);
+  $('#support-plan-send').addEventListener('click', async () => {
+    const body = pendingText;
+    if (!body) return;
+    $('#support-plan-send').disabled = true;
+    try {
+      const { ok, data } = await call('POST', '/api/support/messages', { body, plan: pendingPlan });
+      if (ok) { resetPlanChoice(); await refresh(true); } else (window.toast || alert)(ERR[data.error] || 'Không gửi được, thử lại sau.');
+    } finally { $('#support-plan-send').disabled = false; }
+  });
+
+  /** Mở khung chat + bộ chọn gói (từ mục Gói dịch vụ). Không tự gửi gì. */
   window.SupportChat = {
-    open(prefill) {
+    open() {
       det.open = true;
+      fillPlans();
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      if (prefill && !input.value) input.value = prefill;
-      input.focus();
+      planSel.focus();
     },
+    fillPlans,
   };
+  det.addEventListener('toggle', () => { if (det.open) fillPlans(); });
+  document.addEventListener('DOMContentLoaded', fillPlans);
 
   refresh(false);
   pollUnread();

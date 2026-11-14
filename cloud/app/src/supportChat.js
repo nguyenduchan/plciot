@@ -9,7 +9,7 @@
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
-import { subscriptionInfo } from './entitlements.js';
+import { subscriptionInfo, grantPlan, listPlans, PLAN_CATALOG } from './entitlements.js';
 
 const MAX_LEN = 1000;
 const DAILY_CAP = Number(process.env.SUPPORT_DAILY_CAP || 100);
@@ -33,9 +33,10 @@ export function initSupport(db) {
       ts INTEGER NOT NULL
     );
   `);
-  if (!db.prepare('PRAGMA table_info(support_messages)').all().some((c) => c.name === 'image_id')) {
-    db.exec('ALTER TABLE support_messages ADD COLUMN image_id INTEGER');
-  }
+  const cols = db.prepare('PRAGMA table_info(support_messages)').all().map((c) => c.name);
+  if (!cols.includes('image_id')) db.exec('ALTER TABLE support_messages ADD COLUMN image_id INTEGER');
+  // Gợi ý gói người dùng muốn được tư vấn (chỉ để admin chọn sẵn trong ô chọn; KHÔNG phải đơn hàng, không có trạng thái xử lý)
+  if (!cols.includes('plan_hint')) db.exec('ALTER TABLE support_messages ADD COLUMN plan_hint TEXT');
   const days = Math.max(1, Number(process.env.SUPPORT_RETENTION_DAYS || 365));
   const purge = () => {
     try {
@@ -94,7 +95,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (!body) return res.status(400).json({ error: 'empty_message' });
     const today = db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 0 AND ts > ?').get(req.user.id, Date.now() - 86400_000).n;
     if (today >= DAILY_CAP) return res.status(429).json({ error: 'rate_limited' });
-    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 0, ?, ?)').run(req.user.id, body, Date.now());
+    const hint = PLAN_CATALOG[String(req.body?.plan || '')] ? String(req.body.plan) : null;
+    const r = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts, plan_hint) VALUES (?, 0, ?, ?, ?)').run(req.user.id, body, Date.now(), hint);
     res.json({ ok: true, id: Number(r.lastInsertRowid) });
   });
 
@@ -131,7 +133,39 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     db.prepare('UPDATE support_messages SET read_ts = ? WHERE user_id = ? AND from_admin = 0 AND read_ts IS NULL').run(Date.now(), uid);
     let plan = null;
     try { plan = subscriptionInfo(u)?.planLabel || null; } catch { /* */ }
-    res.json({ userId: uid, username: u.username, plan, messages: rows.map(view) });
+    const asked = db.prepare('SELECT plan_hint FROM support_messages WHERE user_id = ? AND from_admin = 0 AND plan_hint IS NOT NULL ORDER BY id DESC LIMIT 1').get(uid);
+    res.json({
+      userId: uid, username: u.username, plan, planId: subscriptionInfo(u)?.plan || null,
+      requestedPlan: asked?.plan_hint || null,
+      plans: listPlans().map((p) => ({ id: p.id, label: p.label })),
+      messages: rows.map(view),
+    });
+  });
+
+  /* Đồng ý / Từ chối yêu cầu tư vấn đổi gói. Đồng ý = admin gán gói THỦ CÔNG (như Console) + nhắn xác nhận bằng chữ.
+     Từ chối = nhắn lý do bằng chữ. Không lưu "đơn hàng", không có trạng thái thanh toán. */
+  const say = (uid, text) => db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)').run(uid, text, Date.now());
+
+  app.post('/api/admin/support/threads/:uid/approve', ...adminOnly, adminSendLimit, (req, res) => {
+    const uid = Number(req.params.uid);
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+    if (!u) return res.status(404).json({ error: 'user_not_found' });
+    const planId = String(req.body?.plan || '');
+    if (!PLAN_CATALOG[planId]) return res.status(400).json({ error: 'unknown_plan' });
+    const r = grantPlan(db, uid, planId, { expiresAt: req.body?.expiresAt || 'never', note: 'via_support_chat' });
+    if (r.error) return res.status(r.status || 400).json(r);
+    audit(db, 'admin_plan_grant', { userId: req.user.id, ip: ipOf(req), detail: `${uid} ${planId} never via_chat` });
+    say(uid, `Quản trị viên đã đồng ý và chuyển tài khoản của bạn sang gói "${PLAN_CATALOG[planId].label}". Bạn tải lại ứng dụng là dùng được ngay, không cần đăng nhập lại.`);
+    res.json({ ok: true, subscription: r.subscription });
+  });
+
+  app.post('/api/admin/support/threads/:uid/decline', ...adminOnly, adminSendLimit, (req, res) => {
+    const uid = Number(req.params.uid);
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(uid)) return res.status(404).json({ error: 'user_not_found' });
+    const reason = cleanBody(req.body?.reason)?.slice(0, 300);
+    say(uid, `Quản trị viên chưa thể chuyển gói theo yêu cầu của bạn lúc này.${reason ? ` Lý do: ${reason}` : ''} Bạn có thể nhắn thêm tại đây nếu cần trao đổi.`);
+    audit(db, 'support_decline', { userId: req.user.id, ip: ipOf(req), detail: `to:${uid}` });
+    res.json({ ok: true });
   });
 
   app.post('/api/admin/support/threads/:uid', ...adminOnly, adminSendLimit, (req, res) => {
