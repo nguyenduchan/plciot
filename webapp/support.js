@@ -239,6 +239,15 @@
       planSel.focus();
     },
     fillPlans,
+    /** Chọn sẵn một gói (từ thẻ gói trong Gói dịch vụ): mở khung chat, hiện bước xem lại. Không tự gửi. */
+    choose(planId) {
+      det.open = true;
+      fillPlans();
+      if (![...planSel.options].some((o) => o.value === planId && !o.disabled)) return;
+      planSel.value = planId;
+      planSel.dispatchEvent(new Event('change'));
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
   };
   det.addEventListener('toggle', () => { if (det.open) fillPlans(); });
   document.addEventListener('DOMContentLoaded', fillPlans);

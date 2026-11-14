@@ -72,9 +72,18 @@
     const host = document.getElementById('plan-table');
     if (!host) return;
     const cur = sub?.plan;
-    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ''}"><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ''}
+    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để xin tư vấn</span>'}
       <small>Giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small></div>`).join('');
   }
+
+  /** Chạm vào một gói: mở khung chat và chọn sẵn gói đó (hiện bước xem lại; chỉ gửi khi bấm "Gửi yêu cầu tư vấn"). */
+  function pickPlan(id) {
+    if (!id || id === sub?.plan) return;
+    if (typeof window.showTab === 'function') window.showTab('set');
+    window.SupportChat?.choose?.(id);
+  }
+  document.addEventListener('click', (e) => { const r = e.target.closest?.('#plan-table .plan-row.pick'); if (r) pickPlan(r.dataset.plan); });
+  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('#plan-table .plan-row.pick')) { e.preventDefault(); pickPlan(e.target.dataset.plan); } });
 
   function update(s, p, name) {
     sub = s || sub; plan = p || plan; if (name) username = name;
