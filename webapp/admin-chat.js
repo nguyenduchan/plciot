@@ -117,10 +117,56 @@
     if (!current) return;
     try {
       const j = await api(`/api/admin/support/threads/${current.userId}?after=${lastId}`);
-      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); }
+      if (first) { const pl = $('#plan-line'); pl.textContent = j.plan ? `Gói hiện tại: ${j.plan}` : ''; pl.classList.toggle('hidden', !j.plan); fillApprove(j); renderProfile(j.profile, j.plans, j.planId); }
       addMessages(j.messages);
     } catch (e) { msg(e.message, true); }
   }
+
+  /* ---------- Thông tin cơ bản của người dùng (DB) + cập nhật nhanh ---------- */
+  const dmy = (t) => (t ? new Date(t).toLocaleDateString('vi-VN') : '—');
+  const dt = (t) => (t ? new Date(t).toLocaleString('vi-VN') : '—');
+  const ago = (t) => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'vừa xong' : m < 90 ? `${m} phút trước` : m < 2880 ? `${Math.round(m / 60)} giờ trước` : `${Math.round(m / 1440)} ngày trước`; };
+  function renderProfile(pr, plans, planId) {
+    const box = $('#prof'); if (!pr) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const days = pr.expiresAt ? Math.ceil((pr.expiresAt - Date.now()) / 86400000) : null;
+    const rows = [
+      ['Tài khoản', `${pr.username} (#${pr.id})`], ['Vai trò', pr.role + (pr.disabled ? ' · ĐÃ KHOÁ' : '')],
+      ['Gói', (pr.plan || 'chưa gán') + (pr.nextPlan ? ` → ${pr.nextPlan}` : '')],
+      ['Hết hạn', pr.expiresAt ? `${dmy(pr.expiresAt)}${days != null ? (days >= 0 ? ` (còn ${days} ngày)` : ` (quá hạn ${-days} ngày)`) : ''}` : 'không hết hạn'],
+      ['Widget', pr.widgets == null ? '—' : `${pr.widgets}${pr.widgetLimit != null ? ` / ${pr.widgetLimit}` : ''}`],
+      ['Lưu lịch sử', pr.unlimitedHistory ? 'không giới hạn' : pr.retentionDays == null ? '—' : `${pr.retentionDays} ngày`],
+      ['Điều khiển từ xa', pr.remoteControl == null ? '—' : pr.remoteControl ? 'bật' : 'tắt'],
+      ['Nhà máy / thiết bị', `${pr.site || '—'} / ${pr.device || '—'}`],
+      ['Đăng nhập gần nhất', pr.lastLoginAt ? `${ago(pr.lastLoginAt)}${pr.lastLoginIp ? ` · ${pr.lastLoginIp}` : ''}` : '—'],
+      ['Dữ liệu gần nhất', ago(pr.lastTelemetryAt)],
+      ['Bảo mật', `${pr.passkeys ? `Face ID ${pr.passkeys}` : 'chưa Face ID'} · ${pr.totpEnabled ? 'Authenticator' : 'chưa Authenticator'}${pr.setupComplete ? '' : ' · chưa hoàn tất thiết lập'}`],
+      ['Tạo lúc', `${dmy(pr.createdAt)}${pr.createdBy ? ` bởi ${pr.createdBy}` : ''}`], ['Đồng ý quyền riêng tư', pr.privacyConsentAt ? dmy(pr.privacyConsentAt) : '—'],
+      ['Tin nhắn chat', String(pr.chatMessages)],
+    ];
+    const g = $('#prof-grid'); g.textContent = '';
+    for (const [k, v] of rows) { const d = document.createElement('div'); const a = document.createElement('small'); a.style.display = 'block'; a.style.opacity = '.7'; a.textContent = k; const b = document.createElement('b'); b.style.fontWeight = '600'; b.textContent = v; d.append(a, b); g.appendChild(d); }
+    if (pr.note) { const d = document.createElement('div'); d.style.gridColumn = '1 / -1'; const a = document.createElement('small'); a.style.cssText = 'display:block;opacity:.7'; a.textContent = 'Ghi chú admin'; const b = document.createElement('span'); b.textContent = pr.note; d.append(a, b); g.appendChild(d); }
+    const sel = $('#pf-plan'); sel.textContent = '';
+    for (const p of plans || []) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; sel.appendChild(o); }
+    if (planId) sel.value = planId;
+    $('#pf-exp').value = pr.expiresAt ? new Date(pr.expiresAt).toISOString().slice(0, 10) : '';
+    $('#pf-rc').checked = pr.remoteControl === true; $('#pf-note').value = pr.note || '';
+    box.dataset.planId = planId || ''; box.dataset.exp = pr.expiresAt || ''; box.dataset.rc = pr.remoteControl === true ? '1' : '0'; box.dataset.note = pr.note || '';
+  }
+  $('#pf-save')?.addEventListener('click', async () => {
+    if (!current) return;
+    const box = $('#prof'); const body = {};
+    const plan = $('#pf-plan').value; const expStr = $('#pf-exp').value;
+    const exp = expStr ? Date.parse(`${expStr}T23:59:59`) : null;
+    const planChanged = plan !== box.dataset.planId; const expChanged = String(exp || '') !== String(box.dataset.exp || '');
+    if (planChanged || expChanged) { body.planId = plan; body.expiresAt = exp; }
+    if (($('#pf-rc').checked ? '1' : '0') !== box.dataset.rc) body.remoteControl = $('#pf-rc').checked;
+    if ($('#pf-note').value !== box.dataset.note) body.note = $('#pf-note').value;
+    if (!Object.keys(body).length) return msg('Chưa có gì thay đổi.');
+    if (planChanged && !confirm(`Gán gói "${$('#pf-plan').selectedOptions[0].textContent}" cho ${current.username} NGAY${exp ? ` đến ${dmy(exp)}` : ' (không hết hạn)'}?`)) return;
+    try { const r = await api(`/api/admin/support/threads/${current.userId}/profile`, 'POST', body); await poll(true); msg('Đã cập nhật.', false); void r; } catch (e) { msg(e.message, true); }
+  });
 
   /* ---------- Đồng ý / Từ chối yêu cầu đổi gói (gán gói thủ công + nhắn chữ; không đơn hàng, không thanh toán) ---------- */
   let planLabels = {}; let pendingAction = null; let curPlanId = null; let curExp = null; let planOrder = [];

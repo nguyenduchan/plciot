@@ -18,7 +18,8 @@ import { rateLimit, clientIp, audit } from '@plciot/security';
 import { quotesForWidgets, pricingAssumptions } from './pricing.js';
 import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
-import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG } from './entitlements.js';
+import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG, setRemoteControl } from './entitlements.js';
+import { retentionInfo } from './retention.js';
 
 const MAX_LEN = 1000;
 const DAILY_CAP = Number(process.env.SUPPORT_DAILY_CAP || 100);
@@ -273,6 +274,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     try { plan = subscriptionInfo(u)?.planLabel || null; } catch { /* */ }
     const asked = db.prepare('SELECT plan AS plan_hint FROM support_requests WHERE user_id = ?').get(uid);
     res.json({
+      profile: profileOf(u),
       userId: uid, username: u.username, plan, planId: subscriptionInfo(u)?.plan || null,
       requestedPlan: asked?.plan_hint || null,
       quotes: (() => { try { return quotesForWidgets(applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total); } catch { return null; } })(),
@@ -282,6 +284,63 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
       plans: listPlans().map((p) => ({ id: p.id, label: p.label })),
       messages: rows.map(view),
     });
+  });
+
+  // Thông tin cơ bản của người dùng trong DB để admin tra cứu ngay trong cuộc chat (chỉ đọc, trừ các trường sửa được bên dưới)
+  try { if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'admin_note')) db.exec('ALTER TABLE users ADD COLUMN admin_note TEXT'); } catch { /* */ }
+  const one = (sql, ...a) => { try { return db.prepare(sql).get(...a); } catch { return null; } };
+  function profileOf(u) {
+    const sub = (() => { try { return subscriptionInfo(u); } catch { return {}; } })();
+    const devs = (() => { try { return applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null); } catch { return null; } })();
+    const login = one("SELECT ts, ip FROM audit_log WHERE user_id = ? AND event = 'login_ok' ORDER BY ts DESC LIMIT 1", u.id);
+    const tele = one("SELECT MAX(ts) AS t FROM mqtt_events WHERE site = ? AND device = ? AND kind = 'telemetry'", u.notify_site, u.notify_device);
+    const creator = u.created_by ? one('SELECT username FROM users WHERE id = ?', u.created_by) : null;
+    const msgs = one('SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ?', u.id);
+    const arch = one('SELECT COUNT(*) AS n FROM support_archive WHERE user_id = ?', u.id);
+    const ret = (() => { try { return retentionInfo(u); } catch { return {}; } })();
+    return {
+      id: u.id, username: u.username, role: u.role, disabled: Boolean(u.disabled), createdAt: u.created_at || null, createdBy: creator?.username || null,
+      site: u.notify_site, device: u.notify_device, tenantId: u.tenant_id || null,
+      planId: sub?.plan || null, plan: sub?.planLabel || null, expiresAt: sub?.expiresAt ?? null, nextPlan: sub?.nextPlan || null,
+      retentionDays: ret.retentionDays ?? null, unlimitedHistory: Boolean(ret.unlimited),
+      remoteControl: u.remote_control == null ? null : Boolean(u.remote_control),
+      widgets: devs?.total ?? null, widgetLimit: devs?.limit ?? null,
+      setupComplete: u.setup_complete !== 0, totpEnabled: Boolean(u.totp_enabled),
+      passkeys: one('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?', u.id)?.n ?? 0,
+      privacyConsentAt: u.privacy_consent_at || null,
+      lastLoginAt: login?.ts || null, lastLoginIp: login?.ip || null, lastTelemetryAt: tele?.t || null,
+      chatMessages: (msgs?.n || 0) + (arch?.n || 0),
+      note: u.admin_note || '',
+    };
+  }
+
+  app.post('/api/admin/support/threads/:uid/profile', ...adminOnly, adminSendLimit, (req, res) => {
+    const uid = Number(req.params.uid);
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+    if (!u) return res.status(404).json({ error: 'user_not_found' });
+    const b = req.body || {};
+    const changed = [];
+    if (b.note !== undefined) { db.prepare('UPDATE users SET admin_note = ? WHERE id = ?').run(String(b.note).slice(0, 1000), uid); changed.push('note'); }
+    if (b.planId !== undefined) {
+      if (!PLAN_CATALOG[b.planId]) return res.status(400).json({ error: 'invalid_plan' });
+      let exp = null;
+      if (b.expiresAt !== undefined && b.expiresAt !== null && b.expiresAt !== '') {
+        exp = Number(b.expiresAt);
+        if (!Number.isFinite(exp) || exp < Date.now() - 86_400_000) return res.status(400).json({ error: 'invalid_expiry' });
+      }
+      grantPlan(db, uid, b.planId, { expiresAt: exp, note: `admin-profile:${req.user.username}` });
+      changed.push(`plan=${b.planId}${exp ? `@${new Date(exp).toISOString().slice(0, 10)}` : ''}`);
+    } else if (b.expiresAt !== undefined) {
+      const cur = subscriptionInfo(u)?.plan;
+      if (!cur) return res.status(400).json({ error: 'no_plan' });
+      const exp = b.expiresAt === null || b.expiresAt === '' ? null : Number(b.expiresAt);
+      if (exp !== null && (!Number.isFinite(exp) || exp < Date.now() - 86_400_000)) return res.status(400).json({ error: 'invalid_expiry' });
+      grantPlan(db, uid, cur, { expiresAt: exp, note: `admin-profile:${req.user.username}` });
+      changed.push(`expiry=${exp ? new Date(exp).toISOString().slice(0, 10) : 'none'}`);
+    }
+    if (b.remoteControl !== undefined) { setRemoteControl(db, uid, Boolean(b.remoteControl)); changed.push(`remoteControl=${Boolean(b.remoteControl)}`); }
+    if (changed.length) audit(db, 'support_profile_update', { userId: req.user.id, ip: clientIp(req), detail: `${u.username}: ${changed.join(', ')}` });
+    res.json({ ok: true, profile: profileOf(db.prepare('SELECT * FROM users WHERE id = ?').get(uid)) });
   });
 
   // Lịch sử cũ của một người dùng (kể cả kho lưu trữ), phân trang theo id
