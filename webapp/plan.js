@@ -11,10 +11,10 @@
   let sub = null; let plan = null; let username = '';
 
   const PLANS = [
-    { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lưu dữ liệu 1 ngày', ctl: true },
-    { id: 'monitor', name: 'Cơ bản', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu 1 ngày', ctl: true },
-    { id: 'pro', name: 'Nâng cao', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu 30 ngày', ctl: true },
-    { id: 'factory', name: 'Nhà máy / partner', widgets: 'không giới hạn widget', retention: 'lưu dữ liệu không giới hạn', ctl: true },
+    { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lịch sử 1 mẫu/2 giây, lưu 1 ngày', fit: 'Dùng thử, 1 trạm bơm nhỏ', ctl: true },
+    { id: 'monitor', name: 'Cơ bản', widgets: 'tối đa 30 widget', retention: 'lịch sử 1 mẫu/10 giây, lưu 7 ngày', fit: 'Trạm bơm, xưởng nhỏ', ctl: true },
+    { id: 'pro', name: 'Nâng cao', widgets: 'tối đa 100 widget', retention: 'lịch sử 1 mẫu/10 giây, lưu 30 ngày', fit: 'Xưởng vừa, nhiều trạm bơm, cần xem lại cả tháng', ctl: true },
+    { id: 'factory', name: 'Nhà máy / partner', widgets: 'tối đa 300 widget', retention: 'lịch sử chi tiết 30 ngày, sau đó lưu 1 mẫu/5 phút đủ 10 năm; đăng ký một lần cho 10 năm', fit: 'Hệ thống lớn, cần lưu dài hạn', ctl: true },
   ];
 
   function reasonText(code) {
@@ -72,7 +72,7 @@
     if (!host) return;
     const cur = sub?.plan;
     host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để xin tư vấn</span>'}
-      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small></div>`).join('');
+      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small><small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
     window.dispatchEvent(new Event('plan-table-rendered'));
   }
 

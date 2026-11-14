@@ -35,7 +35,7 @@ ok(grantPlan(db, u.id, 'monitor').ok, 'grant monitor');
 let fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);
 ok(subscriptionInfo(fresh).remoteControl === true, 'mọi gói đều có điều khiển (monitor)');
 ok(mayRemoteControl(fresh, { ip: '1.2.3.4' }).ok, 'monitor: điều khiển được');
-ok(subscriptionInfo(fresh).widgetLimit === null, 'monitor: không giới hạn widget');
+ok(subscriptionInfo(fresh).widgetLimit === 30, 'Cơ bản: tối đa 30 widget');
 
 ok(grantPlan(db, u.id, 'pro', { expiresAt: '2099-01-01' }).ok, 'grant pro');
 fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);

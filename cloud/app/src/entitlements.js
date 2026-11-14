@@ -28,23 +28,35 @@ export const PLAN_CATALOG = Object.freeze({
     widgets: FREE_WIDGET_LIMIT,
     telemetryMinMs: FREE_TELEMETRY_MIN_MS,
   },
+  // Cơ bản — trạm bơm / xưởng nhỏ: tối đa 30 widget, lịch sử 1 mẫu/10 giây giữ 7 ngày
   monitor: {
     label: 'Cơ bản',
-    retention: 'default', // HISTORY_DEFAULT_DAYS
+    retention: 7,
     remoteControl: true,   // mọi gói đều có giám sát + điều khiển
     partnerCmd: false,
+    widgets: Number(process.env.BASIC_WIDGET_LIMIT || 30),
+    telemetryMinMs: Number(process.env.PAID_TELEMETRY_MIN_MS || 10000),
   },
+  // Nâng cao — xưởng vừa, nhiều trạm: tối đa 100 widget, lịch sử 1 mẫu/10 giây giữ 30 ngày
   pro: {
     label: 'Nâng cao',
     retention: 30,
     remoteControl: true,
     partnerCmd: false,
+    widgets: Number(process.env.PRO_WIDGET_LIMIT || 100),
+    telemetryMinMs: Number(process.env.PAID_TELEMETRY_MIN_MS || 10000),
   },
+  // Nhà máy / partner — TRẢ MỘT LẦN cho 10 năm: chi tiết 1 mẫu/10 giây giữ 30 ngày, sau đó gộp 1 mẫu/5 phút giữ đủ 10 năm
   factory: {
     label: 'Nhà máy / partner',
-    retention: 0, // unlimited
+    retention: 0, // không xoá; dữ liệu cũ hơn hotDays được gộp thưa (thinOldTelemetry)
     remoteControl: true,
     partnerCmd: true,
+    widgets: Number(process.env.FACTORY_WIDGET_LIMIT || 300),
+    telemetryMinMs: Number(process.env.PAID_TELEMETRY_MIN_MS || 10000),
+    hotDays: 30,
+    coldSampleMs: 300000,
+    oneTime10y: true,
   },
 });
 

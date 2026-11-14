@@ -753,3 +753,5 @@ body.chat-on{overflow:hidden}
 
 /* Ô chọn gói chỉ giữ trạng thái (đã bỏ khỏi giao diện): luôn ẩn dù select có display riêng */
 #support-plan[hidden] { display: none !important; }
+
+.plan-row small.fit { display: block; opacity: .9; font-style: italic; }

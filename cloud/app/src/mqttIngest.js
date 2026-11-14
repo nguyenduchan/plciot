@@ -1,7 +1,7 @@
 import { shardCount, shardUrls } from './shards.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
-import { purgeByPlan, defaultDays } from './retention.js';
+import { purgeByPlan, defaultDays, thinOldTelemetry } from './retention.js';
 import { noteTelemetry } from './plcProof.js';
 import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
 import { deviceByMqttId } from './mqttIds.js';
@@ -279,6 +279,8 @@ export function startHistoryPurge(db) {
     try {
       const n = purgeByPlan(db);
       if (n) console.log(`history purge: deleted ${n} expired rows (default ${defaultDays()}d, per-plan overrides)`);
+      const t = thinOldTelemetry(db);
+      if (t) console.log(`history thin: gộp thưa ${t} mẫu cũ của gói không giới hạn`);
     } catch (e) {
       console.error('history purge', e.message);
     }

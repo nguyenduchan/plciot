@@ -135,10 +135,8 @@
     if (j.requestedPlan && j.requestedPlan !== j.planId) sel.value = j.requestedPlan;
     else sel.value = [...sel.options].find((o) => !o.disabled)?.value || '';
     $('#apr-asked').textContent = j.requestedPlan ? `Người dùng đang xin tư vấn gói: ${planLabels[j.requestedPlan] || j.requestedPlan}.` : 'Người dùng chưa chọn gói cụ thể.';
-    const q = j.quote; const money = (n) => `${Number(n).toLocaleString('vi-VN')}đ`;
-    window._quote = q || null;
-    $('#quote').classList.toggle('hidden', !q);
-    if (q) $('#quote-text').textContent = `Ước tính tham khảo (chỉ admin thấy): ${q.widgets} widget × ${money(q.perWidget)} = ${money(q.total)}. Cách tính: 3 × chi phí vận hành server của 1 widget trong ${q.assumptions.years} năm = 3 × (${money(q.assumptions.vpsMonthVnd)}/tháng × 12 × ${q.assumptions.years} ÷ ${q.assumptions.capacityWidgets} widget, mỗi widget 1 tin/giây).`;
+    window._quotes = j.quotes || null; window._pricing = j.pricing || null;
+    showQuote();
     $('#apr').classList.remove('hidden'); $('#apr-confirm').classList.add('hidden'); pendingAction = null;
     $('#apr-now').checked = false; $('#apr-now-row').classList.toggle('hidden', !isDown(sel.value));
   }
@@ -159,10 +157,28 @@
   }
   const isDown = (id) => planOrder.indexOf(id) !== -1 && planOrder.indexOf(id) < planOrder.indexOf(curPlanId);
   $('#apr-plan').addEventListener('change', () => { $('#apr-now-row').classList.toggle('hidden', !isDown($('#apr-plan').value)); });
+  const money = (n) => `${Number(n).toLocaleString('vi-VN')}đ`;
+  function quoteLine(q) {
+    if (!q) return '';
+    if (q.kind === 'free') return 'Gói Miễn phí: 0đ.';
+    if (q.kind === 'monthly') return `${q.label}: ${money(q.total)}/tháng (~${money(q.perYear)}/năm). ${q.note}`;
+    return `${q.label}: ${money(q.total)} trả một lần cho ${q.years} năm (${q.widgets} widget × ${money(q.perWidget)}; tương đương ~${money(q.equivalentPerMonth)}/tháng). ${q.note}`;
+  }
+  /** Gợi ý giá của gói đang chọn (chỉ admin thấy). */
+  function showQuote() {
+    const q = window._quotes?.[$('#apr-plan').value];
+    $('#quote').classList.toggle('hidden', !q);
+    if (!q) return;
+    const f = `Giá sàn theo chi phí: ~${money(q.floorPerWidgetMonth)}/widget/tháng (đĩa ~${q.storageMbPerWidget} MB/widget; VPS ${money(window._pricing?.vpsMonthVnd || 0)}/tháng).`;
+    $('#quote-text').textContent = `Gợi ý tham khảo (chỉ admin thấy) cho ${q.widgets} widget hiện có: ${quoteLine(q)}${q.overCap ? ` ⚠ Vượt giới hạn ${q.widgetCap} widget của gói.` : ''} ${f}`;
+  }
+  $('#apr-plan').addEventListener('change', showQuote);
   $('#quote-fill').addEventListener('click', () => {
-    const q = window._quote; if (!q || !current) return;
-    const money = (n) => `${Number(n).toLocaleString('vi-VN')}đ`;
-    $('#input').value = `Với ${q.widgets} widget hiện có trên tài khoản của bạn, mức ước tính là ${money(q.perWidget)} cho mỗi widget, tổng khoảng ${money(q.total)} (dùng trong ${q.assumptions.years} năm). Mức này chỉ để tham khảo; nếu bạn đồng ý, mình gửi hướng dẫn chuyển khoản.`;
+    const q = window._quotes?.[$('#apr-plan').value]; if (!q || !current) return;
+    const body = q.kind === 'one_time'
+      ? `Với ${q.widgets} widget hiện có, gói "${q.label}" trả một lần cho ${q.years} năm khoảng ${money(q.total)} (tương đương ~${money(q.equivalentPerMonth)}/tháng).`
+      : q.kind === 'monthly' ? `Gói "${q.label}" cho ${q.widgets} widget hiện có khoảng ${money(q.total)}/tháng (hoặc ~${money(q.perYear)}/năm).` : `Gói "${q.label}" miễn phí.`;
+    $('#input').value = `${body} Mức này chỉ để tham khảo; nếu bạn đồng ý, mình gửi hướng dẫn chuyển khoản.`;
     $('#input').focus();
   });
   $('#apr-yes').addEventListener('click', () => askConfirm('yes'));

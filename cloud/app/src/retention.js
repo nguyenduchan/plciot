@@ -81,6 +81,27 @@ export function purgeByPlan(db, now = Date.now()) {
   return deleted;
 }
 
+/**
+ * Gói lưu không giới hạn (retention_days = 0): dữ liệu telemetry cũ hơn HOT_DAYS được gộp còn 1 mẫu / COLD_MS (mặc định 5 phút)
+ * để không đầy đĩa (1 widget 1 tin/giây ≈ 22 MB/ngày nếu giữ nguyên). Chỉ xử lý khoảng mới tới hạn kể từ lần trước (bảng thin_state).
+ */
+export function thinOldTelemetry(db, now = Date.now(), { hotDays = 30, coldMs = 300000 } = {}) {
+  db.exec('CREATE TABLE IF NOT EXISTS thin_state (site TEXT NOT NULL, device TEXT NOT NULL, until_ts INTEGER NOT NULL, PRIMARY KEY (site, device))');
+  const pairs = db.prepare("SELECT DISTINCT notify_site AS site, notify_device AS device FROM users WHERE retention_days = 0 AND notify_site IS NOT NULL AND notify_device IS NOT NULL").all();
+  const getS = db.prepare('SELECT until_ts FROM thin_state WHERE site = ? AND device = ?');
+  const setS = db.prepare('INSERT INTO thin_state (site, device, until_ts) VALUES (?, ?, ?) ON CONFLICT(site, device) DO UPDATE SET until_ts = excluded.until_ts');
+  const del = db.prepare(`DELETE FROM mqtt_events WHERE site = @site AND device = @device AND kind = 'telemetry' AND ts > @from AND ts <= @to
+    AND id NOT IN (SELECT MIN(id) FROM mqtt_events WHERE site = @site AND device = @device AND kind = 'telemetry' AND ts > @from AND ts <= @to GROUP BY CAST(ts AS INTEGER) / CAST(@cold AS INTEGER))`);
+  let deleted = 0;
+  for (const p of pairs) {
+    const to = now - hotDays * DAY;
+    const from = getS.get(p.site, p.device)?.until_ts ?? 0;
+    if (to - from < 3_600_000) continue;
+    deleted += db.transaction(() => { const n = del.run({ site: p.site, device: p.device, from, to, cold: coldMs }).changes; setS.run(p.site, p.device, to); return n; })();
+  }
+  return deleted;
+}
+
 /** Remove every stored event of one device namespace (ownership change / user request). */
 export function wipeDeviceHistory(db, site, device) {
   return db.prepare('DELETE FROM mqtt_events WHERE site = ? AND device = ?').run(site, device).changes;

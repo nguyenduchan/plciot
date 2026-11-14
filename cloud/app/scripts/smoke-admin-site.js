@@ -174,8 +174,10 @@ try {
   check('plan: gói không hợp lệ bị bỏ qua (không lưu gợi ý)', (await req(APP, 'POST', '/api/support/messages', { body: 'x', plan: 'hack' }, ctok)).status === 200);
   const th = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
   check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
-  check('báo giá: ước tính = 3 × chi phí vận hành 10 năm / widget (260k/tháng, 500 widget → 188.000đ)', th.j?.quote?.perWidget === 188000 && th.j.quote.total === 188000 * th.j.quote.widgets && th.j.quote.assumptions.msgPerSecPerWidget === 1);
-  check('báo giá: người dùng không thấy báo giá qua API của mình', !JSON.stringify((await req(APP, 'GET', '/api/support/unread', null, ctok)).j).includes('perWidget'));
+  const Q = th.j?.quotes;
+  check('giá: Cơ bản trọn gói/tháng, Nâng cao có mức tối thiểu', Q?.monitor?.kind === 'monthly' && Q.monitor.total === 99000 && Q.pro.kind === 'monthly' && Q.pro.total >= 199000 && Q.free.total === 0);
+  check('giá: Nhà máy trả một lần 10 năm = 3 × chi phí vận hành (đĩa ~313 MiB/widget)', Q?.factory?.kind === 'one_time' && Q.factory.years === 10 && Q.factory.perWidget >= 1900000 && Q.factory.perWidget <= 2100000 && Q.factory.total === Q.factory.perWidget * Q.factory.widgets && Q.factory.storageMbPerWidget >= 300 && Q.factory.storageMbPerWidget <= 340);
+  check('giá: người dùng không thấy giá qua API của mình', !JSON.stringify((await req(APP, 'GET', '/api/support/unread', null, ctok)).j).includes('perWidget'));
   check('plan: gói sai bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'nope' }, token)).status === 400);
   check('plan: người dùng thường không tự đồng ý được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'pro' }, ctok)).status === 404);
   const tl = await req(ADMIN, 'GET', '/api/admin/support/threads', null, token);

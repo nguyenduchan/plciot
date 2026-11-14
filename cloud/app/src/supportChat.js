@@ -15,7 +15,7 @@
  */
 import express from 'express';
 import { rateLimit, clientIp, audit } from '@plciot/security';
-import { quoteForWidgets } from './pricing.js';
+import { quotesForWidgets, pricingAssumptions } from './pricing.js';
 import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG } from './entitlements.js';
@@ -275,7 +275,8 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     res.json({
       userId: uid, username: u.username, plan, planId: subscriptionInfo(u)?.plan || null,
       requestedPlan: asked?.plan_hint || null,
-      quote: (() => { try { return quoteForWidgets(applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total); } catch { return null; } })(),
+      quotes: (() => { try { return quotesForWidgets(applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total); } catch { return null; } })(),
+      pricing: pricingAssumptions(),
       expiresAt: subscriptionInfo(u)?.expiresAt ?? null,
       nextPlan: subscriptionInfo(u)?.nextPlan || null,
       plans: listPlans().map((p) => ({ id: p.id, label: p.label })),
