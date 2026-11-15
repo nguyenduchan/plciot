@@ -1,0 +1,274 @@
+{
+  "gw": "AGRI",
+  "devices": [
+    {
+      "id": "gh1",
+      "name": "Nhà kính A",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 0,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm KK",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "soil_pct",
+          "lbl": "Độ ẩm đất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "light_lux",
+          "lbl": "Ánh sáng",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 60000
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "ec",
+          "lbl": "EC",
+          "unit": "mS/cm",
+          "widget": "kpi"
+        },
+        {
+          "key": "ph",
+          "lbl": "pH dung dịch",
+          "widget": "gauge",
+          "min": 4,
+          "max": 9
+        },
+        {
+          "key": "water_l",
+          "lbl": "Nước đã tưới",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "mist",
+          "lbl": "Phun sương",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm tưới",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "shade",
+          "lbl": "Lưới che",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "gh2",
+      "name": "Nhà kính B",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 0,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm KK",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "soil_pct",
+          "lbl": "Độ ẩm đất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "light_lux",
+          "lbl": "Ánh sáng",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 60000
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "ec",
+          "lbl": "EC",
+          "unit": "mS/cm",
+          "widget": "kpi"
+        },
+        {
+          "key": "ph",
+          "lbl": "pH dung dịch",
+          "widget": "gauge",
+          "min": 4,
+          "max": 9
+        },
+        {
+          "key": "water_l",
+          "lbl": "Nước đã tưới",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "mist",
+          "lbl": "Phun sương",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm tưới",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "shade",
+          "lbl": "Lưới che",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "gh3",
+      "name": "Vườn ngoài trời",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 0,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm KK",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "soil_pct",
+          "lbl": "Độ ẩm đất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "light_lux",
+          "lbl": "Ánh sáng",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 60000
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "water_l",
+          "lbl": "Nước đã tưới",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "mist",
+          "lbl": "Phun sương",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm tưới",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "shade",
+          "lbl": "Lưới che",
+          "widget": "led"
+        }
+      ]
+    }
+  ]
+}

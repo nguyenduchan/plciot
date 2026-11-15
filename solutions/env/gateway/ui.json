@@ -1,0 +1,418 @@
+{
+ "id": "env",
+ "title": "Quan trắc môi trường",
+ "short": "Môi trường",
+ "glyph": "☁",
+ "palette": {
+  "bg": "#0f170a",
+  "card": "#1a2810",
+  "fg": "#eaf5d8",
+  "mut": "#a3b97e",
+  "line": "#2f4420",
+  "acc": "#a3e635"
+ },
+ "spec": {
+  "title": "Quan trắc môi trường",
+  "icon": "cloud",
+  "style": "glass",
+  "metrics": [
+   {
+    "id": "aqi",
+    "label": "Chỉ số AQI",
+    "keys": [
+     "aqi"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 300,
+    "th": {
+     "hi": 100,
+     "hiHi": 150
+    }
+   },
+   {
+    "id": "pm25",
+    "label": "Bụi PM2.5",
+    "unit": "µg/m³",
+    "keys": [
+     "pm25",
+     "pm2_5"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 150,
+    "th": {
+     "hi": 35,
+     "hiHi": 75
+    }
+   },
+   {
+    "id": "pm10",
+    "label": "Bụi PM10",
+    "unit": "µg/m³",
+    "keys": [
+     "pm10"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 250,
+    "th": {
+     "hi": 50,
+     "hiHi": 100
+    }
+   },
+   {
+    "id": "co2",
+    "label": "CO₂",
+    "unit": "ppm",
+    "keys": [
+     "co2"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 300,
+    "max": 2000,
+    "th": {
+     "hi": 1000,
+     "hiHi": 1500
+    }
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ",
+    "unit": "°C",
+    "keys": [
+     "temp_c",
+     "temp"
+    ],
+    "agg": "avg",
+    "dec": 1
+   },
+   {
+    "id": "hum",
+    "label": "Độ ẩm",
+    "unit": "%",
+    "keys": [
+     "hum_pct",
+     "hum"
+    ],
+    "agg": "avg",
+    "dec": 0
+   },
+   {
+    "id": "noise",
+    "label": "Tiếng ồn",
+    "unit": "dB",
+    "keys": [
+     "noise_db",
+     "noise"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 30,
+    "max": 110,
+    "th": {
+     "hi": 70,
+     "hiHi": 85
+    }
+   },
+   {
+    "id": "uv",
+    "label": "Chỉ số UV",
+    "keys": [
+     "uv"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 12,
+    "th": {
+     "hi": 6,
+     "hiHi": 9
+    }
+   }
+  ],
+  "overview": [
+   {
+    "type": "ring",
+    "main": "aqi",
+    "subs": [
+     "pm25",
+     "pm10",
+     "noise"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "temp",
+     "hum",
+     "co2",
+     "uv"
+    ]
+   },
+   {
+    "type": "tiles",
+    "title": "Các trạm quan trắc",
+    "main": "pm25",
+    "subs": [
+     "pm10",
+     "noise",
+     "temp"
+    ]
+   },
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "trend",
+    "metric": "pm25",
+    "title": "Bụi PM2.5"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "air",
+    "label": "Không khí",
+    "title": "Chất lượng không khí",
+    "icon": "wind",
+    "blocks": [
+     {
+      "type": "bars",
+      "items": [
+       "pm25",
+       "pm10",
+       "co2"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "pm10",
+      "title": "PM10"
+     },
+     {
+      "type": "trend",
+      "metric": "co2",
+      "title": "CO₂"
+     }
+    ]
+   },
+   {
+    "id": "noise",
+    "label": "Tiếng ồn",
+    "title": "Tiếng ồn & UV",
+    "icon": "bell",
+    "blocks": [
+     {
+      "type": "gauges",
+      "items": [
+       "noise",
+       "uv"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "noise",
+      "title": "Tiếng ồn"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "s1": {
+     "title": "Trạm KCN",
+     "dec": {
+      "aqi": 0,
+      "pm25": 0,
+      "pm10": 0,
+      "co2": 0,
+      "noise_db": 0,
+      "uv": 0
+     },
+     "f": {
+      "aqi": [
+       92,
+       25,
+       220,
+       0
+      ],
+      "pm25": [
+       32,
+       10,
+       200,
+       0
+      ],
+      "pm10": [
+       55,
+       14,
+       210,
+       0
+      ],
+      "co2": [
+       620,
+       90,
+       240,
+       0
+      ],
+      "temp_c": [
+       33,
+       1.5,
+       400,
+       0
+      ],
+      "hum_pct": [
+       62,
+       5,
+       300,
+       0
+      ],
+      "noise_db": [
+       68,
+       7,
+       130,
+       0
+      ],
+      "uv": [
+       6,
+       2,
+       500,
+       0
+      ]
+     }
+    },
+    "s2": {
+     "title": "Trạm khu dân cư",
+     "dec": {
+      "aqi": 0,
+      "pm25": 0,
+      "pm10": 0,
+      "co2": 0,
+      "noise_db": 0,
+      "uv": 0
+     },
+     "f": {
+      "aqi": [
+       58,
+       14,
+       240,
+       40
+      ],
+      "pm25": [
+       18,
+       6,
+       220,
+       0
+      ],
+      "pm10": [
+       32,
+       8,
+       230,
+       0
+      ],
+      "co2": [
+       520,
+       50,
+       250,
+       0
+      ],
+      "temp_c": [
+       32,
+       1.2,
+       420,
+       0
+      ],
+      "hum_pct": [
+       66,
+       4,
+       310,
+       0
+      ],
+      "noise_db": [
+       54,
+       5,
+       140,
+       0
+      ],
+      "uv": [
+       6,
+       2,
+       500,
+       0
+      ]
+     }
+    },
+    "s3": {
+     "title": "Trạm ven đường",
+     "dec": {
+      "aqi": 0,
+      "pm25": 0,
+      "pm10": 0,
+      "co2": 0,
+      "noise_db": 0,
+      "uv": 0
+     },
+     "f": {
+      "aqi": [
+       120,
+       30,
+       200,
+       80
+      ],
+      "pm25": [
+       46,
+       14,
+       190,
+       0
+      ],
+      "pm10": [
+       82,
+       18,
+       200,
+       0
+      ],
+      "co2": [
+       760,
+       110,
+       230,
+       0
+      ],
+      "temp_c": [
+       34,
+       1.6,
+       410,
+       0
+      ],
+      "hum_pct": [
+       60,
+       5,
+       290,
+       0
+      ],
+      "noise_db": [
+       78,
+       8,
+       120,
+       0
+      ],
+      "uv": [
+       7,
+       2,
+       500,
+       0
+      ]
+     }
+    }
+   }
+  },
+  "id": "env",
+  "required": [
+   "pm25",
+   "aqi"
+  ],
+  "why": "PM2.5 và AQI là chỉ tiêu chính của trạm quan trắc không khí."
+ }
+}

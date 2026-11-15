@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "agri",
+  "title": "Nông nghiệp nhà kính",
+  "themeColor": "#2f7d32",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

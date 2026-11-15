@@ -1,0 +1,149 @@
+{
+  "gw": "TANK",
+  "devices": [
+    {
+      "id": "b1",
+      "name": "Bồn A - Dầu DO",
+      "fields": [
+        {
+          "key": "level_pct",
+          "lbl": "Mức bồn",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "volume_l",
+          "lbl": "Tồn kho",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "kpi"
+        },
+        {
+          "key": "flow_lpm",
+          "lbl": "Lưu lượng",
+          "unit": "L/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "leak",
+          "lbl": "Rò rỉ",
+          "widget": "led"
+        },
+        {
+          "key": "valve",
+          "lbl": "Van xuất",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "name": "Bồn B - Xăng A95",
+      "fields": [
+        {
+          "key": "level_pct",
+          "lbl": "Mức bồn",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "volume_l",
+          "lbl": "Tồn kho",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "kpi"
+        },
+        {
+          "key": "flow_lpm",
+          "lbl": "Lưu lượng",
+          "unit": "L/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "leak",
+          "lbl": "Rò rỉ",
+          "widget": "led"
+        },
+        {
+          "key": "valve",
+          "lbl": "Van xuất",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "b3",
+      "name": "Bồn C - Hóa chất",
+      "fields": [
+        {
+          "key": "level_pct",
+          "lbl": "Mức bồn",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "volume_l",
+          "lbl": "Tồn kho",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "kpi"
+        },
+        {
+          "key": "flow_lpm",
+          "lbl": "Lưu lượng",
+          "unit": "L/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "leak",
+          "lbl": "Rò rỉ",
+          "widget": "led"
+        },
+        {
+          "key": "valve",
+          "lbl": "Van xuất",
+          "widget": "led"
+        }
+      ]
+    }
+  ]
+}

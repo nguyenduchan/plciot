@@ -1,0 +1,346 @@
+{
+ "id": "tank",
+ "title": "Bồn bể xăng dầu & hóa chất",
+ "short": "Bồn bể",
+ "glyph": "▮",
+ "palette": {
+  "bg": "#17100b",
+  "card": "#26190f",
+  "fg": "#fbeee3",
+  "mut": "#c2a58c",
+  "line": "#46301f",
+  "acc": "#fb923c"
+ },
+ "spec": {
+  "title": "Bồn bể xăng dầu & hóa chất",
+  "icon": "fuel",
+  "style": "sharp",
+  "metrics": [
+   {
+    "id": "level",
+    "label": "Mức bồn",
+    "unit": "%",
+    "keys": [
+     "level_pct",
+     "level"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 15,
+     "loLo": 8,
+     "hi": 90,
+     "hiHi": 95
+    }
+   },
+   {
+    "id": "vol",
+    "label": "Tồn kho",
+    "unit": "L",
+    "keys": [
+     "volume_l",
+     "vol"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ",
+    "unit": "°C",
+    "keys": [
+     "temp_c",
+     "temp"
+    ],
+    "agg": "max",
+    "dec": 1,
+    "th": {
+     "hi": 45,
+     "hiHi": 55
+    }
+   },
+   {
+    "id": "press",
+    "label": "Áp suất",
+    "unit": "bar",
+    "keys": [
+     "press_bar",
+     "press"
+    ],
+    "agg": "max",
+    "dec": 2
+   },
+   {
+    "id": "flow",
+    "label": "Lưu lượng",
+    "unit": "L/ph",
+    "keys": [
+     "flow_lpm",
+     "flow"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "leak",
+    "label": "Rò rỉ",
+    "keys": [
+     "leak"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Không",
+     "1": "RÒ RỈ"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "bad"
+    }
+   },
+   {
+    "id": "valve",
+    "label": "Van xuất",
+    "keys": [
+     "valve"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Đóng",
+     "1": "Mở"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    }
+   }
+  ],
+  "overview": [
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "tanks",
+    "title": "Các bồn chứa",
+    "main": "level"
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "vol",
+     "flow",
+     "temp",
+     "press"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "leak",
+     "valve"
+    ]
+   },
+   {
+    "type": "trend",
+    "metric": "level",
+    "title": "Mức bồn trung bình"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "stock",
+    "label": "Tồn kho",
+    "title": "Tồn kho từng bồn",
+    "icon": "fuel",
+    "blocks": [
+     {
+      "type": "tiles",
+      "main": "vol",
+      "subs": [
+       "level",
+       "temp",
+       "press"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "safety",
+    "label": "An toàn",
+    "title": "An toàn bồn chứa",
+    "icon": "bell",
+    "blocks": [
+     {
+      "type": "state",
+      "items": [
+       "leak",
+       "valve"
+      ]
+     },
+     {
+      "type": "bars",
+      "items": [
+       "level",
+       "temp",
+       "press"
+      ]
+     },
+     {
+      "type": "alarms"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "b1": {
+     "title": "Bồn A - Dầu DO",
+     "dec": {
+      "level_pct": 0,
+      "volume_l": 0,
+      "flow_lpm": 0
+     },
+     "f": {
+      "level_pct": [
+       68,
+       6,
+       400,
+       0
+      ],
+      "volume_l": [
+       34000,
+       3000,
+       400,
+       0
+      ],
+      "temp_c": [
+       31,
+       2,
+       300,
+       0
+      ],
+      "press_bar": [
+       1.1,
+       0.05,
+       90,
+       0
+      ],
+      "flow_lpm": [
+       180,
+       40,
+       120,
+       0
+      ],
+      "leak": 0,
+      "valve": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 240,
+       "duty": 0.5
+      }
+     }
+    },
+    "b2": {
+     "title": "Bồn B - Xăng A95",
+     "dec": {
+      "level_pct": 0,
+      "volume_l": 0,
+      "flow_lpm": 0
+     },
+     "f": {
+      "level_pct": [
+       52,
+       7,
+       380,
+       40
+      ],
+      "volume_l": [
+       26000,
+       3500,
+       380,
+       40
+      ],
+      "temp_c": [
+       33,
+       2,
+       280,
+       0
+      ],
+      "press_bar": [
+       1.2,
+       0.06,
+       80,
+       0
+      ],
+      "flow_lpm": [
+       150,
+       30,
+       110,
+       0
+      ],
+      "leak": 0,
+      "valve": 1
+     }
+    },
+    "b3": {
+     "title": "Bồn C - Hóa chất",
+     "dec": {
+      "level_pct": 0,
+      "volume_l": 0,
+      "flow_lpm": 0
+     },
+     "f": {
+      "level_pct": [
+       14,
+       3,
+       300,
+       10
+      ],
+      "volume_l": [
+       2800,
+       600,
+       300,
+       10
+      ],
+      "temp_c": [
+       38,
+       3,
+       260,
+       0
+      ],
+      "press_bar": [
+       1.5,
+       0.08,
+       70,
+       0
+      ],
+      "flow_lpm": [
+       30,
+       10,
+       90,
+       0
+      ],
+      "leak": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 600,
+       "duty": 0.97
+      },
+      "valve": 0
+     }
+    }
+   }
+  },
+  "id": "tank",
+  "required": [
+   "level",
+   "leak"
+  ],
+  "why": "Mức bồn và tín hiệu rò rỉ là yêu cầu an toàn bắt buộc với bồn xăng dầu/hóa chất."
+ }
+}

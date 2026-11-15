@@ -1,0 +1,177 @@
+{
+  "gw": "WATER",
+  "devices": [
+    {
+      "id": "ts1",
+      "name": "Trạm bơm 1",
+      "fields": [
+        {
+          "key": "flow_m3h",
+          "lbl": "Lưu lượng",
+          "unit": "m³/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 300
+        },
+        {
+          "key": "pressure_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "level_pct",
+          "lbl": "Mức bể chứa",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "cl_mgl",
+          "lbl": "Clo dư",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 3
+        },
+        {
+          "key": "ntu",
+          "lbl": "Độ đục",
+          "unit": "NTU",
+          "widget": "gauge",
+          "min": 0,
+          "max": 5
+        },
+        {
+          "key": "ph",
+          "lbl": "pH",
+          "widget": "gauge",
+          "min": 5,
+          "max": 10
+        },
+        {
+          "key": "total_m3",
+          "lbl": "Tổng sản lượng",
+          "unit": "m³",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump_kw",
+          "lbl": "Công suất bơm",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump1_run",
+          "lbl": "Bơm 1",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump2_run",
+          "lbl": "Bơm 2",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "fault",
+          "lbl": "Sự cố",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "ts2",
+      "name": "Trạm bơm 2",
+      "fields": [
+        {
+          "key": "flow_m3h",
+          "lbl": "Lưu lượng",
+          "unit": "m³/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 300
+        },
+        {
+          "key": "pressure_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "level_pct",
+          "lbl": "Mức bể chứa",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "cl_mgl",
+          "lbl": "Clo dư",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 3
+        },
+        {
+          "key": "ntu",
+          "lbl": "Độ đục",
+          "unit": "NTU",
+          "widget": "gauge",
+          "min": 0,
+          "max": 5
+        },
+        {
+          "key": "ph",
+          "lbl": "pH",
+          "widget": "gauge",
+          "min": 5,
+          "max": 10
+        },
+        {
+          "key": "total_m3",
+          "lbl": "Tổng sản lượng",
+          "unit": "m³",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump_kw",
+          "lbl": "Công suất bơm",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump1_run",
+          "lbl": "Bơm 1",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump2_run",
+          "lbl": "Bơm 2",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "fault",
+          "lbl": "Sự cố",
+          "widget": "led"
+        }
+      ]
+    }
+  ]
+}

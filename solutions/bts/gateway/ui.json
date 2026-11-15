@@ -1,0 +1,424 @@
+{
+ "id": "bts",
+ "title": "Trạm viễn thông độc lập",
+ "short": "Trạm BTS",
+ "glyph": "⌁",
+ "palette": {
+  "bg": "#070f24",
+  "card": "#0e1b3d",
+  "fg": "#e4ebff",
+  "mut": "#8ea0d0",
+  "line": "#1d3266",
+  "acc": "#60a5fa"
+ },
+ "spec": {
+  "title": "Trạm viễn thông độc lập",
+  "icon": "cloud",
+  "style": "glass",
+  "metrics": [
+   {
+    "id": "mains",
+    "label": "Điện lưới",
+    "keys": [
+     "mains"
+    ],
+    "agg": "min",
+    "map": {
+     "0": "MẤT LƯỚI",
+     "1": "Có lưới"
+    },
+    "lv": {
+     "0": "bad",
+     "1": "ok"
+    }
+   },
+   {
+    "id": "gen",
+    "label": "Máy phát",
+    "keys": [
+     "gen"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "batt",
+    "label": "Pin dự phòng",
+    "unit": "%",
+    "keys": [
+     "batt_pct"
+    ],
+    "agg": "min",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 40,
+     "loLo": 20
+    }
+   },
+   {
+    "id": "battv",
+    "label": "Điện áp DC",
+    "unit": "V",
+    "keys": [
+     "batt_v"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 40,
+    "max": 58,
+    "th": {
+     "lo": 47,
+     "loLo": 45
+    }
+   },
+   {
+    "id": "hrs",
+    "label": "Dự phòng còn",
+    "unit": "giờ",
+    "keys": [
+     "backup_h"
+    ],
+    "agg": "min",
+    "dec": 1,
+    "th": {
+     "lo": 3,
+     "loLo": 1.5
+    }
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ tủ",
+    "unit": "°C",
+    "keys": [
+     "temp_c"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 15,
+    "max": 60,
+    "th": {
+     "hi": 35,
+     "hiHi": 45
+    }
+   },
+   {
+    "id": "door",
+    "label": "Cửa tủ",
+    "keys": [
+     "door"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Đóng",
+     "1": "MỞ"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "warn"
+    }
+   },
+   {
+    "id": "load",
+    "label": "Tải DC",
+    "unit": "A",
+    "keys": [
+     "load_a"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "rssi",
+    "label": "Sóng 4G",
+    "unit": "dBm",
+    "keys": [
+     "rssi"
+    ],
+    "agg": "min",
+    "dec": 0,
+    "th": {
+     "lo": -100,
+     "loLo": -108
+    }
+   }
+  ],
+  "overview": [
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "map",
+    "title": "Vị trí các trạm",
+    "lat": "lat",
+    "lon": "lon",
+    "state": "mains"
+   },
+   {
+    "type": "tiles",
+    "title": "Các trạm",
+    "main": "batt",
+    "subs": [
+     "mains",
+     "temp",
+     "door"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "battv",
+     "hrs",
+     "load",
+     "temp"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "mains",
+     "gen",
+     "door"
+    ]
+   }
+  ],
+  "tabs": [
+   {
+    "id": "power",
+    "label": "Nguồn điện",
+    "title": "Nguồn điện & ắc quy",
+    "icon": "bolt",
+    "blocks": [
+     {
+      "type": "gauges",
+      "items": [
+       "batt",
+       "battv"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "battv",
+      "title": "Điện áp DC"
+     },
+     {
+      "type": "bars",
+      "items": [
+       "hrs",
+       "rssi"
+      ]
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "t1": {
+     "title": "Trạm Củ Chi",
+     "dec": {
+      "batt_pct": 0,
+      "batt_v": 1,
+      "backup_h": 1,
+      "temp_c": 0,
+      "load_a": 0,
+      "rssi": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": 10.97,
+      "lon": 106.49,
+      "mains": 1,
+      "gen": 0,
+      "batt_pct": [
+       96,
+       2,
+       300,
+       0
+      ],
+      "batt_v": [
+       53.5,
+       0.2,
+       200,
+       0
+      ],
+      "backup_h": [
+       9,
+       0.3,
+       300,
+       0
+      ],
+      "temp_c": [
+       31,
+       2,
+       200,
+       0
+      ],
+      "door": 0,
+      "load_a": [
+       42,
+       4,
+       120,
+       0
+      ],
+      "rssi": [
+       -82,
+       3,
+       150,
+       0
+      ]
+     }
+    },
+    "t2": {
+     "title": "Trạm Bình Chánh",
+     "dec": {
+      "batt_pct": 0,
+      "batt_v": 1,
+      "backup_h": 1,
+      "temp_c": 0,
+      "load_a": 0,
+      "rssi": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": 10.67,
+      "lon": 106.57,
+      "mains": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 500,
+       "duty": 0.8
+      },
+      "gen": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 500,
+       "duty": 0.8
+      },
+      "batt_pct": [
+       62,
+       18,
+       250,
+       0
+      ],
+      "batt_v": [
+       50.5,
+       1.5,
+       250,
+       0
+      ],
+      "backup_h": [
+       5,
+       2,
+       250,
+       0
+      ],
+      "temp_c": [
+       36,
+       3,
+       180,
+       0
+      ],
+      "door": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 200,
+       "duty": 0.1
+      },
+      "load_a": [
+       48,
+       5,
+       120,
+       0
+      ],
+      "rssi": [
+       -90,
+       4,
+       140,
+       0
+      ]
+     }
+    },
+    "t3": {
+     "title": "Trạm Nhà Bè",
+     "dec": {
+      "batt_pct": 0,
+      "batt_v": 1,
+      "backup_h": 1,
+      "temp_c": 0,
+      "load_a": 0,
+      "rssi": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": 10.64,
+      "lon": 106.74,
+      "mains": 1,
+      "gen": 0,
+      "batt_pct": [
+       88,
+       4,
+       280,
+       0
+      ],
+      "batt_v": [
+       52.8,
+       0.3,
+       230,
+       0
+      ],
+      "backup_h": [
+       8,
+       0.5,
+       280,
+       0
+      ],
+      "temp_c": [
+       33,
+       2,
+       190,
+       0
+      ],
+      "door": 0,
+      "load_a": [
+       38,
+       4,
+       120,
+       0
+      ],
+      "rssi": [
+       -96,
+       3,
+       160,
+       0
+      ]
+     }
+    }
+   }
+  },
+  "id": "bts",
+  "required": [
+   "mains",
+   "batt",
+   "key:lat",
+   "key:lon"
+  ],
+  "why": "Trạm không người trực: phải biết mất điện lưới, mức pin và vị trí trạm."
+ }
+}

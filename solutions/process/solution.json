@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "process",
+  "title": "Quy trình pha chế (P&ID)",
+  "themeColor": "#0f766e",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

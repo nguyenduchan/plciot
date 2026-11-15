@@ -1,0 +1,417 @@
+/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
+window.INDUSTRY = {
+ "title": "Cấp nước & trạm bơm",
+ "icon": "drop",
+ "style": "soft",
+ "metrics": [
+  {
+   "id": "flow",
+   "label": "Lưu lượng",
+   "unit": "m³/h",
+   "keys": [
+    "flow_m3h",
+    "flow"
+   ],
+   "agg": "sum",
+   "min": 0,
+   "max": 300
+  },
+  {
+   "id": "pressure",
+   "label": "Áp suất",
+   "unit": "bar",
+   "keys": [
+    "pressure_bar",
+    "pressure"
+   ],
+   "agg": "avg",
+   "min": 0,
+   "max": 10,
+   "th": {
+    "lo": 1.5,
+    "loLo": 0.8,
+    "hi": 7,
+    "hiHi": 9
+   }
+  },
+  {
+   "id": "level",
+   "label": "Mức bể chứa",
+   "unit": "%",
+   "keys": [
+    "level_pct",
+    "level"
+   ],
+   "agg": "avg",
+   "min": 0,
+   "max": 100,
+   "dec": 0,
+   "th": {
+    "lo": 20,
+    "loLo": 10,
+    "hi": 95,
+    "hiHi": 98
+   }
+  },
+  {
+   "id": "chlorine",
+   "label": "Clo dư",
+   "unit": "mg/L",
+   "keys": [
+    "cl_mgl",
+    "chlorine"
+   ],
+   "agg": "avg",
+   "min": 0,
+   "max": 3,
+   "th": {
+    "lo": 0.3,
+    "loLo": 0.1,
+    "hi": 1.5,
+    "hiHi": 2.5
+   }
+  },
+  {
+   "id": "turbidity",
+   "label": "Độ đục",
+   "unit": "NTU",
+   "keys": [
+    "ntu",
+    "turbidity"
+   ],
+   "agg": "avg",
+   "min": 0,
+   "max": 5,
+   "th": {
+    "hi": 1,
+    "hiHi": 4
+   }
+  },
+  {
+   "id": "ph",
+   "label": "pH",
+   "keys": [
+    "ph"
+   ],
+   "agg": "avg",
+   "min": 5,
+   "max": 10,
+   "th": {
+    "lo": 6.5,
+    "loLo": 6,
+    "hi": 8.5,
+    "hiHi": 9
+   }
+  },
+  {
+   "id": "total",
+   "label": "Tổng sản lượng",
+   "unit": "m³",
+   "keys": [
+    "total_m3"
+   ],
+   "agg": "sum",
+   "dec": 0
+  },
+  {
+   "id": "pump_kw",
+   "label": "Công suất bơm",
+   "unit": "kW",
+   "keys": [
+    "pump_kw"
+   ],
+   "agg": "sum"
+  },
+  {
+   "id": "kwhm3",
+   "label": "Điện năng riêng",
+   "unit": "kWh/m³",
+   "expr": "pump_kw / flow",
+   "dec": 2,
+   "th": {
+    "hi": 0.35,
+    "hiHi": 0.6
+   }
+  },
+  {
+   "id": "p1",
+   "label": "Bơm 1",
+   "keys": [
+    "pump1_run"
+   ],
+   "map": {
+    "0": "Dừng",
+    "1": "Chạy"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok"
+   },
+   "agg": "max"
+  },
+  {
+   "id": "p2",
+   "label": "Bơm 2",
+   "keys": [
+    "pump2_run"
+   ],
+   "map": {
+    "0": "Dừng",
+    "1": "Chạy"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok"
+   },
+   "agg": "max"
+  },
+  {
+   "id": "fault",
+   "label": "Sự cố",
+   "keys": [
+    "fault"
+   ],
+   "map": {
+    "0": "Không",
+    "1": "Lỗi"
+   },
+   "lv": {
+    "0": "ok",
+    "1": "bad"
+   },
+   "agg": "max"
+  }
+ ],
+ "overview": [
+  {
+   "type": "kpis",
+   "items": [
+    "flow",
+    "total",
+    "kwhm3",
+    "pressure"
+   ]
+  },
+  {
+   "type": "tank",
+   "title": "Bể chứa",
+   "items": [
+    "level"
+   ]
+  },
+  {
+   "type": "gauges",
+   "title": "Áp lực & chất lượng",
+   "items": [
+    "pressure",
+    "chlorine",
+    "turbidity"
+   ]
+  },
+  {
+   "type": "state",
+   "title": "Máy bơm",
+   "items": [
+    "p1",
+    "p2",
+    "fault"
+   ]
+  },
+  {
+   "type": "trend",
+   "metric": "flow",
+   "title": "Lưu lượng gần đây"
+  }
+ ],
+ "tabs": [
+  {
+   "id": "quality",
+   "label": "Chất lượng",
+   "title": "Chất lượng nước",
+   "icon": "drop",
+   "blocks": [
+    {
+     "type": "bars",
+     "items": [
+      "chlorine",
+      "turbidity",
+      "ph"
+     ]
+    },
+    {
+     "type": "trend",
+     "metric": "ph",
+     "title": "pH"
+    },
+    {
+     "type": "alarms",
+     "title": "Vượt ngưỡng"
+    }
+   ]
+  },
+  {
+   "id": "pumps",
+   "label": "Trạm bơm",
+   "title": "Các trạm bơm",
+   "icon": "gear",
+   "blocks": [
+    {
+     "type": "tiles",
+     "main": "flow",
+     "subs": [
+      "pressure",
+      "level",
+      "pump_kw"
+     ]
+    }
+   ]
+  }
+ ],
+ "demo": {
+  "devices": {
+   "ts1": {
+    "title": "Trạm bơm 1",
+    "dec": {
+     "ph": 2,
+     "cl_mgl": 2,
+     "ntu": 2,
+     "total_m3": 0
+    },
+    "f": {
+     "flow_m3h": [
+      120,
+      25,
+      50,
+      0
+     ],
+     "pressure_bar": [
+      5.2,
+      0.5,
+      40,
+      0
+     ],
+     "level_pct": [
+      62,
+      12,
+      200,
+      0
+     ],
+     "cl_mgl": [
+      0.8,
+      0.1,
+      90,
+      0
+     ],
+     "ntu": [
+      0.4,
+      0.12,
+      70,
+      0
+     ],
+     "ph": [
+      7.3,
+      0.15,
+      120,
+      0
+     ],
+     "total_m3": {
+      "cnt": 0.03,
+      "start": 18200
+     },
+     "pump_kw": [
+      11,
+      1.5,
+      60,
+      0
+     ],
+     "pump1_run": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 300,
+      "duty": 0.85
+     },
+     "pump2_run": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 200,
+      "duty": 0.4,
+      "ph": 50
+     },
+     "fault": 0
+    }
+   },
+   "ts2": {
+    "title": "Trạm bơm 2",
+    "f": {
+     "flow_m3h": [
+      85,
+      18,
+      65,
+      5
+     ],
+     "pressure_bar": [
+      4.4,
+      0.6,
+      55,
+      0
+     ],
+     "level_pct": [
+      46,
+      14,
+      240,
+      0
+     ],
+     "cl_mgl": [
+      0.7,
+      0.1,
+      100,
+      0
+     ],
+     "ntu": [
+      0.5,
+      0.15,
+      80,
+      0
+     ],
+     "ph": [
+      7.1,
+      0.12,
+      140,
+      0
+     ],
+     "total_m3": {
+      "cnt": 0.02,
+      "start": 9400
+     },
+     "pump_kw": [
+      7.5,
+      1,
+      70,
+      0
+     ],
+     "pump1_run": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 250,
+      "duty": 0.9
+     },
+     "pump2_run": 0,
+     "fault": 0
+    }
+   }
+  }
+ },
+ "id": "water",
+ "required": [
+  "flow",
+  "pressure",
+  "level"
+ ],
+ "why": "Áp suất và mức bể là điều kiện cảnh báo vận hành (mất áp, tràn/cạn bể); lưu lượng để tính sản lượng."
+};

@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "andon",
+  "title": "Bảng Andon sản xuất",
+  "themeColor": "#16a34a",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

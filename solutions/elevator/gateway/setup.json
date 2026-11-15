@@ -1,0 +1,125 @@
+{
+  "gw": "ELEVATOR",
+  "devices": [
+    {
+      "id": "l1",
+      "name": "Thang 1",
+      "fields": [
+        {
+          "key": "floor",
+          "lbl": "Tầng",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "load",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "trips",
+          "lbl": "Chuyến hôm nay",
+          "widget": "kpi"
+        },
+        {
+          "key": "fault",
+          "lbl": "Sự cố",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "l2",
+      "name": "Thang 2",
+      "fields": [
+        {
+          "key": "floor",
+          "lbl": "Tầng",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "load",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "trips",
+          "lbl": "Chuyến hôm nay",
+          "widget": "kpi"
+        },
+        {
+          "key": "fault",
+          "lbl": "Sự cố",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "l3",
+      "name": "Thang chở hàng",
+      "fields": [
+        {
+          "key": "floor",
+          "lbl": "Tầng",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "load",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "trips",
+          "lbl": "Chuyến hôm nay",
+          "widget": "kpi"
+        },
+        {
+          "key": "fault",
+          "lbl": "Sự cố",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

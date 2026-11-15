@@ -1,0 +1,3 @@
+/* Bảng màu "Lò hơi công nghiệp" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f6e4e2;--card:#ffffff;--fg:#2d0f0c;--mut:#795551;--line:#e5c6c3;--acc:#b91c1c;--accbg:#b91c1c1a;--on:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#170a09;--card:#2a1210;--fg:#fde8e6;--mut:#c8a09b;--line:#472320;--acc:#fb7185;--accbg:#fb718522;--on:#fb7185}}

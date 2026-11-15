@@ -1,0 +1,3 @@
+/* Bảng màu "Xưởng gia công cơ khí" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f6ebdd;--card:#ffffff;--fg:#2c1a08;--mut:#76603f;--line:#e3d0b3;--acc:#b45309;--accbg:#b453091a;--on:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#16100a;--card:#241a0e;--fg:#fcefd9;--mut:#c2a97f;--line:#443219;--acc:#f59e0b;--accbg:#f59e0b22;--on:#f59e0b}}

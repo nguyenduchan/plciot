@@ -6,8 +6,24 @@ namespace GatewayApp;
 /// <summary>Trang Cloud của tool ADMIN: bật/tắt đồng bộ (offline = tắt) và nhập MÃ GHÉP CẶP do admin phát (gateway thực hiện). Địa chỉ server cố định (không nhập tay).</summary>
 sealed class CloudPage : UserControl
 {
-    /// <summary>Server cloud cố định. Muốn trỏ sang server khác thì đặt <c>CloudApiUrl</c> trong cấu hình (Cấu hình nâng cao).</summary>
-    public const string DefaultServer = "https://plc.dieukhientudong.net";
+    /// <summary>Server cloud mặc định cho bản dựng này. Đổi cho từng khách hàng bằng file <c>server.json</c> cạnh file chạy: <c>{ "apiUrl": "https://..." }</c> — không cần build lại.
+    /// Mọi thứ còn lại (host/cổng/tài khoản MQTT, id topic, danh sách thiết bị) gateway tự nhận từ server khi ghép cặp bằng QR.</summary>
+    public static string DefaultServer => _defaultServer ??= LoadServerFile() ?? FallbackServer;
+    const string FallbackServer = "https://plc.dieukhientudong.net";
+    static string? _defaultServer;
+    static string? LoadServerFile()
+    {
+        try
+        {
+            var f = Path.Combine(AppContext.BaseDirectory, "server.json");
+            if (!File.Exists(f)) return null;
+            try { File.SetAttributes(f, File.GetAttributes(f) | FileAttributes.Hidden); } catch { }   // ẩn khỏi Explorer: người dùng không thấy/không sửa nhầm
+            using var d = System.Text.Json.JsonDocument.Parse(File.ReadAllText(f));
+            var u = d.RootElement.TryGetProperty("apiUrl", out var v) ? v.GetString()?.Trim().TrimEnd('/') : null;
+            return Uri.TryCreate(u, UriKind.Absolute, out var uri) && (uri.Scheme == "https" || uri.Scheme == "http") ? u : null;
+        }
+        catch { return null; }
+    }
     public static string ServerOf(ScadaConfig c) => string.IsNullOrWhiteSpace(c.CloudApiUrl) ? DefaultServer : c.CloudApiUrl.Trim();
 
     readonly IGatewayApp _app;

@@ -1,0 +1,127 @@
+{
+  "gw": "PUMPSTN",
+  "devices": [
+    {
+      "id": "p1",
+      "name": "Trạm bơm Ấp 1",
+      "fields": [
+        {
+          "key": "level_pct",
+          "lbl": "Mức bể",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "batt_pct",
+          "lbl": "Pin",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "pv_w",
+          "lbl": "Pin mặt trời",
+          "unit": "W",
+          "widget": "gauge",
+          "min": 0,
+          "max": 800
+        },
+        {
+          "key": "flow",
+          "lbl": "Lưu lượng",
+          "unit": "m³/h",
+          "widget": "kpi"
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "kpi"
+        },
+        {
+          "key": "vol_m3",
+          "lbl": "Nước hôm nay",
+          "unit": "m³",
+          "widget": "kpi"
+        },
+        {
+          "key": "dry",
+          "lbl": "Bơm chạy khô",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "name": "Trạm bơm Ấp 2",
+      "fields": [
+        {
+          "key": "level_pct",
+          "lbl": "Mức bể",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "batt_pct",
+          "lbl": "Pin",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "pv_w",
+          "lbl": "Pin mặt trời",
+          "unit": "W",
+          "widget": "gauge",
+          "min": 0,
+          "max": 800
+        },
+        {
+          "key": "flow",
+          "lbl": "Lưu lượng",
+          "unit": "m³/h",
+          "widget": "kpi"
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "kpi"
+        },
+        {
+          "key": "vol_m3",
+          "lbl": "Nước hôm nay",
+          "unit": "m³",
+          "widget": "kpi"
+        },
+        {
+          "key": "dry",
+          "lbl": "Bơm chạy khô",
+          "widget": "led"
+        }
+      ]
+    }
+  ]
+}

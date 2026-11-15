@@ -1,0 +1,141 @@
+{
+  "gw": "COMPRESSOR",
+  "devices": [
+    {
+      "id": "cp1",
+      "name": "Máy nén 1",
+      "fields": [
+        {
+          "key": "pressure_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "flow_m3min",
+          "lbl": "Lưu lượng",
+          "unit": "m³/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "load_pct",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ đầu nén",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 20,
+          "max": 120
+        },
+        {
+          "key": "run",
+          "lbl": "Trạng thái",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "sp",
+          "lbl": "Công suất riêng",
+          "unit": "kW/(m³/ph)",
+          "widget": "kpi"
+        },
+        {
+          "key": "hours",
+          "lbl": "Giờ chạy",
+          "unit": "h",
+          "widget": "kpi"
+        },
+        {
+          "key": "dewpoint",
+          "lbl": "Điểm sương",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "cp2",
+      "name": "Máy nén 2",
+      "fields": [
+        {
+          "key": "pressure_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "flow_m3min",
+          "lbl": "Lưu lượng",
+          "unit": "m³/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "load_pct",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ đầu nén",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 20,
+          "max": 120
+        },
+        {
+          "key": "run",
+          "lbl": "Trạng thái",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "sp",
+          "lbl": "Công suất riêng",
+          "unit": "kW/(m³/ph)",
+          "widget": "kpi"
+        },
+        {
+          "key": "hours",
+          "lbl": "Giờ chạy",
+          "unit": "h",
+          "widget": "kpi"
+        },
+        {
+          "key": "dewpoint",
+          "lbl": "Điểm sương",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

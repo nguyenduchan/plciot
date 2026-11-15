@@ -1,0 +1,3 @@
+/* Bảng màu "Lịch vận hành thiết bị" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#eee8fb;--card:#ffffff;--fg:#241448;--mut:#665a8c;--line:#d4cbef;--acc:#7c3aed;--accbg:#7c3aed1a;--on:#7c3aed}
+@media (prefers-color-scheme:dark){:root{--bg:#120a26;--card:#201442;--fg:#eee8ff;--mut:#aa9dd6;--line:#392a68;--acc:#a78bfa;--accbg:#a78bfa22;--on:#a78bfa}}

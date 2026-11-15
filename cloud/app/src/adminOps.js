@@ -2,8 +2,11 @@
  * API vận hành: gói subscribe, thiết bị IoT, thống kê DB.
  * Chỉ admin; ghi cần reauth (caller gắn middleware).
  */
+import { cleanSolution, setGatewaySolution, allGatewaySolutions } from './gatewaySolution.js';
+import { isKnownSolution } from './solutions.js';
 import { buildLicenseFile } from './gatewayKinds.js';
-import { publicUser } from './adminUsers.js';
+import { publicUser, listSolutions } from './adminUsers.js';
+import { ROLES, MONITOR_SCOPES } from './roles.js';
 import { findUserById } from './db.js';
 import {
   listPlans, grantPlan, setRemoteControl, grantTenantPlan, subscriptionInfo, PLAN_CATALOG,
@@ -456,7 +459,7 @@ export function mountAdminOps(app, {
   app.post('/api/admin/pairings', ...writeGate, (req, res) => {
     const r = createPairing(db, {
       adminId: req.user.id, label: req.body?.label, ttlMin: req.body?.ttlMin,
-      site: req.body?.site, device: req.body?.device, auto: req.body?.auto,
+      site: req.body?.site, device: req.body?.device, auto: req.body?.auto, solution: solutionParam(req.body?.solution),
     });
     if (!r.error) audit(db, 'pairing_create', { userId: req.user.id, ip: clientIp(req), detail: r.id });
     res.status(r.error ? r.status || 400 : 200).json(withCapacity(r));
@@ -480,6 +483,72 @@ export function mountAdminOps(app, {
   /* ---------- Thiết bị cứng (QR claim): chỉ device đã add mới được user quét ---------- */
   const sendHw = (res, r) => (r?.error ? res.status(r.status || 400).json(r) : res.json(r));
 
+  /** Giải pháp gửi lên phải có trong ô chọn (basic/rỗng = cơ bản); sai → để createPairing/PATCH báo invalid_solution. */
+  const solutionParam = (v) => { const c = cleanSolution(v); return c === null || (c && !isKnownSolution(deployPaths.shellDir, c, 'gateway')) ? '!' : c; };
+  /**
+   * Tìm kiếm chung người dùng + gateway cho admin: mỗi từ khoá phải khớp (không phân biệt hoa/thường, không dấu cách thừa) với MỘT trong nhiều trường
+   * của đối tượng; kết quả trả ĐẦY ĐỦ các thông tin admin sửa được (trang admin hiện thành biểu mẫu sửa tại chỗ). Cố ý KHÔNG trả / không cho sửa
+   * thông tin đăng nhập (tên đăng nhập, mật khẩu, passkey, TOTP, mã khôi phục, phiên). Sửa dùng các API sẵn có:
+   *   PATCH /api/admin/users/:id (vai trò, phạm vi, giải pháp, site/thiết bị, khoá), POST /api/admin/ops/users/:id/plan (gói, hạn, điều khiển từ xa),
+   *   PATCH /api/admin/hardware/:site/:device (tên, ghi chú, profile, giải pháp).
+   */
+  const norm = (v) => String(v ?? '').toLowerCase();
+  const matchAll = (hay, q) => { const h = norm(hay); return q.split(/\s+/).filter(Boolean).every((t) => h.includes(norm(t))); };
+  app.get('/api/admin/search', ...gate, (req, res) => {
+    const q = String(req.query.q || '').trim().slice(0, 120);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const solTitle = new Map([...listSolutions(deployPaths.shellDir, 'webapp'), ...listSolutions(deployPaths.shellDir, 'gateway')].map((x) => [x.id, x.title]));
+    const gsol = allGatewaySolutions(db);
+    const hardware = listHardwareDevices(db);
+    const mqttOf = db.prepare('SELECT mqtt_id, status FROM devices WHERE site = ? AND device = ? ORDER BY id DESC LIMIT 1');
+    const cfgOf = db.prepare('SELECT rev, devices, updated_at FROM gateway_configs WHERE site = ? AND device = ?');
+    const myGw = (uid) => {
+      const seen = new Map();
+      try { for (const r of db.prepare('SELECT DISTINCT site, gateway_device AS device FROM user_devices WHERE user_id = ?').all(uid)) seen.set(`${r.site}/${r.device}`, { site: r.site, device: r.device, label: '' }); } catch { /* chưa có bảng */ }
+      for (const h of hardware) if (h.claimedBy === uid) seen.set(`${h.site}/${h.device}`, { site: h.site, device: h.device, label: h.label || '' });
+      return [...seen.values()];
+    };
+    const widgetsOf = db.prepare('SELECT COUNT(*) n FROM user_devices WHERE user_id = ?');
+
+    let users = db.prepare('SELECT * FROM users WHERE setup_complete != 0 ORDER BY id DESC').all().map((u) => {
+      const e = enrichedUser(u);
+      let widgets = 0; try { widgets = widgetsOf.get(u.id).n; } catch { /* chưa có bảng */ }
+      return {
+        id: e.id, username: e.username, role: e.role, scopes: e.scopes, site: e.site, device: e.device, disabled: e.disabled,
+        solution: e.solution, solutionTitle: solTitle.get(e.solution) || (e.solution ? e.solution : 'Cơ bản'), createdAt: e.createdAt, tenantId: e.tenantId,
+        plan: { id: e.subscription.plan, label: e.subscription.planLabel, expiresAt: e.subscription.expiresAt, remoteControl: e.subscription.remoteControl, active: e.subscription.active, widgetLimit: e.subscription.widgetLimit },
+        gateways: myGw(u.id), widgets,
+      };
+    });
+    let gateways = hardware.map((d) => {
+      let mq = null; let cf = null;
+      try { mq = mqttOf.get(d.site, d.device); } catch { /* bảng devices chưa có */ }
+      try { cf = cfgOf.get(d.site, d.device); } catch { /* chưa có setting */ }
+      let children = [];
+      try { children = (cf ? JSON.parse(cf.devices) : []).map((c) => ({ id: c.id, name: c.name || '', fields: (c.fields || []).length })); } catch { /* bỏ qua */ }
+      const sol = gsol.get(`${d.site}/${d.device}`) || '';
+      return {
+        site: d.site, device: d.device, label: d.label || '', note: d.note || '', profile: d.profile || '',
+        solution: sol, solutionTitle: solTitle.get(sol) || (sol || 'Cơ bản'),
+        claimed: d.claimed, claimedUsername: d.claimedUsername || '', activated: d.activated, activatedHw: d.activatedHw || '', createdAt: d.createdAt,
+        mqttId: mq?.mqtt_id || '', mqttStatus: mq?.status || '',
+        config: cf ? { rev: cf.rev, updatedAt: cf.updated_at, devices: children.length, fields: children.reduce((n, c) => n + c.fields, 0) } : null, children,
+      };
+    });
+    const totals = { users: users.length, gateways: gateways.length };
+    if (q) {
+      users = users.filter((u) => matchAll([u.id, u.username, u.role, u.site, u.device, u.solution, u.solutionTitle, u.plan.id, u.plan.label, u.tenantId, u.disabled ? 'khoá đã khoá disabled' : 'hoạt động',
+        ...u.gateways.flatMap((g) => [g.site, g.device, g.label, `${g.site}/${g.device}`])].join(' '), q));
+      gateways = gateways.filter((g) => matchAll([g.label, g.site, g.device, `${g.site}/${g.device}`, g.profile, g.note, g.claimedUsername, g.activatedHw, g.mqttId, g.solution, g.solutionTitle,
+        g.claimed ? 'đã gắn' : 'chưa gắn', ...g.children.flatMap((c) => [c.id, c.name])].join(' '), q));
+    }
+    const profiles = [...new Set(hardware.map((d) => d.profile).filter(Boolean))].sort();
+    res.json({
+      q, totals, users: users.slice(0, limit), gateways: gateways.slice(0, limit), moreUsers: Math.max(0, users.length - limit), moreGateways: Math.max(0, gateways.length - limit),
+      options: { roles: ROLES, scopes: MONITOR_SCOPES, plans: listPlans().map((p) => ({ id: p.id, label: p.label })), solutions: listSolutions(deployPaths.shellDir, 'webapp'), gatewaySolutions: listSolutions(deployPaths.shellDir, 'gateway'), profiles },
+    });
+  });
+
   app.get('/api/admin/hardware', ...gate, (req, res) => {
     const configured = Boolean(process.env.CLAIM_ROOT_PUBLIC_KEY && process.env.CLAIM_ROOT_PRIVATE_KEY);
     // Gắn ID MQTT (do server cấp) + setting gateway đã khai vào từng tem: một dòng = ID máy (hw) ↔ ID MQTT ↔ site/device ↔ setting
@@ -494,6 +563,7 @@ export function mountAdminOps(app, {
     const offset = Math.max(0, Number(req.query.offset) || 0);
     const total = rows.length;
     if (limit) rows = rows.slice(offset, offset + limit);
+    const gsol = allGatewaySolutions(db);
     const devices = rows.map((d) => {
       let mq = null; let cf = null;
       try { mq = mqttOf.get(d.site, d.device); } catch { /* bảng devices chưa có */ }
@@ -505,6 +575,7 @@ export function mountAdminOps(app, {
       } catch { /* bỏ qua */ }
       return {
         ...d,
+        solution: gsol.get(`${d.site}/${d.device}`) || '',
         mqttId: mq?.mqtt_id || null,
         mqttStatus: mq?.status || null,
         config: cf ? { rev: cf.rev, devices: children, fields, updatedAt: cf.updated_at } : null,
@@ -604,6 +675,13 @@ export function mountAdminOps(app, {
       const row = db.prepare('SELECT ui_meta FROM hardware_devices WHERE site = ? AND device = ?')
         .get(site, device);
       uiMeta = bumpConfigRev(row?.ui_meta, uiMeta);
+    }
+    if (req.body?.solution !== undefined) {   // đổi giải pháp của gateway (gateway đổi giao diện ở lần cấu hình kế tiếp)
+      const sp = solutionParam(req.body.solution);
+      if (sp === '!') return res.status(400).json({ error: 'invalid_solution' });
+      if (!db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, device)) return res.status(404).json({ error: 'not_found' });
+      setGatewaySolution(db, site, device, sp);
+      if (req.body.label === undefined && req.body.note === undefined && req.body.profile === undefined && uiMeta === undefined) return res.json({ ok: true, solution: sp });
     }
     const r = updateHardwareDeviceMeta(db, {
       site, device,

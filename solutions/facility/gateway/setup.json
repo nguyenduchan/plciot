@@ -1,0 +1,269 @@
+{
+  "gw": "FACILITY",
+  "devices": [
+    {
+      "id": "n1",
+      "name": "Xưởng A",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "n2",
+      "name": "Xưởng B",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "n3",
+      "name": "Kho",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "n4",
+      "name": "Văn phòng",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "n5",
+      "name": "Phòng điện",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "n6",
+      "name": "Khu hóa chất",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 50
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "gas_ppm",
+          "lbl": "Khí gas",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "smoke",
+          "lbl": "Khói",
+          "widget": "led"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

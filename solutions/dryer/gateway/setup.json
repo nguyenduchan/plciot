@@ -1,0 +1,80 @@
+{
+  "gw": "DRYER",
+  "devices": [
+    {
+      "id": "d1",
+      "name": "Lò sấy 1",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ buồng",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 20,
+          "max": 120
+        },
+        {
+          "key": "setpoint",
+          "lbl": "Nhiệt độ cài đặt",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm buồng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "moisture",
+          "lbl": "Độ ẩm sản phẩm",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 30
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "heater",
+          "lbl": "Gia nhiệt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "elapsed",
+          "lbl": "Đã sấy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "total_min",
+          "lbl": "Thời gian mẻ",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

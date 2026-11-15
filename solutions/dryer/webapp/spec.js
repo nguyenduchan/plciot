@@ -1,0 +1,271 @@
+/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
+window.INDUSTRY = {
+ "title": "Lò sấy & kho sấy",
+ "icon": "thermo",
+ "style": "soft",
+ "metrics": [
+  {
+   "id": "temp",
+   "label": "Nhiệt độ buồng",
+   "unit": "°C",
+   "keys": [
+    "temp_c"
+   ],
+   "agg": "avg",
+   "dec": 0,
+   "min": 20,
+   "max": 120,
+   "th": {
+    "hi": 75,
+    "hiHi": 85
+   }
+  },
+  {
+   "id": "sp",
+   "label": "Nhiệt độ cài đặt",
+   "unit": "°C",
+   "keys": [
+    "setpoint"
+   ],
+   "agg": "avg",
+   "dec": 0
+  },
+  {
+   "id": "hum",
+   "label": "Độ ẩm buồng",
+   "unit": "%",
+   "keys": [
+    "hum_pct"
+   ],
+   "agg": "avg",
+   "dec": 0,
+   "min": 0,
+   "max": 100
+  },
+  {
+   "id": "moist",
+   "label": "Độ ẩm sản phẩm",
+   "unit": "%",
+   "keys": [
+    "moisture"
+   ],
+   "agg": "avg",
+   "dec": 1,
+   "min": 0,
+   "max": 30
+  },
+  {
+   "id": "fan",
+   "label": "Quạt",
+   "keys": [
+    "fan"
+   ],
+   "map": {
+    "0": "Dừng",
+    "1": "Chạy"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok"
+   },
+   "agg": "max"
+  },
+  {
+   "id": "heater",
+   "label": "Gia nhiệt",
+   "keys": [
+    "heater"
+   ],
+   "map": {
+    "0": "Dừng",
+    "1": "Chạy"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok"
+   },
+   "agg": "max"
+  },
+  {
+   "id": "door",
+   "label": "Cửa",
+   "keys": [
+    "door"
+   ],
+   "agg": "max",
+   "map": {
+    "0": "Đóng",
+    "1": "MỞ"
+   },
+   "lv": {
+    "0": "ok",
+    "1": "warn"
+   }
+  },
+  {
+   "id": "el",
+   "label": "Đã sấy",
+   "unit": "phút",
+   "keys": [
+    "elapsed"
+   ],
+   "agg": "max",
+   "dec": 0
+  },
+  {
+   "id": "tot",
+   "label": "Thời gian mẻ",
+   "unit": "phút",
+   "keys": [
+    "total_min"
+   ],
+   "agg": "max",
+   "dec": 0
+  },
+  {
+   "id": "kw",
+   "label": "Công suất",
+   "unit": "kW",
+   "keys": [
+    "kw"
+   ],
+   "agg": "sum",
+   "dec": 1
+  }
+ ],
+ "overview": [
+  {
+   "type": "gauges",
+   "items": [
+    "temp",
+    "hum",
+    "moist"
+   ]
+  },
+  {
+   "type": "progress",
+   "title": "Tiến độ mẻ sấy",
+   "items": [
+    {
+     "actual": "el",
+     "target": "tot",
+     "label": "Thời gian đã sấy"
+    }
+   ]
+  },
+  {
+   "type": "state",
+   "items": [
+    "heater",
+    "fan",
+    "door"
+   ]
+  },
+  {
+   "type": "kpis",
+   "items": [
+    "temp",
+    "sp",
+    "moist",
+    "kw"
+   ]
+  },
+  {
+   "type": "alarms"
+  },
+  {
+   "type": "trend",
+   "metric": "temp",
+   "title": "Đường cong nhiệt độ"
+  }
+ ],
+ "tabs": [
+  {
+   "id": "curve",
+   "label": "Đường cong",
+   "title": "Đường cong sấy",
+   "icon": "chart",
+   "blocks": [
+    {
+     "type": "trend",
+     "metric": "temp",
+     "title": "Nhiệt độ buồng"
+    },
+    {
+     "type": "trend",
+     "metric": "hum",
+     "title": "Độ ẩm buồng"
+    },
+    {
+     "type": "trend",
+     "metric": "moist",
+     "title": "Độ ẩm sản phẩm"
+    }
+   ]
+  }
+ ],
+ "demo": {
+  "devices": {
+   "d1": {
+    "title": "Lò sấy 1",
+    "dec": {
+     "temp_c": 0,
+     "setpoint": 0,
+     "hum_pct": 0,
+     "moisture": 1,
+     "elapsed": 0,
+     "total_min": 0,
+     "kw": 1
+    },
+    "f": {
+     "temp_c": [
+      62,
+      6,
+      180,
+      0
+     ],
+     "setpoint": 62,
+     "hum_pct": [
+      38,
+      8,
+      200,
+      0
+     ],
+     "moisture": [
+      14,
+      4,
+      500,
+      0
+     ],
+     "fan": 1,
+     "heater": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 90,
+      "duty": 0.6
+     },
+     "door": 0,
+     "elapsed": {
+      "cnt": 0.05,
+      "start": 190
+     },
+     "total_min": 360,
+     "kw": [
+      14,
+      4,
+      90,
+      0
+     ]
+    }
+   }
+  }
+ },
+ "id": "dryer",
+ "required": [
+  "temp",
+  "hum"
+ ],
+ "why": "Nhiệt độ và độ ẩm buồng sấy để theo dõi đường cong sấy."
+};

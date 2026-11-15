@@ -74,6 +74,8 @@ services:
       DATA_DIR: /app/data
       SHELL_DIR: /app/shell
       WEBAPP_SRC: /app/shell
+      SOLUTIONS_DIR: /app/solutions
+      DEFAULT_SOLUTION: ${DEFAULT_SOLUTION:-basic}   # giải pháp mặc định của user chưa được admin đặt riêng
       APP_JWT_SECRET: ${APP_JWT_SECRET}
       WEBAPP_PUBLIC_URL: ${WEBAPP_PUBLIC_URL:-https://plc.dieukhientudong.net}
       MQTT_URL: mqtt://mqtt:1883
@@ -178,6 +180,7 @@ services:
     volumes:
       - ./app/data:/app/data
       - ../webapp:/app/shell:ro
+      - ../solutions:/app/solutions:ro   # mỗi thư mục con = một giải pháp độc lập (webapp + gateway), xem cloud/app/src/solutions.js
       # Repo Git (đọc/ghi). Nên đặt DEPLOY_REPO_HOST=đường_dẫn_tuyệt_đối trên VPS
       # (vd /opt/plciot) và DEPLOY_REPO_DIR giống vậy để `docker compose` rebuild đúng path host.
       - ${DEPLOY_REPO_HOST:-..}:${DEPLOY_REPO_DIR:-/repo}

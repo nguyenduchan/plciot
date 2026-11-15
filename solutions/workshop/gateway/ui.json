@@ -1,0 +1,370 @@
+{
+ "id": "workshop",
+ "title": "Xưởng gia công cơ khí",
+ "short": "Xưởng",
+ "glyph": "⚙",
+ "palette": {
+  "bg": "#16100a",
+  "card": "#241a0e",
+  "fg": "#fcefd9",
+  "mut": "#c2a97f",
+  "line": "#443219",
+  "acc": "#f59e0b"
+ },
+ "spec": {
+  "title": "Xưởng gia công cơ khí",
+  "icon": "gear",
+  "style": "sharp",
+  "metrics": [
+   {
+    "id": "state",
+    "label": "Trạng thái máy",
+    "keys": [
+     "state"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Dừng",
+     "1": "Đang gia công",
+     "2": "LỖI",
+     "3": "Chờ vật liệu"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok",
+     "2": "bad",
+     "3": "warn"
+    }
+   },
+   {
+    "id": "parts",
+    "label": "Chi tiết hôm nay",
+    "unit": "cái",
+    "keys": [
+     "parts"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "plan",
+    "label": "Kế hoạch ca",
+    "unit": "cái",
+    "keys": [
+     "plan"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "cycle",
+    "label": "Chu kỳ",
+    "unit": "s",
+    "keys": [
+     "cycle_s"
+    ],
+    "agg": "avg",
+    "dec": 0
+   },
+   {
+    "id": "spindle",
+    "label": "Tốc độ trục",
+    "unit": "rpm",
+    "keys": [
+     "rpm"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 6000
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ trục",
+    "unit": "°C",
+    "keys": [
+     "temp_c"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "th": {
+     "hi": 65,
+     "hiHi": 80
+    }
+   },
+   {
+    "id": "kw",
+    "label": "Công suất",
+    "unit": "kW",
+    "keys": [
+     "kw"
+    ],
+    "agg": "sum",
+    "dec": 1
+   },
+   {
+    "id": "run_h",
+    "label": "Giờ chạy hôm nay",
+    "unit": "h",
+    "keys": [
+     "run_h"
+    ],
+    "agg": "sum",
+    "dec": 1
+   }
+  ],
+  "overview": [
+   {
+    "type": "progress",
+    "title": "Kế hoạch ca",
+    "items": [
+     {
+      "actual": "parts",
+      "target": "plan",
+      "label": "Sản lượng ca"
+     }
+    ]
+   },
+   {
+    "type": "tiles",
+    "title": "Các máy",
+    "main": "state",
+    "subs": [
+     "parts",
+     "spindle",
+     "temp"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "parts",
+     "cycle",
+     "kw",
+     "run_h"
+    ]
+   },
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "trend",
+    "metric": "kw",
+    "title": "Công suất xưởng"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "andon",
+    "label": "Andon",
+    "title": "Bảng trạng thái máy",
+    "icon": "bell",
+    "blocks": [
+     {
+      "type": "andon",
+      "state": "state",
+      "value": "parts"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "cnc1": {
+     "title": "CNC 1",
+     "dec": {
+      "rpm": 0,
+      "parts": 0
+     },
+     "f": {
+      "state": 1,
+      "parts": {
+       "cnt": 0.02,
+       "start": 188
+      },
+      "plan": 400,
+      "cycle_s": [
+       48,
+       4,
+       90,
+       0
+      ],
+      "rpm": [
+       3800,
+       400,
+       60,
+       0
+      ],
+      "temp_c": [
+       54,
+       5,
+       150,
+       0
+      ],
+      "kw": [
+       11,
+       2,
+       60,
+       0
+      ],
+      "run_h": {
+       "cnt": 0.0002,
+       "start": 5.1
+      }
+     }
+    },
+    "cnc2": {
+     "title": "CNC 2",
+     "dec": {
+      "rpm": 0,
+      "parts": 0
+     },
+     "f": {
+      "state": {
+       "sq": [
+        3,
+        1
+       ],
+       "p": 240,
+       "duty": 0.8
+      },
+      "parts": {
+       "cnt": 0.015,
+       "start": 150
+      },
+      "plan": 400,
+      "cycle_s": [
+       55,
+       5,
+       100,
+       0
+      ],
+      "rpm": [
+       3600,
+       350,
+       70,
+       0
+      ],
+      "temp_c": [
+       58,
+       6,
+       160,
+       0
+      ],
+      "kw": [
+       10,
+       2,
+       70,
+       0
+      ],
+      "run_h": {
+       "cnt": 0.00018,
+       "start": 4.4
+      }
+     }
+    },
+    "press1": {
+     "title": "Máy ép 1",
+     "dec": {
+      "rpm": 0,
+      "parts": 0
+     },
+     "f": {
+      "state": {
+       "sq": [
+        2,
+        1
+       ],
+       "p": 360,
+       "duty": 0.92
+      },
+      "parts": {
+       "cnt": 0.05,
+       "start": 520
+      },
+      "plan": 900,
+      "cycle_s": [
+       12,
+       1,
+       80,
+       0
+      ],
+      "rpm": 0,
+      "temp_c": [
+       66,
+       6,
+       130,
+       0
+      ],
+      "kw": [
+       18,
+       4,
+       50,
+       0
+      ],
+      "run_h": {
+       "cnt": 0.0002,
+       "start": 5.5
+      }
+     }
+    },
+    "saw1": {
+     "title": "Máy cưa",
+     "dec": {
+      "rpm": 0,
+      "parts": 0
+     },
+     "f": {
+      "state": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 300,
+       "duty": 0.6
+      },
+      "parts": {
+       "cnt": 0.03,
+       "start": 260
+      },
+      "plan": 500,
+      "cycle_s": [
+       30,
+       3,
+       90,
+       0
+      ],
+      "rpm": [
+       2800,
+       200,
+       80,
+       0
+      ],
+      "temp_c": [
+       44,
+       4,
+       140,
+       0
+      ],
+      "kw": [
+       6,
+       1,
+       60,
+       0
+      ],
+      "run_h": {
+       "cnt": 0.00015,
+       "start": 3.9
+      }
+     }
+    }
+   }
+  },
+  "id": "workshop",
+  "required": [
+   "state",
+   "parts"
+  ],
+  "why": "Trạng thái máy và số chi tiết để so với kế hoạch ca (field plan)."
+ }
+}

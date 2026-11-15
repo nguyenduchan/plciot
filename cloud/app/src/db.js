@@ -23,6 +23,8 @@ function migrate(db) {
   // Bumped on revoke → every older JWT stops working.
   add('token_version', 'token_version INTEGER NOT NULL DEFAULT 0');
   // Phân quyền: admin | operator | viewer (xem roles.js). Người dùng cũ = operator như trước.
+  // Kiểu giải pháp/webapp của user (xem solutions.js). '' = mặc định (DEFAULT_SOLUTION hoặc 'basic').
+  add('solution', "solution TEXT NOT NULL DEFAULT ''");
   add('role', "role TEXT NOT NULL DEFAULT 'operator'");
   add('disabled', 'disabled INTEGER NOT NULL DEFAULT 0');
   add('created_by', 'created_by INTEGER');

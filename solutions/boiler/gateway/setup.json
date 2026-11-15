@@ -1,0 +1,78 @@
+{
+  "gw": "BOILER",
+  "devices": [
+    {
+      "id": "b1",
+      "name": "Lò hơi 1",
+      "fields": [
+        {
+          "key": "water_lvl",
+          "lbl": "Mức nước",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất hơi",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ hơi",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 0,
+          "max": 250
+        },
+        {
+          "key": "flame",
+          "lbl": "Ngọn lửa",
+          "widget": "led"
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm cấp nước",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "feed_v",
+          "lbl": "Van cấp",
+          "widget": "led"
+        },
+        {
+          "key": "steam_v",
+          "lbl": "Van hơi",
+          "widget": "led"
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "steam_kgh",
+          "lbl": "Sản lượng hơi",
+          "unit": "kg/h",
+          "widget": "kpi"
+        },
+        {
+          "key": "eff",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

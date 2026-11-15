@@ -130,7 +130,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
-        var logo = new Label { Text = "Gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
+        var logo = new Label { Text = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
         var sub = new Label { Text = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
         var items = new (string Icon, string Name, Control Page)[]
         {
@@ -138,6 +138,11 @@ public sealed partial class MainForm : Form, IGatewayApp
         };
         if (!_editUi) items = items.Where(x => x.Page != _devices && x.Page != _protos).ToArray();                    // không sửa thiết bị/giao thức tại gateway
         if (_customer) items = items.Where(x => x.Page == _dash || x.Page == _log || x.Page == _access).ToArray();   // khách không thấy trang thiết lập
+        if (SolutionHost.ExtraPage is { } extra)   // giải pháp (vd. solar) thêm trang sau Tổng quan; bản cơ bản không có
+        {
+            var x = extra(this);
+            items = items.Take(1).Append((x.Icon, x.Name, x.Page)).Concat(items.Skip(1)).ToArray();
+        }
         foreach (var (icon, name, page) in items)
         {
             var b = new NavButton { Icon = icon, Caption = name };
@@ -338,6 +343,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         try
         {
+            ApplySkin(kit);   // giao diện theo giải pháp (dữ liệu từ server) — áp dụng khi mở lại
             _cfg.GatewayQr = qr; _cfg.CloudApiUrl = api.Trim();
             _cfg.CloudSendData = kit.Claimed ?? true;   // chưa có user → chỉ đồng bộ setting
             _cfg.Site = kit.Site ?? _cfg.Site; _cfg.Device = kit.Device ?? _cfg.Device;
@@ -378,6 +384,15 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
     }
 
+    /// <summary>Giao diện của giải pháp (kit.Solution + kit.Ui) → lưu cache; có thay đổi thì báo (áp dụng khi mở lại gateway).</summary>
+    void ApplySkin(GatewayProvisionKit kit)
+    {
+        var (changed, title) = SkinStore.Save(kit.Solution, kit.Ui);
+        if (!changed) return;
+        _log.Add("INFO", "ui", title.Length > 0 ? $"giao diện giải pháp \"{title}\" đã nhận từ server" : "gateway về giao diện cơ bản");
+        Toast(title.Length > 0 ? $"Giao diện \"{title}\" sẽ áp dụng khi mở lại gateway" : "Giao diện cơ bản sẽ áp dụng khi mở lại gateway");
+    }
+
     // ------------------------------------------------------------------ chờ user: hỏi server tem đã claim chưa
     DateTime _nextClaimPoll = DateTime.MinValue;
     bool _polling;
@@ -389,6 +404,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(10) };
             var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
+            if (kit != null) ApplySkin(kit);
             if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
             {
                 _cfg.CloudSendData = cl;
@@ -442,11 +458,12 @@ public sealed partial class MainForm : Form, IGatewayApp
         var names = new[] { "dashboard", "devices", "protocols", "log", "admin" };
         for (var i = 0; i < _pages.Count; i++)
         {
+            var shotName = SolutionHost.ExtraPage != null && i >= 1 ? (i == 1 ? SolutionHost.Name : names[i - 1]) : names[i];
             Show(_pages[i].Page); Tick();
             await Task.Delay(1200);
             using var bmp = new Bitmap(Width, Height);
             DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));   // không chụp màn hình: chạy đúng cả khi máy scale DPI
-            bmp.Save(Path.Combine(dir, names[i] + ".png"));
+            bmp.Save(Path.Combine(dir, shotName + ".png"));
         }
         foreach (var (name, edit) in new[] { ("dialog-add", (string?)null), ("dialog-edit", _cfg.Pack.FirstOrDefault()?.Child) })
         {

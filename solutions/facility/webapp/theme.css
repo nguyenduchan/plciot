@@ -1,0 +1,3 @@
+/* Bảng màu "Mặt bằng nhà máy" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e4eef6;--card:#ffffff;--fg:#0c2236;--mut:#506a80;--line:#c1d3e2;--acc:#0369a1;--accbg:#0369a11a;--on:#0369a1}
+@media (prefers-color-scheme:dark){:root{--bg:#07121c;--card:#0e2234;--fg:#e2effa;--mut:#8aa8c2;--line:#1c3a55;--acc:#38bdf8;--accbg:#38bdf822;--on:#38bdf8}}

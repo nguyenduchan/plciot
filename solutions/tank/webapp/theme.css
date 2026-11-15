@@ -1,0 +1,3 @@
+/* Bảng màu "Bồn bể xăng dầu & hóa chất" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f4e9e1;--card:#ffffff;--fg:#2b1708;--mut:#765c48;--line:#e0cbbb;--acc:#c2410c;--accbg:#c2410c1a;--on:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#17100b;--card:#26190f;--fg:#fbeee3;--mut:#c2a58c;--line:#46301f;--acc:#fb923c;--accbg:#fb923c22;--on:#fb923c}}

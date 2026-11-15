@@ -6,7 +6,8 @@ import mime from 'mime-types';
 import { openDb } from './db.js';
 import './securityAdapter.js';
 import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
-import { startBundleSync } from './bundleSync.js';
+import { startBundleSync, syncBundles } from './bundleSync.js';
+import { registryItems, detectFolders, ignoredFolders, addItem, updateItem, removeItem, solutionVersion } from './solutions.js';
 import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
 import { queryTelemetry, queryEvents, historyStats } from './historyStore.js';
 import {
@@ -21,7 +22,7 @@ import { adminLocalOnly, adminInternetGuard, isDirectLocal } from './adminGate.j
 import { adminSiteGate, mountAdminSite, adminHost } from './adminSite.js';
 import { startBackups } from './dbBackup.js';
 import { initSupport, mountSupport } from './supportChat.js';
-import { listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES } from './adminUsers.js';
+import { adoptSolution, listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES, listSolutions, defaultSolution } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
 import { plcControlConfig } from './plcCommands.js';
@@ -32,7 +33,8 @@ import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountActivateApi } from './activateApi.js';
-import { mountUserDevices } from './userDevices.js';
+import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
+import { gatewaySolution, setSolutionsContext } from './gatewaySolution.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
 import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
 import { contractInfo } from './contract.js';
@@ -219,7 +221,38 @@ app.get('/api/admin/users', ...adminOnly, (req, res) => {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 0)) || null;
   const offset = Math.max(0, Number(req.query.offset) || 0);
   if (limit) users = users.slice(offset, offset + limit);
-  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, users, total, offset, limit });
+  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, solutions: listSolutions(WEBAPP_SRC), gatewaySolutions: listSolutions(WEBAPP_SRC, 'gateway'), defaultSolution: defaultSolution(), users, total, offset, limit });
+});
+
+/* Mục trong ô chọn "giải pháp" (admin thêm/sửa; mỗi mục trỏ tới một thư mục trong solutions/) */
+const solutionsView = () => {
+  const items = registryItems(WEBAPP_SRC);
+  const count = (id) => db.prepare('SELECT COUNT(*) n FROM users WHERE solution = ?').get(id).n;
+  const folders = detectFolders(WEBAPP_SRC);
+  return {
+    default: defaultSolution(),
+    basicUsers: db.prepare("SELECT COUNT(*) n FROM users WHERE solution = '' OR solution = 'basic'").get().n,
+    items: items.map((it) => { const f = folders.find((x) => x.folder === it.folder); return { ...it, parts: f?.parts || { webapp: false, gateway: false }, users: count(it.id), missing: !f, version: f?.parts.webapp ? solutionVersion(WEBAPP_SRC, it.folder) : '' }; }),
+    folders: folders.map((f) => ({ ...f, registered: items.some((it) => it.folder === f.folder) })),
+    ignored: ignoredFolders(WEBAPP_SRC),   // thư mục trông như giải pháp nhưng thiếu dấu nhận diện / phần nào
+  };
+};
+app.get('/api/admin/solutions', ...adminOnly, (req, res) => res.json(solutionsView()));
+app.post('/api/admin/solutions', ...adminOnly, adminWrite, reauth, (req, res) => {
+  const r = addItem(WEBAPP_SRC, req.body || {});
+  if (r.ok) audit(db, 'solution_add', { userId: req.user.id, ip: ipOf(req), detail: r.item.id });
+  send(res, r);
+});
+app.patch('/api/admin/solutions/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
+  const r = updateItem(WEBAPP_SRC, String(req.params.id), req.body || {});
+  if (r.ok) { audit(db, 'solution_update', { userId: req.user.id, ip: ipOf(req), detail: String(req.params.id) }); syncBundles(db, { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }); }
+  send(res, r);
+});
+app.delete('/api/admin/solutions/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
+  const id = String(req.params.id);
+  const r = removeItem(WEBAPP_SRC, id, db.prepare('SELECT COUNT(*) n FROM users WHERE solution = ?').get(id).n);
+  if (r.ok) audit(db, 'solution_remove', { userId: req.user.id, ip: ipOf(req), detail: id });
+  send(res, r);
 });
 
 app.post('/api/admin/users', ...adminOnly, adminWrite, reauth, (req, res) => {
@@ -227,7 +260,7 @@ app.post('/api/admin/users', ...adminOnly, adminWrite, reauth, (req, res) => {
 });
 
 app.patch('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
-  send(res, updateUser(db, req.user, Number(req.params.id), req.body || {}, { ip: ipOf(req) }));
+  send(res, updateUser(db, req.user, Number(req.params.id), req.body || {}, { ip: ipOf(req), shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
 });
 
 app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
@@ -249,6 +282,8 @@ sweepTems();
 setInterval(sweepTems, 3600_000).unref();
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
+setSolutionsContext(WEBAPP_SRC);
+setGatewayAddedHook((d, u, hw) => adoptSolution(d, u.id, gatewaySolution(d, hw.site, hw.device), { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
 /* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
 mountActivateApi(app, { db, requireAuth, requireAdmin, reauth });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */

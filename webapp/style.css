@@ -325,6 +325,8 @@ body.ui-simple .state.run{color:var(--ok)}
 body.ui-simple nav button[data-tab="ctrl"],
 body.ui-simple nav button[data-tab="conv"]{display:none}
 body.ui-simple .scada-legacy{display:none !important}
+/* Giao diện điện thoại (mặc định): bỏ phần dành riêng cho băng tải SCADA cũ — thẻ "Máy đã dừng/Bấm Chạy" (đã có thanh trạng thái + thẻ thiết bị) và tab Báo cáo (số đếm/tốc độ băng tải, nút Chạy/Dừng máy không áp dụng cho thiết bị gateway). Chế độ pro vẫn đủ. */
+body.ui-simple #status-card,body.ui-simple nav button[data-tab="rep"]{display:none !important}
 body.ui-simple .widgets .ctlw{grid-column:1/-1}
 body.ui-simple .widgets .ctlw .row{gap:10px}
 

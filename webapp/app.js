@@ -340,8 +340,8 @@ function applyUi() {
   if (h) h.textContent = simpleUi() ? 'Thiết bị' : 'Điều khiển đầu ra';
   const dashLbl = document.querySelector('nav button[data-tab="dash"] span');
   if (dashLbl) dashLbl.textContent = simpleUi() ? 'Thiết bị' : 'Tổng quan';
-  // Phone: ẩn ctrl/conv; giữ tab Báo cáo (biểu đồ)
-  if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-conv').hidden)) showTab('dash');
+  // Phone: ẩn ctrl/conv/báo cáo băng tải (chỉ chế độ pro)
+  if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-conv').hidden || !$('#tab-rep').hidden)) showTab('dash');   // báo cáo băng tải chỉ ở chế độ pro
 }
 function showTab(t) {
   tabs.forEach((x) => { $('#tab-' + x).hidden = x !== t; });

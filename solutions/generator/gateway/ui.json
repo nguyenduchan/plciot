@@ -1,0 +1,372 @@
+{
+ "id": "generator",
+ "title": "Máy phát điện & ATS",
+ "short": "Máy phát",
+ "glyph": "⚡",
+ "palette": {
+  "bg": "#14100a",
+  "card": "#221b0c",
+  "fg": "#fbf1cf",
+  "mut": "#c2b178",
+  "line": "#403714",
+  "acc": "#fbbf24"
+ },
+ "spec": {
+  "title": "Máy phát điện & ATS",
+  "icon": "bolt",
+  "style": "dense",
+  "metrics": [
+   {
+    "id": "src",
+    "label": "Nguồn đang cấp",
+    "keys": [
+     "source"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Điện lưới",
+     "1": "MÁY PHÁT",
+     "2": "MẤT ĐIỆN"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "warn",
+     "2": "bad"
+    }
+   },
+   {
+    "id": "run",
+    "label": "Máy phát",
+    "keys": [
+     "run"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "rpm",
+    "label": "Vòng quay",
+    "unit": "rpm",
+    "keys": [
+     "rpm"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 2000,
+    "th": {
+     "hi": 1560,
+     "hiHi": 1650
+    }
+   },
+   {
+    "id": "volt",
+    "label": "Điện áp",
+    "unit": "V",
+    "keys": [
+     "volt"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 480,
+    "th": {
+     "lo": 360,
+     "loLo": 340,
+     "hi": 420,
+     "hiHi": 440
+    }
+   },
+   {
+    "id": "hz",
+    "label": "Tần số",
+    "unit": "Hz",
+    "keys": [
+     "hz"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 45,
+    "max": 55,
+    "th": {
+     "lo": 48.5,
+     "loLo": 47,
+     "hi": 51.5,
+     "hiHi": 53
+    }
+   },
+   {
+    "id": "kw",
+    "label": "Công suất",
+    "unit": "kW",
+    "keys": [
+     "kw"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "load",
+    "label": "Tải",
+    "unit": "%",
+    "keys": [
+     "load_pct"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "hi": 85,
+     "hiHi": 100
+    }
+   },
+   {
+    "id": "fuel",
+    "label": "Nhiên liệu",
+    "unit": "%",
+    "keys": [
+     "fuel"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 25,
+     "loLo": 12
+    }
+   },
+   {
+    "id": "oil",
+    "label": "Áp dầu",
+    "unit": "bar",
+    "keys": [
+     "oil_bar"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 0,
+    "max": 8,
+    "th": {
+     "lo": 2,
+     "loLo": 1.2
+    }
+   },
+   {
+    "id": "cool",
+    "label": "Nhiệt độ nước làm mát",
+    "unit": "°C",
+    "keys": [
+     "coolant"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 20,
+    "max": 120,
+    "th": {
+     "hi": 92,
+     "hiHi": 100
+    }
+   },
+   {
+    "id": "hours",
+    "label": "Giờ chạy",
+    "unit": "h",
+    "keys": [
+     "hours"
+    ],
+    "agg": "max",
+    "dec": 0
+   },
+   {
+    "id": "batt",
+    "label": "Ắc quy khởi động",
+    "unit": "V",
+    "keys": [
+     "batt_v"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "th": {
+     "lo": 11.5,
+     "loLo": 10.5
+    }
+   }
+  ],
+  "overview": [
+   {
+    "type": "state",
+    "title": "Nguồn điện",
+    "items": [
+     "src",
+     "run"
+    ]
+   },
+   {
+    "type": "gauges",
+    "items": [
+     "load",
+     "fuel",
+     "cool"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "kw",
+     "volt",
+     "hz",
+     "rpm"
+    ]
+   },
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "trend",
+    "metric": "kw",
+    "title": "Công suất phát"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "maint",
+    "label": "Bảo dưỡng",
+    "title": "Bảo dưỡng & thông số động cơ",
+    "icon": "gear",
+    "blocks": [
+     {
+      "type": "kpis",
+      "items": [
+       "hours",
+       "batt"
+      ]
+     },
+     {
+      "type": "bars",
+      "items": [
+       "oil",
+       "cool",
+       "fuel"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "cool",
+      "title": "Nhiệt độ làm mát"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "g1": {
+     "title": "Máy phát 500kVA",
+     "dec": {
+      "rpm": 0,
+      "volt": 0,
+      "hz": 1,
+      "kw": 0,
+      "load_pct": 0,
+      "fuel": 0,
+      "oil_bar": 1,
+      "coolant": 0,
+      "hours": 0,
+      "batt_v": 1
+     },
+     "f": {
+      "source": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 400,
+       "duty": 0.75
+      },
+      "run": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 400,
+       "duty": 0.75
+      },
+      "rpm": [
+       1500,
+       12,
+       40,
+       0
+      ],
+      "volt": [
+       398,
+       4,
+       60,
+       0
+      ],
+      "hz": [
+       50,
+       0.2,
+       50,
+       0
+      ],
+      "kw": [
+       260,
+       40,
+       100,
+       0
+      ],
+      "load_pct": [
+       62,
+       12,
+       110,
+       0
+      ],
+      "fuel": [
+       54,
+       4,
+       600,
+       0
+      ],
+      "oil_bar": [
+       4.2,
+       0.2,
+       90,
+       0
+      ],
+      "coolant": [
+       82,
+       5,
+       140,
+       0
+      ],
+      "hours": {
+       "cnt": 0.0003,
+       "start": 2412
+      },
+      "batt_v": [
+       13.1,
+       0.2,
+       100,
+       0
+      ]
+     }
+    }
+   }
+  },
+  "id": "generator",
+  "required": [
+   "src",
+   "run",
+   "fuel"
+  ],
+  "why": "Nguồn đang cấp, trạng thái máy phát và nhiên liệu để biết khi mất điện còn chạy được bao lâu."
+ }
+}

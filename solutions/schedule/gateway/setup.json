@@ -1,0 +1,61 @@
+{
+  "gw": "SCHEDULE",
+  "devices": [
+    {
+      "id": "s1",
+      "name": "Bộ điều khiển sân vườn",
+      "fields": [
+        {
+          "key": "zone1",
+          "lbl": "Tưới vùng 1",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "zone2",
+          "lbl": "Tưới vùng 2",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "lamp",
+          "lbl": "Đèn sân",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pond",
+          "lbl": "Bơm hồ",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "water_l",
+          "lbl": "Nước hôm nay",
+          "unit": "L",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

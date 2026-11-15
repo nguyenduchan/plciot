@@ -211,6 +211,10 @@ export function previewFromQr(db, { qr, ip, adminId }) {
   };
 }
 
+/** Móc của server: user vừa thêm gateway → (tuỳ chọn) map webapp của user theo giải pháp của gateway. */
+let onGatewayAdded = null;
+export const setGatewayAddedHook = (fn) => { onGatewayAdded = fn; };
+
 export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
   // Admin quét QR nào cũng chỉ để xem thử: không bao giờ trở thành chủ gateway hay nhận thiết bị vào tài khoản.
   if (String(user?.role || '') === 'admin') return previewFromQr(db, { qr, ip, adminId: user.id });
@@ -256,8 +260,11 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
   audit(db, 'user_device_added', {
     userId: u.id, ip, detail: `${verified.site}/${verified.device} +${result.added.length}`,
   });
+  let solution = '';
+  try { solution = onGatewayAdded?.(db, u, hw) || ''; } catch { /* không để lỗi map giao diện làm hỏng việc thêm thiết bị */ }
   return {
     ok: true,
+    ...(solution ? { solutionApplied: solution } : {}),
     ...result,
     dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device), gateways: gatewaysOfUser(db, u), ...planOf(u) }),
   };

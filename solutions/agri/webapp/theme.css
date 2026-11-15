@@ -1,0 +1,3 @@
+/* Bảng màu "Nông nghiệp nhà kính" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#eaf4e4;--card:#ffffff;--fg:#16301a;--mut:#587058;--line:#cbdcc2;--acc:#2f7d32;--accbg:#2f7d321a;--on:#2f7d32}
+@media (prefers-color-scheme:dark){:root{--bg:#0c1a0e;--card:#142a17;--fg:#e4f3e3;--mut:#97b59a;--line:#26442a;--acc:#6fd46f;--accbg:#6fd46f22;--on:#6fd46f}}

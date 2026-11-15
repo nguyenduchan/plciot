@@ -216,7 +216,7 @@
     const st = devState(d);
     const icon = window.PlcIcons ? `<span class="dev-ic" aria-hidden="true">${window.PlcIcons.device(iconFor(d), { on: st.on, speed: st.spin })}</span>` : '';
     return `<article class="dev-card${window.PlcIcons?.category ? ` cat-${window.PlcIcons.category(iconFor(d))}` : ''}${d.color ? ` acc-${esc(d.color)}` : ''}${readonly ? ' readonly' : ''}${st.on ? '' : ' is-off'}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
-      <header>${icon}<h3>${esc(d.title)}</h3><span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>
+      <header>${icon}<h3>${esc(d.title)}</h3>${GENERIC_TYPE.test(d.type || '') ? '' : `<span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>`}
       </header>
       <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
     </article>`;
@@ -294,7 +294,7 @@
       return;
     }
     if (!dashboard?.devices?.length) {
-      host.innerHTML = `<div class="dev-empty muted">Chưa có thiết bị.<br>Bấm <b>+ Thêm</b>, dán/quét QR tem — widget tự hiện (không cần sơ đồ SCADA).</div>`;
+      host.innerHTML = `<div class="dev-empty muted">Chưa có thiết bị.<br>Bấm <b>+ Thêm</b>, dán hoặc quét QR trên tem để thêm thiết bị.</div>`;
       lastSig = '';
       return;
     }

@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "schedule",
+  "title": "Lịch vận hành thiết bị",
+  "themeColor": "#7c3aed",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

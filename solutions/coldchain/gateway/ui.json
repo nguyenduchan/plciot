@@ -1,0 +1,348 @@
+{
+ "id": "coldchain",
+ "title": "Kho lạnh & chuỗi lạnh",
+ "short": "Kho lạnh",
+ "glyph": "❄",
+ "palette": {
+  "bg": "#06161d",
+  "card": "#0c2630",
+  "fg": "#e0f3f8",
+  "mut": "#86b0bf",
+  "line": "#1b4252",
+  "acc": "#22d3ee"
+ },
+ "spec": {
+  "title": "Kho lạnh & chuỗi lạnh",
+  "icon": "snow",
+  "style": "sharp",
+  "metrics": [
+   {
+    "id": "temp",
+    "label": "Nhiệt độ kho",
+    "unit": "°C",
+    "keys": [
+     "temp_c",
+     "temp"
+    ],
+    "agg": "max",
+    "dec": 1,
+    "min": -30,
+    "max": 10,
+    "th": {
+     "hi": -15,
+     "hiHi": -10
+    }
+   },
+   {
+    "id": "hum",
+    "label": "Độ ẩm",
+    "unit": "%",
+    "keys": [
+     "hum_pct",
+     "hum"
+    ],
+    "agg": "avg",
+    "dec": 0
+   },
+   {
+    "id": "margin",
+    "label": "Dự phòng tới ngưỡng -15°C",
+    "unit": "°C",
+    "expr": "-15 - temp",
+    "dec": 1,
+    "th": {
+     "lo": 3,
+     "loLo": 0
+    }
+   },
+   {
+    "id": "door",
+    "label": "Cửa",
+    "keys": [
+     "door"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Đóng",
+     "1": "MỞ"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "warn"
+    }
+   },
+   {
+    "id": "comp",
+    "label": "Máy nén",
+    "keys": [
+     "comp"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "defrost",
+    "label": "Xả đá",
+    "keys": [
+     "defrost"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Không",
+     "1": "Đang xả đá"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "warn"
+    }
+   },
+   {
+    "id": "power",
+    "label": "Công suất",
+    "unit": "kW",
+    "keys": [
+     "power_kw",
+     "kw"
+    ],
+    "agg": "sum"
+   },
+   {
+    "id": "kwh",
+    "label": "Điện năng",
+    "unit": "kWh",
+    "keys": [
+     "kwh"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "alarm",
+    "label": "Báo động",
+    "keys": [
+     "alarm"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Bình thường",
+     "1": "BÁO ĐỘNG"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "bad"
+    }
+   }
+  ],
+  "overview": [
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "tiles",
+    "title": "Các phòng lạnh",
+    "main": "temp",
+    "subs": [
+     "hum",
+     "comp",
+     "door"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "temp",
+     "margin",
+     "power",
+     "kwh"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "comp",
+     "defrost",
+     "door",
+     "alarm"
+    ]
+   },
+   {
+    "type": "trend",
+    "metric": "temp",
+    "title": "Nhiệt độ cao nhất các kho"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "energy",
+    "label": "Điện năng",
+    "title": "Điện năng & máy nén",
+    "icon": "bolt",
+    "blocks": [
+     {
+      "type": "kpis",
+      "items": [
+       "power",
+       "kwh"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "power",
+      "title": "Công suất"
+     },
+     {
+      "type": "state",
+      "items": [
+       "comp",
+       "defrost"
+      ]
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "k1": {
+     "title": "Kho đông A",
+     "f": {
+      "temp_c": [
+       -19,
+       1.2,
+       260,
+       0
+      ],
+      "hum_pct": [
+       82,
+       3,
+       200,
+       0
+      ],
+      "door": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 400,
+       "duty": 0.96
+      },
+      "comp": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 150,
+       "duty": 0.7
+      },
+      "defrost": 0,
+      "power_kw": [
+       6.4,
+       1.2,
+       80,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.002,
+       "start": 4120
+      },
+      "alarm": 0
+     }
+    },
+    "k2": {
+     "title": "Kho đông B",
+     "f": {
+      "temp_c": [
+       -17.5,
+       1.0,
+       230,
+       30
+      ],
+      "hum_pct": [
+       80,
+       3,
+       210,
+       0
+      ],
+      "door": 0,
+      "comp": 1,
+      "defrost": {
+       "sq": [
+        1,
+        0
+       ],
+       "p": 500,
+       "duty": 0.93
+      },
+      "power_kw": [
+       5.8,
+       1,
+       90,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.002,
+       "start": 3550
+      },
+      "alarm": 0
+     }
+    },
+    "k3": {
+     "title": "Phòng đệm",
+     "f": {
+      "temp_c": [
+       -13.5,
+       2.5,
+       180,
+       10
+      ],
+      "hum_pct": [
+       70,
+       4,
+       190,
+       0
+      ],
+      "door": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 90,
+       "duty": 0.8
+      },
+      "comp": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 100,
+       "duty": 0.6
+      },
+      "defrost": 0,
+      "power_kw": [
+       2.2,
+       0.5,
+       70,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.001,
+       "start": 1300
+      },
+      "alarm": 0
+     }
+    }
+   }
+  },
+  "id": "coldchain",
+  "required": [
+   "temp"
+  ],
+  "why": "Nhiệt độ kho là chỉ tiêu bắt buộc của chuỗi lạnh (HACCP): vượt ngưỡng phải báo ngay. Nên khai thêm door, comp, alarm."
+ }
+}

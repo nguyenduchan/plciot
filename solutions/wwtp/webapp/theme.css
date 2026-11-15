@@ -1,0 +1,3 @@
+/* Bảng màu "Trạm xử lý nước thải" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e1f0ea;--card:#ffffff;--fg:#0b2a22;--mut:#4a6c60;--line:#bcd8cc;--acc:#0f766e;--accbg:#0f766e1a;--on:#0f766e}
+@media (prefers-color-scheme:dark){:root{--bg:#06180f;--card:#0c2a1d;--fg:#dff5e8;--mut:#86b39a;--line:#1a4630;--acc:#34d399;--accbg:#34d39922;--on:#34d399}}

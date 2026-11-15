@@ -1,0 +1,343 @@
+/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
+window.INDUSTRY = {
+ "title": "Trạm khí tượng & thủy văn",
+ "icon": "wind",
+ "style": "soft",
+ "metrics": [
+  {
+   "id": "rain",
+   "label": "Mưa hôm nay",
+   "unit": "mm",
+   "keys": [
+    "rain_mm"
+   ],
+   "agg": "sum",
+   "dec": 1
+  },
+  {
+   "id": "rate",
+   "label": "Cường độ mưa",
+   "unit": "mm/h",
+   "keys": [
+    "rain_rate"
+   ],
+   "agg": "max",
+   "dec": 1,
+   "min": 0,
+   "max": 60,
+   "th": {
+    "hi": 20,
+    "hiHi": 40
+   }
+  },
+  {
+   "id": "level",
+   "label": "Mực nước sông",
+   "unit": "cm",
+   "keys": [
+    "river_cm"
+   ],
+   "agg": "max",
+   "dec": 0,
+   "min": 0,
+   "max": 500,
+   "th": {
+    "hi": 300,
+    "hiHi": 400
+   }
+  },
+  {
+   "id": "ws",
+   "label": "Tốc độ gió",
+   "unit": "m/s",
+   "keys": [
+    "wind_ms"
+   ],
+   "agg": "max",
+   "dec": 1,
+   "min": 0,
+   "max": 30,
+   "th": {
+    "hi": 14,
+    "hiHi": 20
+   }
+  },
+  {
+   "id": "wd",
+   "label": "Hướng gió",
+   "unit": "°",
+   "keys": [
+    "wind_deg"
+   ],
+   "agg": "last",
+   "dec": 0
+  },
+  {
+   "id": "temp",
+   "label": "Nhiệt độ",
+   "unit": "°C",
+   "keys": [
+    "temp_c"
+   ],
+   "agg": "avg",
+   "dec": 1
+  },
+  {
+   "id": "hum",
+   "label": "Độ ẩm",
+   "unit": "%",
+   "keys": [
+    "hum_pct"
+   ],
+   "agg": "avg",
+   "dec": 0
+  },
+  {
+   "id": "pres",
+   "label": "Khí áp",
+   "unit": "hPa",
+   "keys": [
+    "pres_hpa"
+   ],
+   "agg": "avg",
+   "dec": 0,
+   "min": 980,
+   "max": 1040
+  },
+  {
+   "id": "bat",
+   "label": "Pin trạm",
+   "unit": "V",
+   "keys": [
+    "batt_v"
+   ],
+   "agg": "min",
+   "dec": 1,
+   "th": {
+    "lo": 12,
+    "loLo": 11.5
+   }
+  }
+ ],
+ "overview": [
+  {
+   "type": "alarms"
+  },
+  {
+   "type": "wind",
+   "title": "Gió",
+   "dir": "wd",
+   "speed": "ws"
+  },
+  {
+   "type": "kpis",
+   "items": [
+    "temp",
+    "hum",
+    "rain",
+    "pres"
+   ]
+  },
+  {
+   "type": "bars",
+   "title": "Mực nước sông (cảnh báo lũ)",
+   "items": [
+    "level",
+    "rate"
+   ]
+  },
+  {
+   "type": "tiles",
+   "title": "Các trạm",
+   "main": "level",
+   "subs": [
+    "rain",
+    "ws",
+    "bat"
+   ]
+  },
+  {
+   "type": "trend",
+   "metric": "level",
+   "title": "Mực nước"
+  }
+ ],
+ "tabs": [
+  {
+   "id": "rain",
+   "label": "Mưa & lũ",
+   "title": "Mưa và mực nước",
+   "icon": "drop",
+   "blocks": [
+    {
+     "type": "kpis",
+     "items": [
+      "rain",
+      "rate",
+      "level"
+     ]
+    },
+    {
+     "type": "trend",
+     "metric": "rate",
+     "title": "Cường độ mưa"
+    },
+    {
+     "type": "trend",
+     "metric": "level",
+     "title": "Mực nước"
+    }
+   ]
+  }
+ ],
+ "demo": {
+  "devices": {
+   "w1": {
+    "title": "Trạm sông A",
+    "dec": {
+     "rain_mm": 1,
+     "rain_rate": 1,
+     "river_cm": 0,
+     "wind_ms": 1,
+     "wind_deg": 0,
+     "temp_c": 1,
+     "hum_pct": 0,
+     "pres_hpa": 0,
+     "batt_v": 1
+    },
+    "f": {
+     "rain_mm": {
+      "cnt": 0.004,
+      "start": 6.2
+     },
+     "rain_rate": [
+      6,
+      5,
+      150,
+      0
+     ],
+     "river_cm": [
+      262,
+      40,
+      400,
+      0
+     ],
+     "wind_ms": [
+      5,
+      2,
+      90,
+      0
+     ],
+     "wind_deg": {
+      "sin": [
+       220,
+       60,
+       300
+      ]
+     },
+     "temp_c": [
+      28,
+      1.5,
+      500,
+      0
+     ],
+     "hum_pct": [
+      82,
+      4,
+      300,
+      0
+     ],
+     "pres_hpa": [
+      1008,
+      1.5,
+      600,
+      0
+     ],
+     "batt_v": [
+      12.9,
+      0.1,
+      200,
+      0
+     ]
+    }
+   },
+   "w2": {
+    "title": "Trạm đồi B",
+    "dec": {
+     "rain_mm": 1,
+     "rain_rate": 1,
+     "river_cm": 0,
+     "wind_ms": 1,
+     "wind_deg": 0,
+     "temp_c": 1,
+     "hum_pct": 0,
+     "pres_hpa": 0,
+     "batt_v": 1
+    },
+    "f": {
+     "rain_mm": {
+      "cnt": 0.006,
+      "start": 9.8
+     },
+     "rain_rate": [
+      10,
+      8,
+      130,
+      20
+     ],
+     "river_cm": [
+      180,
+      30,
+      420,
+      60
+     ],
+     "wind_ms": [
+      8,
+      3,
+      80,
+      0
+     ],
+     "wind_deg": {
+      "sin": [
+       200,
+       50,
+       280
+      ]
+     },
+     "temp_c": [
+      26,
+      1.5,
+      480,
+      0
+     ],
+     "hum_pct": [
+      86,
+      4,
+      290,
+      0
+     ],
+     "pres_hpa": [
+      1006,
+      1.5,
+      600,
+      0
+     ],
+     "batt_v": [
+      12.4,
+      0.2,
+      200,
+      0
+     ]
+    }
+   }
+  }
+ },
+ "id": "weather",
+ "required": [
+  "wd",
+  "ws",
+  "rain",
+  "level"
+ ],
+ "why": "Hướng + tốc độ gió, lượng mưa và mực nước sông là bộ tối thiểu của trạm khí tượng thủy văn."
+};

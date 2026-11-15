@@ -1,0 +1,205 @@
+{
+  "gw": "FLEET",
+  "devices": [
+    {
+      "id": "v1",
+      "name": "Xe tải 51C-123",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "km/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 120
+        },
+        {
+          "key": "state",
+          "lbl": "Xe đang chạy",
+          "unit": "xe",
+          "widget": "kpi"
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "odo",
+          "lbl": "Quãng đường",
+          "unit": "km",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ động cơ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "v2",
+      "name": "Xe tải 51D-456",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "km/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 120
+        },
+        {
+          "key": "state",
+          "lbl": "Xe đang chạy",
+          "unit": "xe",
+          "widget": "kpi"
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "odo",
+          "lbl": "Quãng đường",
+          "unit": "km",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ động cơ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "v3",
+      "name": "Xe bán tải 60A-789",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "km/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 120
+        },
+        {
+          "key": "state",
+          "lbl": "Xe đang chạy",
+          "unit": "xe",
+          "widget": "kpi"
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "odo",
+          "lbl": "Quãng đường",
+          "unit": "km",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ động cơ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "v4",
+      "name": "Xe giao hàng 59B-321",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "km/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 120
+        },
+        {
+          "key": "state",
+          "lbl": "Xe đang chạy",
+          "unit": "xe",
+          "widget": "kpi"
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "odo",
+          "lbl": "Quãng đường",
+          "unit": "km",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ động cơ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

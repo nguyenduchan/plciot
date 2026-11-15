@@ -1,0 +1,3 @@
+/* Bảng màu "Nuôi trồng thủy sản" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e1f0fb;--card:#ffffff;--fg:#0a2a45;--mut:#4f6f8a;--line:#bcd6ea;--acc:#0369a1;--accbg:#0369a11a;--on:#0369a1}
+@media (prefers-color-scheme:dark){:root{--bg:#06162a;--card:#0b2a47;--fg:#e0f0ff;--mut:#88aed0;--line:#1a4468;--acc:#5eead4;--accbg:#5eead422;--on:#5eead4}}

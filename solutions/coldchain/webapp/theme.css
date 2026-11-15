@@ -1,0 +1,3 @@
+/* Bảng màu "Kho lạnh & chuỗi lạnh" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e3f2f7;--card:#ffffff;--fg:#0b2530;--mut:#4a6874;--line:#bcd8e2;--acc:#0e7490;--accbg:#0e74901a;--on:#0e7490}
+@media (prefers-color-scheme:dark){:root{--bg:#06161d;--card:#0c2630;--fg:#e0f3f8;--mut:#86b0bf;--line:#1b4252;--acc:#22d3ee;--accbg:#22d3ee22;--on:#22d3ee}}

@@ -1,0 +1,161 @@
+{
+  "gw": "COLDCHAIN",
+  "devices": [
+    {
+      "id": "k1",
+      "name": "Kho đông A",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ kho",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": -30,
+          "max": 10
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "comp",
+          "lbl": "Máy nén",
+          "widget": "led"
+        },
+        {
+          "key": "defrost",
+          "lbl": "Xả đá",
+          "widget": "led"
+        },
+        {
+          "key": "power_kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "alarm",
+          "lbl": "Báo động",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "k2",
+      "name": "Kho đông B",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ kho",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": -30,
+          "max": 10
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "comp",
+          "lbl": "Máy nén",
+          "widget": "led"
+        },
+        {
+          "key": "defrost",
+          "lbl": "Xả đá",
+          "widget": "led"
+        },
+        {
+          "key": "power_kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "alarm",
+          "lbl": "Báo động",
+          "widget": "led"
+        }
+      ]
+    },
+    {
+      "id": "k3",
+      "name": "Phòng đệm",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ kho",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": -30,
+          "max": 10
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa",
+          "widget": "led"
+        },
+        {
+          "key": "comp",
+          "lbl": "Máy nén",
+          "widget": "led"
+        },
+        {
+          "key": "defrost",
+          "lbl": "Xả đá",
+          "widget": "led"
+        },
+        {
+          "key": "power_kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "alarm",
+          "lbl": "Báo động",
+          "widget": "led"
+        }
+      ]
+    }
+  ]
+}

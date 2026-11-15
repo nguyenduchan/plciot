@@ -1,0 +1,498 @@
+{
+ "id": "process",
+ "title": "Quy trình pha chế (P&ID)",
+ "short": "P&ID",
+ "glyph": "⇄",
+ "palette": {
+  "bg": "#071a18",
+  "card": "#0d2a27",
+  "fg": "#e0f5f1",
+  "mut": "#88b3ac",
+  "line": "#1b4640",
+  "acc": "#2dd4bf"
+ },
+ "spec": {
+  "title": "Quy trình pha chế (P&ID)",
+  "icon": "pipe",
+  "style": "sharp",
+  "metrics": [
+   {
+    "id": "la",
+    "label": "Bồn A",
+    "unit": "%",
+    "keys": [
+     "lvl_a"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 15,
+     "loLo": 8
+    }
+   },
+   {
+    "id": "lb",
+    "label": "Bồn B",
+    "unit": "%",
+    "keys": [
+     "lvl_b"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 15,
+     "loLo": 8
+    }
+   },
+   {
+    "id": "lc",
+    "label": "Bồn thành phẩm",
+    "unit": "%",
+    "keys": [
+     "lvl_c"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "hi": 90,
+     "hiHi": 97
+    }
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ bình",
+    "unit": "°C",
+    "keys": [
+     "temp_c"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 120,
+    "th": {
+     "hi": 85,
+     "hiHi": 95
+    }
+   },
+   {
+    "id": "press",
+    "label": "Áp suất",
+    "unit": "bar",
+    "keys": [
+     "press_bar"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 0,
+    "max": 6,
+    "th": {
+     "hi": 4,
+     "hiHi": 5
+    }
+   },
+   {
+    "id": "flow",
+    "label": "Lưu lượng",
+    "unit": "L/ph",
+    "keys": [
+     "flow_lpm"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "p1",
+    "label": "Bơm A",
+    "keys": [
+     "pump_a"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "p2",
+    "label": "Bơm B",
+    "keys": [
+     "pump_b"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "v1",
+    "label": "Van A",
+    "keys": [
+     "valve_a"
+    ],
+    "map": {
+     "0": "Đóng",
+     "1": "Mở"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "v2",
+    "label": "Van B",
+    "keys": [
+     "valve_b"
+    ],
+    "map": {
+     "0": "Đóng",
+     "1": "Mở"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "v3",
+    "label": "Van xả",
+    "keys": [
+     "valve_out"
+    ],
+    "map": {
+     "0": "Đóng",
+     "1": "Mở"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "batch",
+    "label": "Mẻ hôm nay",
+    "unit": "mẻ",
+    "keys": [
+     "batch"
+    ],
+    "agg": "max",
+    "dec": 0
+   }
+  ],
+  "overview": [
+   {
+    "type": "pid",
+    "w": 130,
+    "h": 70,
+    "pipes": [
+     {
+      "pts": [
+       [
+        23,
+        17
+       ],
+       [
+        69,
+        17
+       ],
+       [
+        69,
+        30
+       ]
+      ],
+      "on": "p1",
+      "color": "var(--acc)"
+     },
+     {
+      "pts": [
+       [
+        23,
+        52
+       ],
+       [
+        69,
+        52
+       ],
+       [
+        69,
+        44
+       ]
+      ],
+      "on": "p2",
+      "color": "var(--warn)"
+     },
+     {
+      "pts": [
+       [
+        91,
+        37
+       ],
+       [
+        111,
+        37
+       ]
+      ],
+      "on": "v3",
+      "color": "var(--ok)"
+     }
+    ],
+    "nodes": [
+     {
+      "kind": "tank",
+      "x": 14,
+      "y": 4,
+      "w": 18,
+      "h": 26,
+      "metric": "la",
+      "label": "Bồn A"
+     },
+     {
+      "kind": "tank",
+      "x": 14,
+      "y": 38,
+      "w": 18,
+      "h": 26,
+      "metric": "lb",
+      "label": "Bồn B"
+     },
+     {
+      "kind": "pump",
+      "x": 38,
+      "y": 17,
+      "metric": "p1",
+      "label": "Bơm A"
+     },
+     {
+      "kind": "pump",
+      "x": 38,
+      "y": 52,
+      "metric": "p2",
+      "label": "Bơm B"
+     },
+     {
+      "kind": "valve",
+      "x": 54,
+      "y": 17,
+      "metric": "v1",
+      "label": "Van A"
+     },
+     {
+      "kind": "valve",
+      "x": 54,
+      "y": 52,
+      "metric": "v2",
+      "label": "Van B"
+     },
+     {
+      "kind": "vessel",
+      "x": 80,
+      "y": 26,
+      "w": 22,
+      "h": 22,
+      "metric": "temp",
+      "label": "Bình trộn"
+     },
+     {
+      "kind": "valve",
+      "x": 100,
+      "y": 37,
+      "metric": "v3",
+      "label": "Van xả"
+     },
+     {
+      "kind": "tank",
+      "x": 119,
+      "y": 22,
+      "w": 16,
+      "h": 30,
+      "metric": "lc",
+      "label": "Thành phẩm"
+     },
+     {
+      "kind": "sensor",
+      "x": 80,
+      "y": 8,
+      "metric": "press",
+      "label": "Áp suất"
+     }
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "temp",
+     "press",
+     "flow",
+     "batch"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "p1",
+     "p2",
+     "v1",
+     "v2",
+     "v3"
+    ]
+   },
+   {
+    "type": "alarms"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "trend",
+    "label": "Xu hướng",
+    "title": "Xu hướng quy trình",
+    "icon": "chart",
+    "blocks": [
+     {
+      "type": "trend",
+      "metric": "temp",
+      "title": "Nhiệt độ bình"
+     },
+     {
+      "type": "trend",
+      "metric": "press",
+      "title": "Áp suất"
+     },
+     {
+      "type": "trend",
+      "metric": "lc",
+      "title": "Mức thành phẩm"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "pl1": {
+     "title": "Dây chuyền pha chế",
+     "dec": {
+      "lvl_a": 0,
+      "lvl_b": 0,
+      "lvl_c": 0,
+      "temp_c": 0,
+      "press_bar": 1,
+      "flow_lpm": 0,
+      "batch": 0
+     },
+     "f": {
+      "lvl_a": [
+       62,
+       18,
+       240,
+       0
+      ],
+      "lvl_b": [
+       48,
+       20,
+       280,
+       40
+      ],
+      "lvl_c": [
+       52,
+       28,
+       300,
+       100
+      ],
+      "temp_c": [
+       68,
+       12,
+       180,
+       0
+      ],
+      "press_bar": [
+       2.4,
+       0.6,
+       90,
+       0
+      ],
+      "flow_lpm": [
+       95,
+       30,
+       100,
+       0
+      ],
+      "pump_a": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 160,
+       "duty": 0.75
+      },
+      "pump_b": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 200,
+       "duty": 0.55,
+       "ph": 40
+      },
+      "valve_a": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 160,
+       "duty": 0.8
+      },
+      "valve_b": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 200,
+       "duty": 0.6,
+       "ph": 30
+      },
+      "valve_out": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 240,
+       "duty": 0.5,
+       "ph": 20
+      },
+      "batch": {
+       "cnt": 0.004,
+       "start": 12
+      }
+     }
+    }
+   }
+  },
+  "id": "process",
+  "required": [
+   "la",
+   "lb",
+   "lc",
+   "temp",
+   "p1",
+   "p2"
+  ],
+  "why": "Sơ đồ P&ID cần đủ mức 3 bồn, nhiệt độ bình và trạng thái hai bơm để vẽ dòng chảy đúng."
+ }
+}

@@ -1,0 +1,224 @@
+{
+  "gw": "BTS",
+  "devices": [
+    {
+      "id": "t1",
+      "name": "Trạm Củ Chi",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "mains",
+          "lbl": "Điện lưới",
+          "widget": "led"
+        },
+        {
+          "key": "gen",
+          "lbl": "Máy phát",
+          "widget": "led"
+        },
+        {
+          "key": "batt_pct",
+          "lbl": "Pin dự phòng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Điện áp DC",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 40,
+          "max": 58
+        },
+        {
+          "key": "backup_h",
+          "lbl": "Dự phòng còn",
+          "unit": "giờ",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ tủ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 60
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa tủ",
+          "widget": "led"
+        },
+        {
+          "key": "load_a",
+          "lbl": "Tải DC",
+          "unit": "A",
+          "widget": "kpi"
+        },
+        {
+          "key": "rssi",
+          "lbl": "Sóng 4G",
+          "unit": "dBm",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "name": "Trạm Bình Chánh",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "mains",
+          "lbl": "Điện lưới",
+          "widget": "led"
+        },
+        {
+          "key": "gen",
+          "lbl": "Máy phát",
+          "widget": "led"
+        },
+        {
+          "key": "batt_pct",
+          "lbl": "Pin dự phòng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Điện áp DC",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 40,
+          "max": 58
+        },
+        {
+          "key": "backup_h",
+          "lbl": "Dự phòng còn",
+          "unit": "giờ",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ tủ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 60
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa tủ",
+          "widget": "led"
+        },
+        {
+          "key": "load_a",
+          "lbl": "Tải DC",
+          "unit": "A",
+          "widget": "kpi"
+        },
+        {
+          "key": "rssi",
+          "lbl": "Sóng 4G",
+          "unit": "dBm",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "t3",
+      "name": "Trạm Nhà Bè",
+      "fields": [
+        {
+          "key": "lat",
+          "lbl": "lat",
+          "widget": "kpi"
+        },
+        {
+          "key": "lon",
+          "lbl": "lon",
+          "widget": "kpi"
+        },
+        {
+          "key": "mains",
+          "lbl": "Điện lưới",
+          "widget": "led"
+        },
+        {
+          "key": "gen",
+          "lbl": "Máy phát",
+          "widget": "led"
+        },
+        {
+          "key": "batt_pct",
+          "lbl": "Pin dự phòng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Điện áp DC",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 40,
+          "max": 58
+        },
+        {
+          "key": "backup_h",
+          "lbl": "Dự phòng còn",
+          "unit": "giờ",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ tủ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 60
+        },
+        {
+          "key": "door",
+          "lbl": "Cửa tủ",
+          "widget": "led"
+        },
+        {
+          "key": "load_a",
+          "lbl": "Tải DC",
+          "unit": "A",
+          "widget": "kpi"
+        },
+        {
+          "key": "rssi",
+          "lbl": "Sóng 4G",
+          "unit": "dBm",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

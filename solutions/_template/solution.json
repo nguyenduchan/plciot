@@ -1,0 +1,15 @@
+{
+  "kind": "plciot-solution",
+  "id": "ten_giai_phap",
+  "title": "Tên hiển thị",
+  "themeColor": "#0f1720",
+  "mode": "overlay",
+  "inject": {
+    "css": [
+      "app.css?v=1"
+    ],
+    "js": [
+      "app.js?v=1"
+    ]
+  }
+}

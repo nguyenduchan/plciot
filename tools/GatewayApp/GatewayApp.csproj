@@ -11,6 +11,15 @@
     <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Địa chỉ server của khách hàng: sửa file này là đủ (không build lại). -->
+    <None Update="server.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- Giải pháp độc lập: dotnet build -p:Solution=solar biên dịch solutions/solar/gateway/*.cs vào và chép solution.json cạnh file chạy. Không đặt Solution = bản cơ bản. -->
+  <ItemGroup Condition="'$(Solution)' != ''">
+    <Compile Include="..\..\solutions\$(Solution)\gateway\*.cs" LinkBase="Solution" />
+    <None Include="..\..\solutions\$(Solution)\gateway\solution.json" Link="solution.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
   </ItemGroup>

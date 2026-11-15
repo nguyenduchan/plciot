@@ -1,0 +1,141 @@
+{
+  "gw": "WEATHER",
+  "devices": [
+    {
+      "id": "w1",
+      "name": "Trạm sông A",
+      "fields": [
+        {
+          "key": "rain_mm",
+          "lbl": "Mưa hôm nay",
+          "unit": "mm",
+          "widget": "kpi"
+        },
+        {
+          "key": "rain_rate",
+          "lbl": "Cường độ mưa",
+          "unit": "mm/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 60
+        },
+        {
+          "key": "river_cm",
+          "lbl": "Mực nước sông",
+          "unit": "cm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 500
+        },
+        {
+          "key": "wind_ms",
+          "lbl": "Tốc độ gió",
+          "unit": "m/s",
+          "widget": "gauge",
+          "min": 0,
+          "max": 30
+        },
+        {
+          "key": "wind_deg",
+          "lbl": "Hướng gió",
+          "unit": "°",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "pres_hpa",
+          "lbl": "Khí áp",
+          "unit": "hPa",
+          "widget": "gauge",
+          "min": 980,
+          "max": 1040
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Pin trạm",
+          "unit": "V",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "w2",
+      "name": "Trạm đồi B",
+      "fields": [
+        {
+          "key": "rain_mm",
+          "lbl": "Mưa hôm nay",
+          "unit": "mm",
+          "widget": "kpi"
+        },
+        {
+          "key": "rain_rate",
+          "lbl": "Cường độ mưa",
+          "unit": "mm/h",
+          "widget": "gauge",
+          "min": 0,
+          "max": 60
+        },
+        {
+          "key": "river_cm",
+          "lbl": "Mực nước sông",
+          "unit": "cm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 500
+        },
+        {
+          "key": "wind_ms",
+          "lbl": "Tốc độ gió",
+          "unit": "m/s",
+          "widget": "gauge",
+          "min": 0,
+          "max": 30
+        },
+        {
+          "key": "wind_deg",
+          "lbl": "Hướng gió",
+          "unit": "°",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "pres_hpa",
+          "lbl": "Khí áp",
+          "unit": "hPa",
+          "widget": "gauge",
+          "min": 980,
+          "max": 1040
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Pin trạm",
+          "unit": "V",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

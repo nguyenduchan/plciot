@@ -1,0 +1,3 @@
+/* Bảng màu "Lò sấy & kho sấy" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f7e7dc;--card:#ffffff;--fg:#2d1308;--mut:#7a5640;--line:#e8cbb9;--acc:#c2410c;--accbg:#c2410c1a;--on:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#170c06;--card:#2a170c;--fg:#fdeadc;--mut:#c9a58d;--line:#47291a;--acc:#fb923c;--accbg:#fb923c22;--on:#fb923c}}

@@ -1,0 +1,251 @@
+{
+  "gw": "ANDON",
+  "devices": [
+    {
+      "id": "L1",
+      "name": "Chuyền 1",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "name": "Chuyền 2",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "name": "Chuyền 3",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "name": "Chuyền 4",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "name": "Đóng gói",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "name": "Kiểm tra",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "good",
+          "lbl": "Đạt",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "takt",
+          "lbl": "Takt time",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "down_min",
+          "lbl": "Dừng lâu nhất",
+          "unit": "phút",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+/* Lớp phủ "Năng lượng mặt trời": chỉ đổi bảng màu + thêm khối sơ đồ năng lượng. Mọi tính năng khác dùng nguyên mã webapp cơ bản. */
+:root{--bg:#e8f1f7;--card:#ffffff;--fg:#0f2a3a;--mut:#51697a;--line:#c5d6e2;--acc:#0b6fa4;--accbg:#0b6fa41a;--ok:#1f8a4c;--on:#e8a400;
+  --sun:#f5a300;--sun2:#ffcf4d;--grid:#6b5bd2;--bat:#1f9d6b;--load:#0b6fa4}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1b26;--card:#12293a;--fg:#e6f1f8;--mut:#8fa9ba;--line:#24425a;--acc:#4cb4ea;--accbg:#4cb4ea22;--ok:#4cd08a;--on:#ffc83d;
+  --sun:#ffc83d;--sun2:#ffe08a;--grid:#9d8fff;--bat:#4cd08a;--load:#4cb4ea}}
+button.primary{color:#fff}
+nav button[data-tab="conv"],nav button[data-tab="ctrl"]{display:none}
+#solar-card{grid-column:1/-1;background:linear-gradient(160deg,var(--card),var(--accbg));border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+#solar-card h2{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px}
+#solar-card .sun{display:inline-block;width:14px;height:14px;border-radius:50%;background:radial-gradient(var(--sun2),var(--sun));box-shadow:0 0 10px var(--sun)}
+#solar-card .st{margin-left:auto;font-size:12px;font-weight:600;color:var(--mut)}
+#solar-card .st.live{color:var(--ok)}#solar-card .st.stale{color:var(--sun)}
+#solar-flow{width:100%;max-width:520px;display:block;margin:0 auto}
+#solar-flow text{fill:var(--fg);font:600 12px system-ui}#solar-flow .v{font:700 14px system-ui}#solar-flow .u{fill:var(--mut);font:11px system-ui}
+#solar-flow .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+#solar-flow .wire{fill:none;stroke:var(--line);stroke-width:3;stroke-linecap:round}
+#solar-flow .flow{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:6 8;animation:sflow 1s linear infinite}
+#solar-flow .flow.rev{animation-direction:reverse}
+@keyframes sflow{to{stroke-dashoffset:-14}}
+@media (prefers-reduced-motion:reduce){#solar-flow .flow{animation:none}}
+.solar-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+@media (min-width:700px){.solar-kpis{grid-template-columns:repeat(4,1fr)}}
+.solar-kpis div{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.solar-kpis span{display:block;color:var(--mut);font-size:12px}.solar-kpis b{font-size:20px}.solar-kpis small{color:var(--mut)}
+nav button[data-tab="rep"]{display:none}
+.dv-list{display:grid;gap:10px;margin-top:10px}
+@media (min-width:900px){.dv-list{grid-template-columns:repeat(2,1fr)}}
+.dv{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.dv.bad{border-color:var(--bad,#c4262e)}
+.dv-h{display:flex;align-items:center;gap:10px}
+.dv-h small{display:block;color:var(--mut);font-size:12px}
+.dv-i{font-size:24px;line-height:1}
+.dv-s{margin-left:auto;font-size:12px;font-weight:600;white-space:nowrap}
+.dv-s.on{color:var(--ok)}.dv-s.off{color:var(--mut)}.dv-s.bad{color:var(--bad,#c4262e)}
+.dv .solar-kpis{margin-top:8px}

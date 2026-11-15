@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "ev",
+  "title": "Trạm sạc xe điện",
+  "themeColor": "#6d28d9",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

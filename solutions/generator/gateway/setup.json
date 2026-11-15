@@ -1,0 +1,98 @@
+{
+  "gw": "GENERATOR",
+  "devices": [
+    {
+      "id": "g1",
+      "name": "Máy phát 500kVA",
+      "fields": [
+        {
+          "key": "source",
+          "lbl": "Nguồn đang cấp",
+          "widget": "led"
+        },
+        {
+          "key": "run",
+          "lbl": "Máy phát",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "rpm",
+          "lbl": "Vòng quay",
+          "unit": "rpm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 2000
+        },
+        {
+          "key": "volt",
+          "lbl": "Điện áp",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 0,
+          "max": 480
+        },
+        {
+          "key": "hz",
+          "lbl": "Tần số",
+          "unit": "Hz",
+          "widget": "gauge",
+          "min": 45,
+          "max": 55
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "load_pct",
+          "lbl": "Tải",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "fuel",
+          "lbl": "Nhiên liệu",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "oil_bar",
+          "lbl": "Áp dầu",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 8
+        },
+        {
+          "key": "coolant",
+          "lbl": "Nhiệt độ nước làm mát",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 20,
+          "max": 120
+        },
+        {
+          "key": "hours",
+          "lbl": "Giờ chạy",
+          "unit": "h",
+          "widget": "kpi"
+        },
+        {
+          "key": "batt_v",
+          "lbl": "Ắc quy khởi động",
+          "unit": "V",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

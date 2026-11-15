@@ -1,0 +1,241 @@
+{
+  "gw": "HVAC",
+  "devices": [
+    {
+      "id": "z1",
+      "name": "Tầng 1 - Sảnh",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 35
+        },
+        {
+          "key": "setpoint",
+          "lbl": "Cài đặt",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 400,
+          "max": 2000
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "cop",
+          "lbl": "COP",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6
+        },
+        {
+          "key": "oat",
+          "lbl": "Ngoài trời",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "z2",
+      "name": "Tầng 2 - Văn phòng",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 35
+        },
+        {
+          "key": "setpoint",
+          "lbl": "Cài đặt",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 400,
+          "max": 2000
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "cop",
+          "lbl": "COP",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6
+        }
+      ]
+    },
+    {
+      "id": "z3",
+      "name": "Phòng họp",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 35
+        },
+        {
+          "key": "setpoint",
+          "lbl": "Cài đặt",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 400,
+          "max": 2000
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "z4",
+      "name": "Phòng máy chủ",
+      "fields": [
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 35
+        },
+        {
+          "key": "setpoint",
+          "lbl": "Cài đặt",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "co2_ppm",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 400,
+          "max": 2000
+        },
+        {
+          "key": "fan",
+          "lbl": "Quạt",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

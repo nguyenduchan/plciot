@@ -2,21 +2,21 @@ using System.Drawing.Drawing2D;
 
 namespace GatewayApp.Ui;
 
-/// <summary>Bảng màu + font dùng chung (nền tối kiểu Grafana, chữ Segoe UI). Chỉ dùng GDI+ của .NET — chạy hoàn toàn offline.</summary>
+/// <summary>Bảng màu (giải pháp có thể đổi lúc khởi động qua SolutionHost, trước khi cửa sổ được dựng) + font dùng chung (nền tối kiểu Grafana, chữ Segoe UI). Chỉ dùng GDI+ của .NET — chạy hoàn toàn offline.</summary>
 static class Theme
 {
-    public static readonly Color Bg = Color.FromArgb(17, 18, 23);
-    public static readonly Color Side = Color.FromArgb(13, 14, 18);
-    public static readonly Color Panel = Color.FromArgb(24, 27, 31);
-    public static readonly Color Panel2 = Color.FromArgb(32, 36, 41);
-    public static readonly Color Border = Color.FromArgb(44, 50, 53);
-    public static readonly Color Text = Color.FromArgb(216, 217, 218);
-    public static readonly Color Muted = Color.FromArgb(139, 148, 158);
-    public static readonly Color Accent = Color.FromArgb(50, 116, 217);
-    public static readonly Color Green = Color.FromArgb(115, 191, 105);
-    public static readonly Color Yellow = Color.FromArgb(242, 204, 12);
-    public static readonly Color Red = Color.FromArgb(242, 73, 92);
-    public static readonly Color Teal = Color.FromArgb(31, 186, 214);
+    public static Color Bg = Color.FromArgb(17, 18, 23);
+    public static Color Side = Color.FromArgb(13, 14, 18);
+    public static Color Panel = Color.FromArgb(24, 27, 31);
+    public static Color Panel2 = Color.FromArgb(32, 36, 41);
+    public static Color Border = Color.FromArgb(44, 50, 53);
+    public static Color Text = Color.FromArgb(216, 217, 218);
+    public static Color Muted = Color.FromArgb(139, 148, 158);
+    public static Color Accent = Color.FromArgb(50, 116, 217);
+    public static Color Green = Color.FromArgb(115, 191, 105);
+    public static Color Yellow = Color.FromArgb(242, 204, 12);
+    public static Color Red = Color.FromArgb(242, 73, 92);
+    public static Color Teal = Color.FromArgb(31, 186, 214);
 
     public static readonly Font Small = new("Segoe UI", 8.5f);
     public static readonly Font Normal = new("Segoe UI", 10f);

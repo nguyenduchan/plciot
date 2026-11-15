@@ -1,0 +1,225 @@
+{
+  "gw": "WORKSHOP",
+  "devices": [
+    {
+      "id": "cnc1",
+      "name": "CNC 1",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái máy",
+          "widget": "led"
+        },
+        {
+          "key": "parts",
+          "lbl": "Chi tiết hôm nay",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch ca",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "cycle_s",
+          "lbl": "Chu kỳ",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "rpm",
+          "lbl": "Tốc độ trục",
+          "unit": "rpm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ trục",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "run_h",
+          "lbl": "Giờ chạy hôm nay",
+          "unit": "h",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "cnc2",
+      "name": "CNC 2",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái máy",
+          "widget": "led"
+        },
+        {
+          "key": "parts",
+          "lbl": "Chi tiết hôm nay",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch ca",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "cycle_s",
+          "lbl": "Chu kỳ",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "rpm",
+          "lbl": "Tốc độ trục",
+          "unit": "rpm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ trục",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "run_h",
+          "lbl": "Giờ chạy hôm nay",
+          "unit": "h",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "press1",
+      "name": "Máy ép 1",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái máy",
+          "widget": "led"
+        },
+        {
+          "key": "parts",
+          "lbl": "Chi tiết hôm nay",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch ca",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "cycle_s",
+          "lbl": "Chu kỳ",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "rpm",
+          "lbl": "Tốc độ trục",
+          "unit": "rpm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ trục",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "run_h",
+          "lbl": "Giờ chạy hôm nay",
+          "unit": "h",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "saw1",
+      "name": "Máy cưa",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trạng thái máy",
+          "widget": "led"
+        },
+        {
+          "key": "parts",
+          "lbl": "Chi tiết hôm nay",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "plan",
+          "lbl": "Kế hoạch ca",
+          "unit": "cái",
+          "widget": "kpi"
+        },
+        {
+          "key": "cycle_s",
+          "lbl": "Chu kỳ",
+          "unit": "s",
+          "widget": "kpi"
+        },
+        {
+          "key": "rpm",
+          "lbl": "Tốc độ trục",
+          "unit": "rpm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ trục",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "run_h",
+          "lbl": "Giờ chạy hôm nay",
+          "unit": "h",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

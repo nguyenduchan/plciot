@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "env",
+  "title": "Quan trắc môi trường",
+  "themeColor": "#4d7c0f",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+/* Bảng màu "Chiếu sáng thông minh" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e8edf8;--card:#ffffff;--fg:#101b3a;--mut:#56628a;--line:#c6d0ea;--acc:#1d4ed8;--accbg:#1d4ed81a;--on:#1d4ed8}
+@media (prefers-color-scheme:dark){:root{--bg:#0a1022;--card:#121c3c;--fg:#e6ecff;--mut:#93a2d0;--line:#243566;--acc:#fbbf24;--accbg:#fbbf2422;--on:#fbbf24}}

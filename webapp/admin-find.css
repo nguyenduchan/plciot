@@ -1,0 +1,17 @@
+/* Admin → Tìm kiếm: kết quả là biểu mẫu sửa tại chỗ */
+#fd-q{width:100%;font-size:16px}
+#fd-sum{margin:6px 0 10px}
+.fd-cols{display:grid;gap:14px}
+@media (min-width:1100px){.fd-cols{grid-template-columns:1fr 1fr;align-items:start}}
+.fd-col>h3{margin:0 0 8px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
+.fd-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.fd-card.dis{opacity:.75}
+.fd-card header small{display:block;color:var(--mut);font-size:12px;margin-top:2px}
+.fd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px}
+.fd-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
+.fd-grid input:not([type=checkbox]),.fd-grid select{width:100%;font-size:14px}
+.fd-chk{display:inline-flex !important;flex-direction:row !important;align-items:center;gap:6px !important;font-size:13px !important;color:var(--fg) !important;margin-right:12px}
+.fd-scopes,.fd-gws,.fd-ro{margin-top:8px;font-size:13px}
+.fd-chip{display:inline-block;background:var(--accbg);border:1px solid var(--line);border-radius:999px;padding:1px 9px;margin:2px 4px 2px 0;font-size:12px}
+.fd-card footer{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.fd-st{font-size:12px;margin-left:4px}

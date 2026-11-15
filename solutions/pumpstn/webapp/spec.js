@@ -1,0 +1,306 @@
+/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
+window.INDUSTRY = {
+ "title": "Trạm bơm độc lập (pin mặt trời)",
+ "icon": "drop",
+ "style": "soft",
+ "metrics": [
+  {
+   "id": "lvl",
+   "label": "Mức bể",
+   "unit": "%",
+   "keys": [
+    "level_pct"
+   ],
+   "agg": "avg",
+   "dec": 0,
+   "min": 0,
+   "max": 100,
+   "th": {
+    "lo": 20,
+    "loLo": 10,
+    "hi": 95,
+    "hiHi": 98
+   }
+  },
+  {
+   "id": "pump",
+   "label": "Bơm",
+   "keys": [
+    "pump"
+   ],
+   "map": {
+    "0": "Dừng",
+    "1": "Chạy"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok"
+   },
+   "agg": "max"
+  },
+  {
+   "id": "batt",
+   "label": "Pin",
+   "unit": "%",
+   "keys": [
+    "batt_pct"
+   ],
+   "agg": "min",
+   "dec": 0,
+   "min": 0,
+   "max": 100,
+   "th": {
+    "lo": 30,
+    "loLo": 15
+   }
+  },
+  {
+   "id": "pv",
+   "label": "Pin mặt trời",
+   "unit": "W",
+   "keys": [
+    "pv_w"
+   ],
+   "agg": "sum",
+   "dec": 0,
+   "min": 0,
+   "max": 800
+  },
+  {
+   "id": "flow",
+   "label": "Lưu lượng",
+   "unit": "m³/h",
+   "keys": [
+    "flow"
+   ],
+   "agg": "sum",
+   "dec": 1
+  },
+  {
+   "id": "press",
+   "label": "Áp suất",
+   "unit": "bar",
+   "keys": [
+    "press_bar"
+   ],
+   "agg": "avg",
+   "dec": 1
+  },
+  {
+   "id": "vol",
+   "label": "Nước hôm nay",
+   "unit": "m³",
+   "keys": [
+    "vol_m3"
+   ],
+   "agg": "sum",
+   "dec": 1
+  },
+  {
+   "id": "dry",
+   "label": "Bơm chạy khô",
+   "keys": [
+    "dry"
+   ],
+   "agg": "max",
+   "map": {
+    "0": "Bình thường",
+    "1": "CHẠY KHÔ"
+   },
+   "lv": {
+    "0": "ok",
+    "1": "bad"
+   }
+  }
+ ],
+ "overview": [
+  {
+   "type": "alarms"
+  },
+  {
+   "type": "tank",
+   "title": "Bể chứa",
+   "items": [
+    "lvl"
+   ]
+  },
+  {
+   "type": "gauges",
+   "items": [
+    "batt",
+    "pv",
+    "press"
+   ]
+  },
+  {
+   "type": "state",
+   "items": [
+    "pump",
+    "dry"
+   ]
+  },
+  {
+   "type": "kpis",
+   "items": [
+    "flow",
+    "vol",
+    "pv",
+    "batt"
+   ]
+  },
+  {
+   "type": "trend",
+   "metric": "pv",
+   "title": "Công suất mặt trời"
+  }
+ ],
+ "tabs": [
+  {
+   "id": "stations",
+   "label": "Các trạm",
+   "title": "Các trạm bơm",
+   "icon": "drop",
+   "blocks": [
+    {
+     "type": "tiles",
+     "main": "lvl",
+     "subs": [
+      "batt",
+      "pv",
+      "pump"
+     ]
+    }
+   ]
+  }
+ ],
+ "demo": {
+  "devices": {
+   "p1": {
+    "title": "Trạm bơm Ấp 1",
+    "dec": {
+     "level_pct": 0,
+     "batt_pct": 0,
+     "pv_w": 0,
+     "flow": 1,
+     "press_bar": 1,
+     "vol_m3": 1
+    },
+    "f": {
+     "level_pct": [
+      62,
+      20,
+      300,
+      0
+     ],
+     "pump": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 200,
+      "duty": 0.5
+     },
+     "batt_pct": [
+      70,
+      18,
+      500,
+      0
+     ],
+     "pv_w": [
+      420,
+      260,
+      600,
+      0
+     ],
+     "flow": [
+      6,
+      1.5,
+      100,
+      0
+     ],
+     "press_bar": [
+      2.2,
+      0.3,
+      90,
+      0
+     ],
+     "vol_m3": {
+      "cnt": 0.002,
+      "start": 18
+     },
+     "dry": 0
+    }
+   },
+   "p2": {
+    "title": "Trạm bơm Ấp 2",
+    "dec": {
+     "level_pct": 0,
+     "batt_pct": 0,
+     "pv_w": 0,
+     "flow": 1,
+     "press_bar": 1,
+     "vol_m3": 1
+    },
+    "f": {
+     "level_pct": [
+      34,
+      18,
+      320,
+      50
+     ],
+     "pump": {
+      "sq": [
+       0,
+       1
+      ],
+      "p": 240,
+      "duty": 0.4
+     },
+     "batt_pct": [
+      38,
+      14,
+      480,
+      0
+     ],
+     "pv_w": [
+      380,
+      240,
+      600,
+      40
+     ],
+     "flow": [
+      5,
+      1.4,
+      110,
+      0
+     ],
+     "press_bar": [
+      1.9,
+      0.3,
+      90,
+      0
+     ],
+     "vol_m3": {
+      "cnt": 0.0015,
+      "start": 11
+     },
+     "dry": {
+      "sq": [
+       1,
+       0
+      ],
+      "p": 800,
+      "duty": 0.98
+     }
+    }
+   }
+  }
+ },
+ "id": "pumpstn",
+ "required": [
+  "lvl",
+  "pump",
+  "batt"
+ ],
+ "why": "Trạm chạy pin mặt trời: phải biết mức bể, bơm và mức pin để tránh bơm chạy khô."
+};

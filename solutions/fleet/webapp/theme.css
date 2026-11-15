@@ -1,0 +1,3 @@
+/* Bảng màu "Quản lý đội xe GPS" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e1f1f5;--card:#ffffff;--fg:#082a35;--mut:#4a6c78;--line:#bcd9e2;--acc:#0e7490;--accbg:#0e74901a;--on:#0e7490}
+@media (prefers-color-scheme:dark){:root{--bg:#051920;--card:#0b2a35;--fg:#def2f8;--mut:#85b2c0;--line:#18485a;--acc:#22d3ee;--accbg:#22d3ee22;--on:#22d3ee}}

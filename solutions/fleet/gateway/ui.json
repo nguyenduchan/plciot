@@ -1,0 +1,361 @@
+{
+ "id": "fleet",
+ "title": "Quản lý đội xe GPS",
+ "short": "Đội xe",
+ "glyph": "➤",
+ "palette": {
+  "bg": "#051920",
+  "card": "#0b2a35",
+  "fg": "#def2f8",
+  "mut": "#85b2c0",
+  "line": "#18485a",
+  "acc": "#22d3ee"
+ },
+ "spec": {
+  "title": "Quản lý đội xe GPS",
+  "icon": "truck",
+  "style": "glass",
+  "metrics": [
+   {
+    "id": "speed",
+    "label": "Tốc độ",
+    "unit": "km/h",
+    "keys": [
+     "speed"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 120,
+    "th": {
+     "hi": 80,
+     "hiHi": 100
+    }
+   },
+   {
+    "id": "state",
+    "label": "Trạng thái",
+    "keys": [
+     "state"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Đỗ",
+     "1": "Đang chạy",
+     "2": "Quá tốc độ",
+     "3": "Cảnh báo"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok",
+     "2": "warn",
+     "3": "bad"
+    }
+   },
+   {
+    "id": "fuel",
+    "label": "Nhiên liệu",
+    "unit": "%",
+    "keys": [
+     "fuel"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 20,
+     "loLo": 10
+    }
+   },
+   {
+    "id": "odo",
+    "label": "Quãng đường",
+    "unit": "km",
+    "keys": [
+     "odo"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ động cơ",
+    "unit": "°C",
+    "keys": [
+     "temp"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "th": {
+     "hi": 100,
+     "hiHi": 110
+    }
+   },
+   {
+    "id": "moving",
+    "label": "Xe đang chạy",
+    "unit": "xe",
+    "keys": [
+     "state"
+    ],
+    "agg": "count",
+    "dec": 0
+   }
+  ],
+  "overview": [
+   {
+    "type": "map",
+    "title": "Vị trí xe",
+    "lat": "lat",
+    "lon": "lon",
+    "state": "state",
+    "speed": "speed"
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "moving",
+     "speed",
+     "odo",
+     "fuel"
+    ]
+   },
+   {
+    "type": "tiles",
+    "title": "Từng xe",
+    "main": "speed",
+    "subs": [
+     "fuel",
+     "odo",
+     "state"
+    ]
+   },
+   {
+    "type": "alarms"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "trips",
+    "label": "Hành trình",
+    "title": "Hành trình & nhiên liệu",
+    "icon": "truck",
+    "blocks": [
+     {
+      "type": "bars",
+      "items": [
+       "fuel",
+       "speed"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "speed",
+      "title": "Tốc độ cao nhất"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "v1": {
+     "title": "Xe tải 51C-123",
+     "dec": {
+      "speed": 0,
+      "fuel": 0,
+      "odo": 1,
+      "temp": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": {
+       "sin": [
+        10.78,
+        0.01,
+        420
+       ]
+      },
+      "lon": {
+       "sin": [
+        106.7,
+        0.016,
+        420,
+        105
+       ]
+      },
+      "speed": [
+       42,
+       14,
+       70,
+       0
+      ],
+      "state": 1,
+      "fuel": [
+       64,
+       6,
+       600,
+       0
+      ],
+      "odo": {
+       "cnt": 0.011,
+       "start": 48210
+      },
+      "temp": [
+       88,
+       5,
+       120,
+       0
+      ]
+     }
+    },
+    "v2": {
+     "title": "Xe tải 51D-456",
+     "dec": {
+      "speed": 0,
+      "fuel": 0,
+      "odo": 1,
+      "temp": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": {
+       "sin": [
+        10.76,
+        0.012,
+        360,
+        60
+       ]
+      },
+      "lon": {
+       "sin": [
+        106.66,
+        0.014,
+        360,
+        150
+       ]
+      },
+      "speed": [
+       58,
+       22,
+       60,
+       0
+      ],
+      "state": {
+       "sq": [
+        2,
+        1
+       ],
+       "p": 300,
+       "duty": 0.8
+      },
+      "fuel": [
+       41,
+       6,
+       600,
+       0
+      ],
+      "odo": {
+       "cnt": 0.015,
+       "start": 71005
+      },
+      "temp": [
+       94,
+       6,
+       110,
+       0
+      ]
+     }
+    },
+    "v3": {
+     "title": "Xe bán tải 60A-789",
+     "dec": {
+      "speed": 0,
+      "fuel": 0,
+      "odo": 1,
+      "temp": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": 10.7725,
+      "lon": 106.6985,
+      "speed": 0,
+      "state": 0,
+      "fuel": 77,
+      "odo": 22800,
+      "temp": 38
+     }
+    },
+    "v4": {
+     "title": "Xe giao hàng 59B-321",
+     "dec": {
+      "speed": 0,
+      "fuel": 0,
+      "odo": 1,
+      "temp": 0,
+      "lat": 5,
+      "lon": 5
+     },
+     "f": {
+      "lat": {
+       "sin": [
+        10.795,
+        0.008,
+        300,
+        20
+       ]
+      },
+      "lon": {
+       "sin": [
+        106.72,
+        0.012,
+        300,
+        95
+       ]
+      },
+      "speed": [
+       35,
+       12,
+       50,
+       0
+      ],
+      "state": {
+       "sq": [
+        3,
+        1
+       ],
+       "p": 360,
+       "duty": 0.93
+      },
+      "fuel": [
+       17,
+       3,
+       500,
+       0
+      ],
+      "odo": {
+       "cnt": 0.01,
+       "start": 15320
+      },
+      "temp": [
+       86,
+       5,
+       120,
+       0
+      ]
+     }
+    }
+   }
+  },
+  "id": "fleet",
+  "required": [
+   "key:lat",
+   "key:lon",
+   "state"
+  ],
+  "why": "Bản đồ cần vĩ độ/kinh độ (độ thập phân, field lat và lon) và trạng thái xe."
+ }
+}

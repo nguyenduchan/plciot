@@ -1,0 +1,3 @@
+/* Bảng màu "Trạm viễn thông độc lập" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e5ecfa;--card:#ffffff;--fg:#0e1d44;--mut:#52628c;--line:#c3d0ee;--acc:#1d4ed8;--accbg:#1d4ed81a;--on:#1d4ed8}
+@media (prefers-color-scheme:dark){:root{--bg:#070f24;--card:#0e1b3d;--fg:#e4ebff;--mut:#8ea0d0;--line:#1d3266;--acc:#60a5fa;--accbg:#60a5fa22;--on:#60a5fa}}

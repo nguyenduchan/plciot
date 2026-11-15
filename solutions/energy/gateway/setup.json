@@ -1,0 +1,179 @@
+{
+  "gw": "ENERGY",
+  "devices": [
+    {
+      "id": "m1",
+      "name": "Tủ điện tổng",
+      "fields": [
+        {
+          "key": "v_l1",
+          "lbl": "Điện áp L1",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "v_l2",
+          "lbl": "Điện áp L2",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "v_l3",
+          "lbl": "Điện áp L3",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "i_l1",
+          "lbl": "Dòng L1",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "i_l2",
+          "lbl": "Dòng L2",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "i_l3",
+          "lbl": "Dòng L3",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất P",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kvar",
+          "lbl": "Phản kháng Q",
+          "unit": "kVAr",
+          "widget": "kpi"
+        },
+        {
+          "key": "pf",
+          "lbl": "Hệ số công suất",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "hz",
+          "lbl": "Tần số",
+          "unit": "Hz",
+          "widget": "gauge",
+          "min": 49,
+          "max": 51
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "name": "Tủ máy sản xuất",
+      "fields": [
+        {
+          "key": "v_l1",
+          "lbl": "Điện áp L1",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "v_l2",
+          "lbl": "Điện áp L2",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "v_l3",
+          "lbl": "Điện áp L3",
+          "unit": "V",
+          "widget": "gauge",
+          "min": 180,
+          "max": 260
+        },
+        {
+          "key": "i_l1",
+          "lbl": "Dòng L1",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "i_l2",
+          "lbl": "Dòng L2",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "i_l3",
+          "lbl": "Dòng L3",
+          "unit": "A",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất P",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kvar",
+          "lbl": "Phản kháng Q",
+          "unit": "kVAr",
+          "widget": "kpi"
+        },
+        {
+          "key": "pf",
+          "lbl": "Hệ số công suất",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "hz",
+          "lbl": "Tần số",
+          "unit": "Hz",
+          "widget": "gauge",
+          "min": 49,
+          "max": 51
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

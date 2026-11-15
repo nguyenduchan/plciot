@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { listBundleFiles, resolveBundleRoot, copyDir } from './bundle.js';
+import { listBundleFiles, resolveBundleRoot } from './bundle.js';
+import { solutionOf, solutionVersion, writeSolution } from './solutions.js';
 
 /**
  * Giữ bundle của mọi user bằng đúng mã nguồn webapp trên PC: sửa webapp/ là điện thoại tự nhận bản mới.
@@ -15,19 +16,21 @@ export function shellVersion(shellDir) {
 }
 
 export function syncBundles(db, { dataDir, shellDir }, { force = false } = {}) {
-  const version = shellVersion(shellDir);
-  const stale = force
-    ? db.prepare("SELECT username, folder_path FROM users WHERE folder_path IS NOT NULL AND folder_path != ''").all()
-    : db.prepare("SELECT username, folder_path FROM users WHERE folder_path IS NOT NULL AND folder_path != '' AND version != ?").all(version);
-  for (const u of stale) {
-    const root = resolveBundleRoot(dataDir, u.folder_path);
-    copyDir(shellDir, root);
-    const keep = new Set(listBundleFiles(shellDir).map((f) => f.path));
-    for (const f of listBundleFiles(root)) if (!keep.has(f.path)) fs.unlinkSync(path.join(root, f.path)); // file đã xoá khỏi webapp/
-    db.prepare('UPDATE users SET version = ? WHERE username = ?').run(version, u.username);
-    console.log(`bundle ${u.username} -> ${version}`);
+  const version = shellVersion(shellDir);   // phiên bản của shell cơ bản (giữ nguyên ý nghĩa cũ cho deploy/status)
+  const users = db.prepare("SELECT username, folder_path, version, solution FROM users WHERE folder_path IS NOT NULL AND folder_path != ''").all();
+  const vers = new Map();
+  let updated = 0;
+  for (const u of users) {
+    const sol = solutionOf(shellDir, u);
+    if (!vers.has(sol)) vers.set(sol, solutionVersion(shellDir, sol));
+    const v = vers.get(sol);
+    if (!force && u.version === v) continue;
+    writeSolution(shellDir, sol, resolveBundleRoot(dataDir, u.folder_path));
+    db.prepare('UPDATE users SET version = ? WHERE username = ?').run(v, u.username);
+    updated++;
+    console.log(`bundle ${u.username} [${sol}] -> ${v}`);
   }
-  return { version, updated: stale.length };
+  return { version, updated };
 }
 
 export function startBundleSync(db, opts, everyMs = 5000) {

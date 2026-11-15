@@ -1,0 +1,200 @@
+{
+  "gw": "AQUA",
+  "devices": [
+    {
+      "id": "p1",
+      "name": "Ao 1",
+      "fields": [
+        {
+          "key": "do_mgl",
+          "lbl": "Oxy hòa tan",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "ph",
+          "lbl": "pH",
+          "widget": "gauge",
+          "min": 5,
+          "max": 10
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 40
+        },
+        {
+          "key": "sal",
+          "lbl": "Độ mặn",
+          "unit": "‰",
+          "widget": "kpi"
+        },
+        {
+          "key": "nh3",
+          "lbl": "NH₃",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1.5
+        },
+        {
+          "key": "level_cm",
+          "lbl": "Mực nước",
+          "unit": "cm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 200
+        },
+        {
+          "key": "aerator",
+          "lbl": "Quạt nước",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "feed_kg",
+          "lbl": "Thức ăn hôm nay",
+          "unit": "kg",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "name": "Ao 2",
+      "fields": [
+        {
+          "key": "do_mgl",
+          "lbl": "Oxy hòa tan",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "ph",
+          "lbl": "pH",
+          "widget": "gauge",
+          "min": 5,
+          "max": 10
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 40
+        },
+        {
+          "key": "sal",
+          "lbl": "Độ mặn",
+          "unit": "‰",
+          "widget": "kpi"
+        },
+        {
+          "key": "nh3",
+          "lbl": "NH₃",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1.5
+        },
+        {
+          "key": "level_cm",
+          "lbl": "Mực nước",
+          "unit": "cm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 200
+        },
+        {
+          "key": "aerator",
+          "lbl": "Quạt nước",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "feed_kg",
+          "lbl": "Thức ăn hôm nay",
+          "unit": "kg",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "name": "Ao 3",
+      "fields": [
+        {
+          "key": "do_mgl",
+          "lbl": "Oxy hòa tan",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "ph",
+          "lbl": "pH",
+          "widget": "gauge",
+          "min": 5,
+          "max": 10
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 15,
+          "max": 40
+        },
+        {
+          "key": "sal",
+          "lbl": "Độ mặn",
+          "unit": "‰",
+          "widget": "kpi"
+        },
+        {
+          "key": "nh3",
+          "lbl": "NH₃",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1.5
+        },
+        {
+          "key": "level_cm",
+          "lbl": "Mực nước",
+          "unit": "cm",
+          "widget": "gauge",
+          "min": 0,
+          "max": 200
+        },
+        {
+          "key": "aerator",
+          "lbl": "Quạt nước",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "feed_kg",
+          "lbl": "Thức ăn hôm nay",
+          "unit": "kg",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

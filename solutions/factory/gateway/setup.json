@@ -1,0 +1,380 @@
+{
+  "gw": "FACTORY",
+  "devices": [
+    {
+      "id": "st1",
+      "name": "Cắt",
+      "fields": [
+        {
+          "key": "oee",
+          "lbl": "OEE",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "avail",
+          "lbl": "Sẵn sàng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "perf",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "qual",
+          "lbl": "Chất lượng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng ca",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "reject",
+          "lbl": "Phế phẩm",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "sp/ph",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "down",
+          "lbl": "Dừng máy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "st2",
+      "name": "Hàn",
+      "fields": [
+        {
+          "key": "oee",
+          "lbl": "OEE",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "avail",
+          "lbl": "Sẵn sàng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "perf",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "qual",
+          "lbl": "Chất lượng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng ca",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "reject",
+          "lbl": "Phế phẩm",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "sp/ph",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "down",
+          "lbl": "Dừng máy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "st3",
+      "name": "Sơn",
+      "fields": [
+        {
+          "key": "oee",
+          "lbl": "OEE",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "avail",
+          "lbl": "Sẵn sàng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "perf",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "qual",
+          "lbl": "Chất lượng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng ca",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "reject",
+          "lbl": "Phế phẩm",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "sp/ph",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "down",
+          "lbl": "Dừng máy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "st4",
+      "name": "Lắp ráp",
+      "fields": [
+        {
+          "key": "oee",
+          "lbl": "OEE",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "avail",
+          "lbl": "Sẵn sàng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "perf",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "qual",
+          "lbl": "Chất lượng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng ca",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "reject",
+          "lbl": "Phế phẩm",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "sp/ph",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "down",
+          "lbl": "Dừng máy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "st5",
+      "name": "Đóng gói",
+      "fields": [
+        {
+          "key": "oee",
+          "lbl": "OEE",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "avail",
+          "lbl": "Sẵn sàng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "perf",
+          "lbl": "Hiệu suất",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "qual",
+          "lbl": "Chất lượng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "count",
+          "lbl": "Sản lượng ca",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "reject",
+          "lbl": "Phế phẩm",
+          "unit": "sp",
+          "widget": "kpi"
+        },
+        {
+          "key": "speed",
+          "lbl": "Tốc độ",
+          "unit": "sp/ph",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "state",
+          "lbl": "Trạng thái",
+          "widget": "led"
+        },
+        {
+          "key": "down",
+          "lbl": "Dừng máy",
+          "unit": "phút",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

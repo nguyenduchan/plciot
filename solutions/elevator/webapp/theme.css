@@ -1,0 +1,3 @@
+/* Bảng màu "Thang máy & tòa nhà" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e8ebf0;--card:#ffffff;--fg:#171e29;--mut:#5c6676;--line:#cbd2dc;--acc:#475569;--accbg:#4755691a;--on:#475569}
+@media (prefers-color-scheme:dark){:root{--bg:#0c1017;--card:#171e29;--fg:#e6ebf2;--mut:#9aa6b8;--line:#2b3648;--acc:#fbbf24;--accbg:#fbbf2422;--on:#fbbf24}}

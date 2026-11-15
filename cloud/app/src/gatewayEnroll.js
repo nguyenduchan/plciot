@@ -18,6 +18,7 @@ import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
 import { submitPairing, pairingCodeValid } from './gatewayPairing.js';
 import { verifyProof, requestMessage, ensureKeyColumns } from './gatewayKey.js';
+import { gatewaySolution, solutionUi } from './gatewaySolution.js';
 
 /** Khoá theo dải mạng: IPv4 /24, IPv6 /64 (xấp xỉ theo 4 nhóm đầu). */
 export function subnetOf(ip) {
@@ -174,6 +175,7 @@ function payloadExample(children) {
 }
 
 function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
+  const solution = gatewaySolution(db, hw.site, hw.device);   // giao diện gateway = giải pháp của webapp (mapping 1-1)
   const { children, configRev } = seedFromHardware(hw);
   const site = hw.site;
   const device = hw.device;
@@ -209,6 +211,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     profile: hw.profile || null,
     role,
     schema: 2,
+    solution,
+    ...(solution && solutionUi(solution) ? { ui: solutionUi(solution) } : {}),   // giao diện gateway dạng dữ liệu (xem gatewaySolution.js)
     configRev,
     // Tem chưa có user (chưa claim): gateway chỉ đồng bộ setting, KHÔNG gửi telemetry/history (server cũng bỏ nếu gửi)
     claimed: Boolean(hw.claimed_by),

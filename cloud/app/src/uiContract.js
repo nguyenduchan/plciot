@@ -112,6 +112,39 @@ export const DEVICE_TYPES = Object.freeze({
       { id: 'line', kind: 'line', bind: 'kw', label: 'kW' },
     ],
   },
+  /** Giải pháp năng lượng mặt trời: inverter / pin lưu trữ / công tơ lưới. Field theo webapp-solar (KW hoặc W xem solar.js). */
+  inverter: {
+    id: 'inverter',
+    title: 'Inverter hòa lưới',
+    source: { path: 'd.{childId}' },
+    widgets: [
+      { id: 'pv', kind: 'kpi', bind: 'pv_kw', label: 'Công suất PV', unit: 'kW' },
+      { id: 'today', kind: 'kpi', bind: 'e_today', label: 'Hôm nay', unit: 'kWh' },
+      { id: 'total', kind: 'kpi', bind: 'e_total', label: 'Tổng sản lượng', unit: 'kWh' },
+      { id: 'temp', kind: 'kpi', bind: 'temp', label: 'Nhiệt độ', unit: '°C' },
+      { id: 'line', kind: 'line', bind: 'pv_kw', label: 'kW' },
+    ],
+  },
+  battery: {
+    id: 'battery',
+    title: 'Pin lưu trữ',
+    source: { path: 'd.{childId}' },
+    widgets: [
+      { id: 'soc', kind: 'gauge', bind: 'batt_soc', label: 'Dung lượng', unit: '%', min: 0, max: 100 },
+      { id: 'kw', kind: 'kpi', bind: 'batt_kw', label: 'Công suất (+sạc / −xả)', unit: 'kW' },
+      { id: 'temp', kind: 'kpi', bind: 'temp', label: 'Nhiệt độ', unit: '°C' },
+    ],
+  },
+  'grid-meter': {
+    id: 'grid-meter',
+    title: 'Công tơ lưới / tải',
+    source: { path: 'd.{childId}' },
+    widgets: [
+      { id: 'grid', kind: 'kpi', bind: 'grid_kw', label: 'Lưới (+mua / −bán)', unit: 'kW' },
+      { id: 'load', kind: 'kpi', bind: 'load_kw', label: 'Tải', unit: 'kW' },
+      { id: 'kwh', kind: 'kpi', bind: 'kwh', label: 'Điện năng', unit: 'kWh' },
+    ],
+  },
   tank: {
     id: 'tank',
     title: 'Bồn / mức',

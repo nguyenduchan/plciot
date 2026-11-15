@@ -1,0 +1,3 @@
+/* Bảng màu "Máy phát điện & ATS" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f5efd9;--card:#fffdf3;--fg:#2a2208;--mut:#6e6232;--line:#e1d6a3;--acc:#a16207;--accbg:#a162071a;--on:#a16207}
+@media (prefers-color-scheme:dark){:root{--bg:#14100a;--card:#221b0c;--fg:#fbf1cf;--mut:#c2b178;--line:#403714;--acc:#fbbf24;--accbg:#fbbf2422;--on:#fbbf24}}

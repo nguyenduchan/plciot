@@ -1,0 +1,179 @@
+{
+  "gw": "LIGHTING",
+  "devices": [
+    {
+      "id": "r1",
+      "name": "Đường Nguyễn Huệ",
+      "fields": [
+        {
+          "key": "dim_pct",
+          "lbl": "Độ sáng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "lux",
+          "lbl": "Ánh sáng tự nhiên",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1000
+        },
+        {
+          "key": "lamps_on",
+          "lbl": "Đèn đang bật",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps",
+          "lbl": "Tổng số đèn",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps_fault",
+          "lbl": "Đèn lỗi",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "saved_pct",
+          "lbl": "Tiết kiệm",
+          "unit": "%",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "r2",
+      "name": "Đường Lê Lợi",
+      "fields": [
+        {
+          "key": "dim_pct",
+          "lbl": "Độ sáng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "lux",
+          "lbl": "Ánh sáng tự nhiên",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1000
+        },
+        {
+          "key": "lamps_on",
+          "lbl": "Đèn đang bật",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps",
+          "lbl": "Tổng số đèn",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps_fault",
+          "lbl": "Đèn lỗi",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "saved_pct",
+          "lbl": "Tiết kiệm",
+          "unit": "%",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "r3",
+      "name": "Công viên trung tâm",
+      "fields": [
+        {
+          "key": "dim_pct",
+          "lbl": "Độ sáng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "lux",
+          "lbl": "Ánh sáng tự nhiên",
+          "unit": "lux",
+          "widget": "gauge",
+          "min": 0,
+          "max": 1000
+        },
+        {
+          "key": "lamps_on",
+          "lbl": "Đèn đang bật",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps",
+          "lbl": "Tổng số đèn",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "lamps_fault",
+          "lbl": "Đèn lỗi",
+          "unit": "đèn",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "kpi"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện năng",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "saved_pct",
+          "lbl": "Tiết kiệm",
+          "unit": "%",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

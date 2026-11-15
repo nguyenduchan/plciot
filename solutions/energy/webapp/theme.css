@@ -1,0 +1,3 @@
+/* Bảng màu "Giám sát điện năng 3 pha" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#f6f0dc;--card:#fffdf5;--fg:#2a2208;--mut:#6c6034;--line:#e0d4a6;--acc:#a16207;--accbg:#a162071a;--on:#a16207}
+@media (prefers-color-scheme:dark){:root{--bg:#15110a;--card:#221c0d;--fg:#fbf2d2;--mut:#bfae7a;--line:#3d3416;--acc:#facc15;--accbg:#facc1522;--on:#facc15}}

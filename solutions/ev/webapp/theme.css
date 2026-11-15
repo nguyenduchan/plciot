@@ -1,0 +1,3 @@
+/* Bảng màu "Trạm sạc xe điện" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#efe9fb;--card:#ffffff;--fg:#221546;--mut:#66598a;--line:#d6cbf0;--acc:#6d28d9;--accbg:#6d28d91a;--on:#6d28d9}
+@media (prefers-color-scheme:dark){:root{--bg:#120a26;--card:#201440;--fg:#eee8ff;--mut:#a99bd4;--line:#392a66;--acc:#34d399;--accbg:#34d39922;--on:#34d399}}

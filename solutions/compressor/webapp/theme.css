@@ -1,0 +1,3 @@
+/* Bảng màu "Khí nén & máy nén" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e6eaf0;--card:#ffffff;--fg:#141c28;--mut:#566377;--line:#c5ced9;--acc:#334155;--accbg:#3341551a;--on:#334155}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1018;--card:#151d2a;--fg:#e4eaf3;--mut:#94a3b8;--line:#283548;--acc:#38bdf8;--accbg:#38bdf822;--on:#38bdf8}}

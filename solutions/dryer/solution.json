@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "dryer",
+  "title": "Lò sấy & kho sấy",
+  "themeColor": "#c2410c",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

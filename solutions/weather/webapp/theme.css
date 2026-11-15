@@ -1,0 +1,3 @@
+/* Bảng màu "Trạm khí tượng & thủy văn" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e2f1fa;--card:#ffffff;--fg:#0a2538;--mut:#4c6a80;--line:#bcd7e8;--acc:#0284c7;--accbg:#0284c71a;--on:#0284c7}
+@media (prefers-color-scheme:dark){:root{--bg:#061520;--card:#0c2638;--fg:#e0f2fd;--mut:#86adc4;--line:#1a4260;--acc:#38bdf8;--accbg:#38bdf822;--on:#38bdf8}}

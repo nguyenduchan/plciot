@@ -1,0 +1,3 @@
+/* Bảng màu "Bảng Andon sản xuất" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e6efe6;--card:#ffffff;--fg:#102014;--mut:#506a54;--line:#c3d6c5;--acc:#15803d;--accbg:#15803d1a;--on:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#050b07;--card:#0f1d13;--fg:#e8f6ea;--mut:#8fb394;--line:#1f3a25;--acc:#4ade80;--accbg:#4ade8022;--on:#4ade80}}

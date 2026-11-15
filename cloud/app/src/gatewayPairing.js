@@ -15,6 +15,7 @@ import { revokeDevice } from './tenants.js';
 import { parsePubkey, verifyProof, pairMessage, ensureKeyColumns } from './gatewayKey.js';
 import { sanitizeConfig, applyGatewayConfig, MAX_CONFIG_BYTES } from './gatewayConfig.js';
 import { attachGatewayBundle, enrollGateway } from './gatewayEnroll.js';
+import { cleanSolution, setGatewaySolution, migrateGatewaySolutions } from './gatewaySolution.js';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
@@ -50,6 +51,9 @@ export function migratePairings(db) {
   if (!cols.has('site_pre')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN site_pre TEXT');
   if (!cols.has('device_pre')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN device_pre TEXT');
   if (!cols.has('auto')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN auto INTEGER NOT NULL DEFAULT 0');
+  // Giải pháp (kiểu giao diện webapp + gateway) admin chọn lúc phát mã: gateway nhận ở kit, user quét QR tự map cùng giải pháp
+  if (!cols.has('solution')) db.exec("ALTER TABLE gateway_pairings ADD COLUMN solution TEXT NOT NULL DEFAULT ''");
+  migrateGatewaySolutions(db);
 }
 
 /** Chỉ đọc (không ghi DB): mã có đang mở không? Dùng để ngân sách lần-thất-bại không chặn mã hợp lệ. */
@@ -86,13 +90,15 @@ function purge(db, now = Date.now()) {
  *   site (+device) đặt sẵn → mã TỰ DUYỆT: gateway nhập mã là tự được cấp tem + MQTT (mã do admin phát, dùng một lần, ~15 phút, khoá theo máy).
  *   auto:false hoặc không có site → admin xem bản khai rồi duyệt tay như trước.
  */
-export function createPairing(db, { adminId, label = '', ttlMin = 15, site = '', device = '', auto } = {}) {
+export function createPairing(db, { adminId, label = '', ttlMin = 15, site = '', device = '', auto, solution = '' } = {}) {
   const now = Date.now();
   purge(db, now);
   const siteP = String(site || '').trim();
   const devP = String(device || '').trim();
   if ((siteP && !SAFE.test(siteP)) || (devP && !SAFE.test(devP))) return { error: 'invalid_site_or_device', status: 400 };
   const isAuto = siteP && auto !== false ? 1 : 0;
+  const sol = cleanSolution(solution);
+  if (sol === null) return { error: 'invalid_solution', status: 400 };
   const open = db.prepare("SELECT COUNT(*) AS n FROM gateway_pairings WHERE admin_id IS ? AND status IN ('open','received')").get(adminId ?? null).n;
   if (open >= MAX_OPEN_PER_ADMIN) return { error: 'too_many_pairings', status: 429 };
   const ttl = Math.min(60, Math.max(5, Number(ttlMin) || 15));
@@ -101,9 +107,9 @@ export function createPairing(db, { adminId, label = '', ttlMin = 15, site = '',
     for (let k = 0; k < 8; k++) code += ALPHABET[crypto.randomInt(ALPHABET.length)];
     const id = `pr_${crypto.randomBytes(6).toString('hex')}`;
     try {
-      db.prepare(`INSERT INTO gateway_pairings (id, code_hash, admin_id, label, status, created_at, expires_at, site_pre, device_pre, auto)
-        VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`).run(id, hashCode(code), adminId ?? null, String(label).trim().slice(0, 80) || null, now, now + ttl * 60_000, siteP || null, devP || null, isAuto);
-      return { ok: true, id, code: fmt(code), expiresAt: now + ttl * 60_000, auto: Boolean(isAuto), site: siteP || null };
+      db.prepare(`INSERT INTO gateway_pairings (id, code_hash, admin_id, label, status, created_at, expires_at, site_pre, device_pre, auto, solution)
+        VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`).run(id, hashCode(code), adminId ?? null, String(label).trim().slice(0, 80) || null, now, now + ttl * 60_000, siteP || null, devP || null, isAuto, sol);
+      return { ok: true, id, code: fmt(code), expiresAt: now + ttl * 60_000, auto: Boolean(isAuto), site: siteP || null, solution: sol };
     } catch { /* trùng hash (cực hiếm) → sinh lại */ }
   }
   return { error: 'pairing_failed', status: 500 };
@@ -201,7 +207,7 @@ function summary(r) {
   try { devices = r.config ? JSON.parse(r.config).length : 0; } catch { /* hỏng */ }
   return {
     id: r.id, label: r.label, status: r.status, createdAt: r.created_at, expiresAt: r.expires_at,
-    receivedAt: r.received_at, fp: r.fp, hw: r.hw || null, devices, site: r.site || r.site_pre || null, device: r.device, auto: Boolean(r.auto),
+    receivedAt: r.received_at, fp: r.fp, hw: r.hw || null, devices, site: r.site || r.site_pre || null, device: r.device, auto: Boolean(r.auto), solution: r.solution || '',
   };
 }
 
@@ -253,6 +259,7 @@ export function approvePairing(db, { id, site, device, label = '' }) {
   }
   const applied = applyGatewayConfig(db, { site: s, device: d, payload: { devices } });
   if (applied.error) return applied;
+  if (row.solution) setGatewaySolution(db, s, d, row.solution);   // gateway + webapp của user quét QR dùng cùng giải pháp
   db.prepare("UPDATE gateway_pairings SET status = 'approved', site = ?, device = ? WHERE id = ?").run(s, d, row.id);
   return { pairingId: row.id, ...attachGatewayBundle(db, hw, { rotateMqtt: true, includePassword: false }) };
 }

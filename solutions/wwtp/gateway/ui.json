@@ -1,0 +1,408 @@
+{
+ "id": "wwtp",
+ "title": "Trạm xử lý nước thải",
+ "short": "Nước thải",
+ "glyph": "≈",
+ "palette": {
+  "bg": "#06180f",
+  "card": "#0c2a1d",
+  "fg": "#dff5e8",
+  "mut": "#86b39a",
+  "line": "#1a4630",
+  "acc": "#34d399"
+ },
+ "spec": {
+  "title": "Trạm xử lý nước thải",
+  "icon": "wave",
+  "style": "soft",
+  "metrics": [
+   {
+    "id": "eq",
+    "label": "Bể điều hòa",
+    "unit": "%",
+    "keys": [
+     "lvl_eq"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "lo": 15,
+     "loLo": 8,
+     "hi": 90,
+     "hiHi": 96
+    }
+   },
+   {
+    "id": "do",
+    "label": "DO bể hiếu khí",
+    "unit": "mg/L",
+    "keys": [
+     "do_mgl"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 0,
+    "max": 8,
+    "th": {
+     "lo": 1.5,
+     "loLo": 0.8,
+     "hi": 5
+    }
+   },
+   {
+    "id": "sludge",
+    "label": "Bùn bể lắng",
+    "unit": "%",
+    "keys": [
+     "sludge"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "hi": 70,
+     "hiHi": 85
+    }
+   },
+   {
+    "id": "ph",
+    "label": "pH nước ra",
+    "keys": [
+     "ph_out"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 4,
+    "max": 10,
+    "th": {
+     "lo": 6,
+     "loLo": 5.5,
+     "hi": 8.5,
+     "hiHi": 9
+    }
+   },
+   {
+    "id": "cod",
+    "label": "COD nước ra",
+    "unit": "mg/L",
+    "keys": [
+     "cod_out"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 200,
+    "th": {
+     "hi": 100,
+     "hiHi": 150
+    }
+   },
+   {
+    "id": "flow",
+    "label": "Lưu lượng",
+    "unit": "m³/h",
+    "keys": [
+     "flow"
+    ],
+    "agg": "sum",
+    "dec": 1
+   },
+   {
+    "id": "pump",
+    "label": "Bơm nước thải",
+    "keys": [
+     "pump"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "blower",
+    "label": "Máy thổi khí",
+    "keys": [
+     "blower"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "kwh",
+    "label": "Điện hôm nay",
+    "unit": "kWh",
+    "keys": [
+     "kwh"
+    ],
+    "agg": "sum",
+    "dec": 0
+   }
+  ],
+  "overview": [
+   {
+    "type": "pid",
+    "w": 140,
+    "h": 64,
+    "pipes": [
+     {
+      "pts": [
+       [
+        23,
+        26
+       ],
+       [
+        55,
+        26
+       ]
+      ],
+      "on": "pump",
+      "color": "var(--acc)"
+     },
+     {
+      "pts": [
+       [
+        77,
+        26
+       ],
+       [
+        92,
+        26
+       ]
+      ],
+      "on": "pump",
+      "color": "var(--acc)"
+     },
+     {
+      "pts": [
+       [
+        112,
+        26
+       ],
+       [
+        136,
+        26
+       ]
+      ],
+      "on": "pump",
+      "color": "var(--ok)"
+     },
+     {
+      "pts": [
+       [
+        66,
+        50
+       ],
+       [
+        66,
+        38
+       ]
+      ],
+      "on": "blower",
+      "color": "var(--warn)"
+     }
+    ],
+    "nodes": [
+     {
+      "kind": "tank",
+      "x": 14,
+      "y": 12,
+      "w": 18,
+      "h": 28,
+      "metric": "eq",
+      "label": "Bể điều hòa"
+     },
+     {
+      "kind": "pump",
+      "x": 40,
+      "y": 26,
+      "metric": "pump",
+      "label": "Bơm"
+     },
+     {
+      "kind": "vessel",
+      "x": 66,
+      "y": 12,
+      "w": 22,
+      "h": 26,
+      "metric": "do",
+      "label": "Hiếu khí (DO)"
+     },
+     {
+      "kind": "pump",
+      "x": 66,
+      "y": 52,
+      "metric": "blower",
+      "label": "Thổi khí"
+     },
+     {
+      "kind": "vessel",
+      "x": 102,
+      "y": 12,
+      "w": 20,
+      "h": 26,
+      "metric": "sludge",
+      "label": "Bể lắng (bùn)"
+     },
+     {
+      "kind": "sensor",
+      "x": 128,
+      "y": 44,
+      "metric": "cod",
+      "label": "COD ra"
+     }
+    ]
+   },
+   {
+    "type": "gauges",
+    "items": [
+     "do",
+     "ph",
+     "cod"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "flow",
+     "eq",
+     "sludge",
+     "kwh"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "pump",
+     "blower"
+    ]
+   },
+   {
+    "type": "alarms"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "quality",
+    "label": "Chất lượng",
+    "title": "Chất lượng nước ra",
+    "icon": "drop",
+    "blocks": [
+     {
+      "type": "bars",
+      "items": [
+       "ph",
+       "cod",
+       "do"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "cod",
+      "title": "COD nước ra"
+     },
+     {
+      "type": "trend",
+      "metric": "do",
+      "title": "DO bể hiếu khí"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "w1": {
+     "title": "Trạm XLNT 50 m³/ngày",
+     "dec": {
+      "lvl_eq": 0,
+      "do_mgl": 1,
+      "sludge": 0,
+      "ph_out": 1,
+      "cod_out": 0,
+      "flow": 1,
+      "kwh": 0
+     },
+     "f": {
+      "lvl_eq": [
+       58,
+       18,
+       260,
+       0
+      ],
+      "do_mgl": [
+       3,
+       1.3,
+       150,
+       0
+      ],
+      "sludge": [
+       52,
+       10,
+       400,
+       0
+      ],
+      "ph_out": [
+       7.3,
+       0.4,
+       200,
+       0
+      ],
+      "cod_out": [
+       62,
+       25,
+       220,
+       0
+      ],
+      "flow": [
+       2.4,
+       0.6,
+       120,
+       0
+      ],
+      "pump": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 200,
+       "duty": 0.7
+      },
+      "blower": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 260,
+       "duty": 0.8
+      },
+      "kwh": {
+       "cnt": 0.0015,
+       "start": 32
+      }
+     }
+    }
+   }
+  },
+  "id": "wwtp",
+  "required": [
+   "do",
+   "ph",
+   "pump"
+  ],
+  "why": "DO bể hiếu khí, pH nước ra và trạng thái bơm; vi phạm pH/COD là vi phạm xả thải."
+ }
+}

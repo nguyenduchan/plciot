@@ -1,0 +1,205 @@
+{
+  "gw": "EV",
+  "devices": [
+    {
+      "id": "c1",
+      "name": "Trụ AC-01",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trụ đang sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "kwh_today",
+          "lbl": "Điện sạc hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "soc",
+          "lbl": "SOC xe",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "sessions",
+          "lbl": "Phiên sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "rev_k",
+          "lbl": "Doanh thu",
+          "unit": "k₫",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ trụ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Trụ DC-02",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trụ đang sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "kwh_today",
+          "lbl": "Điện sạc hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "soc",
+          "lbl": "SOC xe",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "sessions",
+          "lbl": "Phiên sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "rev_k",
+          "lbl": "Doanh thu",
+          "unit": "k₫",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ trụ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "name": "Trụ DC-03",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trụ đang sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "kwh_today",
+          "lbl": "Điện sạc hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "soc",
+          "lbl": "SOC xe",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "sessions",
+          "lbl": "Phiên sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "rev_k",
+          "lbl": "Doanh thu",
+          "unit": "k₫",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ trụ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "name": "Trụ AC-04",
+      "fields": [
+        {
+          "key": "state",
+          "lbl": "Trụ đang sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "kw",
+          "lbl": "Công suất",
+          "unit": "kW",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "kwh_today",
+          "lbl": "Điện sạc hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        },
+        {
+          "key": "soc",
+          "lbl": "SOC xe",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "sessions",
+          "lbl": "Phiên sạc",
+          "widget": "kpi"
+        },
+        {
+          "key": "rev_k",
+          "lbl": "Doanh thu",
+          "unit": "k₫",
+          "widget": "kpi"
+        },
+        {
+          "key": "temp",
+          "lbl": "Nhiệt độ trụ",
+          "unit": "°C",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

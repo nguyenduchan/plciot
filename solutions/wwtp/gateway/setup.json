@@ -1,0 +1,78 @@
+{
+  "gw": "WWTP",
+  "devices": [
+    {
+      "id": "w1",
+      "name": "Trạm XLNT 50 m³/ngày",
+      "fields": [
+        {
+          "key": "lvl_eq",
+          "lbl": "Bể điều hòa",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "do_mgl",
+          "lbl": "DO bể hiếu khí",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 8
+        },
+        {
+          "key": "sludge",
+          "lbl": "Bùn bể lắng",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "ph_out",
+          "lbl": "pH nước ra",
+          "widget": "gauge",
+          "min": 4,
+          "max": 10
+        },
+        {
+          "key": "cod_out",
+          "lbl": "COD nước ra",
+          "unit": "mg/L",
+          "widget": "gauge",
+          "min": 0,
+          "max": 200
+        },
+        {
+          "key": "flow",
+          "lbl": "Lưu lượng",
+          "unit": "m³/h",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump",
+          "lbl": "Bơm nước thải",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "blower",
+          "lbl": "Máy thổi khí",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "kwh",
+          "lbl": "Điện hôm nay",
+          "unit": "kWh",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

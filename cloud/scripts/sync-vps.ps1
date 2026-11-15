@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repo
 
-$paths = @('cloud', 'webapp', 'packages/security')
+$paths = @('cloud', 'webapp', 'solutions', 'packages/security')
 foreach ($p in $paths) {
   if (-not (Test-Path (Join-Path $repo $p))) { throw "Thiếu thư mục: $p" }
 }

@@ -15,6 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Chỉ lấy lớp API (không kéo cả giao diện WinForms) -->
-    <Compile Include="..\GatewayApp\Remote\RemoteApi.cs;..\GatewayApp\Remote\Login.cs" LinkBase="Shared" />
+    <Compile Include="..\GatewayApp\Remote\RemoteApi.cs;..\GatewayApp\Remote\Login.cs;..\GatewayApp\Ui\Expr.cs" LinkBase="Shared" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,16 @@
+{
+  "kind": "plciot-solution",
+  "id": "water",
+  "title": "Cấp nước & trạm bơm",
+  "themeColor": "#0a7ea4",
+  "inject": {
+    "css": [
+      "industry.css?v=1",
+      "theme.css?v=1"
+    ],
+    "js": [
+      "spec.js?v=1",
+      "industry.js?v=1"
+    ]
+  }
+}

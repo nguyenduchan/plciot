@@ -1,0 +1,94 @@
+{
+  "gw": "PROCESS",
+  "devices": [
+    {
+      "id": "pl1",
+      "name": "Dây chuyền pha chế",
+      "fields": [
+        {
+          "key": "lvl_a",
+          "lbl": "Bồn A",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "lvl_b",
+          "lbl": "Bồn B",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "lvl_c",
+          "lbl": "Bồn thành phẩm",
+          "unit": "%",
+          "widget": "gauge",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ bình",
+          "unit": "°C",
+          "widget": "gauge",
+          "min": 0,
+          "max": 120
+        },
+        {
+          "key": "press_bar",
+          "lbl": "Áp suất",
+          "unit": "bar",
+          "widget": "gauge",
+          "min": 0,
+          "max": 6
+        },
+        {
+          "key": "flow_lpm",
+          "lbl": "Lưu lượng",
+          "unit": "L/ph",
+          "widget": "kpi"
+        },
+        {
+          "key": "pump_a",
+          "lbl": "Bơm A",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "pump_b",
+          "lbl": "Bơm B",
+          "widget": "switch",
+          "writable": true,
+          "on": "Đang chạy",
+          "off": "Dừng"
+        },
+        {
+          "key": "valve_a",
+          "lbl": "Van A",
+          "widget": "led"
+        },
+        {
+          "key": "valve_b",
+          "lbl": "Van B",
+          "widget": "led"
+        },
+        {
+          "key": "valve_out",
+          "lbl": "Van xả",
+          "widget": "led"
+        },
+        {
+          "key": "batch",
+          "lbl": "Mẻ hôm nay",
+          "unit": "mẻ",
+          "widget": "kpi"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,316 @@
+{
+ "id": "lighting",
+ "title": "Chiếu sáng thông minh",
+ "short": "Chiếu sáng",
+ "glyph": "☼",
+ "palette": {
+  "bg": "#0a1022",
+  "card": "#121c3c",
+  "fg": "#e6ecff",
+  "mut": "#93a2d0",
+  "line": "#243566",
+  "acc": "#fbbf24"
+ },
+ "spec": {
+  "title": "Chiếu sáng thông minh",
+  "icon": "bulb",
+  "style": "soft",
+  "metrics": [
+   {
+    "id": "dim",
+    "label": "Độ sáng",
+    "unit": "%",
+    "keys": [
+     "dim_pct",
+     "dim"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "id": "lux",
+    "label": "Ánh sáng tự nhiên",
+    "unit": "lux",
+    "keys": [
+     "lux"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 1000
+   },
+   {
+    "id": "on",
+    "label": "Đèn đang bật",
+    "unit": "đèn",
+    "keys": [
+     "lamps_on"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "lamps",
+    "label": "Tổng số đèn",
+    "unit": "đèn",
+    "keys": [
+     "lamps"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "fault",
+    "label": "Đèn lỗi",
+    "unit": "đèn",
+    "keys": [
+     "lamps_fault"
+    ],
+    "agg": "sum",
+    "dec": 0,
+    "th": {
+     "hi": 1,
+     "hiHi": 5
+    }
+   },
+   {
+    "id": "kw",
+    "label": "Công suất",
+    "unit": "kW",
+    "keys": [
+     "kw"
+    ],
+    "agg": "sum",
+    "dec": 1
+   },
+   {
+    "id": "kwh",
+    "label": "Điện năng",
+    "unit": "kWh",
+    "keys": [
+     "kwh"
+    ],
+    "agg": "sum",
+    "dec": 0
+   },
+   {
+    "id": "saved",
+    "label": "Tiết kiệm",
+    "unit": "%",
+    "keys": [
+     "saved_pct"
+    ],
+    "agg": "avg",
+    "dec": 0
+   }
+  ],
+  "overview": [
+   {
+    "type": "gauges",
+    "items": [
+     "dim",
+     "lux"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "on",
+     "lamps",
+     "kw",
+     "saved"
+    ]
+   },
+   {
+    "type": "tiles",
+    "title": "Các tuyến đèn",
+    "main": "dim",
+    "subs": [
+     "kw",
+     "lux",
+     "fault"
+    ]
+   },
+   {
+    "type": "trend",
+    "metric": "kw",
+    "title": "Công suất chiếu sáng"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "saving",
+    "label": "Tiết kiệm",
+    "title": "Tiết kiệm điện",
+    "icon": "bolt",
+    "blocks": [
+     {
+      "type": "kpis",
+      "items": [
+       "kwh",
+       "saved",
+       "kw"
+      ]
+     },
+     {
+      "type": "bars",
+      "items": [
+       "dim",
+       "saved"
+      ]
+     },
+     {
+      "type": "trend",
+      "metric": "dim",
+      "title": "Độ sáng theo lịch"
+     }
+    ]
+   },
+   {
+    "id": "faults",
+    "label": "Đèn lỗi",
+    "title": "Đèn lỗi",
+    "icon": "bell",
+    "blocks": [
+     {
+      "type": "kpis",
+      "items": [
+       "fault",
+       "on"
+      ]
+     },
+     {
+      "type": "alarms"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "r1": {
+     "title": "Đường Nguyễn Huệ",
+     "dec": {
+      "dim_pct": 0,
+      "lux": 0,
+      "kw": 1
+     },
+     "f": {
+      "dim_pct": [
+       72,
+       18,
+       240,
+       0
+      ],
+      "lux": [
+       25,
+       20,
+       400,
+       0
+      ],
+      "lamps_on": 118,
+      "lamps": 120,
+      "lamps_fault": {
+       "sq": [
+        2,
+        1
+       ],
+       "p": 300,
+       "duty": 0.8
+      },
+      "kw": [
+       9.4,
+       1.4,
+       120,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.003,
+       "start": 5300
+      },
+      "saved_pct": 34
+     }
+    },
+    "r2": {
+     "title": "Đường Lê Lợi",
+     "dec": {
+      "dim_pct": 0,
+      "lux": 0,
+      "kw": 1
+     },
+     "f": {
+      "dim_pct": [
+       65,
+       20,
+       260,
+       30
+      ],
+      "lux": [
+       30,
+       22,
+       420,
+       0
+      ],
+      "lamps_on": 92,
+      "lamps": 96,
+      "lamps_fault": 4,
+      "kw": [
+       7.1,
+       1.2,
+       130,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.002,
+       "start": 4100
+      },
+      "saved_pct": 29
+     }
+    },
+    "r3": {
+     "title": "Công viên trung tâm",
+     "dec": {
+      "dim_pct": 0,
+      "lux": 0,
+      "kw": 1
+     },
+     "f": {
+      "dim_pct": [
+       50,
+       22,
+       280,
+       60
+      ],
+      "lux": [
+       22,
+       18,
+       380,
+       0
+      ],
+      "lamps_on": 58,
+      "lamps": 60,
+      "lamps_fault": 0,
+      "kw": [
+       3.2,
+       0.8,
+       150,
+       0
+      ],
+      "kwh": {
+       "cnt": 0.001,
+       "start": 2200
+      },
+      "saved_pct": 41
+     }
+    }
+   }
+  },
+  "id": "lighting",
+  "required": [
+   "dim",
+   "on"
+  ],
+  "why": "Độ sáng và số đèn đang bật để tính tiết kiệm điện."
+ }
+}

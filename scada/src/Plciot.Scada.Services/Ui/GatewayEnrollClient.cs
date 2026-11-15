@@ -98,6 +98,10 @@ public sealed class GatewayProvisionKit
     public List<GatewayPackItem>? Pack { get; set; }
     public List<GatewaySeedChild>? Seed { get; set; }
     public GatewayMqttConfig? Mqtt { get; set; }
+    /// <summary>Giải pháp (kiểu giao diện) admin gán cho gateway này; rỗng = bản cơ bản. Webapp của user quét QR tự map cùng giải pháp.</summary>
+    public string? Solution { get; set; }
+    /// <summary>Giao diện của giải pháp dạng DỮ LIỆU (bảng màu + khối hiển thị + công thức); GatewayApp lưu cache và áp dụng khi mở.</summary>
+    public System.Text.Json.JsonElement? Ui { get; set; }
 }
 
 public sealed class GatewayPackItem

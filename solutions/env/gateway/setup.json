@@ -1,0 +1,197 @@
+{
+  "gw": "ENV",
+  "devices": [
+    {
+      "id": "s1",
+      "name": "Trạm KCN",
+      "fields": [
+        {
+          "key": "aqi",
+          "lbl": "Chỉ số AQI",
+          "widget": "gauge",
+          "min": 0,
+          "max": 300
+        },
+        {
+          "key": "pm25",
+          "lbl": "Bụi PM2.5",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "pm10",
+          "lbl": "Bụi PM10",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 250
+        },
+        {
+          "key": "co2",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "noise_db",
+          "lbl": "Tiếng ồn",
+          "unit": "dB",
+          "widget": "gauge",
+          "min": 30,
+          "max": 110
+        },
+        {
+          "key": "uv",
+          "lbl": "Chỉ số UV",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "name": "Trạm khu dân cư",
+      "fields": [
+        {
+          "key": "aqi",
+          "lbl": "Chỉ số AQI",
+          "widget": "gauge",
+          "min": 0,
+          "max": 300
+        },
+        {
+          "key": "pm25",
+          "lbl": "Bụi PM2.5",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "pm10",
+          "lbl": "Bụi PM10",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 250
+        },
+        {
+          "key": "co2",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "noise_db",
+          "lbl": "Tiếng ồn",
+          "unit": "dB",
+          "widget": "gauge",
+          "min": 30,
+          "max": 110
+        },
+        {
+          "key": "uv",
+          "lbl": "Chỉ số UV",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "name": "Trạm ven đường",
+      "fields": [
+        {
+          "key": "aqi",
+          "lbl": "Chỉ số AQI",
+          "widget": "gauge",
+          "min": 0,
+          "max": 300
+        },
+        {
+          "key": "pm25",
+          "lbl": "Bụi PM2.5",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 150
+        },
+        {
+          "key": "pm10",
+          "lbl": "Bụi PM10",
+          "unit": "µg/m³",
+          "widget": "gauge",
+          "min": 0,
+          "max": 250
+        },
+        {
+          "key": "co2",
+          "lbl": "CO₂",
+          "unit": "ppm",
+          "widget": "gauge",
+          "min": 300,
+          "max": 2000
+        },
+        {
+          "key": "temp_c",
+          "lbl": "Nhiệt độ",
+          "unit": "°C",
+          "widget": "kpi"
+        },
+        {
+          "key": "hum_pct",
+          "lbl": "Độ ẩm",
+          "unit": "%",
+          "widget": "kpi"
+        },
+        {
+          "key": "noise_db",
+          "lbl": "Tiếng ồn",
+          "unit": "dB",
+          "widget": "gauge",
+          "min": 30,
+          "max": 110
+        },
+        {
+          "key": "uv",
+          "lbl": "Chỉ số UV",
+          "widget": "gauge",
+          "min": 0,
+          "max": 12
+        }
+      ]
+    }
+  ]
+}

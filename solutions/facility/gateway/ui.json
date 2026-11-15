@@ -1,0 +1,585 @@
+{
+ "id": "facility",
+ "title": "Mặt bằng nhà máy",
+ "short": "Mặt bằng",
+ "glyph": "▦",
+ "palette": {
+  "bg": "#07121c",
+  "card": "#0e2234",
+  "fg": "#e2effa",
+  "mut": "#8aa8c2",
+  "line": "#1c3a55",
+  "acc": "#38bdf8"
+ },
+ "spec": {
+  "title": "Mặt bằng nhà máy",
+  "icon": "map",
+  "style": "glass",
+  "metrics": [
+   {
+    "id": "temp",
+    "label": "Nhiệt độ",
+    "unit": "°C",
+    "keys": [
+     "temp_c",
+     "temp"
+    ],
+    "agg": "max",
+    "dec": 1,
+    "min": 15,
+    "max": 50,
+    "th": {
+     "hi": 33,
+     "hiHi": 40
+    }
+   },
+   {
+    "id": "hum",
+    "label": "Độ ẩm",
+    "unit": "%",
+    "keys": [
+     "hum_pct",
+     "hum"
+    ],
+    "agg": "avg",
+    "dec": 0
+   },
+   {
+    "id": "gas",
+    "label": "Khí gas",
+    "unit": "ppm",
+    "keys": [
+     "gas_ppm",
+     "gas"
+    ],
+    "agg": "max",
+    "dec": 0,
+    "min": 0,
+    "max": 100,
+    "th": {
+     "hi": 25,
+     "hiHi": 50
+    }
+   },
+   {
+    "id": "smoke",
+    "label": "Khói",
+    "keys": [
+     "smoke"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Bình thường",
+     "1": "CÓ KHÓI"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "bad"
+    }
+   },
+   {
+    "id": "door",
+    "label": "Cửa",
+    "keys": [
+     "door"
+    ],
+    "agg": "max",
+    "map": {
+     "0": "Đóng",
+     "1": "Mở"
+    },
+    "lv": {
+     "0": "ok",
+     "1": "warn"
+    }
+   },
+   {
+    "id": "power",
+    "label": "Công suất",
+    "unit": "kW",
+    "keys": [
+     "kw"
+    ],
+    "agg": "sum",
+    "dec": 1
+   }
+  ],
+  "overview": [
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "plan",
+    "title": "Nhiệt độ theo vị trí",
+    "w": 100,
+    "h": 60,
+    "main": "temp",
+    "rooms": [
+     {
+      "x": 2,
+      "y": 6,
+      "w": 42,
+      "h": 28,
+      "label": "Xưởng A"
+     },
+     {
+      "x": 46,
+      "y": 6,
+      "w": 32,
+      "h": 28,
+      "label": "Xưởng B"
+     },
+     {
+      "x": 80,
+      "y": 6,
+      "w": 18,
+      "h": 28,
+      "label": "Kho"
+     },
+     {
+      "x": 2,
+      "y": 37,
+      "w": 30,
+      "h": 21,
+      "label": "Văn phòng"
+     },
+     {
+      "x": 34,
+      "y": 37,
+      "w": 24,
+      "h": 21,
+      "label": "Phòng điện"
+     },
+     {
+      "x": 60,
+      "y": 37,
+      "w": 38,
+      "h": 21,
+      "label": "Bãi / khu hóa chất"
+     }
+    ],
+    "markers": [
+     {
+      "dev": "n1",
+      "x": 22,
+      "y": 20,
+      "label": "Xưởng A"
+     },
+     {
+      "dev": "n2",
+      "x": 62,
+      "y": 20,
+      "label": "Xưởng B"
+     },
+     {
+      "dev": "n3",
+      "x": 89,
+      "y": 20,
+      "label": "Kho"
+     },
+     {
+      "dev": "n4",
+      "x": 16,
+      "y": 47,
+      "label": "Văn phòng"
+     },
+     {
+      "dev": "n5",
+      "x": 46,
+      "y": 47,
+      "label": "Phòng điện"
+     },
+     {
+      "dev": "n6",
+      "x": 80,
+      "y": 47,
+      "label": "Khu hóa chất"
+     }
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "temp",
+     "hum",
+     "gas",
+     "power"
+    ]
+   },
+   {
+    "type": "state",
+    "items": [
+     "smoke",
+     "door"
+    ]
+   },
+   {
+    "type": "trend",
+    "metric": "temp",
+    "title": "Nhiệt độ cao nhất"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "gasmap",
+    "label": "Khí gas",
+    "title": "Bản đồ khí gas",
+    "icon": "bell",
+    "blocks": [
+     {
+      "type": "plan",
+      "w": 100,
+      "h": 60,
+      "main": "gas",
+      "rooms": [
+       {
+        "x": 2,
+        "y": 6,
+        "w": 42,
+        "h": 28,
+        "label": "Xưởng A"
+       },
+       {
+        "x": 46,
+        "y": 6,
+        "w": 32,
+        "h": 28,
+        "label": "Xưởng B"
+       },
+       {
+        "x": 80,
+        "y": 6,
+        "w": 18,
+        "h": 28,
+        "label": "Kho"
+       },
+       {
+        "x": 2,
+        "y": 37,
+        "w": 30,
+        "h": 21,
+        "label": "Văn phòng"
+       },
+       {
+        "x": 34,
+        "y": 37,
+        "w": 24,
+        "h": 21,
+        "label": "Phòng điện"
+       },
+       {
+        "x": 60,
+        "y": 37,
+        "w": 38,
+        "h": 21,
+        "label": "Bãi / khu hóa chất"
+       }
+      ],
+      "markers": [
+       {
+        "dev": "n1",
+        "x": 22,
+        "y": 20,
+        "label": "Xưởng A"
+       },
+       {
+        "dev": "n2",
+        "x": 62,
+        "y": 20,
+        "label": "Xưởng B"
+       },
+       {
+        "dev": "n3",
+        "x": 89,
+        "y": 20,
+        "label": "Kho"
+       },
+       {
+        "dev": "n4",
+        "x": 16,
+        "y": 47,
+        "label": "Văn phòng"
+       },
+       {
+        "dev": "n5",
+        "x": 46,
+        "y": 47,
+        "label": "Phòng điện"
+       },
+       {
+        "dev": "n6",
+        "x": 80,
+        "y": 47,
+        "label": "Khu hóa chất"
+       }
+      ]
+     },
+     {
+      "type": "bars",
+      "items": [
+       "gas"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "zones",
+    "label": "Khu vực",
+    "title": "Các khu vực",
+    "icon": "home",
+    "blocks": [
+     {
+      "type": "tiles",
+      "main": "temp",
+      "subs": [
+       "hum",
+       "gas",
+       "door"
+      ]
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "n1": {
+     "title": "Xưởng A",
+     "f": {
+      "temp_c": [
+       31,
+       2.5,
+       200,
+       0
+      ],
+      "hum_pct": [
+       60,
+       5,
+       220,
+       0
+      ],
+      "gas_ppm": [
+       8,
+       4,
+       150,
+       0
+      ],
+      "smoke": 0,
+      "door": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 90,
+       "duty": 0.2
+      },
+      "kw": [
+       42,
+       6,
+       90,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    },
+    "n2": {
+     "title": "Xưởng B",
+     "f": {
+      "temp_c": [
+       34,
+       3,
+       210,
+       20
+      ],
+      "hum_pct": [
+       55,
+       5,
+       230,
+       0
+      ],
+      "gas_ppm": [
+       14,
+       6,
+       160,
+       0
+      ],
+      "smoke": 0,
+      "door": 0,
+      "kw": [
+       35,
+       5,
+       80,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    },
+    "n3": {
+     "title": "Kho",
+     "f": {
+      "temp_c": [
+       29,
+       1.2,
+       250,
+       0
+      ],
+      "hum_pct": [
+       68,
+       4,
+       240,
+       0
+      ],
+      "gas_ppm": [
+       4,
+       2,
+       170,
+       0
+      ],
+      "smoke": 0,
+      "door": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 120,
+       "duty": 0.15
+      },
+      "kw": [
+       4,
+       1,
+       100,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    },
+    "n4": {
+     "title": "Văn phòng",
+     "f": {
+      "temp_c": [
+       25,
+       0.6,
+       260,
+       0
+      ],
+      "hum_pct": [
+       52,
+       3,
+       250,
+       0
+      ],
+      "gas_ppm": [
+       2,
+       1,
+       180,
+       0
+      ],
+      "smoke": 0,
+      "door": 0,
+      "kw": [
+       8,
+       1,
+       100,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    },
+    "n5": {
+     "title": "Phòng điện",
+     "f": {
+      "temp_c": [
+       36,
+       3,
+       190,
+       30
+      ],
+      "hum_pct": [
+       45,
+       3,
+       210,
+       0
+      ],
+      "gas_ppm": [
+       3,
+       1,
+       160,
+       0
+      ],
+      "smoke": 0,
+      "door": 0,
+      "kw": [
+       6,
+       1,
+       100,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    },
+    "n6": {
+     "title": "Khu hóa chất",
+     "f": {
+      "temp_c": [
+       32,
+       2,
+       220,
+       0
+      ],
+      "hum_pct": [
+       63,
+       4,
+       230,
+       0
+      ],
+      "gas_ppm": [
+       27,
+       8,
+       140,
+       50
+      ],
+      "smoke": 0,
+      "door": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 150,
+       "duty": 0.25
+      },
+      "kw": [
+       2,
+       0.5,
+       100,
+       0
+      ]
+     },
+     "dec": {
+      "hum_pct": 0,
+      "gas_ppm": 0
+     }
+    }
+   }
+  },
+  "id": "facility",
+  "required": [
+   "temp",
+   "gas"
+  ],
+  "why": "Nhiệt độ và khí gas để cảnh báo cháy nổ theo vị trí; mỗi cảm biến là một thiết bị khớp vị trí trên mặt bằng (n1…n6)."
+ }
+}

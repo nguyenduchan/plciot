@@ -1,0 +1,414 @@
+/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
+window.INDUSTRY = {
+ "title": "Tòa nhà & điều hòa HVAC",
+ "icon": "home",
+ "style": "glass",
+ "metrics": [
+  {
+   "id": "temp",
+   "label": "Nhiệt độ",
+   "unit": "°C",
+   "keys": [
+    "temp_c",
+    "temp"
+   ],
+   "agg": "avg",
+   "dec": 1,
+   "min": 15,
+   "max": 35,
+   "th": {
+    "lo": 19,
+    "loLo": 16,
+    "hi": 27,
+    "hiHi": 30
+   }
+  },
+  {
+   "id": "sp",
+   "label": "Cài đặt",
+   "unit": "°C",
+   "keys": [
+    "setpoint",
+    "sp"
+   ],
+   "agg": "avg",
+   "dec": 1
+  },
+  {
+   "id": "delta",
+   "label": "Lệch so với cài đặt",
+   "unit": "°C",
+   "expr": "temp - sp",
+   "dec": 1,
+   "th": {
+    "lo": -2.5,
+    "hi": 2.5,
+    "hiHi": 4
+   }
+  },
+  {
+   "id": "hum",
+   "label": "Độ ẩm",
+   "unit": "%",
+   "keys": [
+    "hum_pct",
+    "hum"
+   ],
+   "agg": "avg",
+   "dec": 0,
+   "th": {
+    "lo": 30,
+    "hi": 70,
+    "hiHi": 80
+   }
+  },
+  {
+   "id": "co2",
+   "label": "CO₂",
+   "unit": "ppm",
+   "keys": [
+    "co2_ppm",
+    "co2"
+   ],
+   "agg": "max",
+   "dec": 0,
+   "min": 400,
+   "max": 2000,
+   "th": {
+    "hi": 1000,
+    "hiHi": 1500
+   }
+  },
+  {
+   "id": "fan",
+   "label": "Quạt",
+   "keys": [
+    "fan"
+   ],
+   "agg": "max",
+   "map": {
+    "0": "Tắt",
+    "1": "Thấp",
+    "2": "Vừa",
+    "3": "Cao"
+   },
+   "lv": {
+    "0": "off",
+    "1": "ok",
+    "2": "ok",
+    "3": "ok"
+   }
+  },
+  {
+   "id": "kw",
+   "label": "Công suất",
+   "unit": "kW",
+   "keys": [
+    "kw",
+    "power_kw"
+   ],
+   "agg": "sum"
+  },
+  {
+   "id": "kwh",
+   "label": "Điện năng",
+   "unit": "kWh",
+   "keys": [
+    "kwh"
+   ],
+   "agg": "sum",
+   "dec": 0
+  },
+  {
+   "id": "cop",
+   "label": "COP",
+   "keys": [
+    "cop"
+   ],
+   "agg": "avg",
+   "dec": 1,
+   "min": 0,
+   "max": 6,
+   "th": {
+    "lo": 2,
+    "loLo": 1.5
+   }
+  },
+  {
+   "id": "oat",
+   "label": "Ngoài trời",
+   "unit": "°C",
+   "keys": [
+    "oat"
+   ],
+   "agg": "avg",
+   "dec": 1
+  }
+ ],
+ "overview": [
+  {
+   "type": "kpis",
+   "items": [
+    "temp",
+    "delta",
+    "co2",
+    "kw"
+   ]
+  },
+  {
+   "type": "tiles",
+   "title": "Khu vực",
+   "main": "temp",
+   "subs": [
+    "sp",
+    "delta",
+    "fan"
+   ]
+  },
+  {
+   "type": "gauges",
+   "items": [
+    "cop",
+    "kw",
+    "oat"
+   ]
+  },
+  {
+   "type": "trend",
+   "metric": "kw",
+   "title": "Công suất tiêu thụ"
+  }
+ ],
+ "tabs": [
+  {
+   "id": "energy",
+   "label": "Tiêu thụ",
+   "title": "Năng lượng tòa nhà",
+   "icon": "bolt",
+   "blocks": [
+    {
+     "type": "kpis",
+     "items": [
+      "kw",
+      "kwh",
+      "cop"
+     ]
+    },
+    {
+     "type": "trend",
+     "metric": "kw",
+     "title": "Công suất"
+    },
+    {
+     "type": "trend",
+     "metric": "oat",
+     "title": "Nhiệt độ ngoài trời"
+    }
+   ]
+  },
+  {
+   "id": "air",
+   "label": "Không khí",
+   "title": "Chất lượng không khí",
+   "icon": "wind",
+   "blocks": [
+    {
+     "type": "bars",
+     "items": [
+      "co2",
+      "hum"
+     ]
+    },
+    {
+     "type": "trend",
+     "metric": "co2",
+     "title": "CO₂"
+    }
+   ]
+  }
+ ],
+ "demo": {
+  "devices": {
+   "z1": {
+    "title": "Tầng 1 - Sảnh",
+    "f": {
+     "temp_c": [
+      24.5,
+      0.8,
+      150,
+      0
+     ],
+     "setpoint": 24,
+     "hum_pct": [
+      58,
+      4,
+      170,
+      0
+     ],
+     "co2_ppm": [
+      720,
+      120,
+      140,
+      0
+     ],
+     "fan": 2,
+     "kw": [
+      8,
+      1.5,
+      80,
+      0
+     ],
+     "kwh": {
+      "cnt": 0.002,
+      "start": 9300
+     },
+     "cop": [
+      3.6,
+      0.2,
+      100,
+      0
+     ],
+     "oat": [
+      32,
+      1,
+      400,
+      0
+     ]
+    },
+    "dec": {
+     "co2_ppm": 0,
+     "hum_pct": 0
+    }
+   },
+   "z2": {
+    "title": "Tầng 2 - Văn phòng",
+    "f": {
+     "temp_c": [
+      25.5,
+      1.2,
+      140,
+      20
+     ],
+     "setpoint": 24,
+     "hum_pct": [
+      55,
+      4,
+      160,
+      0
+     ],
+     "co2_ppm": [
+      980,
+      220,
+      120,
+      0
+     ],
+     "fan": 3,
+     "kw": [
+      12,
+      2,
+      70,
+      0
+     ],
+     "kwh": {
+      "cnt": 0.003,
+      "start": 14700
+     },
+     "cop": [
+      3.2,
+      0.2,
+      90,
+      0
+     ]
+    },
+    "dec": {
+     "co2_ppm": 0,
+     "hum_pct": 0
+    }
+   },
+   "z3": {
+    "title": "Phòng họp",
+    "f": {
+     "temp_c": [
+      23.5,
+      0.6,
+      130,
+      40
+     ],
+     "setpoint": 23,
+     "hum_pct": [
+      52,
+      3,
+      150,
+      0
+     ],
+     "co2_ppm": [
+      1080,
+      260,
+      110,
+      0
+     ],
+     "fan": 1,
+     "kw": [
+      3,
+      0.8,
+      90,
+      0
+     ],
+     "kwh": {
+      "cnt": 0.001,
+      "start": 2100
+     }
+    },
+    "dec": {
+     "co2_ppm": 0,
+     "hum_pct": 0
+    }
+   },
+   "z4": {
+    "title": "Phòng máy chủ",
+    "f": {
+     "temp_c": [
+      21.5,
+      1.0,
+      120,
+      10
+     ],
+     "setpoint": 21,
+     "hum_pct": [
+      45,
+      3,
+      140,
+      0
+     ],
+     "co2_ppm": [
+      520,
+      40,
+      130,
+      0
+     ],
+     "fan": 3,
+     "kw": [
+      5,
+      0.6,
+      60,
+      0
+     ],
+     "kwh": {
+      "cnt": 0.0015,
+      "start": 8800
+     }
+    },
+    "dec": {
+     "co2_ppm": 0,
+     "hum_pct": 0
+    }
+   }
+  }
+ },
+ "id": "hvac",
+ "required": [
+  "temp",
+  "sp"
+ ],
+ "why": "Cần nhiệt độ và giá trị cài đặt để hiển thị độ lệch theo khu vực."
+};

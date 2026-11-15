@@ -1,0 +1,3 @@
+/* Bảng màu "Trạm bơm độc lập (pin mặt trời)" — chỉ đổi màu; cấu trúc ở industry.css */
+:root{--bg:#e1f3f6;--card:#ffffff;--fg:#082c33;--mut:#4a707a;--line:#bcdde4;--acc:#0891b2;--accbg:#0891b21a;--on:#0891b2}
+@media (prefers-color-scheme:dark){:root{--bg:#061a1f;--card:#0b2c34;--fg:#dff6fa;--mut:#86b5c0;--line:#194a57;--acc:#22d3ee;--accbg:#22d3ee22;--on:#22d3ee}}

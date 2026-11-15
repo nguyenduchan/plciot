@@ -1,0 +1,396 @@
+{
+ "id": "aqua",
+ "title": "Nuôi trồng thủy sản",
+ "short": "Thủy sản",
+ "glyph": "≈",
+ "palette": {
+  "bg": "#06162a",
+  "card": "#0b2a47",
+  "fg": "#e0f0ff",
+  "mut": "#88aed0",
+  "line": "#1a4468",
+  "acc": "#5eead4"
+ },
+ "spec": {
+  "title": "Nuôi trồng thủy sản",
+  "icon": "wave",
+  "style": "soft",
+  "metrics": [
+   {
+    "id": "do",
+    "label": "Oxy hòa tan",
+    "unit": "mg/L",
+    "keys": [
+     "do_mgl",
+     "do"
+    ],
+    "agg": "min",
+    "dec": 1,
+    "min": 0,
+    "max": 12,
+    "th": {
+     "lo": 4.5,
+     "loLo": 3
+    }
+   },
+   {
+    "id": "ph",
+    "label": "pH",
+    "keys": [
+     "ph"
+    ],
+    "agg": "avg",
+    "dec": 2,
+    "min": 5,
+    "max": 10,
+    "th": {
+     "lo": 6.8,
+     "loLo": 6.5,
+     "hi": 8.8,
+     "hiHi": 9.2
+    }
+   },
+   {
+    "id": "temp",
+    "label": "Nhiệt độ",
+    "unit": "°C",
+    "keys": [
+     "temp_c",
+     "temp"
+    ],
+    "agg": "avg",
+    "dec": 1,
+    "min": 15,
+    "max": 40,
+    "th": {
+     "lo": 22,
+     "loLo": 18,
+     "hi": 32,
+     "hiHi": 35
+    }
+   },
+   {
+    "id": "sal",
+    "label": "Độ mặn",
+    "unit": "‰",
+    "keys": [
+     "sal"
+    ],
+    "agg": "avg",
+    "dec": 1
+   },
+   {
+    "id": "nh3",
+    "label": "NH₃",
+    "unit": "mg/L",
+    "keys": [
+     "nh3"
+    ],
+    "agg": "max",
+    "dec": 2,
+    "min": 0,
+    "max": 1.5,
+    "th": {
+     "hi": 0.5,
+     "hiHi": 1
+    }
+   },
+   {
+    "id": "level",
+    "label": "Mực nước",
+    "unit": "cm",
+    "keys": [
+     "level_cm"
+    ],
+    "agg": "avg",
+    "dec": 0,
+    "min": 0,
+    "max": 200,
+    "th": {
+     "lo": 80,
+     "loLo": 60
+    }
+   },
+   {
+    "id": "aer",
+    "label": "Quạt nước",
+    "keys": [
+     "aerator"
+    ],
+    "map": {
+     "0": "Dừng",
+     "1": "Chạy"
+    },
+    "lv": {
+     "0": "off",
+     "1": "ok"
+    },
+    "agg": "max"
+   },
+   {
+    "id": "feed",
+    "label": "Thức ăn hôm nay",
+    "unit": "kg",
+    "keys": [
+     "feed_kg"
+    ],
+    "agg": "sum",
+    "dec": 1
+   }
+  ],
+  "overview": [
+   {
+    "type": "gauges",
+    "items": [
+     "do",
+     "ph",
+     "temp"
+    ]
+   },
+   {
+    "type": "kpis",
+    "items": [
+     "sal",
+     "nh3",
+     "level",
+     "feed"
+    ]
+   },
+   {
+    "type": "state",
+    "title": "Thiết bị",
+    "items": [
+     "aer"
+    ]
+   },
+   {
+    "type": "alarms"
+   },
+   {
+    "type": "trend",
+    "metric": "do",
+    "title": "Oxy hòa tan (thấp nhất các ao)"
+   }
+  ],
+  "tabs": [
+   {
+    "id": "ponds",
+    "label": "Ao nuôi",
+    "title": "Các ao nuôi",
+    "icon": "wave",
+    "blocks": [
+     {
+      "type": "tiles",
+      "main": "do",
+      "subs": [
+       "ph",
+       "temp",
+       "aer"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "water",
+    "label": "Nước",
+    "title": "Chất lượng nước",
+    "icon": "drop",
+    "blocks": [
+     {
+      "type": "bars",
+      "items": [
+       "do",
+       "ph",
+       "nh3",
+       "sal"
+      ]
+     },
+     {
+      "type": "tanks",
+      "main": "level"
+     },
+     {
+      "type": "trend",
+      "metric": "temp",
+      "title": "Nhiệt độ nước"
+     }
+    ]
+   }
+  ],
+  "demo": {
+   "devices": {
+    "p1": {
+     "title": "Ao 1",
+     "dec": {
+      "do_mgl": 1,
+      "ph": 2
+     },
+     "f": {
+      "do_mgl": [
+       6.2,
+       1.0,
+       180,
+       0
+      ],
+      "ph": [
+       7.8,
+       0.2,
+       200,
+       0
+      ],
+      "temp_c": [
+       29,
+       1.5,
+       300,
+       0
+      ],
+      "sal": [
+       12,
+       0.4,
+       400,
+       0
+      ],
+      "nh3": [
+       0.15,
+       0.05,
+       150,
+       0
+      ],
+      "level_cm": [
+       135,
+       4,
+       500,
+       0
+      ],
+      "aerator": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 200,
+       "duty": 0.6
+      },
+      "feed_kg": {
+       "cnt": 0.005,
+       "start": 18
+      }
+     }
+    },
+    "p2": {
+     "title": "Ao 2",
+     "dec": {
+      "do_mgl": 1,
+      "ph": 2
+     },
+     "f": {
+      "do_mgl": [
+       5.6,
+       1.1,
+       170,
+       20
+      ],
+      "ph": [
+       8.0,
+       0.25,
+       210,
+       0
+      ],
+      "temp_c": [
+       30,
+       1.5,
+       320,
+       0
+      ],
+      "sal": [
+       13,
+       0.4,
+       420,
+       0
+      ],
+      "nh3": [
+       0.2,
+       0.06,
+       160,
+       0
+      ],
+      "level_cm": [
+       128,
+       4,
+       520,
+       0
+      ],
+      "aerator": 1,
+      "feed_kg": {
+       "cnt": 0.005,
+       "start": 16
+      }
+     }
+    },
+    "p3": {
+     "title": "Ao 3",
+     "dec": {
+      "do_mgl": 1,
+      "ph": 2
+     },
+     "f": {
+      "do_mgl": [
+       4.8,
+       1.3,
+       150,
+       40
+      ],
+      "ph": [
+       8.4,
+       0.3,
+       190,
+       0
+      ],
+      "temp_c": [
+       31,
+       1.6,
+       300,
+       0
+      ],
+      "sal": [
+       11,
+       0.4,
+       380,
+       0
+      ],
+      "nh3": [
+       0.35,
+       0.1,
+       140,
+       0
+      ],
+      "level_cm": [
+       110,
+       5,
+       500,
+       0
+      ],
+      "aerator": {
+       "sq": [
+        0,
+        1
+       ],
+       "p": 160,
+       "duty": 0.4
+      },
+      "feed_kg": {
+       "cnt": 0.004,
+       "start": 14
+      }
+     }
+    }
+   }
+  },
+  "id": "aqua",
+  "required": [
+   "do",
+   "ph",
+   "temp"
+  ],
+  "why": "Oxy hòa tan, pH, nhiệt độ là ba chỉ tiêu sống còn của ao nuôi; DO thấp phải báo ngay."
+ }
+}
