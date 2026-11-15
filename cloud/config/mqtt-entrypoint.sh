@@ -90,7 +90,15 @@ done
 
 [ -z "${MQTT_DRY_RUN:-}" ] || exit 0
 
-trap 'chown -R mosquitto:mosquitto "$CONF_DIR" "$DATA_DIR" 2>/dev/null || true; for p in $(pidof mosquitto); do kill -HUP "$p" 2>/dev/null || true; done' HUP
+# HUP chỉ cần chown thư mục cấu hình (app ghi passwd/acl); dữ liệu do broker tự ghi nên không đụng tới.
+trap 'chown -R mosquitto:mosquitto "$CONF_DIR" 2>/dev/null || true; for p in $(pidof mosquitto); do kill -HUP "$p" 2>/dev/null || true; done' HUP
 trap 'kill $sups 2>/dev/null || true; for p in $(pidof mosquitto); do kill -TERM "$p" 2>/dev/null || true; done; exit 0' TERM INT
-# wait bị trap ngắt trả mã > 128: không để set -e thoát
-while :; do sleep 3600 & wait $! || true; done
+# wait bị trap ngắt trả mã > 128: không để set -e thoát.
+# QUAN TRỌNG: sau mỗi lần bị ngắt phải kill tiến trình sleep cũ — trước đây mỗi SIGHUP bỏ lại một "sleep 3600" mồ côi,
+# chạm pids_limit (128) thì fork lỗi, PID 1 thoát mã 2 và container chết (do kill nên restart policy không áp dụng).
+while :; do
+  sleep 3600 &
+  spid=$!
+  wait "$spid" || true
+  kill "$spid" 2>/dev/null || true
+done

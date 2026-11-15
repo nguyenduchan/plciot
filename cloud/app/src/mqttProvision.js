@@ -197,18 +197,29 @@ export function reloadMosquitto() {
 }
 
 function reloadOne(container) {
+  // Gửi HUP bằng `docker exec … kill -HUP 1`, KHÔNG dùng `docker kill`: kill (kể cả -s HUP) đánh dấu container là "dừng thủ công",
+  // nên nếu PID 1 thoát vì lý do nào đó, restart policy unless-stopped sẽ không khởi động lại.
   try {
-    execFileSync('docker', ['kill', '-s', 'HUP', container], { stdio: 'pipe' });
+    execFileSync('docker', ['exec', container, 'kill', '-HUP', '1'], { stdio: 'pipe', timeout: 10000 });
     return { ok: true };
-  } catch (e) {
-    const sock = process.env.DOCKER_SOCKET || '/var/run/docker.sock';
-    if (!fs.existsSync(sock)) return { ok: false, error: e.message };
-    const req = http.request({ socketPath: sock, method: 'POST', path: `/containers/${encodeURIComponent(container)}/kill?signal=HUP` },
-      (res) => { res.resume(); });
-    req.on('error', (err) => console.error('mosquitto reload', err.message));
-    req.end();
-    return { ok: true, via: 'socket' };
+  } catch (e0) {
+    try {
+      execFileSync('docker', ['kill', '-s', 'HUP', container], { stdio: 'pipe' });
+      return { ok: true };
+    } catch (e) {
+      return reloadViaSocket(container, e);
+    }
   }
+}
+
+function reloadViaSocket(container, e) {
+  const sock = process.env.DOCKER_SOCKET || '/var/run/docker.sock';
+  if (!fs.existsSync(sock)) return { ok: false, error: e.message };
+  const req = http.request({ socketPath: sock, method: 'POST', path: `/containers/${encodeURIComponent(container)}/kill?signal=HUP` },
+    (res) => { res.resume(); });
+  req.on('error', (err) => console.error('mosquitto reload', err.message));
+  req.end();
+  return { ok: true, via: 'socket' };
 }
 
 /**
