@@ -101,3 +101,6 @@ Route công khai `POST /api/v1/gateway/pair` (mã `XXXX-XXXX`) **đã bỏ**; c�
 5. Sửa cấu hình trong GatewayApp (trang Thiết bị / Giao thức / Cloud) cần một lần duyệt còn hiệu lực 10 phút; hết hạn thì khoá lại. Khoá này nằm ở app (chặn người dùng thường); người có quyền sửa file cấu hình trên máy gateway vẫn sửa được cục bộ.
 
 Giới hạn tốc độ: `RATE_LIMIT_GATEWAY_LOGIN`, `RATE_LIMIT_GATEWAY_LOGIN_NET`, `RATE_LIMIT_GATEWAY_LOGIN_POLL`, `RATE_LIMIT_GATEWAY_LOGIN_APPROVE`, `RATE_LIMIT_GATEWAY_REGISTER_USER`; trần số phiên đăng nhập đang mở `GATEWAY_LOGIN_MAX_OPEN` (300).
+
+### OTP mỗi lần mở app
+Mỗi lần mở GatewayApp (cả bản khách), gateway **chạy cục bộ, KHÔNG nối cloud** cho tới khi người dùng xác thực: duyệt đăng nhập trên webapp hoặc nhập mã ghép (OTP) tạo trên webapp (phía server bắt TOTP/Face ID khi tạo mã / duyệt). Có OTP → app tự cấp ID + QR nếu chưa có, hoặc chạy lại host với cloud bật và đồng bộ. Hết 10 phút chỉ khoá phần *sửa cấu hình*, cloud đang nối không bị ngắt. Hệ quả: gateway không tự nối cloud sau khi mất điện cho tới khi có người xác thực; chế độ chạy nền không người trông chỉ chạy cục bộ.

@@ -35,6 +35,18 @@ public sealed partial class MainForm : Form, IGatewayApp
     DateTime _loginAt = DateTime.MinValue;
     bool _prompting;
     bool Unlocked => _testMode || (_login != null && DateTime.UtcNow - _loginAt < UnlockLife);
+    /// <summary>OTP MỖI LẦN MỞ: chưa duyệt (OTP/Face ID trên webapp) trong lần chạy này thì gateway chạy CỤC BỘ, không nối cloud, dù đã đăng ký từ trước.</summary>
+    bool _otpThisRun;
+    bool CloudAllowed => _testMode || _otpThisRun;
+
+    /// <summary>Bản cấu hình dùng cho host khi chưa có OTP: giống cấu hình thật nhưng tắt cloud (Mobile = Off).</summary>
+    ScadaConfig OfflineCopy()
+    {
+        var c = new ScadaConfig();
+        foreach (var p in typeof(ScadaConfig).GetProperties().Where(p => p.CanWrite && p.GetIndexParameters().Length == 0)) p.SetValue(c, p.GetValue(_cfg));
+        c.Mobile = MobileAccess.Off;
+        return c;
+    }
 
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
     readonly Panel _head = new() { Dock = DockStyle.Top, Height = 62, BackColor = Theme.Bg };
@@ -222,7 +234,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Xác nhận chỉnh sửa", why);
             if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return false;
-            _login = f.Result; _loginAt = DateTime.UtcNow;
+            _login = f.Result; _loginAt = DateTime.UtcNow; _otpThisRun = true;
             _dash.ReadOnly = false; _dash.Rebuild();
             Toast($"Đã xác nhận ({f.Result.User}) — sửa được trong {(int)UnlockLife.TotalMinutes} phút.");
             _ = AutoConnectAsync();
@@ -245,7 +257,7 @@ public sealed partial class MainForm : Form, IGatewayApp
                 var r = await RegisterAsync(CloudPage.ServerOf(_cfg));
                 if (r.Ok) Toast("Đã tự cấp ID + QR từ server và đồng bộ.");
             }
-            else if (_host == null) await StartAsync();   // đã đăng ký: chạy là tự nối cloud + publish config
+            else { if (_host != null) await StopAsync(); await StartAsync(); }   // đã đăng ký: chạy lại với cloud bật (đã có OTP) → tự nối + đồng bộ
         }
         finally { _autoBusy = false; }
     }
@@ -271,8 +283,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Màn hình đăng nhập lúc mở app. Huỷ → chạy ở chế độ chỉ xem (vẫn offline được).</summary>
     async Task StartupLoginAsync()
     {
-        if (_testMode || !_editUi) return;
-        if (!await EnsureUnlockedAsync("Đăng nhập tài khoản webapp để chỉnh sửa gateway")) Toast("Chế độ chỉ xem — đăng nhập để sửa cấu hình.");
+        if (_testMode) return;   // bản khách cũng phải qua OTP mới nối cloud
+        if (!await EnsureUnlockedAsync("Xác thực OTP trên webapp để nối cloud và chỉnh sửa gateway")) Toast("Chưa có OTP: gateway chạy cục bộ, KHÔNG nối cloud, chỉ xem.");
     }
 
     void Show(Control page)
@@ -334,7 +346,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         try
         {
             _values.Clear();
-            var h = new ScadaHost(_cfg, _demo ? new DemoDriver(_cfg) : null);
+            var h = new ScadaHost(CloudAllowed ? _cfg : OfflineCopy(), _demo ? new DemoDriver(_cfg) : null);   // chưa OTP: chạy cục bộ
             h.Describer = new MetaDescriber(_meta, _cfg);   // nhãn/đơn vị/kiểu từ hộp thoại thêm thiết bị → bản tin config
             h.Log += l => _log.Add("LOG", "gateway", l);
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
