@@ -104,6 +104,10 @@ html[data-ind=soft]{--shadow:0 2px 10px rgba(0,0,0,.07)}
 .pd-t{fill:var(--mut);font:2.8px system-ui}.pd-v{fill:var(--fg);font:700 3px system-ui;paint-order:stroke;stroke:var(--card);stroke-width:.8}
 .pd-spin{animation:pdsp 1s linear infinite}@keyframes pdsp{to{transform:rotate(360deg)}}.pd-imp{fill:var(--acc)}
 .pd-valve{fill:var(--mut)}.pd-n.ok .pd-valve{fill:var(--ok)}.pd-n.bad .pd-valve{fill:var(--bad)}
+/* thiếu cảm biến: na = chưa gán (mờ, nét đứt), nd = mất tín hiệu (xám) — khác hẳn trạng thái dừng/đóng thật */
+.pd-n.na{opacity:.35}.pd-n.na .pd-body{stroke-dasharray:1.2 1}.pd-n.na .pd-fill{display:none}
+.pd-n.nd .pd-body{stroke:var(--mut);stroke-dasharray:1.2 1}.pd-n.nd .pd-fill{fill:var(--mut);opacity:.35}.pd-n.nd .pd-imp,.pd-n.nd .pd-valve,.pd-n.na .pd-imp,.pd-n.na .pd-valve{fill:var(--mut)}
+.pd-pipe.unk{stroke-dasharray:3 2;opacity:.55}
 @media (prefers-reduced-motion:reduce){.pd-flow,.pd-spin,.pl-m.bad circle,.iad-t.bad{animation:none}}
 /* lịch */
 .isc-h,.isc-r{display:grid;grid-template-columns:minmax(84px,1fr) 4fr 58px;gap:8px;align-items:center}.isc-r{margin:7px 0}
