@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#2b2b2b">
+<meta name="robots" content="noindex,nofollow">
+<title>Duyệt đăng nhập gateway</title>
+<link rel="icon" href="icon.svg?v=3">
+<link rel="stylesheet" href="style.css">
+<style>
+body{padding:calc(14px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));max-width:520px;margin:auto}
+h1{font-size:22px;margin:0 0 12px}
+.panel{margin:0 0 12px;text-align:center}
+.code{font:700 38px/1.2 ui-monospace,Consolas,monospace;letter-spacing:4px;padding:14px 4px;margin:10px 0 4px;background:var(--bg);border-radius:12px;user-select:all}
+.help{font-size:13px;color:var(--mut);line-height:1.5;margin:8px 0}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{min-height:48px}
+#msg{min-height:1.4em;font-size:14px;margin:0 0 10px;text-align:center}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--ok);font-weight:600}
+[hidden]{display:none!important}
+</style>
+<script src="no-zoom.js?v=1"></script>
+</head>
+<body>
+<h1>Duyệt đăng nhập gateway</h1>
+<p id="msg"></p>
+<section id="box" class="panel" hidden>
+  <p class="help">Một ứng dụng Gateway trên máy tính đang xin đăng nhập bằng tài khoản của bạn. Chỉ duyệt nếu <b>mã dưới đây trùng với mã đang hiện trên ứng dụng</b> do chính bạn vừa mở.</p>
+  <div class="code" id="code"></div>
+  <p class="help" id="meta"></p>
+  <div class="row">
+    <button id="deny">Từ chối</button>
+    <button id="ok" class="primary">Duyệt</button>
+  </div>
+</section>
+<script src="errors.js"></script>
+<script src="security/session.js"></script>
+<script src="security/device-proof.js"></script>
+<script src="security/security-client.js"></script>
+<script src="gateway-login.js"></script>
+</body>
+</html>

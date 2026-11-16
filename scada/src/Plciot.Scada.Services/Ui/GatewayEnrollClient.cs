@@ -47,8 +47,55 @@ public sealed class GatewayEnrollClient
         return PostAsync(path, body, ct);
     }
 
+    /// <summary>Bước 1 đăng nhập qua trình duyệt: nhận mã người dùng + địa chỉ để duyệt trên webapp.</summary>
+    public async Task<LoginStart> LoginStartAsync(CancellationToken ct = default)
+    {
+        using var res = await _http.PostAsync("/api/v1/gateway/login/start", null, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        string S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+        return new LoginStart(S("deviceCode"), S("userCode"), S("verifyUrl"), r.TryGetProperty("expiresIn", out var e) ? e.GetInt32() : 600, r.TryGetProperty("interval", out var i) ? i.GetInt32() : 3);
+    }
+
+    /// <summary>Bước 2: hỏi kết quả duyệt. Chưa duyệt → Token rỗng; đã duyệt → token đăng ký ngắn hạn (chỉ trao một lần).</summary>
+    public async Task<LoginPoll> LoginPollAsync(string deviceCode, CancellationToken ct = default)
+    {
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/login/poll", new { deviceCode }, JsonOpts, ct).ConfigureAwait(false);
+        if ((int)res.StatusCode == 429) return new LoginPoll("pending", "", "", 0);   // hỏi quá nhanh: coi như chưa duyệt, thử lại sau
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        var status = r.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        return new LoginPoll(status, r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "", r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
+    }
+
+    /// <summary>Đăng ký gateway bằng token đăng nhập + chữ ký khoá riêng: server cấp tem/MQTT trong hạn mức của tài khoản và trả kit.</summary>
+    public async Task<PairResult> RegisterAsync(string token, long userId, string fp, byte[] configJson, GatewayIdentity id, string solution = "", CancellationToken ct = default)
+    {
+        using var cfg = JsonDocument.Parse(configJson);
+        var (ts, sig) = id.RegisterProof(userId);
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/gateway/register")
+        {
+            Content = JsonContent.Create(new { fp, pubkey = id.PublicKey, ts, sig, solution, config = cfg.RootElement.Clone() }, options: JsonOpts),
+        };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        string? S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var approved = r.TryGetProperty("approved", out var ap) && ap.ValueKind == JsonValueKind.True;
+        GatewayProvisionKit? kit = approved && r.TryGetProperty("kit", out var k) ? JsonSerializer.Deserialize<GatewayProvisionKit>(k.GetRawText(), JsonOpts) : null;
+        return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
+    }
+
+    static async Task<JsonElement> ReadAsync(HttpResponseMessage res, CancellationToken ct)
+    {
+        var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+        var r = doc.RootElement.Clone();
+        if (!res.IsSuccessStatusCode)
+            throw new InvalidOperationException(r.TryGetProperty("error", out var e) ? e.GetString() : $"HTTP {(int)res.StatusCode}");
+        return r;
+    }
+
     /// <summary>
-    /// Ghép cặp bằng mã do admin phát: gửi KHOÁ CÔNG KHAI + chữ ký (chứng minh giữ khoá riêng) + bản khai (thiết bị, field, setting, UI).
+    /// Ghép cặp bằng mã do admin phát (cũ, sẽ bỏ): gửi KHOÁ CÔNG KHAI + chữ ký (chứng minh giữ khoá riêng) + bản khai (thiết bị, field, setting, UI).
     /// Mã TỰ DUYỆT (admin chọn site lúc phát mã): server trả luôn kit (site/device/MQTT/pack) + QR → gateway tự enroll, không cần dán gì.
     /// Mã duyệt tay: chỉ nhận bản khai, admin duyệt và đưa QR sau.
     /// </summary>
@@ -81,6 +128,9 @@ public sealed class GatewayEnrollClient
         return JsonSerializer.Deserialize<GatewayProvisionKit>(json, JsonOpts);
     }
 }
+
+public sealed record LoginStart(string DeviceCode, string UserCode, string VerifyUrl, int ExpiresIn, int Interval);
+public sealed record LoginPoll(string Status, string Token, string User, long Uid);
 
 public sealed record PairResult(string Id, int Devices, bool Approved = false, string? Site = null, string? Device = null, string? Qr = null, string? LoginUrl = null, GatewayProvisionKit? Kit = null);
 

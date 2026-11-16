@@ -36,6 +36,7 @@ import { mountActivateApi } from './activateApi.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext } from './gatewaySolution.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
+import { mountGatewayLogin } from './gatewayLogin.js';
 import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
@@ -276,6 +277,7 @@ mountPush(app, { db, requireAuth, dataDir: DATA_DIR });
 mountPartnerRoutes(app, { db, requireAuth, reauth });
 /* ---------- Gateway enroll: kéo MQTT + seed từ tem QR (không hard-code) ---------- */
 mountGatewayEnroll(app, { db });
+mountGatewayLogin(app, { db, requireAuth, jwtSecret: JWT_SECRET, publicUrl: process.env.WEBAPP_PUBLIC_URL || 'https://plc.dieukhientudong.net' });
 /* Tem ghép cặp bỏ quên (chưa ai claim sau PAIRING_TEM_TTL_DAYS) tự thu hồi: lúc khởi động rồi mỗi giờ */
 const sweepTems = () => { try { sweepPairings(db); expireUnusedTems(db); } catch (e) { console.error('expireUnusedTems', e.message); } };
 sweepTems();

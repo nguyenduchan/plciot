@@ -17,7 +17,6 @@ import {
 import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
-import { submitPairing, pairingCodeValid } from './gatewayPairing.js';
 import { verifyProof, requestMessage, ensureKeyColumns } from './gatewayKey.js';
 import { gatewaySolution, solutionUi, cleanSolution, setGatewaySolution } from './gatewaySolution.js';
 
@@ -382,31 +381,6 @@ export function mountGatewayEnroll(app, { db } = {}) {
         detail: `${r.site}/${r.device}`,
       });
     }
-    send(res, r);
-  });
-
-  // Ghép cặp bằng mã do admin phát. Giới hạn theo IP rồi toàn cục; mã sai trả lỗi chung, không ghi DB.
-  const pairIp = rateLimit({
-    windowMs: 60_000,
-    max: Number(process.env.RATE_LIMIT_GATEWAY_PAIR || 10),
-    keyFn: (req) => `${clientIp(req)}:gw-pair`,
-  });
-  // Cùng dải /24 (IPv4) hoặc /64 (IPv6): chặn botnet cùng nhà mạng xoay IP
-  const pairNet = rateLimit({
-    windowMs: 60_000,
-    max: Number(process.env.RATE_LIMIT_GATEWAY_PAIR_NET || 40),
-    keyFn: (req) => `${subnetOf(clientIp(req))}:gw-pair-net`,
-  });
-  // Ngân sách LẦN THẤT BẠI toàn cục: hết ngân sách chỉ chặn mã sai; mã hợp lệ vẫn đi qua (kẻ phá không khoá được người lắp đặt thật)
-  const failBudget = makeFailBudget(60_000, Number(process.env.RATE_LIMIT_GATEWAY_PAIR_FAIL_GLOBAL || 120));
-  app.post('/api/v1/gateway/pair', pairIp, pairNet, (req, res) => {
-    if (!pairingCodeValid(db, req.body?.code) && failBudget.exceeded()) {
-      res.setHeader('Retry-After', '60');
-      return res.status(429).json({ error: 'rate_limited' });
-    }
-    const r = submitPairing(db, req.body || {});
-    if (r.error === 'invalid_pairing') failBudget.note();
-    if (r.ok) audit(db, 'gateway_pair_submit', { ip: clientIp(req), detail: `${r.id} devices=${r.devices}` });
     send(res, r);
   });
 

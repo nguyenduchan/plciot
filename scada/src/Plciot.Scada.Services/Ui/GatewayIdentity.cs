@@ -58,6 +58,13 @@ public sealed class GatewayIdentity : IDisposable
     public static string NormalizeCode(string raw) =>
         new string(raw.ToUpperInvariant().Where(c => c != '-' && !char.IsWhiteSpace(c)).Select(c => c == 'O' ? '0' : c is 'I' or 'L' ? '1' : c).ToArray());
 
+    /// <summary>Chứng minh cho /gateway/register (đăng ký bằng tài khoản): ký `register|&lt;userId&gt;|&lt;ts&gt;`, gắn với đúng tài khoản đã duyệt đăng nhập.</summary>
+    public (long Ts, string Sig) RegisterProof(long userId)
+    {
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return (ts, Sign($"register|{userId}|{ts}"));
+    }
+
     /// <summary>Chứng minh cho /gateway/pair.</summary>
     public (long Ts, string Sig) PairProof(string code)
     {

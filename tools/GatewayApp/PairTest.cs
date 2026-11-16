@@ -64,14 +64,14 @@ public sealed partial class MainForm
         }
 
         var api = Environment.GetEnvironmentVariable("GW_PAIR_API");
-        var code = Environment.GetEnvironmentVariable("GW_PAIR_CODE");
+        var code = Environment.GetEnvironmentVariable("GW_TEST_TOKEN");
         var qr = Environment.GetEnvironmentVariable("GW_QR");
         if (string.IsNullOrEmpty(api)) api = "https://plc.dieukhientudong.net";
         log.Add($"fingerprint={Fingerprint.Of(_cfg)}");
         log.Add("config_json=" + System.Text.Encoding.UTF8.GetString(ConfigBuilder.Build(_cfg, new MetaDescriber(_meta, _cfg))));
         if (!string.IsNullOrEmpty(code))
         {
-            await PairAsync(api, code);
+            await TestRegisterAsync(api, code);
             log.Add($"pair: error={LastToast.Error} text={LastToast.Text}");
         }
         if (!string.IsNullOrEmpty(qr))
