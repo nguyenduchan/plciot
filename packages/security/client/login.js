@@ -102,13 +102,23 @@ async function putBundleFiles(token, files, cacheName, base) {
   for (const f of files) {
     const abs = new URL(f.path, location.origin).href;
     let stored = await cache.match(abs);
+    if (stored && typeof f.size === 'number' && !/\.html?$/i.test(f.path) && (await stored.clone().arrayBuffer()).byteLength !== f.size) stored = null;   // bản đã lưu sai phiên bản → tải lại
     if (!stored) {
       label.textContent = `Đang tải (${done + 1}/${files.length}): ${f.path}`;
-      const url = `${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Tải thất bại: ${f.path} (${res.status})`);
-      const buf = await res.arrayBuffer();
-      const headers = new Headers(res.headers);
+      const url = `${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(f.hash || cacheName)}`;
+      let buf = null, lastErr = null, ctype = 'application/octet-stream';
+      for (let i = 0; i < 4 && !buf; i++) {
+        try {
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+          if (res.status === 429) { lastErr = new Error(`Tải thất bại: ${f.path} (429)`); await new Promise((r) => setTimeout(r, Math.min(8000, (Number(res.headers.get('Retry-After')) || 2) * 1000))); continue; }
+          if (!res.ok) throw new Error(`Tải thất bại: ${f.path} (${res.status})`);
+          const b = await res.arrayBuffer();
+          if (typeof f.size === 'number' && (/\.html?$/i.test(f.path) ? b.byteLength < f.size : b.byteLength !== f.size)) throw new Error(`Tải thất bại: ${f.path} (sai kích thước)`);
+          buf = b; ctype = res.headers.get('Content-Type') || ctype;
+        } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 400 * (i + 1))); }
+      }
+      if (!buf) throw lastErr || new Error(`Tải thất bại: ${f.path}`);
+      const headers = new Headers({ 'Content-Type': ctype });
       headers.set('Cache-Control', 'public, max-age=31536000');
       stored = new Response(buf, { status: 200, statusText: 'OK', headers });
       await cache.put(abs, stored.clone());

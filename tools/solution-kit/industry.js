@@ -243,29 +243,33 @@
   /* ---------------- P&ID: bồn – bơm – van – bình phản ứng nối bằng đường ống; ống chảy khi chỉ số nguồn > 0 */
   function bPid(b) {
     const W = b.w || 120, H = b.h || 70, g = (id) => (id ? val(id) : null);
+    /* Khách có thể không đủ cảm biến: 'na' = chưa gán chỉ số này (không giám sát), 'nd' = có gán nhưng chưa/mất dữ liệu. Không bao giờ vẽ thành "dừng"/"đóng". */
+    const st = (id) => (!id ? '' : !M[id] ? 'na' : g(id) == null ? 'nd' : '');
+    const stTip = { na: 'Không giám sát (chưa gán cảm biến)', nd: 'Mất tín hiệu / chưa có dữ liệu' };
     const pipes = (b.pipes || []).map((p) => {
       const on = p.on ? num(g(p.on)) > 0 : true, d = 'M' + p.pts.map((q) => q.join(' ')).join('L');
-      return `<path class="pd-pipe" d="${d}"/>` + (on ? `<path class="pd-flow" d="${d}" style="stroke:${p.color || 'var(--acc)'}"/>` : '');
+      return `<path class="pd-pipe${p.on && st(p.on) ? ' unk' : ''}" d="${d}"/>` + (on ? `<path class="pd-flow" d="${d}" style="stroke:${p.color || 'var(--acc)'}"/>` : '');
     }).join('');
     const nodes = (b.nodes || []).map((n) => {
-      const m = n.metric ? mget(n.metric) : null, v = n.metric ? g(n.metric) : null, lv = m ? (m.lv ? stateLevel(m, v) : level(m, v)) : '';
+      const m = n.metric ? mget(n.metric) : null, v = n.metric ? g(n.metric) : null, lv = m ? (m.lv ? stateLevel(m, v) : level(m, v)) : '', ns = st(n.metric);
+      const tip = ns ? `<title>${esc((n.label || '') + ': ' + stTip[ns])}</title>` : '';
       const lbl = `<text class="pd-t" x="${n.x}" y="${(n.y || 0) + (n.kind === 'tank' || n.kind === 'vessel' ? (n.h || 20) + 4 : 9)}" text-anchor="middle">${esc(n.label || '')}</text>`;
       if (n.kind === 'tank' || n.kind === 'vessel') {
         const w = n.w || 16, h = n.h || 20, f = n.kind === 'tank' ? (v == null ? 0 : Math.max(0, Math.min(1, (v - (m.min ?? 0)) / ((m.max ?? 100) - (m.min ?? 0) || 1)))) : 0.55;
         const x0 = n.x - w / 2;
-        return `<g class="pd-n ${lv}"><rect class="pd-body" x="${x0}" y="${n.y}" width="${w}" height="${h}" rx="${n.kind === 'tank' ? 2 : 6}"/>`
+        return `<g class="pd-n ${ns || lv}">${tip}<rect class="pd-body" x="${x0}" y="${n.y}" width="${w}" height="${h}" rx="${n.kind === 'tank' ? 2 : 6}"/>`
           + `<rect class="pd-fill" x="${x0 + 0.6}" y="${(n.y + h * (1 - f)).toFixed(1)}" width="${w - 1.2}" height="${(h * f).toFixed(1)}" rx="1.5"/>`
-          + (m ? `<text class="pd-v" x="${n.x}" y="${n.y + h / 2 + 1.5}" text-anchor="middle">${esc(stateText(m, v))}${m.unit ? ' ' + esc(m.unit) : ''}</text>` : '') + lbl + '</g>';
+          + (m ? `<text class="pd-v" x="${n.x}" y="${n.y + h / 2 + 1.5}" text-anchor="middle">${ns === 'na' ? '' : esc(stateText(m, v))}${m.unit && !ns ? ' ' + esc(m.unit) : ''}</text>` : '') + lbl + '</g>';
       }
       if (n.kind === 'pump') {
-        const run = num(v) > 0;
-        return `<g class="pd-n ${run ? 'ok' : 'off'}"><circle class="pd-body" cx="${n.x}" cy="${n.y}" r="5.4"/><g class="${run ? 'pd-spin' : ''}" style="transform-origin:${n.x}px ${n.y}px"><path class="pd-imp" d="M${n.x} ${n.y - 3.6}L${n.x + 3.2} ${n.y + 1.8}L${n.x - 3.2} ${n.y + 1.8}z"/></g>${lbl}</g>`;
+        const run = !ns && num(v) > 0;
+        return `<g class="pd-n ${ns || (run ? 'ok' : 'off')}">${tip}<circle class="pd-body" cx="${n.x}" cy="${n.y}" r="5.4"/><g class="${run ? 'pd-spin' : ''}" style="transform-origin:${n.x}px ${n.y}px"><path class="pd-imp" d="M${n.x} ${n.y - 3.6}L${n.x + 3.2} ${n.y + 1.8}L${n.x - 3.2} ${n.y + 1.8}z"/></g>${lbl}</g>`;
       }
       if (n.kind === 'valve') {
-        const open = num(v) > 0;
-        return `<g class="pd-n ${open ? 'ok' : 'bad'}"><path class="pd-valve" d="M${n.x - 4} ${n.y - 3.4}L${n.x + 4} ${n.y + 3.4}V${n.y - 3.4}L${n.x - 4} ${n.y + 3.4}z"/>${lbl}</g>`;
+        const open = !ns && num(v) > 0;
+        return `<g class="pd-n ${ns || (open ? 'ok' : 'bad')}">${tip}<path class="pd-valve" d="M${n.x - 4} ${n.y - 3.4}L${n.x + 4} ${n.y + 3.4}V${n.y - 3.4}L${n.x - 4} ${n.y + 3.4}z"/>${lbl}</g>`;
       }
-      return `<g class="pd-n ${lv}"><rect class="pd-body" x="${n.x - 8}" y="${n.y - 4}" width="16" height="8" rx="2"/><text class="pd-v" x="${n.x}" y="${n.y + 1.4}" text-anchor="middle">${esc(stateText(m || {}, v))}${m && m.unit ? ' ' + esc(m.unit) : ''}</text>${lbl}</g>`;
+      return `<g class="pd-n ${ns || lv}">${tip}<rect class="pd-body" x="${n.x - 8}" y="${n.y - 4}" width="16" height="8" rx="2"/><text class="pd-v" x="${n.x}" y="${n.y + 1.4}" text-anchor="middle">${ns === 'na' ? '' : esc(stateText(m || {}, v))}${m && m.unit && !ns ? ' ' + esc(m.unit) : ''}</text>${lbl}</g>`;
     }).join('');
     return `<svg class="pid" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sơ đồ quy trình">${pipes}${nodes}</svg>`;
   }

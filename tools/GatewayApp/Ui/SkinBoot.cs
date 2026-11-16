@@ -1,3 +1,4 @@
+using Plciot.Scada;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -11,7 +12,7 @@ namespace GatewayApp.Ui;
 /// </summary>
 static class SkinStore
 {
-    public static string PathFor => MainForm.SettingsPath + ".skin.json";
+    public static string PathFor => (Environment.GetEnvironmentVariable("GATEWAYAPP_SETTINGS") is { Length: > 0 } p ? p : ConfigStore.PathFor("gateway-app")) + ".skin.json";
 
     static Color Hex(JsonElement p, string k, Color d)
     {

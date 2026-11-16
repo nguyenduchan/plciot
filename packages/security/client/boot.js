@@ -21,29 +21,62 @@
     } catch { return null; }
   }
 
-  /** Tải bundle mới vào cache riêng rồi mới chuyển cache đang dùng, để mất mạng giữa chừng không làm hỏng bản cũ. */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const readSession = () => LS.get('session', null);
+  const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+  /** Tải MỘT file của gói: thử lại khi lỗi mạng/429, kiểm đúng kích thước, thêm ?v=<hash> để không lớp cache trung gian nào trả bản của phiên bản khác. */
+  async function fetchBundleFile(base, token, f, version) {
+    let lastErr = new Error(f.path);
+    for (let i = 0; i < 4; i++) {
+      try {
+        const res = await fetch(`${base}/api/bundle/${enc(f.path)}?v=${encodeURIComponent(f.hash || version)}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+        });
+        if (res.status === 401) { const e = new Error('unauthorized'); e.auth = true; throw e; }
+        if (res.status === 429) { lastErr = new Error(`429 ${f.path}`); await sleep(Math.min(8000, (Number(res.headers.get('Retry-After')) || 2) * 1000)); continue; }
+        if (!res.ok) { lastErr = new Error(`${res.status} ${f.path}`); await sleep(400 * (i + 1)); continue; }
+        const buf = await res.arrayBuffer();
+        // HTML có thể bị lớp proxy (Cloudflare) chèn thêm mã khi truyền → chỉ coi là hỏng khi NHỎ hơn bản gốc; tệp khác phải đúng từng byte.
+        if (typeof f.size === 'number' && (/\.html?$/i.test(f.path) ? buf.byteLength < f.size : buf.byteLength !== f.size)) { lastErr = new Error(`size ${f.path}`); await sleep(400 * (i + 1)); continue; }
+        return { buf, type: res.headers.get('Content-Type') || 'application/octet-stream' };
+      } catch (e) { if (e.auth) throw e; lastErr = e; await sleep(400 * (i + 1)); }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * Tải bundle mới vào cache riêng, kiểm đủ file rồi mới chuyển cache đang dùng: lỗi giữa chừng không làm hỏng bản cũ.
+   * Trả 'ok' | 'auth' (token hết hạn → mới cần đăng nhập lại) | 'fail' (lỗi tạm: giữ bản cũ, thử lại sau).
+   */
   async function silentUpdate(session, me) {
     try {
       const next = { ...session, version: me.version };
       if (session.online || !('caches' in window)) { // HTTP không có Cache API: file luôn lấy từ mạng
         localStorage.setItem('session', JSON.stringify(next));
-        return true;
+        return 'ok';
       }
       const base = session.apiBase || location.origin;
+      const files = me.files || [];
       const cacheName = `plc-${session.userId}-${me.version}`;
       await caches.delete(cacheName);
       const cache = await caches.open(cacheName);
-      for (const f of me.files || []) {
-        const res = await fetch(`${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}`, {
-          headers: { Authorization: `Bearer ${session.token}` },
-        });
-        if (!res.ok) throw new Error(f.path);
-        const stored = new Response(await res.arrayBuffer(), { status: 200, headers: res.headers });
-        await cache.put(new URL(f.path, location.origin).href, stored.clone());
-        if (f.path === 'index.html') {
-          await cache.put(new URL('./', location.origin).href, stored.clone());
-          await cache.put(new URL('/', location.origin).href, stored.clone());
+      let idx = 0;   // tải song song vài tệp một lúc (68 tệp tuần tự qua đường hầm mất ~30 giây)
+      const worker = async () => {
+        while (idx < files.length) {
+          const f = files[idx++];
+          const { buf, type } = await fetchBundleFile(base, session.token, f, me.version);
+          const stored = new Response(buf, { status: 200, headers: { 'Content-Type': type } });
+          await cache.put(new URL(f.path, location.origin).href, stored.clone());
+          if (f.path === 'index.html') {
+            await cache.put(new URL('./', location.origin).href, stored.clone());
+            await cache.put(new URL('/', location.origin).href, stored.clone());
+          }
         }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, files.length) }, worker));
+      for (const f of files) {   // đủ file mới được kích hoạt
+        if (!(await cache.match(new URL(f.path, location.origin).href))) throw new Error(`thiếu ${f.path}`);
       }
       const meta = await caches.open('plc-meta');
       await meta.put('/active', new Response(JSON.stringify({ cacheName, userId: session.userId, version: me.version }), {
@@ -51,8 +84,8 @@
       }));
       localStorage.setItem('session', JSON.stringify({ ...next, cacheName }));
       for (const k of await caches.keys()) if (k.startsWith('plc-') && k !== cacheName && k !== 'plc-meta') await caches.delete(k);
-      return true;
-    } catch { return false; }
+      return 'ok';
+    } catch (e) { try { console.warn('[update] tải gói mới lỗi, giữ bản cũ và thử lại:', e && e.message); } catch {} return e && e.auth ? 'auth' : 'fail'; }
   }
 
   async function run() {
@@ -86,12 +119,15 @@
     await checkVersion(session);
   }
 
+  let updating = false, failCount = 0, retryTimer = null;
+
   /**
-   * Hỏi server bản webapp mới nhất; khác bản đang chạy thì tải ngay (không bắt xoá cache).
-   * Chạy lúc mở app VÀ mỗi khi app quay lại foreground (PWA trên điện thoại có thể mở nhiều ngày không tải lại trang).
+   * Hỏi server bản webapp mới nhất; khác bản đang chạy thì tải ngay (không bắt xoá cache, không bắt đăng nhập lại).
+   * Chạy lúc mở app, mỗi khi quay lại foreground/mạng, và định kỳ 60 giây (PWA có thể mở nhiều ngày không tải lại trang).
+   * Tải lỗi tạm thời → giữ bản đang chạy và tự thử lại (giãn dần); chỉ khi token hết hạn mới về trang đăng nhập.
    */
   async function checkVersion(session) {
-    if (!navigator.onLine || !session?.token) return;
+    if (!navigator.onLine || !session?.token || updating) return;
     try {
       const base = session.apiBase || location.origin;
       const r = await fetch(`${base}/api/me`, {
@@ -110,27 +146,40 @@
         if (j.error === 'unauthorized') { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
         return;
       }
-      if (r.ok) {
-        const me = await r.json();
-        if (me.version !== session.version) {
-          // PC có mã nguồn mới: tự tải bằng phiên hiện tại (không bắt đăng nhập lại); lỗi mới quay về đăng nhập.
-          if (await silentUpdate(session, me)) { window.AppLock?.allowNavigation(); location.reload(); }
-          else { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
-        }
+      if (!r.ok) {   // 429 / 5xx tạm thời: đừng bỏ qua im lặng, hỏi lại sau (giãn dần)
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => { const s = readSession(); if (s && !s.demo && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
+        return;
+      }
+      const me = await r.json();
+      if (me.version === session.version) { failCount = 0; return; }
+      updating = true;
+      const res = await silentUpdate(session, me);
+      updating = false;
+      if (res === 'ok') { failCount = 0; window.AppLock?.allowNavigation?.(); location.reload(); }
+      else if (res === 'auth') { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
+      else {
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => { const s = readSession(); if (s && !s.demo && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
       }
     } catch {
+      updating = false;
       // offline / network error — continue with cached app
     }
   }
 
-  let lastCheck = Date.now();
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 30_000) return;
-    lastCheck = Date.now();
+  function recheck() {
     if (window.AppLock?.isLocked?.()) return;
-    const session = LS.get('session', null);
+    const session = readSession();
     if (session && !session.demo && !session.gate) checkVersion(session);
-  });
+  }
+  let lastCheck = Date.now();
+  const throttled = () => { if (Date.now() - lastCheck < 10_000) return; lastCheck = Date.now(); recheck(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') throttled(); });
+  window.addEventListener('focus', throttled);
+  window.addEventListener('online', throttled);
+  window.addEventListener('pageshow', throttled);
+  setInterval(() => { if (document.visibilityState === 'visible') throttled(); }, 60_000);
 
   run();
 })();
