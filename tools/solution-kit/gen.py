@@ -84,6 +84,9 @@ def ui_json(spec, runtime):
 
 engine_js = open(os.path.join(here, 'expr.js'), encoding='utf-8').read() + '\n' + open(os.path.join(here, 'industry.js'), encoding='utf-8').read()   # bộ tính công thức + engine
 engine_css = open(os.path.join(here, 'industry.css'), encoding='utf-8').read()
+shell = os.path.join(root, '..', 'webapp')   # engine + CSS dùng chung cho mọi giải pháp: MỘT bản ở shell
+write(os.path.join(shell, 'industry-engine.js'), engine_js)
+write(os.path.join(shell, 'industry.css'), engine_css)
 made = []
 for spec in ALL:
     sid = spec['id']
@@ -98,12 +101,10 @@ for spec in ALL:
     runtime['why'] = why
     write(os.path.join(d, 'solution.json'), json.dumps({
         'kind': 'plciot-solution', 'id': sid, 'title': spec['title'], 'themeColor': spec['themeColor'],   # kind = DẤU NHẬN DIỆN để admin tự đồng bộ vào ô chọn
-        'inject': {'css': ['industry.css?v=1', 'theme.css?v=1'], 'js': ['spec.js?v=1', 'industry.js?v=1']},
+        'inject': {'css': ['theme.css?v=1'], 'js': ['spec.js?v=1']},   # engine + industry.css dùng chung ở shell (webapp/industry-engine.js)
     }, ensure_ascii=False, indent=2) + '\n')
     write(os.path.join(web, 'spec.js'), '/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */\nwindow.INDUSTRY = '
           + json.dumps(runtime, ensure_ascii=False, indent=1) + ';\n')
-    write(os.path.join(web, 'industry.js'), engine_js)
-    write(os.path.join(web, 'industry.css'), engine_css)
     write(os.path.join(web, 'theme.css'), theme_css(spec))
     for old in ('IndustryPage.cs', 'IndustrySkin.cs'):   # bản cũ build riêng từng giải pháp: nay giao diện là dữ liệu
         if os.path.exists(os.path.join(d, 'gateway', old)):

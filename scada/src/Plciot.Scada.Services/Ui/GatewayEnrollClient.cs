@@ -31,8 +31,13 @@ public sealed class GatewayEnrollClient
     public Task<GatewayProvisionKit?> EnrollAsync(string qr, GatewayIdentity id, bool rotateMqtt = false, CancellationToken ct = default)
         => SignedAsync("/api/v1/gateway/enroll", "enroll", qr, id, new Dictionary<string, object?> { ["rotateMqtt"] = rotateMqtt }, ct);
 
-    public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, GatewayIdentity id, bool includeCredentials = false, CancellationToken ct = default)
-        => SignedAsync("/api/v1/gateway/config", "config", qr, id, new Dictionary<string, object?> { ["includeCredentials"] = includeCredentials }, ct);
+    /// <param name="solution">Giải pháp (UI) gateway đang chọn — gửi kèm (có chữ ký) để server đồng bộ; null = không báo. Chuỗi rỗng = giao diện cơ bản.</param>
+    public Task<GatewayProvisionKit?> RefreshConfigAsync(string qr, GatewayIdentity id, bool includeCredentials = false, CancellationToken ct = default, string? solution = null)
+    {
+        var extra = new Dictionary<string, object?> { ["includeCredentials"] = includeCredentials };
+        if (solution != null) extra["solution"] = solution;
+        return SignedAsync("/api/v1/gateway/config", "config", qr, id, extra, ct);
+    }
 
     Task<GatewayProvisionKit?> SignedAsync(string path, string kind, string qr, GatewayIdentity id, Dictionary<string, object?> extra, CancellationToken ct)
     {

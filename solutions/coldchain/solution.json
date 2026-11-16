@@ -5,12 +5,10 @@
   "themeColor": "#0e7490",
   "inject": {
     "css": [
-      "industry.css?v=1",
       "theme.css?v=1"
     ],
     "js": [
-      "spec.js?v=1",
-      "industry.js?v=1"
+      "spec.js?v=1"
     ]
   }
 }

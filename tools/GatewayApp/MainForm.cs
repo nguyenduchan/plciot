@@ -409,9 +409,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             try
             {
-                await Task.Delay(2500);   // chờ config (kèm solution) lên server rồi mới lấy giao diện tương ứng
                 using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(15) };
-                var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
+                var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, _cfg.Solution);   // báo giải pháp qua HTTPS có chữ ký rồi nhận giao diện
                 if (kit != null) ApplySkin(kit);
             }
             catch (Exception) { /* giao diện sẽ nhận ở lần đồng bộ kế */ }

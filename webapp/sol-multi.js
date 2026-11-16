@@ -2,6 +2,7 @@
  * giải pháp mà các gateway của họ dùng (sol/<id>/…, bản khai solutions.json). devices.js phát 'plc-gw-active' khi người dùng chọn
  * tab gateway → ở đây gỡ giao diện cũ, nạp CSS/spec của giải pháp gateway đó và gắn engine (industry.js) chỉ với số liệu của gateway đó.
  * Gateway không có giải pháp (hoặc cơ bản) → bản shell cơ bản. */
+window.PLCIOT_MULTI = true;   // báo cho engine: không tự chạy bản một giải pháp (CSP không cho script inline nên đặt cờ ở đây)
 (function () {
   let manifest = null, loading = null;
   const loadManifest = () => manifest ? Promise.resolve(manifest)
@@ -25,10 +26,15 @@
   let token = 0, queue = Promise.resolve();
   const dropAll = () => { for (const i of inst.values()) { try { i.h?.unmount(); } catch (e) { console.warn('sol unmount', e); } } inst.clear(); };
   const unmountOne = (base) => { const i = inst.get(base); if (i) { try { i.h?.unmount(); } catch (e) { console.warn('sol unmount', e); } inst.delete(base); } };
+  let engineP = null;   // engine + CSS chung của mọi giải pháp: một bản ở shell, nạp lười khi có gateway dùng giải pháp
+  const ensureEngine = () => engineP || (engineP = (async () => {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'industry.css'; document.head.appendChild(l);
+    return window.IndustryEngine ? true : loadJs('industry-engine.js');
+  })());
   async function ensureSpec(id, m, my) {
     if (specs[id]) return true;
+    if (!(await ensureEngine())) return false;
     for (const src of m.js || []) {
-      if (/(^|\/)industry\.js(\?|$)/.test(src) && window.IndustryEngine) continue;   // engine dùng chung: nạp một lần
       await loadJs(src);
       if (my !== token) return false;
     }
