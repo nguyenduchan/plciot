@@ -21,7 +21,7 @@
     invalid_folder: 'Thư mục này chưa có trên server (cần solutions/<tên>/webapp/ — chạy sync-solutions.ps1).',
     invalid_title: 'Tên hiển thị 1–60 ký tự, không chứa < >.',
     exists: 'Mã mục đã tồn tại.',
-    in_use: 'Còn người dùng đang dùng mục này — đổi họ sang giải pháp khác trước.',
+    in_use: 'Còn gateway đang dùng mục này — đổi gateway sang giải pháp khác trước.',
     forbidden: 'Bạn không có quyền quản trị.',
     unauthorized: 'Phiên hết hạn, đăng nhập lại.',
     session_revoked: 'Phiên đã bị thu hồi, đăng nhập lại.',
@@ -102,7 +102,7 @@
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let solutions = [{ id: 'basic', title: 'Cơ bản' }], gatewaySolutions = [{ id: 'basic', title: 'Cơ bản' }], defSolution = 'basic';
-  const solOpts = (sel) => solutions.map((x) => `<option value="${esc(x.id === 'basic' ? '' : x.id)}"${(sel || '') === (x.id === 'basic' ? '' : x.id) ? ' selected' : ''}>${esc(x.title)}${x.id === defSolution && !sel ? ' (mặc định)' : ''}</option>`).join('');
+  const solOpts = (sel) => gatewaySolutions.map((x) => `<option value="${esc(x.id === 'basic' ? '' : x.id)}"${(sel || '') === (x.id === 'basic' ? '' : x.id) ? ' selected' : ''}>${esc(x.title)}${x.id === defSolution && !sel ? ' (mặc định)' : ''}</option>`).join('');
   const roleOpts = (sel) => roles.map((r) => `<option value="${r}"${r === sel ? ' selected' : ''}>${r}</option>`).join('');
 
   const scopeBoxes = (sel, attr) => scopesAll.map((s) =>
@@ -152,7 +152,6 @@
         <div class="scopes" data-scopes>${scopeBoxes(u.scopes, 'data-sc')}</div>
         <div class="acts">
           <select data-act="role">${roleOpts(u.role)}</select>
-          <select data-act="solution" title="Giải pháp / giao diện webapp của người dùng này">${solOpts(u.solution)}</select>
           <button data-act="site">Đổi site/thiết bị</button>
           <button data-act="logout">Đăng xuất mọi máy</button>
           <button data-act="toggle">${u.disabled ? 'Mở khoá' : 'Khoá'}</button>
@@ -182,7 +181,7 @@
           <small>${d.activatedHw ? `ID máy <code>${esc(d.activatedHw)}</code>` : 'chưa gắn máy'}
             ${d.mqttId ? ` · ID MQTT <code>${esc(d.mqttId)}</code>${d.mqttStatus && d.mqttStatus !== 'active' ? ` (${esc(d.mqttStatus)})` : ''}` : ''}
             ${d.config ? ` · setting rev ${d.config.rev}: ${d.config.devices} thiết bị, ${d.config.fields} field · cập nhật ${esc(fmtTs(d.config.updatedAt))}` : ' · chưa có setting'}</small>
-          <small>Giải pháp <select data-hwsol title="Giao diện gateway + webapp của người quét QR gateway này">${solOpts(d.solution)}</select></small></div>
+          <small>Giải pháp (do gateway chọn): <b>${esc(d.solutionTitle || 'Cơ bản')}</b></small></div>
         <div class="acts">
           <button data-hw="qr">Xem / in QR</button>
           ${d.activated ? '<button data-hw="unbind">Gỡ máy đã gắn</button>' : ''}
@@ -367,10 +366,9 @@
   async function loadUsers() {
     const j = await api(`/api/admin/users?${qs(pg.u)}`);
     roles = j.roles; users = j.users; scopesAll = j.scopes || scopesAll;
-    if (Array.isArray(j.solutions) && j.solutions.length) solutions = j.solutions;
     if (Array.isArray(j.gatewaySolutions) && j.gatewaySolutions.length) gatewaySolutions = j.gatewaySolutions;
     defSolution = j.defaultSolution || 'basic';
-    fillPrSolutions(); renderHw();   // danh sách giải pháp dùng chung cho form tạo mã và từng dòng gateway
+    renderHw();   // danh sách giải pháp dùng chung cho form tạo mã và từng dòng gateway
     pg.u.total = j.total ?? users.length;
     if (!users.length && pg.u.off > 0) { pg.u.off = Math.max(0, pg.u.off - PAGE); return loadUsers(); }
     render();
@@ -453,25 +451,10 @@
     }, 'Đã duyệt. Dán QR lên thiết bị; gateway dùng cùng QR để enroll, user quét để xem UI.');
   }
 
-  function fillPrSolutions() {   // ô chọn giải pháp của form tạo mã (cơ bản = rỗng)
-    const sel = $('#pr-solution'); if (!sel) return;
-    const cur = sel.value;
-    sel.innerHTML = gatewaySolutions.map((x) => `<option value="${esc(x.id === 'basic' ? '' : x.id)}">${esc(x.title)}</option>`).join('');
-    sel.value = cur;
-  }
-  fillPrSolutions();
-  // đổi giải pháp của một gateway (gateway đổi giao diện ở lần cấu hình kế tiếp; webapp của user quét QR sau đó tự map nếu user chưa có giải pháp riêng)
-  $('#hw-list').addEventListener('change', (e) => {
-    const sel = e.target.closest('select[data-hwsol]'); const row = e.target.closest('.hw');
-    if (!sel || !row) return;
-    run(() => api(`/api/admin/hardware/${encodeURIComponent(row.dataset.site)}/${encodeURIComponent(row.dataset.device)}`, 'PATCH', { solution: sel.value }),
-      'Đã đổi giải pháp của gateway — gateway nhận giao diện mới ở lần cấu hình kế tiếp.');
-  });
-
   $('#pr-new')?.addEventListener('click', () => run(async () => {
     const site = $('#pr-site').value.trim();
     if (!site) throw new Error('Nhập site (nhà máy / trạm).');
-    const r = await api('/api/admin/pairings', 'POST', { label: $('#pr-label').value.trim(), site, solution: $('#pr-solution')?.value || '' });
+    const r = await api('/api/admin/pairings', 'POST', { label: $('#pr-label').value.trim(), site });
     $('#pr-label').value = '';
     $('#pr-code').hidden = false;
     $('#pr-code-val').textContent = r.code;
@@ -530,9 +513,9 @@
     const nb = $('#at-sol-n'); if (nb) nb.textContent = solView.items.length + 1;
     const pt = (p) => `Webapp ${p?.webapp ? '✓' : '—'} · Gateway ${p?.gateway ? '✓' : '—'}`;
     const fo = (sel) => solView.folders.map((f) => `<option value="${esc(f.folder)}"${f.folder === sel ? ' selected' : ''}>${esc(f.folder)} — ${esc(f.title)} (${pt(f.parts)})</option>`).join('');
-    $('#sol-list').innerHTML = `<div class="u" style="padding:8px 0;border-bottom:1px solid var(--line)"><b>Cơ bản</b> <span class="help">(mã <code>basic</code> — luôn có, thư mục <code>webapp/</code>) · ${solView.basicUsers} người dùng${solView.default === 'basic' ? ' · mặc định' : ''}</span></div>`
+    $('#sol-list').innerHTML = `<div class="u" style="padding:8px 0;border-bottom:1px solid var(--line)"><b>Cơ bản</b> <span class="help">(mã <code>basic</code> — luôn có, thư mục <code>webapp/</code>) ${solView.default === 'basic' ? '· mặc định' : ''}</span></div>`
       + solView.items.map((it) => `<div class="u sol" data-id="${esc(it.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:center">
-        <div><b>${esc(it.id)}</b>${solView.default === it.id ? ' <span class="tag">mặc định</span>' : ''}<div class="help" style="margin:0">${it.users} người dùng${it.missing ? ' · <b style="color:#c0392b">thiếu thư mục</b>' : (it.version ? ' · v' + esc(it.version) : '') + ' · ' + pt(it.parts)}</div></div>
+        <div><b>${esc(it.id)}</b>${solView.default === it.id ? ' <span class="tag">mặc định</span>' : ''}<div class="help" style="margin:0">${it.users} gateway${it.missing ? ' · <b style="color:#c0392b">thiếu thư mục</b>' : (it.version ? ' · v' + esc(it.version) : '') + ' · ' + pt(it.parts)}</div></div>
         <input data-f="title" value="${esc(it.title)}" maxlength="60" title="Tên hiển thị trong ô chọn">
         <select data-f="folder" title="Thư mục webapp">${fo(it.folder)}${it.missing ? `<option value="${esc(it.folder)}" selected>${esc(it.folder)} (mất)</option>` : ''}</select>
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-f="enabled"${it.enabled ? ' checked' : ''}> hiện trong ô chọn</label>
@@ -661,9 +644,6 @@
     if (e.target.dataset.sc && row) {
       const scopes = [...row.querySelectorAll('[data-sc]')].filter((c) => c.checked).map((c) => c.dataset.sc);
       return run(() => api(`/api/admin/users/${row.dataset.id}`, 'PATCH', { scopes }), 'Đã đổi phạm vi xem.');
-    }
-    if (e.target.dataset.act === 'solution' && row) {
-      return run(() => api(`/api/admin/users/${row.dataset.id}`, 'PATCH', { solution: e.target.value }), 'Đã đổi giải pháp — người dùng thấy giao diện mới ở lần mở app kế tiếp.');
     }
     if (e.target.dataset.act !== 'role' || !row) return;
     run(() => api(`/api/admin/users/${row.dataset.id}`, 'PATCH', { role: e.target.value }), 'Đã đổi vai trò.');

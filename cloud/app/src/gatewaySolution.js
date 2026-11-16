@@ -29,6 +29,9 @@ export function setGatewaySolution(db, site, device, solution) {
   return { ok: true, solution: s };
 }
 
+/** Giải pháp gateway có thể chọn (có phần gateway/, đang bật) — phần mềm gateway hiện ô chọn từ danh sách này. */
+export const gatewaySolutionChoices = () => (shellDirCtx ? listSolutions(shellDirCtx, 'gateway') : []).filter((x) => x.id !== BASIC);
+
 export function allGatewaySolutions(db) {
   try { migrateGatewaySolutions(db); return new Map(db.prepare('SELECT site, device, solution FROM gateway_solutions').all().map((r) => [`${r.site}/${r.device}`, r.solution])); } catch { return new Map(); }
 }
@@ -37,7 +40,7 @@ export function allGatewaySolutions(db) {
  * Kit (enroll / config / pair) kèm `ui` để GatewayApp (một bản dùng chung, không build riêng) vẽ đúng giao diện của giải pháp. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { folderOf, solutionDir, BASIC } from './solutions.js';
+import { folderOf, solutionDir, BASIC, listSolutions } from './solutions.js';
 
 let shellDirCtx = process.env.WEBAPP_SRC || process.env.SHELL_DIR || '';
 export const setSolutionsContext = (shellDir) => { shellDirCtx = shellDir; };

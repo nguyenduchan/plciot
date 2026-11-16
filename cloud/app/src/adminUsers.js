@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import { findUserById, findUserByUsername } from './db.js';
 import { hashPassword } from './auth.js';
 import { resolveBundleRoot } from './bundle.js';
-import { solutionOf, solutionVersion, writeSolution, isKnownSolution, listSolutions, defaultSolution } from './solutions.js';
+import { userBundleVersion, writeUserBundle, listSolutions, defaultSolution } from './solutions.js';
+import { refreshUserBundle } from './bundleSync.js';
 import {
   provisionUserMqtt, rebuildAclFromUsers, reloadMosquitto,
   setMosquittoPassword, randomMqttPassword,
@@ -26,7 +27,6 @@ export function publicUser(u) {
     site: u.notify_site,
     device: u.notify_device,
     disabled: !!u.disabled,
-    solution: u.solution || '',
     createdAt: u.created_at,
   };
 }
@@ -58,16 +58,13 @@ export function createUser(db, admin, body, { dataDir, webappSrc, ip }) {
   if (!SAFE.test(siteName) || !SAFE.test(dev)) return { error: 'invalid_site_or_device', status: 400 };
   if (findUserByUsername(db, username)) return { error: 'username_in_use', status: 409 };
   if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
-  const solution = String(body.solution || '').trim();
-  if (solution && !isKnownSolution(webappSrc, solution)) return { error: 'invalid_solution', status: 400 };
 
   const folder = `u_${username}`;
-  const eff = solutionOf(webappSrc, { solution });
-  writeSolution(webappSrc, eff, resolveBundleRoot(dataDir, folder));
+  writeUserBundle(webappSrc, [], resolveBundleRoot(dataDir, folder));   // chưa có gateway → bản cơ bản; loại webapp theo gateway thêm sau
   const info = db.prepare(`
-    INSERT INTO users (username, password_hash, folder_path, version, notify_site, notify_device, role, created_by, setup_complete, solution)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-  `).run(username, hashPassword(crypto.randomBytes(24).toString('hex')), folder, solutionVersion(webappSrc, eff), siteName, dev, role, admin.id, solution);
+    INSERT INTO users (username, password_hash, folder_path, version, notify_site, notify_device, role, created_by, setup_complete)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `).run(username, hashPassword(crypto.randomBytes(24).toString('hex')), folder, userBundleVersion(webappSrc, []), siteName, dev, role, admin.id);
   if (scopes) db.prepare('UPDATE users SET monitor_scopes = ? WHERE id = ?').run(scopes.join(','), info.lastInsertRowid);
   const { user } = provisionUserMqtt(db, findUserById(db, info.lastInsertRowid), { site: siteName, device: dev });
   applyDefaultSubscription(db, user.id);
@@ -84,7 +81,6 @@ export function updateUser(db, admin, id, patch, { ip, shellDir, dataDir }) {
   const vals = [];
   let revoke = false;
   let rotateMqtt = false;
-  let applySolution = false;
 
   if (patch.role !== undefined) {
     if (!isRole(patch.role)) return { error: 'invalid_role', status: 400 };
@@ -114,12 +110,6 @@ export function updateUser(db, admin, id, patch, { ip, shellDir, dataDir }) {
     if (!sc) return { error: 'invalid_scopes', status: 400 };
     sets.push('monitor_scopes = ?'); vals.push(sc.join(','));
   }
-  if (patch.solution !== undefined) {
-    const sol = String(patch.solution || '').trim();
-    if (shellDir && sol && !isKnownSolution(shellDir, sol)) return { error: 'invalid_solution', status: 400 };
-    sets.push('solution = ?'); vals.push(sol);
-    applySolution = true;
-  }
   if (patch.revokeSessions) revoke = true;
   if (!sets.length) return { error: 'nothing_to_update', status: 400 };
   if (revoke) sets.push('token_version = token_version + 1');
@@ -130,11 +120,6 @@ export function updateUser(db, admin, id, patch, { ip, shellDir, dataDir }) {
     db.prepare('UPDATE users SET mqtt_pass = ? WHERE id = ?').run(sealMqttPass(np), u.id);
     setMosquittoPassword(u.mqtt_user, np);
   }
-  if (applySolution && shellDir && dataDir && u.folder_path) {   // đổi giải pháp: thay bundle ngay (điện thoại thấy version mới ở lần mở kế)
-    const eff = solutionOf(shellDir, { solution: String(patch.solution || '').trim() });
-    writeSolution(shellDir, eff, resolveBundleRoot(dataDir, u.folder_path));
-    db.prepare('UPDATE users SET version = ? WHERE id = ?').run(solutionVersion(shellDir, eff), u.id);
-  }
   const reload = syncBroker(db);
   audit(db, 'admin_user_update', {
     userId: admin.id, ip, detail: `${u.id} ${Object.keys(patch).join(',')}`,
@@ -142,22 +127,14 @@ export function updateUser(db, admin, id, patch, { ip, shellDir, dataDir }) {
   return { ok: true, user: publicUser(findUserById(db, u.id)), reload };
 }
 
-/**
- * Mapping 1-1 webapp ↔ gateway: user vừa quét QR của gateway có giải pháp X mà CHƯA đặt giải pháp riêng (và mặc định là bản cơ bản)
- * → webapp của user chuyển sang X (bundle thay ngay). User đã được admin đặt giải pháp thì giữ nguyên. Trả giải pháp đã áp dụng hoặc ''.
- */
-export function adoptSolution(db, userId, solution, { shellDir, dataDir } = {}) {
-  const sol = String(solution || '').trim();
-  if (!sol || !shellDir || !dataDir) return '';
+/** Gateway vừa được thêm / đổi giải pháp → dựng lại bundle webapp của user theo mọi gateway của họ (loại webapp do gateway quyết định). */
+export function adoptSolution(db, userId, _solution, { shellDir, dataDir } = {}) {
+  if (!shellDir || !dataDir) return '';
   const u = findUserById(db, userId);
-  if (!u || String(u.solution || '').trim() || defaultSolution() !== 'basic' || !u.folder_path) return '';
-  if (!isKnownSolution(shellDir, sol)) return '';
-  db.prepare('UPDATE users SET solution = ? WHERE id = ?').run(sol, u.id);
-  const eff = solutionOf(shellDir, { solution: sol });
-  writeSolution(shellDir, eff, resolveBundleRoot(dataDir, u.folder_path));
-  db.prepare('UPDATE users SET version = ? WHERE id = ?').run(solutionVersion(shellDir, eff), u.id);
-  audit(db, 'user_solution_adopted', { userId: u.id, detail: sol });
-  return sol;
+  if (!u) return '';
+  const r = refreshUserBundle(db, u, { shellDir, dataDir });
+  if (r?.ids?.length) audit(db, 'user_bundle_refreshed', { userId: u.id, detail: r.ids.join(',') });
+  return r?.ids?.join(',') || '';
 }
 
 export function deleteUser(db, admin, id, { ip, dataDir }) {

@@ -22,7 +22,6 @@
         <small>#${u.id} · tạo ${E(core().fmtTs(u.createdAt))} · tenant ${E(u.tenantId)} · ${u.widgets} widget · ${E(u.plan.label || u.plan.id)}${u.plan.active ? '' : ' (hết hạn / chưa kích hoạt)'}</small></header>
       <div class="fd-grid">
         <label>Vai trò<select data-f="role">${opts(o.roles, u.role)}</select></label>
-        <label>Giải pháp (giao diện webapp)<select data-f="solution">${solOpts(o.solutions, u.solution)}</select></label>
         <label>Site<input data-f="site" value="${E(u.site)}" autocapitalize="off" autocomplete="off"></label>
         <label>Thiết bị (gateway chính)<input data-f="device" value="${E(u.device)}" autocapitalize="off" autocomplete="off"></label>
         <label>Gói dịch vụ<select data-f="plan">${opts(o.plans, u.plan.id, (x) => x.id, (x) => x.label || x.id)}</select></label>
@@ -45,7 +44,6 @@
         <label>Tên gateway<input data-f="label" value="${E(g.label)}" maxlength="80" autocomplete="off"></label>
         <label>Ghi chú<input data-f="note" value="${E(g.note)}" maxlength="200" autocomplete="off"></label>
         <label>Profile<input data-f="profile" value="${E(g.profile)}" list="fd-profiles" autocapitalize="off" autocomplete="off"></label>
-        <label>Giải pháp (giao diện gateway + webapp người quét QR)<select data-f="solution">${solOpts(o.gatewaySolutions, g.solution)}</select></label>
       </div>
       <div class="fd-ro"><span class="muted">ID máy</span> ${g.activatedHw ? `<code>${E(g.activatedHw)}</code>` : '—'} · <span class="muted">ID MQTT</span> ${g.mqttId ? `<code>${E(g.mqttId)}</code>${g.mqttStatus && g.mqttStatus !== 'active' ? ` (${E(g.mqttStatus)})` : ''}` : '—'}
         · <span class="muted">Setting</span> ${g.config ? `rev ${g.config.rev}: ${g.config.devices} thiết bị, ${g.config.fields} field` : 'chưa có'}</div>
@@ -78,7 +76,7 @@
   async function saveUser(card) {
     const u = data.users.find((x) => String(x.id) === card.dataset.id); if (!u) return;
     const patch = {};
-    for (const f of ['role', 'solution', 'site', 'device']) { const v = val(card, f); if (v !== (f === 'solution' ? (u.solution || '') : u[f])) patch[f] = v; }
+    for (const f of ['role', 'site', 'device']) { const v = val(card, f); if (v !== u[f]) patch[f] = v; }
     if (val(card, 'disabled') !== u.disabled) patch.disabled = val(card, 'disabled');
     const scopes = [...card.querySelectorAll('[data-sc]')].filter((c) => c.checked).map((c) => c.dataset.sc);
     if (scopes.length !== u.scopes.length || scopes.some((x) => !u.scopes.includes(x))) patch.scopes = scopes;
@@ -94,7 +92,7 @@
   async function saveGw(card) {
     const g = data.gateways.find((x) => x.site === card.dataset.site && x.device === card.dataset.device); if (!g) return;
     const patch = {};
-    for (const f of ['label', 'note', 'profile', 'solution']) { const v = val(card, f); if (v !== (g[f] || '')) patch[f] = v; }
+    for (const f of ['label', 'note', 'profile']) { const v = val(card, f); if (v !== (g[f] || '')) patch[f] = v; }
     if (!Object.keys(patch).length) return status(card, 'Không có thay đổi.');
     await core().api(`/api/admin/hardware/${encodeURIComponent(g.site)}/${encodeURIComponent(g.device)}`, 'PATCH', patch);
   }

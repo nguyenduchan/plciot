@@ -13,6 +13,7 @@
  * con kiểu 'dynamic') → webapp nhận config qua MQTT (retain) hoặc tải lại /api/v1/ui/dashboard là tự vẽ lại.
  * Widget chỉ là GỢI Ý hiển thị; quyền ghi lệnh vẫn do server quyết (limits/critical của tem, step-up).
  */
+import { cleanSolution, gatewaySolution, setGatewaySolution } from './gatewaySolution.js';
 import crypto from 'node:crypto';
 
 const ID = /^[a-zA-Z0-9_-]{1,48}$/;
@@ -144,12 +145,19 @@ export function applyGatewayConfig(db, { tenantId = 'default', site, device, pay
   if (clean.error) return clean;
   migrateGatewayConfigs(db);
 
+  // Kiểu UI giám sát/điều khiển (giải pháp) do GATEWAY setup quyết định → đồng bộ lên server (webapp của user chọn giao diện theo đây).
+  let solChanged = false;
+  if (typeof payload.solution === 'string') {
+    const want = cleanSolution(payload.solution);
+    if (want !== null && want !== gatewaySolution(db, site, device)) { setGatewaySolution(db, site, device, want); solChanged = true; }
+  }
+
   const json = JSON.stringify(clean.devices);
   const hash = crypto.createHash('sha256').update(json).digest('hex');
   const now = Date.now();
   const prev = db.prepare('SELECT rev, hash FROM gateway_configs WHERE tenant_id = ? AND site = ? AND device = ?')
     .get(tenantId, site, device);
-  if (prev && prev.hash === hash) return { ok: true, changed: false, rev: prev.rev, devices: clean.devices.length };
+  if (prev && prev.hash === hash) return { ok: true, changed: solChanged, rev: prev.rev, devices: clean.devices.length };
 
   const rev = (prev?.rev || 0) + 1;
   const tx = db.transaction(() => {

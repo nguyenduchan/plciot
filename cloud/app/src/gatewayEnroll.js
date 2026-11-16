@@ -5,6 +5,7 @@
  * POST /api/v1/gateway/enroll  → mqtt + topics + pack (+ password)
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
+import { gatewaySolutionChoices } from './gatewaySolution.js';
 import { shardOf } from './shards.js';
 import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
@@ -359,6 +360,9 @@ export function mountGatewayEnroll(app, { db } = {}) {
     if (r?.error) return res.status(r.status || 400).json(r);
     return res.json(r);
   };
+
+  // Phần mềm gateway lấy danh sách giải pháp để người dùng CHỌN trên gateway (mỗi gateway đúng một loại UI)
+  app.get('/api/v1/gateway/solutions', limit, (_req, res) => res.json({ solutions: gatewaySolutionChoices() }));
 
   app.post('/api/v1/gateway/enroll', limit, (req, res) => {
     curReq = req;

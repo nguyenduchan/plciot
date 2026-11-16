@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import { configure, htmlToText, hashPassword } from '@plciot/security';
 import { upsertUser, findUserById } from './db.js';
 import { copyDir, resolveBundleRoot } from './bundle.js';
-import { solutionOf, solutionVersion, writeSolution } from './solutions.js';
+import { userBundleVersion, writeUserBundle } from './solutions.js';
+import { userSolutionIds } from './bundleSync.js';
 import { provisionUserMqtt } from './mqttProvision.js';
 import { retentionInfo } from './retention.js';
 import { applyDefaultSubscription, subscriptionInfo } from './entitlements.js';
@@ -34,7 +35,7 @@ configure({
       const user = upsertUser(db, {
         username,
         folderPath: `u_${username}`,
-        version: solutionVersion(webappSrc, solutionOf(webappSrc, {})),
+        version: userBundleVersion(webappSrc, []),
         passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')),
         notifySite: siteId,
         notifyDevice: deviceId,
@@ -46,9 +47,9 @@ configure({
     activateAccount: async (db, user, { dataDir, webappSrc }) => {
       if (!fs.existsSync(webappSrc)) return { error: 'webapp_src_missing', status: 500 };
       const folder = user.folder_path || `u_${user.username || user.id}`;
-      const sol = solutionOf(webappSrc, user);
-      writeSolution(webappSrc, sol, resolveBundleRoot(dataDir, folder));
-      db.prepare('UPDATE users SET version = ? WHERE id = ?').run(solutionVersion(webappSrc, sol), user.id);
+      const ids = userSolutionIds(db, user, webappSrc);   // loại webapp theo gateway của user
+      writeUserBundle(webappSrc, ids, resolveBundleRoot(dataDir, folder));
+      db.prepare('UPDATE users SET version = ? WHERE id = ?').run(userBundleVersion(webappSrc, ids), user.id);
       const provisioned = provisionUserMqtt(db, user).user;
       applyDefaultSubscription(db, provisioned.id);
       return { ok: true };

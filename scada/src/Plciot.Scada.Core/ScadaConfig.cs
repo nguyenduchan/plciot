@@ -239,6 +239,8 @@ public sealed class ScadaConfig
 
     /// <summary>Id MQTT ngẫu nhiên do server cấp khi đăng ký (enroll): gateway ghép vào topic gw/&lt;MqttId&gt;/&lt;kind&gt;. Rỗng = chưa đăng ký cloud.</summary>
     public string MqttId { get; set; } = "";
+    /// <summary>Giải pháp (kiểu UI giám sát/điều khiển của webapp) do gateway setup quyết định; gửi kèm bản tin config để server đồng bộ cho webapp. Rỗng = giao diện cơ bản. Mỗi gateway đúng một giải pháp.</summary>
+    public string Solution { get; set; } = "";
     [JsonIgnore] public string BaseTopic => Contract.IsMqttId(MqttId) ? Contract.Base(MqttId) : Contract.LocalBase(Site, Device);
     /// <summary>Web/màn hình phụ chỉ chạy ở topology nhiều màn hình (một màn hình thì không có client-server).</summary>
     [JsonIgnore] public bool WebActive => WebEnabled && Topology == Topology.MultiScreen;

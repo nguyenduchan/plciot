@@ -82,7 +82,6 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   <p class="help">Nhập site rồi bấm <b>Tạo mã</b>. Người lắp đặt chỉ cần nhập mã vào GatewayApp: gateway và server tự cấp tem, MQTT và đồng bộ setting. Dùng điện thoại? Mở <a href="activate.html">trang kích hoạt</a>.</p>
   <label>Site (nhà máy / trạm)<input id="pr-site" list="pr-sites" autocapitalize="off" autocomplete="off" placeholder="tram_binh_duong"></label>
   <datalist id="pr-sites"></datalist>
-  <label>Giải pháp (giao diện gateway + webapp của người quét QR)<select id="pr-solution" title="Gateway hiện đúng giao diện này; người dùng quét QR của gateway (chưa được đặt giải pháp riêng) tự nhận cùng giao diện webapp"></select></label>
   <div class="row" style="gap:8px;align-items:end">
     <label style="flex:1">Ghi chú (tuỳ chọn)<input id="pr-label" autocomplete="off" placeholder="Trạm bơm Bình Dương"></label>
     <button id="pr-new" class="primary fit">Tạo mã</button>
@@ -112,7 +111,7 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <div class="adm-pane" data-at="sol" hidden>
 <div class="panel" style="max-width:none">
   <h2>Giải pháp (loại webapp)</h2>
-  <p class="help" style="margin:0 0 10px">Mỗi mục là một lựa chọn trong ô “giải pháp” của người dùng và trỏ tới một thư mục <code>solutions/&lt;tên&gt;/</code> trên server (đồng bộ từ máy lập trình bằng <code>sync-vps.ps1</code>). Chọn mục cho từng người ở tab Người dùng.</p>
+  <p class="help" style="margin:0 0 10px">Mỗi mục là một lựa chọn trong ô “giải pháp” của gateway và trỏ tới một thư mục <code>solutions/&lt;tên&gt;/</code> trên server (đồng bộ từ máy lập trình bằng <code>sync-vps.ps1</code>). Giải pháp gắn theo gateway (gateway tự báo lên server hoặc chọn ở tab Gateway), không gắn theo người dùng.</p>
   <div id="sol-list">Đang tải…</div>
   <h2 style="margin-top:16px">Thêm mục vào ô chọn</h2>
   <div class="form" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));align-items:end">
@@ -167,7 +166,7 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <script src="security/security-client.js?v=20261114c"></script>
 <script src="control.js?v=20261114c"></script>
 <script src="admin-nav.js?v=20261114c"></script>
-<script src="admin.js?v=20261115d"></script>
-<script src="admin-find.js?v=1"></script>
+<script src="admin.js?v=20261116b"></script>
+<script src="admin-find.js?v=3"></script>
 </body>
 </html>

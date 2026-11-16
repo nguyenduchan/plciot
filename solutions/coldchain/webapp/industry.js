@@ -102,15 +102,21 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
  *   - Thêm tab theo ngành, tab Thiết bị, tab Cảnh báo (ngưỡng theo từng chỉ số)
  * Dùng đúng luồng số liệu của bản cơ bản (DevicesUi.onTelemetry, d.<thiết bị>.<field>, schema 2). Đăng nhập, quét QR, cài đặt, chat, gói… là mã bản cơ bản.
  * Mã này giống hệt ở mọi giải pháp (tools/solution-kit/industry.js → solutions/<id>/webapp/industry.js bằng tools/solution-kit/gen.mjs). */
-(function () {
-  const S = window.INDUSTRY;
-  const dash = document.getElementById('tab-dash');
-  const nav = document.getElementById('nav');
-  const main = document.querySelector('main');
-  if (!S || !dash || !nav || !main) return;
-  document.documentElement.dataset.ind = S.style || 'soft';
+window.IndustryEngine = (function () {
+const STORE = {};   // trạng thái cảnh báo theo gateway: giữ nguyên khi chuyển tab gateway (gắn/gỡ giao diện)
+function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<id>) — chỉ nhận số liệu + thiết bị của gateway đó; unmount() dọn sạch để gắn giải pháp khác
+  const GW = (opts && opts.base) || '';
+  const HL = !!(opts && opts.headless);   // chạy ngầm (không hiện): chỉ để theo dõi cảnh báo của gateway không đang mở
+  const ROOT = HL ? document.createElement('div') : document;
+  let dead = false;
+  const dash = HL ? document.createElement('div') : document.getElementById('tab-dash');
+  const nav = HL ? document.createElement('div') : document.getElementById('nav');
+  const main = HL ? document.createElement('div') : document.querySelector('main');
+  if (HL) ROOT.append(dash, nav, main);
+  if (!S || !dash || !nav || !main) return null;
+  if (!HL) document.documentElement.dataset.ind = S.style || 'soft';
 
-  const $ = (s, r = document) => r.querySelector(s);
+  const $ = (s, r = ROOT) => r.querySelector(s);
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const num = (x) => { const n = Number(x); return x != null && x !== '' && typeof x !== 'boolean' && Number.isFinite(n) ? n : null; };
   const fmt = (v, d) => (v == null ? '—' : (d == null ? (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)) : v.toFixed(d)).replace(/\.0+$/, ''));
@@ -184,8 +190,16 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
   }
 
   /* ------------------------------------------------------------------ cảnh báo (nhật ký trong bộ nhớ) */
-  const ALM = [];                    // { ts, id, level, text }
-  const prevLv = {};
+  const ST = STORE[GW] || (STORE[GW] = { ALM: [], prevLv: {}, unseen: 0 });
+  const ALM = ST.ALM, prevLv = ST.prevLv;   // ALM: { ts, id, level, text }
+  const announce = () => document.dispatchEvent(new CustomEvent('plc-ind-unseen', { detail: { base: GW, n: ST.unseen } }));
+  function drawBadge() {
+    const b = btns.alm; if (!b) return;
+    let t = b.querySelector('.ind-badge');
+    if (!ST.unseen) { t?.remove(); return; }
+    if (!t) { t = document.createElement('i'); t.className = 'ind-badge'; b.appendChild(t); }
+    t.textContent = ST.unseen > 99 ? '99+' : String(ST.unseen);
+  }
   function alarmScan(now) {
     for (const m of Object.values(M)) {
       if (!m.th && !m.lv) continue;
@@ -194,6 +208,7 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
       if (v != null && lv !== (was || 'ok') && (lv === 'warn' || lv === 'bad' || was === 'warn' || was === 'bad')) {
         ALM.unshift({ ts: now, id: m.id, level: lv === 'ok' || lv === '' ? 'ok' : lv, text: `${m.label}: ${stateText(m, v)}${m.unit ? ' ' + m.unit : ''}` });
         if (ALM.length > 60) ALM.pop();
+        if ((lv === 'warn' || lv === 'bad') && !(MINE.alm && !MINE.alm.hidden)) { ST.unseen++; drawBadge(); announce(); }   // cảnh báo mới chưa xem
       }
       if (v != null) prevLv[m.id] = lv || 'ok';
     }
@@ -516,7 +531,7 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
   const card = document.createElement('div');
   card.id = 'ind-card';
   card.innerHTML = `<h2><span class="ind-ic">${svgI(S.icon)}</span>${esc(S.heading || S.title)}<span class="st" id="ind-st">Chờ dữ liệu…</span></h2><div id="ind-body"></div><p class="muted" id="ind-demo" hidden>Đang hiển thị dữ liệu mẫu (chế độ chạy thử).</p>`;
-  dash.insertBefore(card, dash.firstChild);
+  dash.insertBefore(card, (!HL && document.getElementById('gw-tabs')?.nextSibling) || dash.firstChild);   // dưới thanh tab gateway (nếu có)
 
   function drawOverview() {
     $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview);
@@ -542,12 +557,13 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
   mkBtn('devs', 'Thiết bị', 'device');
   mkTab('alm', '<div class="panel"><h2>Cảnh báo</h2><div id="alm-act"></div><h3 class="ib-sub">Nhật ký (phiên này)</h3><div id="alm-log"></div></div>');
   mkBtn('alm', 'Cảnh báo', 'bell');
+  drawBadge(); announce();
   $('#dv-add').onclick = () => { if (window.DevicesUi?.openModal) window.DevicesUi.openModal(); };
 
   const LABEL = {}; for (const m of Object.values(M)) for (const [k] of keyList(m)) LABEL[k] = m;
   function drawDevices() {
     const listed = new Map();
-    if (!demo) for (const d of (window.DevicesUi?.getDashboard?.()?.devices || [])) listed.set(d.childId, d);
+    if (!demo) for (const d of (window.DevicesUi?.getDashboard?.()?.devices || [])) if (!GW || d.gw?.base === GW) listed.set(d.childId, d);
     const ids = new Set([...listed.keys(), ...devs.keys()]), now = Date.now();
     let online = 0, bad = 0;
     const rows = [...ids].map((id) => {
@@ -580,20 +596,23 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
   };
 
   function showMine(t) {
-    document.querySelectorAll('main > .tab').forEach((s) => { s.hidden = true; });
+    main.querySelectorAll(':scope > .tab').forEach((s) => { s.hidden = true; });
     MINE[t].hidden = false;
+    if (t === 'alm' && ST.unseen) { ST.unseen = 0; drawBadge(); announce(); }   // mở tab Cảnh báo = đã xem
     nav.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
     const title = $('#title'); if (title) title.textContent = $('span', btns[t]).textContent;
     drawTab(t);
   }
   const hideMine = () => Object.values(MINE).forEach((s) => { s.hidden = true; });
-  if (typeof window.showTab === 'function' && !window.showTab.__ind) {
+  if (!HL) window.__indHide = hideMine;
+  if (!HL && typeof window.showTab === 'function' && !window.showTab.__ind) {
     const orig = window.showTab;
-    window.showTab = function indShowTab(t) { hideMine(); return orig.apply(this, arguments); };
+    window.showTab = function indShowTab(t) { try { window.__indHide?.(); } catch { /* */ } return orig.apply(this, arguments); };
     window.showTab.__ind = true;
   }
   // ẩn các tab của bản cơ bản không dùng trong giải pháp này (CSS đã ẩn nút; ở đây ẩn thêm theo spec)
-  for (const t of S.hide || []) { const b = nav.querySelector(`button[data-tab="${t}"]`); if (b) b.style.display = 'none'; }
+  const hidden = [];
+  for (const t of S.hide || []) { const b = nav.querySelector(`button[data-tab="${t}"]`); if (b) { b.style.display = 'none'; hidden.push(b); } }
 
   /* ------------------------------------------------------------------ nạp số liệu + chế độ chạy thử */
   function ingest(p) {
@@ -647,25 +666,47 @@ if (typeof module !== 'undefined') module.exports = IndExpr;
     drawOverview();
     for (const id of Object.keys(MINE)) if (!MINE[id].hidden) drawTab(id);
   }
+  const handler = (p, b) => {
+    if (GW && b && b !== GW) return;   // số liệu của gateway khác không thuộc giao diện này
+    if (!demo) { ingest(p); sample(Date.now()); alarmScan(Date.now()); redraw(); }
+  };
   function hook() {
     const ui = window.DevicesUi;
-    if (!ui) return false;
-    if (ui.__ind) return true;
-    const orig = ui.onTelemetry;
-    ui.onTelemetry = (p, b) => {
-      try { if (!demo) { ingest(p); sample(Date.now()); alarmScan(Date.now()); redraw(); } } catch (e) { console.warn('industry', e); }
-      return orig(p, b);
-    };
-    ui.__ind = true;
+    if (!ui || dead) return !!ui;
+    if (!ui.__ind || !ui.__ind.set) {
+      const orig = ui.onTelemetry, st = { set: new Set() };
+      ui.onTelemetry = (p, b) => { for (const h of st.set) { try { h(p, b); } catch (e) { console.warn('industry', e); } } return orig(p, b); };
+      ui.__ind = st;
+    }
+    ui.__ind.set.add(handler);
     return true;
   }
   if (!hook()) document.addEventListener('DOMContentLoaded', hook);
 
-  setInterval(() => {
+  const timer = setInterval(() => {
     try { demo = typeof cfg !== 'undefined' && cfg.demo === true; } catch { demo = false; }
     if (demo && !demoSeen) { demoSeen = true; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; prefill(); }
     if (demo) demoTick();
     sample(Date.now()); alarmScan(Date.now()); redraw();
   }, 1500);
   drawOverview();
+
+  function unmount() {
+    dead = true;
+    clearInterval(timer);
+    const ui = window.DevicesUi;
+    ui?.__ind?.set?.delete(handler);
+    if (!HL && window.__indHide === hideMine) window.__indHide = null;
+    card.remove();
+    Object.values(MINE).forEach((e) => e.remove());
+    Object.values(btns).forEach((e) => e.remove());
+    hidden.forEach((e) => { e.style.display = ''; });
+    if (!HL) delete document.documentElement.dataset.ind;
+    document.dispatchEvent(new CustomEvent('plc-ind-unseen', { detail: { base: GW, n: ST.unseen } }));
+  }
+  return { unmount };
+}
+return { mount };
 })();
+if (!window.PLCIOT_MULTI && window.INDUSTRY) window.IndustryEngine.mount(window.INDUSTRY);   // bản một giải pháp (cũ): tự chạy; bản nhiều gateway: sol-multi.js gắn theo tab
+
