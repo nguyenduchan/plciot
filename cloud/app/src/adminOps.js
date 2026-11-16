@@ -6,6 +6,7 @@ import { cleanSolution, setGatewaySolution, allGatewaySolutions } from './gatewa
 import { isKnownSolution } from './solutions.js';
 import { buildLicenseFile } from './gatewayKinds.js';
 import { publicUser, listSolutions } from './adminUsers.js';
+import { syncBundles } from './bundleSync.js';
 import { ROLES, MONITOR_SCOPES } from './roles.js';
 import { findUserById } from './db.js';
 import {
@@ -459,7 +460,7 @@ export function mountAdminOps(app, {
   app.post('/api/admin/pairings', ...writeGate, (req, res) => {
     const r = createPairing(db, {
       adminId: req.user.id, label: req.body?.label, ttlMin: req.body?.ttlMin,
-      site: req.body?.site, device: req.body?.device, auto: req.body?.auto, solution: solutionParam(req.body?.solution),
+      site: req.body?.site, device: req.body?.device, auto: req.body?.auto, 
     });
     if (!r.error) audit(db, 'pairing_create', { userId: req.user.id, ip: clientIp(req), detail: r.id });
     res.status(r.error ? r.status || 400 : 200).json(withCapacity(r));
@@ -484,7 +485,7 @@ export function mountAdminOps(app, {
   const sendHw = (res, r) => (r?.error ? res.status(r.status || 400).json(r) : res.json(r));
 
   /** Giải pháp gửi lên phải có trong ô chọn (basic/rỗng = cơ bản); sai → để createPairing/PATCH báo invalid_solution. */
-  const solutionParam = (v) => { const c = cleanSolution(v); return c === null || (c && !isKnownSolution(deployPaths.shellDir, c, 'gateway')) ? '!' : c; };
+  const solutionParam = (v) => { const c = cleanSolution(v); return c === null || (c && !isKnownSolution(deployPaths.shellDir, c, 'any')) ? '!' : c; };
   /**
    * Tìm kiếm chung người dùng + gateway cho admin: mỗi từ khoá phải khớp (không phân biệt hoa/thường, không dấu cách thừa) với MỘT trong nhiều trường
    * của đối tượng; kết quả trả ĐẦY ĐỦ các thông tin admin sửa được (trang admin hiện thành biểu mẫu sửa tại chỗ). Cố ý KHÔNG trả / không cho sửa
@@ -515,7 +516,8 @@ export function mountAdminOps(app, {
       let widgets = 0; try { widgets = widgetsOf.get(u.id).n; } catch { /* chưa có bảng */ }
       return {
         id: e.id, username: e.username, role: e.role, scopes: e.scopes, site: e.site, device: e.device, disabled: e.disabled,
-        solution: e.solution, solutionTitle: solTitle.get(e.solution) || (e.solution ? e.solution : 'Cơ bản'), createdAt: e.createdAt, tenantId: e.tenantId,
+        solution: '', solutionTitle: (() => { const t = [...new Set(myGw(u.id).map((g) => solTitle.get(gsol.get(`${g.site}/${g.device}`) || '') || 'Cơ bản'))]; return t.join(' · ') || 'Cơ bản'; })(),   // loại webapp theo GATEWAY của user
+        createdAt: e.createdAt, tenantId: e.tenantId,
         plan: { id: e.subscription.plan, label: e.subscription.planLabel, expiresAt: e.subscription.expiresAt, remoteControl: e.subscription.remoteControl, active: e.subscription.active, widgetLimit: e.subscription.widgetLimit },
         gateways: myGw(u.id), widgets,
       };
@@ -545,7 +547,7 @@ export function mountAdminOps(app, {
     const profiles = [...new Set(hardware.map((d) => d.profile).filter(Boolean))].sort();
     res.json({
       q, totals, users: users.slice(0, limit), gateways: gateways.slice(0, limit), moreUsers: Math.max(0, users.length - limit), moreGateways: Math.max(0, gateways.length - limit),
-      options: { roles: ROLES, scopes: MONITOR_SCOPES, plans: listPlans().map((p) => ({ id: p.id, label: p.label })), solutions: listSolutions(deployPaths.shellDir, 'webapp'), gatewaySolutions: listSolutions(deployPaths.shellDir, 'gateway'), profiles },
+      options: { roles: ROLES, scopes: MONITOR_SCOPES, plans: listPlans().map((p) => ({ id: p.id, label: p.label })), solutions: listSolutions(deployPaths.shellDir, 'webapp'), gatewaySolutions: listSolutions(deployPaths.shellDir, 'any'), profiles },
     });
   });
 
@@ -675,13 +677,6 @@ export function mountAdminOps(app, {
       const row = db.prepare('SELECT ui_meta FROM hardware_devices WHERE site = ? AND device = ?')
         .get(site, device);
       uiMeta = bumpConfigRev(row?.ui_meta, uiMeta);
-    }
-    if (req.body?.solution !== undefined) {   // đổi giải pháp của gateway (gateway đổi giao diện ở lần cấu hình kế tiếp)
-      const sp = solutionParam(req.body.solution);
-      if (sp === '!') return res.status(400).json({ error: 'invalid_solution' });
-      if (!db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, device)) return res.status(404).json({ error: 'not_found' });
-      setGatewaySolution(db, site, device, sp);
-      if (req.body.label === undefined && req.body.note === undefined && req.body.profile === undefined && uiMeta === undefined) return res.json({ ok: true, solution: sp });
     }
     const r = updateHardwareDeviceMeta(db, {
       site, device,

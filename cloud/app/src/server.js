@@ -221,17 +221,17 @@ app.get('/api/admin/users', ...adminOnly, (req, res) => {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 0)) || null;
   const offset = Math.max(0, Number(req.query.offset) || 0);
   if (limit) users = users.slice(offset, offset + limit);
-  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, solutions: listSolutions(WEBAPP_SRC), gatewaySolutions: listSolutions(WEBAPP_SRC, 'gateway'), defaultSolution: defaultSolution(), users, total, offset, limit });
+  res.json({ roles: ROLES, scopes: MONITOR_SCOPES, gatewaySolutions: listSolutions(WEBAPP_SRC, 'any'), defaultSolution: defaultSolution(), users, total, offset, limit });
 });
 
 /* Mục trong ô chọn "giải pháp" (admin thêm/sửa; mỗi mục trỏ tới một thư mục trong solutions/) */
 const solutionsView = () => {
   const items = registryItems(WEBAPP_SRC);
-  const count = (id) => db.prepare('SELECT COUNT(*) n FROM users WHERE solution = ?').get(id).n;
+  const count = (id) => { try { return db.prepare('SELECT COUNT(*) n FROM gateway_solutions WHERE solution = ?').get(id).n; } catch { return 0; } };   // số GATEWAY dùng giải pháp này
   const folders = detectFolders(WEBAPP_SRC);
   return {
     default: defaultSolution(),
-    basicUsers: db.prepare("SELECT COUNT(*) n FROM users WHERE solution = '' OR solution = 'basic'").get().n,
+    basicUsers: 0,
     items: items.map((it) => { const f = folders.find((x) => x.folder === it.folder); return { ...it, parts: f?.parts || { webapp: false, gateway: false }, users: count(it.id), missing: !f, version: f?.parts.webapp ? solutionVersion(WEBAPP_SRC, it.folder) : '' }; }),
     folders: folders.map((f) => ({ ...f, registered: items.some((it) => it.folder === f.folder) })),
     ignored: ignoredFolders(WEBAPP_SRC),   // thư mục trông như giải pháp nhưng thiếu dấu nhận diện / phần nào
@@ -250,7 +250,7 @@ app.patch('/api/admin/solutions/:id', ...adminOnly, adminWrite, reauth, (req, re
 });
 app.delete('/api/admin/solutions/:id', ...adminOnly, adminWrite, reauth, (req, res) => {
   const id = String(req.params.id);
-  const r = removeItem(WEBAPP_SRC, id, db.prepare('SELECT COUNT(*) n FROM users WHERE solution = ?').get(id).n);
+  const r = removeItem(WEBAPP_SRC, id, (() => { try { return db.prepare('SELECT COUNT(*) n FROM gateway_solutions WHERE solution = ?').get(id).n; } catch { return 0; } })());
   if (r.ok) audit(db, 'solution_remove', { userId: req.user.id, ip: ipOf(req), detail: id });
   send(res, r);
 });

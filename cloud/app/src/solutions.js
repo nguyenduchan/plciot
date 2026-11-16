@@ -97,7 +97,7 @@ export function registryItems(shellDir) {
 export function listSolutions(shellDir, part = 'webapp') {
   const out = [{ id: BASIC, title: 'Cơ bản' }];
   const disk = new Map(detectFolders(shellDir).map((f) => [f.folder, f.parts]));
-  for (const it of registryItems(shellDir)) if (it.enabled !== false && disk.get(it.folder)?.[part]) out.push({ id: it.id, title: it.title });
+  for (const it of registryItems(shellDir)) if (it.enabled !== false && (part === 'any' ? (disk.get(it.folder)?.webapp || disk.get(it.folder)?.gateway) : disk.get(it.folder)?.[part])) out.push({ id: it.id, title: it.title });
   return out;
 }
 
@@ -224,4 +224,46 @@ export function writeSolution(shellDir, id, root) {
     fs.writeFileSync(dest, content(p, entry, meta, id));
   }
   for (const f of listBundleFiles(root)) if (!files.has(f.path)) fs.unlinkSync(path.join(root, f.path));
+}
+
+/* ---------- Bundle webapp của user = shell + MỌI giải pháp của các gateway user đang dùng ----------
+ * Loại webapp do GATEWAY quyết định (gateway_solutions), không theo user. User có nhiều gateway khác kiểu → bundle chứa
+ * shell + overlay từng giải pháp đặt dưới sol/<id>/ + solutions.json (bản khai); webapp (sol-multi.js) nạp giao diện
+ * của giải pháp tương ứng khi người dùng chọn tab gateway. Không có giải pháp nào → đúng bản shell cơ bản (version cũ). */
+export function userBundlePlan(shellDir, ids = []) {
+  const files = new Map();   // path → { abs, hash }
+  for (const f of listBundleFiles(shellDir)) files.set(f.path, { abs: path.join(shellDir, f.path), hash: f.hash });
+  const manifest = {};
+  for (const id of [...new Set(ids)].sort()) {
+    const folder = folderOf(shellDir, id);
+    if (folder === BASIC) continue;
+    const meta = readMeta(shellDir, folder), od = overlayDir(shellDir, folder), pre = `sol/${id}/`;
+    for (const f of listBundleFiles(od)) if (!SKIP.has(path.basename(f.path).toLowerCase())) files.set(pre + f.path, { abs: path.join(od, f.path), hash: f.hash });
+    const inj = meta.inject || {};
+    manifest[id] = { title: meta.title || id, themeColor: meta.themeColor || '', css: (inj.css || []).map((x) => pre + x), js: (inj.js || []).map((x) => pre + x) };
+  }
+  const has = Object.keys(manifest).length > 0;
+  return { files, manifest: has ? manifest : null };
+}
+
+export function userBundleVersion(shellDir, ids = []) {
+  const { files, manifest } = userBundlePlan(shellDir, ids);
+  if (!manifest) return shellVersion(shellDir);
+  const h = crypto.createHash('sha256');
+  for (const p of [...files.keys()].sort((a, b) => a.localeCompare(b))) h.update(`${p}:${files.get(p).hash}\n`);
+  h.update(JSON.stringify(manifest));
+  return h.digest('hex').slice(0, 12);
+}
+
+export function writeUserBundle(shellDir, ids, root) {
+  const { files, manifest } = userBundlePlan(shellDir, ids);
+  fs.mkdirSync(root, { recursive: true });
+  const keep = new Set(files.keys());
+  for (const [p, f] of files) {
+    const dest = path.join(root, p);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(f.abs, dest);
+  }
+  if (manifest) { fs.writeFileSync(path.join(root, 'solutions.json'), JSON.stringify(manifest)); keep.add('solutions.json'); }
+  for (const f of listBundleFiles(root)) if (!keep.has(f.path)) fs.unlinkSync(path.join(root, f.path));
 }

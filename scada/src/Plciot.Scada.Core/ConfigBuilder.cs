@@ -56,7 +56,7 @@ public static class ConfigBuilder
     }
 
     public static byte[] Build(ScadaConfig cfg, IConfigDescriber? describer = null) =>
-        Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { gw = cfg.Device, devices = Devices(cfg, describer) }));
+        Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { gw = cfg.Device, solution = cfg.Solution ?? "", devices = Devices(cfg, describer) }));   // solution rỗng = giao diện cơ bản (gateway quyết định, server theo)
 
     static List<DeviceDto> Devices(ScadaConfig cfg, IConfigDescriber? d)
     {

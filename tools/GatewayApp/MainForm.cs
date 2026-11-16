@@ -286,6 +286,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         "pair" => PairAsync(api, value),
         "enroll" => EnrollAsync(api, value),
+        "solutions" => SolutionsAsync(api),
+        "solution" => SetSolutionAsync(api, value),
         _ => Task.FromResult((false, "việc cloud không hợp lệ")),
     };
 
@@ -343,6 +345,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         try
         {
+            if (_cfg.Solution.Length == 0 && _cfg.MqttId.Length == 0 && !string.IsNullOrEmpty(kit.Solution)) _cfg.Solution = kit.Solution;   // lần đăng ký đầu: nhận giải pháp mã ghép cặp gợi ý; sau đó GATEWAY quyết định
             ApplySkin(kit);   // giao diện theo giải pháp (dữ liệu từ server) — áp dụng khi mở lại
             _cfg.GatewayQr = qr; _cfg.CloudApiUrl = api.Trim();
             _cfg.CloudSendData = kit.Claimed ?? true;   // chưa có user → chỉ đồng bộ setting
@@ -382,6 +385,38 @@ public sealed partial class MainForm : Form, IGatewayApp
             return (true, $"Enroll xong: {_cfg.Site}/{_cfg.Device}, {pack.Count} field. Khai báo giao thức/thanh ghi ở trang Thiết bị.");
         }
         catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
+    }
+
+    /// <summary>Danh sách giải pháp server cho phép gateway chọn (JSON {solutions:[{id,title}]}).</summary>
+    async Task<(bool Ok, string Msg)> SolutionsAsync(string api)
+    {
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(10) };
+            return (true, await http.GetStringAsync("/api/v1/gateway/solutions"));
+        }
+        catch (Exception ex) { return (false, "Không lấy được danh sách giải pháp: " + ex.Message); }
+    }
+
+    /// <summary>GATEWAY chọn giải pháp (đúng một loại UI cho gateway này): lưu, publish config kèm solution lên server, rồi lấy giao diện mới.</summary>
+    async Task<(bool Ok, string Msg)> SetSolutionAsync(string api, string id)
+    {
+        id = (id ?? "").Trim();
+        if (id.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z][a-z0-9_]{0,23}$")) return Done(false, "Mã giải pháp không hợp lệ.");
+        _cfg.Solution = id;
+        await ApplyAsync(id.Length > 0 ? $"Đã chọn giải pháp \"{id}\" cho gateway này" : "Gateway dùng giao diện cơ bản");
+        if (_cfg.GatewayQr.Length > 0 && _cfg.CloudApiUrl.Length > 0)
+        {
+            try
+            {
+                await Task.Delay(2500);   // chờ config (kèm solution) lên server rồi mới lấy giao diện tương ứng
+                using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(15) };
+                var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
+                if (kit != null) ApplySkin(kit);
+            }
+            catch (Exception) { /* giao diện sẽ nhận ở lần đồng bộ kế */ }
+        }
+        return (true, id.Length > 0 ? $"Gateway này dùng giải pháp \"{id}\"." : "Gateway này dùng giao diện cơ bản.");
     }
 
     /// <summary>Giao diện của giải pháp (kit.Solution + kit.Ui) → lưu cache; có thay đổi thì báo (áp dụng khi mở lại gateway).</summary>

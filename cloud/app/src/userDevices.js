@@ -23,6 +23,11 @@ import { DEFAULT_TENANT } from './contract.js';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
 import { deviceOf, migrateGatewayConfigs } from './gatewayConfig.js';
+import { gatewaySolution } from './gatewaySolution.js';
+import { defaultSolution } from './solutions.js';
+
+/** Gateway của user + giải pháp (kiểu giao diện) của từng gateway — webapp chia tab theo gateway và nạp giao diện tương ứng. */
+const gatewaysWithSolution = (db, u) => gatewaysOfUser(db, u).map((g) => ({ ...g, solution: gatewaySolution(db, g.site, g.device) || (defaultSolution() === 'basic' ? '' : defaultSolution()) }));
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
@@ -266,7 +271,7 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
     ok: true,
     ...(solution ? { solutionApplied: solution } : {}),
     ...result,
-    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device), gateways: gatewaysOfUser(db, u), ...planOf(u) }),
+    dashboard: resolveDashboard({ user: u, devices: listRows(db, u.id), mode: 'simple', mqttId: mqttIdFor(db, u.tenant_id, u.notify_site, u.notify_device), gateways: gatewaysWithSolution(db, u), ...planOf(u) }),
   };
 }
 
@@ -347,7 +352,7 @@ export function getDashboardFor(db, user, mode) {
     devices: listRows(db, user.id),
     mode: mode === 'pro' ? 'pro' : 'simple',
     mqttId: mqttIdFor(db, user.tenant_id, user.notify_site, user.notify_device),
-    gateways: gatewaysOfUser(db, user),
+    gateways: gatewaysWithSolution(db, user),
     ...planOf(user),
   });
 }

@@ -2,7 +2,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { listBundleFiles, resolveBundleRoot } from './bundle.js';
-import { solutionOf, solutionVersion, writeSolution } from './solutions.js';
+import { folderOf, userBundleVersion, writeUserBundle, defaultSolution, BASIC } from './solutions.js';
+import { gatewaysOfUser } from './mqttIds.js';
+import { gatewaySolution } from './gatewaySolution.js';
 
 /**
  * Giữ bundle của mọi user bằng đúng mã nguồn webapp trên PC: sửa webapp/ là điện thoại tự nhận bản mới.
@@ -15,20 +17,43 @@ export function shellVersion(shellDir) {
   return h.digest('hex').slice(0, 12);
 }
 
+/** Giải pháp (id) của các gateway user đang dùng — loại webapp do gateway quyết định. Gateway chưa đặt → DEFAULT_SOLUTION (mặc định cơ bản). */
+export function userSolutionIds(db, user, shellDir) {
+  const ids = new Set();
+  for (const g of gatewaysOfUser(db, user)) {
+    const id = gatewaySolution(db, g.site, g.device) || defaultSolution();
+    if (id !== BASIC && folderOf(shellDir, id) !== BASIC) ids.add(id);
+  }
+  return [...ids].sort();
+}
+
+/** Dựng lại bundle của một user theo gateway của họ (gọi sau khi thêm/gỡ gateway hoặc đổi giải pháp gateway). */
+export function refreshUserBundle(db, user, { dataDir, shellDir }) {
+  if (!user?.folder_path) return null;
+  const ids = userSolutionIds(db, user, shellDir);
+  const v = userBundleVersion(shellDir, ids);
+  if (user.version !== v) {
+    writeUserBundle(shellDir, ids, resolveBundleRoot(dataDir, user.folder_path));
+    db.prepare('UPDATE users SET version = ? WHERE id = ?').run(v, user.id);
+  }
+  return { version: v, ids };
+}
+
 export function syncBundles(db, { dataDir, shellDir }, { force = false } = {}) {
   const version = shellVersion(shellDir);   // phiên bản của shell cơ bản (giữ nguyên ý nghĩa cũ cho deploy/status)
-  const users = db.prepare("SELECT username, folder_path, version, solution FROM users WHERE folder_path IS NOT NULL AND folder_path != ''").all();
+  const users = db.prepare("SELECT * FROM users WHERE folder_path IS NOT NULL AND folder_path != ''").all();
   const vers = new Map();
   let updated = 0;
   for (const u of users) {
-    const sol = solutionOf(shellDir, u);
-    if (!vers.has(sol)) vers.set(sol, solutionVersion(shellDir, sol));
-    const v = vers.get(sol);
+    const ids = userSolutionIds(db, u, shellDir);
+    const key = ids.join(',');
+    if (!vers.has(key)) vers.set(key, userBundleVersion(shellDir, ids));
+    const v = vers.get(key);
     if (!force && u.version === v) continue;
-    writeSolution(shellDir, sol, resolveBundleRoot(dataDir, u.folder_path));
+    writeUserBundle(shellDir, ids, resolveBundleRoot(dataDir, u.folder_path));
     db.prepare('UPDATE users SET version = ? WHERE username = ?').run(v, u.username);
     updated++;
-    console.log(`bundle ${u.username} [${sol}] -> ${v}`);
+    console.log(`bundle ${u.username} [${key || BASIC}] -> ${v}`);
   }
   return { version, updated };
 }

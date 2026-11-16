@@ -34,7 +34,7 @@ sealed class CloudPage : UserControl
     public CloudPage(IGatewayApp app)
     {
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
-        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 380 };
+        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 460 };
         Skin.Input(Pair);
         var row = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = Color.Transparent };
         _sync.Location = new Point(0, 9);
@@ -55,9 +55,48 @@ sealed class CloudPage : UserControl
         adv.Click += (_, _) => ShowAdvanced();
         buttons.Controls.AddRange(new Control[] { pair, adv });
 
-        card.Controls.Add(_info); card.Controls.Add(buttons); card.Controls.Add(t); card.Controls.Add(row);
+        // Giải pháp (kiểu UI giám sát/điều khiển): GATEWAY quyết định, mỗi gateway đúng một loại; webapp theo gateway này
+        var solRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
+        _sol.DropDownStyle = ComboBoxStyle.DropDownList; _sol.Width = 260; _sol.Location = new Point(130, 10);
+        var solLbl = Skin.Lbl("Giải pháp (UI)"); solLbl.Location = new Point(0, 14);
+        var solBtn = new FlatButton { Caption = "Áp dụng", Primary = true, Width = 110, Location = new Point(400, 6) };
+        solBtn.Click += async (_, _) => await RunSolution();
+        solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn });
+        card.Controls.Add(_info); card.Controls.Add(solRow); card.Controls.Add(buttons); card.Controls.Add(t); card.Controls.Add(row);
         Controls.Add(card);
         Refresh2();
+        _ = LoadSolutions();
+    }
+
+    readonly ComboBox _sol = new();
+    sealed record SolItem(string Id, string Title) { public override string ToString() => Title; }
+
+    async Task LoadSolutions()
+    {
+        try
+        {
+            var r = await _app.CloudAsync("solutions", ServerOf(_app.Config), "");
+            _sol.Items.Clear(); _sol.Items.Add(new SolItem("", "Cơ bản"));
+            if (r.Ok)
+            {
+                using var d = System.Text.Json.JsonDocument.Parse(r.Msg);
+                foreach (var s in d.RootElement.GetProperty("solutions").EnumerateArray())
+                {
+                    var id = s.GetProperty("id").GetString() ?? ""; var title = s.TryGetProperty("title", out var t) ? t.GetString() : id;
+                    if (id.Length > 0) _sol.Items.Add(new SolItem(id, title ?? id));
+                }
+            }
+            var cur = _app.Config.Solution ?? "";
+            _sol.SelectedItem = _sol.Items.Cast<SolItem>().FirstOrDefault(x => x.Id == cur) ?? _sol.Items[0];
+        }
+        catch (Exception) { /* chưa có mạng: giữ danh sách hiện có */ }
+    }
+
+    async Task RunSolution()
+    {
+        if (_sol.SelectedItem is not SolItem it) return;
+        var r = await _app.CloudAsync("solution", ServerOf(_app.Config), it.Id);
+        _app.Toast(r.Msg, !r.Ok);
     }
 
     async Task RunPair()

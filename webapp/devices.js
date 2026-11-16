@@ -251,7 +251,7 @@
   }
 
   function structSig(order, byId, banner) {
-    return JSON.stringify([banner, dashboard?.gateways?.length || 0, order.map((id) => {
+    return JSON.stringify([banner, dashboard?.gateways?.length || 0, activeGw, order.map((id) => {
       const d = byId[id];
       return d && [d.id, d.title, d.icon, d.color, d.type, d.gw, d.widgets.map((w) => [w.id, w.kind, w.label, w.locked, w.unit, w.min, w.max, w.step, w.low, w.high, w.onText, w.offText, w.cmd])];
     })]);
@@ -282,7 +282,39 @@
     }
   }
 
-  function render() {
+  /* ---- Nhiều gateway: mỗi gateway một tab trên phần giám sát/điều khiển; giao diện (giải pháp) nạp theo gateway của tab đang chọn ---- */
+  let activeGw = (() => { try { return LS.get('activeGw', '') || ''; } catch { return ''; } })();
+  const gwList = () => (dashboard?.gateways || []).filter((g) => g.site && g.device).map((g) => ({ ...g, key: `${g.site}/${g.device}` }));
+  function currentGw() { const l = gwList(); return l.length ? (l.find((g) => g.key === activeGw) || l[0]) : null; }
+  function renderGwTabs() {
+    const el = $('#gw-tabs'); if (!el) return;
+    const l = gwList();
+    if (l.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
+    const cur = currentGw();
+    el.hidden = false;
+    const total = l.reduce((n, g) => n + (unseen[g.base] | 0), 0);
+    el.innerHTML = (total ? `<div class="gw-total">⚠ <b>${total > 99 ? '99+' : total}</b> cảnh báo chưa xem</div>` : '') + `<div class="gw-row">` + l.map((g) => {
+      const t = window.SolMulti?.title?.(g.solution) || '';
+      return `<button type="button" role="tab" class="${g.key === cur.key ? 'on' : ''}" data-gw="${esc(g.key)}" title="${esc(g.key)}"><b>${esc(g.device)}${unseen[g.base] ? `<i class="gw-badge" title="Cảnh báo chưa xem">${unseen[g.base] > 99 ? '99+' : unseen[g.base]}</i>` : ''}</b><small>${esc(t || g.site)}</small></button>`;
+    }).join('') + '</div>';
+    el.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => { activeGw = b.dataset.gw; try { LS.set('activeGw', activeGw); } catch { /* */ } lastSig = ''; render(); };
+    });
+  }
+  const unseen = {};   // base gateway → số cảnh báo chưa xem (engine giải pháp báo lên)
+  document.addEventListener('plc-ind-unseen', (e) => { unseen[e.detail.base] = e.detail.n | 0; renderGwTabs(); });
+  let lastGwSig = '';
+  function announceGw() {
+    const g = currentGw();
+    const sig = g ? `${g.key}|` + gwList().map((x) => `${x.key}:${x.solution || ''}:${x.base || ''}`).join(',') : '';
+    if (sig === lastGwSig) return;
+    lastGwSig = sig;
+    document.dispatchEvent(new CustomEvent('plc-gw-active', { detail: { gw: g, all: gwList() } }));
+  }
+  function render() { renderGrid(); renderGwTabs(); announceGw(); }
+  document.addEventListener('plc-sol-manifest', renderGwTabs);   // có tên giải pháp → cập nhật nhãn tab
+
+  function renderGrid() {
     const host = $('#dev-grid');
     if (!host) return;
     if (loadErr && !dashboard?.devices?.length) {
@@ -298,8 +330,10 @@
       lastSig = '';
       return;
     }
-    const order = dashboard.layout?.simple?.order || dashboard.devices.map((d) => d.id);
+    const allOrder = dashboard.layout?.simple?.order || dashboard.devices.map((d) => d.id);
     const byId = Object.fromEntries(dashboard.devices.map((d) => [d.id, d]));
+    const multiGw = gwList().length > 1, curKey = currentGw()?.key;
+    const order = multiGw ? allOrder.filter((id) => byId[id] && gwKey(byId[id]) === curKey) : allOrder;   // chỉ thiết bị của gateway đang chọn
     const pl = dashboard.plan;
     const banner = pl && pl.locked > 0
       ? `<div class="plan-banner" id="plan-banner">🔒 <span>Gói ${esc(pl.label || 'Miễn phí')} chỉ dùng ${pl.widgetLimit} widget — ${pl.locked} widget đang bị khoá (làm mờ, không cập nhật dữ liệu).</span><button type="button" class="primary" id="plan-up">Chat để nâng cấp</button></div>`

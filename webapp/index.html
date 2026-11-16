@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
-<link rel="stylesheet" href="style.css?v=20261115h">
+<link rel="stylesheet" href="style.css?v=20261116b">
 <!-- Chat hỗ trợ: vùng riêng (toàn màn hình trên điện thoại, ngăn kéo bên phải trên máy tính), mở bằng nút 💬 trên đỉnh -->
 <div id="chat-view" class="chat-view" hidden role="dialog" aria-label="Chat với quản trị viên">
   <div class="chat-head"><b>Chat với quản trị viên</b> <span id="support-badge" class="tag" hidden></span><button type="button" class="fit" id="chat-close" aria-label="Đóng chat">✕</button></div>
@@ -72,6 +72,7 @@
 
     <main>
       <section id="tab-dash" class="tab cols phone-home">
+        <div id="gw-tabs" class="gw-tabs span" role="tablist" aria-label="Gateway" hidden></div>
         <div id="status-card" class="status-card st-comm span" role="status" aria-live="polite"><span class="sc-i" aria-hidden="true">■</span><div class="sc-b"><div class="sc-t">Đang kết nối…</div><div class="sc-h"></div></div></div>
         <!-- Phone UI: chỉ widget cards theo UI contract — không sơ đồ SCADA -->
         <div class="panel span phone-flush" id="dev-panel">
@@ -377,7 +378,9 @@
 <script src="support.js?v=18"></script>
 <script src="plan.js?v=20261115c"></script>
 <script src="settings-tabs.js?v=20261115b"></script>
-<script src="devices.js?v=20261113w"></script>
+<script>window.PLCIOT_MULTI = true;</script>
+<script src="sol-multi.js?v=3"></script>
+<script src="devices.js?v=20261116g"></script>
 <script src="app.js?v=20261114g"></script>
 <script src="security/account.js"></script>
 </body>

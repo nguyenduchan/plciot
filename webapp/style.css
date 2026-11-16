@@ -805,3 +805,20 @@ body.chat-on{overflow:hidden}
 /* Không cho trình duyệt tự zoom: chạm đúp không phóng to; ô nhập >=16px để iOS không tự phóng khi bấm vào ô */
 html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media (pointer:coarse){input,select,textarea{font-size:16px!important}}
+
+/* Tab gateway (nhiều gateway): mỗi gateway một tab trên phần giám sát / điều khiển */
+.gw-tabs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; min-width: 0; max-width: 100%; }
+.gw-row { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: scroll; overflow-y: hidden; min-width: 0; padding: 6px 2px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.gw-total { font-size: 13px; color: #b91c1c; padding: 0 2px; }
+.gw-total b { font-size: 15px; }
+.gw-tabs[hidden] { display: none; }
+.gw-tabs button { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg, inherit); font: inherit; cursor: pointer; }
+.gw-tabs button b { font-size: 14px; }
+.gw-tabs button small { font-size: 11px; opacity: .7; }
+.gw-tabs button.on { border-color: var(--acc, #2563eb); box-shadow: inset 0 -3px 0 var(--acc, #2563eb); }
+
+/* Số cảnh báo chưa xem: nút Cảnh báo của giải pháp + tab gateway */
+.ind-badge, .gw-badge { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; min-width: 16px; padding: 3px 5px; border-radius: 9px; background: #dc2626; color: #fff; text-align: center; }
+nav button { position: relative; }
+nav button .ind-badge { position: absolute; top: 0; left: calc(50% + 6px); }
+.gw-tabs .gw-badge { margin-left: 6px; vertical-align: 1px; }
