@@ -148,7 +148,7 @@ export function submitPairing(db, body = {}, opts = {}) {
   // Lần gửi đầu KHOÁ mã vào khoá đó: người khác biết mã cũng không ghi đè được bản khai.
   const pk = parsePubkey(body.pubkey);
   if (!pk) return { error: 'invalid_pubkey', status: 400 };
-  if (!verifyProof(body.pubkey, proofMsg(code), body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
+  if (!opts.proofVerified && !verifyProof(body.pubkey, proofMsg(code), body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
   const hw = pk.hw;
   if (row.hw && row.hw !== hw) return INVALID;
 
@@ -202,7 +202,7 @@ export function registerForUser(db, user, body = {}) {
   const site = `u${user.id}`;
   db.prepare(`INSERT INTO gateway_pairings (id, code_hash, admin_id, label, status, created_at, expires_at, site_pre, device_pre, auto, solution, user_id)
     VALUES (?, ?, NULL, ?, 'open', ?, ?, ?, NULL, 1, ?, ?)`).run(id, hashCode(code), `user:${user.id}`, now, now + 5 * 60_000, site, sol, user.id);
-  const r = submitPairing(db, { ...body, code }, { proof });
+  const r = submitPairing(db, { ...body, code }, { proof, proofVerified: true });   // chữ ký đã kiểm ở trên (mỗi chữ ký chỉ dùng được một lần)
   if (!r.ok || !r.approved) db.prepare("UPDATE gateway_pairings SET status = 'cancelled' WHERE id = ? AND status IN ('open','received')").run(id);
   return r;
 }
