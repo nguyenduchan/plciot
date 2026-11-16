@@ -32,7 +32,6 @@ import { mountPush } from './webPush.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountCapacity } from './vpsCapacity.js';
-import { mountActivateApi } from './activateApi.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext } from './gatewaySolution.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
@@ -287,7 +286,6 @@ mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.
 setSolutionsContext(WEBAPP_SRC);
 setGatewayAddedHook((d, u, hw) => adoptSolution(d, u.id, gatewaySolution(d, hw.site, hw.device), { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
 /* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
-mountActivateApi(app, { db, requireAuth, requireAdmin, reauth });
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,

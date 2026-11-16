@@ -61,7 +61,6 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 
 <div class="adm-tabs" role="tablist">
   <button type="button" role="tab" data-at="gw" class="on">Gateway <span class="tag" id="at-gw-n"></span></button>
-  <button type="button" role="tab" data-at="add">Thêm gateway</button>
   <button type="button" role="tab" data-at="find">Tìm kiếm</button>
   <button type="button" role="tab" data-at="users">Người dùng <span class="tag" id="at-users-n"></span></button>
   <button type="button" role="tab" data-at="sol">Giải pháp <span class="tag" id="at-sol-n"></span></button>
@@ -76,25 +75,6 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 </div>
 </div>
 
-<div class="adm-pane" data-at="add" hidden>
-<div class="panel form" id="pr-panel" style="max-width:none;margin-bottom:14px">
-  <h2>Thêm gateway</h2>
-  <p class="help">Nhập site rồi bấm <b>Tạo mã</b>. Người lắp đặt chỉ cần nhập mã vào GatewayApp: gateway và server tự cấp tem, MQTT và đồng bộ setting. Dùng điện thoại? Mở <a href="activate.html">trang kích hoạt</a>.</p>
-  <label>Site (nhà máy / trạm)<input id="pr-site" list="pr-sites" autocapitalize="off" autocomplete="off" placeholder="tram_binh_duong"></label>
-  <datalist id="pr-sites"></datalist>
-  <div class="row" style="gap:8px;align-items:end">
-    <label style="flex:1">Ghi chú (tuỳ chọn)<input id="pr-label" autocomplete="off" placeholder="Trạm bơm Bình Dương"></label>
-    <button id="pr-new" class="primary fit">Tạo mã</button>
-  </div>
-  <div id="pr-code" hidden style="margin:12px 0;padding:14px;border:1px dashed var(--line);border-radius:12px;text-align:center">
-    <div class="help" style="margin:0">Mã ghép cặp (chỉ hiện một lần, dùng một lần, hết hạn sau ~15 phút)</div>
-    <div id="pr-code-val" style="font:700 2rem/1.3 ui-monospace,Consolas,monospace;letter-spacing:.12em"></div>
-    <div id="pr-code-exp" class="help" style="margin:0"></div>
-  </div>
-  <div id="pr-list">Đang tải…</div>
-  <div id="pr-review" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px"></div>
-</div>
-</div>
 <div class="adm-pane" data-at="gw">
 <div class="panel" id="dup-panel" style="max-width:none;margin-bottom:14px" hidden>
   <h2>⚠ Nghi gateway bị chép (hai máy cùng ID)</h2>

@@ -78,30 +78,31 @@ for (const id of list) {
   results.push(r);
   try {
     const spec = loadSpec(id), setup = JSON.parse(fs.readFileSync(path.join(SOL, id, 'gateway', 'setup.json'), 'utf8'));
-    // 1) tài khoản test t_<id> map đúng giải pháp
+    // 1) tài khoản test t_<id> (không còn gán giải pháp theo user: giải pháp do GATEWAY chọn)
     const uname = `t_${id}`;
     let u = findUserByUsername(db, uname);
-    if (!u) { const c = await j('/api/admin/users', { method: 'POST', body: JSON.stringify({ username: uname, role: 'operator', solution: id }) }, adminTok); check(r, c.ok, `tạo tài khoản ${uname}: ${c.ok ? 'ok' : JSON.stringify(c.body)}`); u = findUserByUsername(db, uname); }
-    else { const p = await j(`/api/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ solution: id }) }, adminTok); check(r, p.ok, `map ${uname} → ${id}`); }
+    if (!u) { const c = await j('/api/admin/users', { method: 'POST', body: JSON.stringify({ username: uname, role: 'operator'}) }, adminTok); check(r, c.ok, `tạo tài khoản ${uname}: ${c.ok ? 'ok' : JSON.stringify(c.body)}`); u = findUserByUsername(db, uname); }
+    else { check(r, true, `dùng lại tài khoản ${uname}`); }
     u = findUserByUsername(db, uname);
     db.prepare('UPDATE users SET setup_complete = 1 WHERE id = ?').run(u.id);
     grantPlan(db, u.id, 'factory', { expiresAt: null });
     const sid = createAppSession(db, u.id, 'e2e');
     const tok = signToken({ uid: u.id, tv: u.token_version | 0, sid }, process.env.APP_JWT_SECRET, 12 * 3600);
     tokens[id] = { token: tok, userId: u.id, username: uname };
-    check(r, u.solution === id, `users.solution = ${u.solution}`);
 
     // 2) ghép cặp gateway bằng bản khai của giải pháp (chạy lại: dọn thiết bị thử cũ của tài khoản trước)
-    const site = `e2e_${id}`.slice(0, 24);
+    // (site của gateway do server đặt = u<id tài khoản>; chạy lại: dọn gateway + thiết bị thử cũ của tài khoản trước)
+    const site = `u${u.id}`;
     db.prepare('DELETE FROM user_devices WHERE user_id = ?').run(u.id);
-    const old = await j(`/api/admin/hardware/${site}/gw01?force=1`, { method: 'DELETE' }, adminTok);
-    await sleep(old.ok ? 4000 : 500);   // mỗi lần thu hồi ghi lại passwd + nạp lại broker: không dồn dập (dồn dập từng làm broker thoát)
-    const pc = await j('/api/admin/pairings', { method: 'POST', body: JSON.stringify({ site, label: `E2E ${id}`, auto: true, solution: id }) }, adminTok);
-    check(r, pc.body.solution === id, `mã ghép cặp mang giải pháp ${id}`);
-    check(r, pc.ok && pc.body.code, `admin tạo mã ghép cặp (${pc.body.code || JSON.stringify(pc.body)})`);
+    for (const row of db.prepare('SELECT device FROM hardware_devices WHERE site = ?').all(site)) {
+      await j(`/api/admin/hardware/${site}/${row.device}?force=1`, { method: 'DELETE' }, adminTok);
+      await sleep(4000);   // mỗi lần thu hồi ghi lại passwd + nạp lại broker: không dồn dập (dồn dập từng làm broker thoát)
+    }
+    // đăng ký bằng token đăng nhập (như app C# sau khi người dùng duyệt trên webapp); giải pháp gateway tự chọn, gửi kèm
+    const regTok = signToken({ uid: u.id, tv: u.token_version | 0, scope: 'gateway_register' }, process.env.APP_JWT_SECRET, 1800);
     const gw = makeGateway();
-    const pr = await j('/api/v1/gateway/pair', { method: 'POST', body: JSON.stringify(gw.pairBody(pc.body.code, { config: setup })) });
-    check(r, pr.ok && pr.body.approved, `gateway ghép cặp + nhận QR (${pr.body.error || 'approved'})`);
+    const pr = await j('/api/v1/gateway/register', { method: 'POST', body: JSON.stringify(gw.registerBody(u.id, { config: setup, solution: id })) }, regTok);
+    check(r, pr.ok && pr.body.approved, `gateway đăng ký + nhận QR (${pr.body.error || 'approved'})`);
     const kit = pr.body.kit, qr = pr.body.qr;
     // mapping 1-1: kit trả giải pháp + giao diện gateway dạng dữ liệu (ui.json) khớp spec webapp
     check(r, kit?.solution === id, `kit.solution = ${kit?.solution}`);
@@ -130,7 +131,6 @@ for (const id of list) {
     await j(`/api/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ solution: '' }) }, adminTok);
     const add = await j('/api/devices', { method: 'POST', body: JSON.stringify({ qr }) }, tok);
     check(r, add.body.solutionApplied === id, `quét QR → webapp tự map giải pháp ${add.body.solutionApplied || '(không)'} `);
-    check(r, findUserByUsername(db, uname).solution === id, 'users.solution = giải pháp của gateway sau khi quét');
     check(r, add.ok, `${uname} quét QR → thêm thiết bị (${add.ok ? (add.body.added ?? 'ok') : JSON.stringify(add.body)})`);
     for (let i = 0; i < 20 && !claimed; i++) await sleep(300);
     check(r, claimed, 'gateway nhận {sys:claimed} sau khi user quét');
@@ -161,11 +161,11 @@ for (const id of list) {
     // 7) bundle webapp của user đúng giải pháp
     const me = (await j('/api/me', {}, tok)).body;
     const fl = (me.files || []).map((f) => f.path);
-    check(r, ['spec.js', 'industry.js', 'industry.css', 'theme.css'].every((f) => fl.includes(f)), 'bundle của user có spec.js/industry.js/industry.css/theme.css');
-    const sp = await fetch(`${BASE}/api/bundle/spec.js`, { headers: { Authorization: `Bearer ${tok}` } }).then((x) => x.text());
-    check(r, sp.includes(`"id": "${id}"`), 'spec.js trong bundle đúng giải pháp');
-    const idx = await fetch(`${BASE}/api/bundle/index.html`, { headers: { Authorization: `Bearer ${tok}` } }).then((x) => x.text());
-    check(r, idx.includes('industry.js') && idx.indexOf('industry.js') > idx.indexOf('app.js'), 'index.html chèn industry.js sau app.js');
+    // giao diện là DỮ LIỆU: engine dùng chung + overlay riêng của giải pháp dưới sol/<id>/ + solutions.json (không còn spec.js ở gốc bundle)
+    check(r, ['industry-engine.js', 'industry.css', 'sol-multi.js', 'solutions.json'].every((f) => fl.includes(f)), 'bundle của user có engine dùng chung + solutions.json');
+    check(r, fl.some((f) => f.startsWith(`sol/${id}/`)), `bundle có overlay sol/${id}/`);
+    const man = await fetch(`${BASE}/api/bundle/solutions.json`, { headers: { Authorization: `Bearer ${tok}` } }).then((x) => x.text());
+    check(r, man.includes(`"${id}"`), 'solutions.json của bundle liệt kê giải pháp của gateway');
 
     // 8) điều khiển: lệnh tới gateway (chỉ giải pháp có công tắc)
     const sw = setup.devices.flatMap((d) => d.fields.filter((f) => f.widget === 'switch').map((f) => ({ child: d.id, key: f.key })))[0];

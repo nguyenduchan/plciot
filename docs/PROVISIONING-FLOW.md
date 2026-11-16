@@ -52,7 +52,7 @@ khi `claimed:true` mới bắt đầu gửi data. Server cũng im lặng bỏ `t
 
 ## Luồng chính (đơn giản nhất): nhập mã là xong
 
-1. **Admin** nhập *site* ở trang admin (hoặc `/activate.html` trên điện thoại, cần Face ID) rồi bấm **Tạo mã** → mã `XXXX-XXXX` (dùng một lần, ~15 phút).
+(Đã bỏ.) Admin phát mã `XXXX-XXXX` rồi người lắp đặt nhập vào GatewayApp — thay bằng đăng nhập duyệt qua trình duyệt (mục cuối tài liệu).
 2. **Người lắp đặt** nhập mã vào GatewayApp (Cloud → *Mã ghép cặp* → **Kết nối bằng mã**). Không cần admin duyệt, không cần dán QR.
 3. Gateway gửi **khoá công khai** + chữ ký + bản khai (có thể rỗng). Server tự duyệt: cấp tem, MQTT, `mqttId`, lưu khoá công khai, rồi **trả luôn kit** (site/device/MQTT/pack) + QR trong cùng phản hồi. Gateway tự áp cấu hình, nối cloud, publish `config` (và lại publish mỗi lần khởi động / đổi setting).
 4. **User** quét QR (admin bấm *Hiện QR* trên trang admin hoặc trang kích hoạt) → server báo `{sys:claimed}` → gateway bắt đầu gửi data.

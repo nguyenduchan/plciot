@@ -225,9 +225,29 @@ public sealed partial class MainForm : Form, IGatewayApp
             _login = f.Result; _loginAt = DateTime.UtcNow;
             _dash.ReadOnly = false; _dash.Rebuild();
             Toast($"Đã xác nhận ({f.Result.User}) — sửa được trong {(int)UnlockLife.TotalMinutes} phút.");
+            _ = AutoConnectAsync();
             return true;
         }
         finally { _prompting = false; }
+    }
+
+    bool _autoBusy;
+    /// <summary>Sau đăng nhập: gateway CHƯA có ID + QR thì server tự cấp (đăng ký tự động); ĐÃ có thì tự nối cloud và đồng bộ, không cần bấm gì.</summary>
+    async Task AutoConnectAsync()
+    {
+        if (_testMode || _login == null || _autoBusy) return;
+        _autoBusy = true;
+        try
+        {
+            var hasId = _cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0;
+            if (!hasId)
+            {
+                var r = await RegisterAsync(CloudPage.ServerOf(_cfg));
+                if (r.Ok) Toast("Đã tự cấp ID + QR từ server và đồng bộ.");
+            }
+            else if (_host == null) await StartAsync();   // đã đăng ký: chạy là tự nối cloud + publish config
+        }
+        finally { _autoBusy = false; }
     }
 
     /// <summary>Hết hạn mở khoá: khoá lại giao diện sửa.</summary>

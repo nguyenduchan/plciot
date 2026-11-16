@@ -61,17 +61,17 @@ public sealed partial class MainForm
         {
             foreach (DataGridViewRow r in g.Rows)
             {
-                if (Convert.ToString(r.Cells[0].Value) == "t") r.Cells[3].Value = "REAL";
-                if (Convert.ToString(r.Cells[0].Value) == "h") r.Cells[4].Value = "57";
+                if (Convert.ToString(r.Cells[0].Value) == "t") r.Cells[4].Value = "REAL";
+                if (Convert.ToString(r.Cells[0].Value) == "h") r.Cells[5].Value = "57";
             }
         }) is { Length: > 0 } e3 ? "LOI " + e3 : "ok")}");
         // van: giao thức KHÁC (OPC UA) trên cùng chương trình, thanh ghi D60
         log.Add($"add valve(opcua): {(AddDeviceViaDialog("valve", PlcSource.OpcUa, "127.0.0.1", 4841, new() { ["path"] = "plcsim", ["security"] = "none" },
-            new() { ["ns"] = "2", ["image"] = "PLC_D", ["prefix"] = "PLC_W" }, g => g.Rows[0].Cells[4].Value = "60") is { Length: > 0 } e4 ? "LOI " + e4 : "ok")}");
+            new() { ["ns"] = "2", ["image"] = "PLC_D", ["prefix"] = "PLC_W" }, g => g.Rows[0].Cells[5].Value = "60") is { Length: > 0 } e4 ? "LOI " + e4 : "ok")}");
         // thêm trùng thanh ghi trên cùng PLC phải bị từ chối
-        log.Add($"dup_word_rejected={AddDeviceViaDialog("tank", PlcSource.ModbusTcp, "127.0.0.1", 1502, none, modbus, g => g.Rows[0].Cells[4].Value = "52").Contains("D52")}");
+        log.Add($"dup_word_rejected={AddDeviceViaDialog("tank", PlcSource.ModbusTcp, "127.0.0.1", 1502, none, modbus, g => g.Rows[0].Cells[5].Value = "52").Contains("D52")}");
         // thiếu kết nối / thông số phải bị từ chối
-        log.Add($"missing_host_rejected={AddDeviceViaDialog("tank", PlcSource.ModbusTcp, "", 1502, none, modbus, g => g.Rows[0].Cells[4].Value = "90").Contains("địa chỉ")}");
+        log.Add($"missing_host_rejected={AddDeviceViaDialog("tank", PlcSource.ModbusTcp, "", 1502, none, modbus, g => g.Rows[0].Cells[5].Value = "90").Contains("địa chỉ")}");
         log.Add("pack: " + string.Join(", ", _cfg.Pack.Select(p => $"{p.Child}.{p.Field}@D{p.Address}x{p.Scale}/{p.Protocol}/{p.Access}/{p.DataType}")));
         log.Add("connections: " + string.Join(", ", _cfg.Connections.Select(c => $"{c.Protocol}={c.Host}:{c.Port}")));
         log.Add($"validate={_cfg.Validate() ?? "ok"}");

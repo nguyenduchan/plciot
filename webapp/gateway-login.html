@@ -25,6 +25,17 @@ button{min-height:48px}
 <body>
 <h1>Duyệt đăng nhập gateway</h1>
 <p id="msg"></p>
+<section id="mk" class="panel" hidden>
+  <h2 style="margin-top:0">Tạo mã ghép (OTP) cho gateway</h2>
+  <p class="help">Tạo một mã rồi nhập vào ứng dụng <b>Gateway</b> trên máy tính (ô “Mã ghép (OTP)”). Mã dùng một lần, hết hạn sau 10 phút. Gateway kết nối được sẽ thuộc tài khoản của bạn.</p>
+  <label class="help" style="display:block;text-align:left">Tạo cho người dùng khác (chỉ admin, để trống = chính bạn)
+    <input id="mk-user" autocomplete="off" autocapitalize="off" placeholder="tên đăng nhập"></label>
+  <button id="mk-go" class="primary" style="width:100%;margin-top:8px">Tạo mã</button>
+  <div id="mk-out" hidden>
+    <div class="code" id="mk-code"></div>
+    <p class="help" id="mk-exp"></p>
+  </div>
+</section>
 <section id="box" class="panel" hidden>
   <p class="help">Một ứng dụng Gateway trên máy tính đang xin đăng nhập bằng tài khoản của bạn. Chỉ duyệt nếu <b>mã dưới đây trùng với mã đang hiện trên ứng dụng</b> do chính bạn vừa mở.</p>
   <div class="code" id="code"></div>

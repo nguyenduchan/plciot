@@ -1,6 +1,5 @@
 // Gateway giả cho test: cặp khoá ECDSA P-256, gửi khoá công khai và ký như GatewayApp (C#).
 import crypto from 'node:crypto';
-import { normalizeCode } from '../src/gatewayPairing.js';
 import { parsePubkey } from '../src/gatewayKey.js';
 
 export function makeGateway() {
@@ -11,10 +10,10 @@ export function makeGateway() {
     pubkey,
     hw: parsePubkey(pubkey).hw,
     sign,
-    /** Thân /pair kèm chứng minh giữ khoá riêng. */
-    pairBody(code, extra = {}) {
+    /** Thân /register (đăng ký bằng tài khoản): chứng minh giữ khoá riêng, gắn với đúng userId. */
+    registerBody(userId, extra = {}) {
       const ts = Date.now();
-      return { code, pubkey, ts, sig: sign(`pair|${normalizeCode(code)}|${ts}`), ...extra };
+      return { pubkey, ts, sig: sign(`register|${userId}|${ts}`), ...extra };
     },
     /** Chứng minh cho enroll/config (kind = 'enroll' | 'config'). */
     proof(kind, site, device) {
