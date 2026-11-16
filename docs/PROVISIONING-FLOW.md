@@ -89,3 +89,15 @@ Kiểm thử: `cloud/app/scripts/smoke-gateway-pairing.js`; GatewayApp `--pairte
 - Webapp (`+ Thêm` → QR) với tài khoản admin hiện hộp "Xem thử (admin) — chưa gắn vào tài khoản" kèm các thẻ chỉ đọc.
 - Trang admin có ô **Xem thử QR**: `POST /api/admin/qr-preview { qr }` (nhận chuỗi QR hoặc link `login.html?claim=…`), vẫn kiểm chữ ký + secret của tem nên không dò được cấu hình bằng cách đoán site/device.
 - Chủ gateway là **user thường quét QR đầu tiên** (cơ chế claim hiện có).
+
+## Đăng nhập app C# bằng duyệt qua trình duyệt (thay mã ghép cặp)
+
+Route công khai `POST /api/v1/gateway/pair` (mã `XXXX-XXXX`) **đã bỏ**; các mục "mã ghép cặp" ở trên chỉ còn giá trị lịch sử. Các script `e2e-multi-gateway.js`, `e2e-solutions.js`, `smoke-gateway-pairing.js` còn gọi route cũ và cần chuyển sang luồng mới.
+
+1. GatewayApp hiện màn hình đăng nhập → `POST /api/v1/gateway/login/start` → mã `XXXX-XXXX` + link `gateway-login.html?code=…`.
+2. Người dùng mở link trên webapp (đã đăng nhập Face ID/TOTP), đối chiếu mã, bấm **Duyệt** (`POST /api/v1/gateway/login/approve`, cần phiên webapp đầy đủ).
+3. App hỏi `POST /api/v1/gateway/login/poll` → nhận **một lần** token `gateway_register` (30 phút, không dùng làm phiên webapp).
+4. `POST /api/v1/gateway/register` (Bearer token + chữ ký khoá riêng `register|<userId>|<ts>`): server cấp site `u<id>` + tem + MQTT, trả kit + QR. Hạn mức `USER_MAX_GATEWAYS` (mặc định 5) mỗi tài khoản; cùng máy đăng ký lại thì trả kit cũ, không tốn hạn mức.
+5. Sửa cấu hình trong GatewayApp (trang Thiết bị / Giao thức / Cloud) cần một lần duyệt còn hiệu lực 10 phút; hết hạn thì khoá lại. Khoá này nằm ở app (chặn người dùng thường); người có quyền sửa file cấu hình trên máy gateway vẫn sửa được cục bộ.
+
+Giới hạn tốc độ: `RATE_LIMIT_GATEWAY_LOGIN`, `RATE_LIMIT_GATEWAY_LOGIN_NET`, `RATE_LIMIT_GATEWAY_LOGIN_POLL`, `RATE_LIMIT_GATEWAY_LOGIN_APPROVE`, `RATE_LIMIT_GATEWAY_REGISTER_USER`; trần số phiên đăng nhập đang mở `GATEWAY_LOGIN_MAX_OPEN` (300).

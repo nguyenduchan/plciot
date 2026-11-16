@@ -122,7 +122,8 @@ const INVALID = Object.freeze({ error: 'invalid_pairing', status: 404 });
  * Gateway gửi toàn bộ bản khai kèm mã. Không có mã hợp lệ → trả lỗi chung ngay (không phân tích nội dung, không ghi DB).
  * @param {{ code: string, fp?: string, config: object }} body
  */
-export function submitPairing(db, body = {}) {
+export function submitPairing(db, body = {}, opts = {}) {
+  const proofMsg = (c) => opts.proof ?? pairMessage(c, body.ts);
   const code = normalizeCode(body.code);
   if (!code) return INVALID;
   const now = Date.now();
@@ -134,7 +135,7 @@ export function submitPairing(db, body = {}) {
     // Gateway mất mạng giữa chừng, chưa nhận được kết quả: cùng máy (hw) gửi lại thì trả lại kit (tem đã cấp), máy khác không được
     const pkAgain = parsePubkey(body.pubkey);
     if (!row.auto || !pkAgain || row.pubkey !== pkAgain.spki
-      || !verifyProof(body.pubkey, pairMessage(code, body.ts), body.sig, body.ts)) return INVALID;
+      || !verifyProof(body.pubkey, proofMsg(code), body.sig, body.ts)) return INVALID;
     return autoResult(db, row, pkAgain.hw);
   }
   if (row.attempts >= MAX_SUBMITS) {
@@ -147,7 +148,7 @@ export function submitPairing(db, body = {}) {
   // Lần gửi đầu KHOÁ mã vào khoá đó: người khác biết mã cũng không ghi đè được bản khai.
   const pk = parsePubkey(body.pubkey);
   if (!pk) return { error: 'invalid_pubkey', status: 400 };
-  if (!verifyProof(body.pubkey, pairMessage(code, body.ts), body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
+  if (!opts.proofVerified && !verifyProof(body.pubkey, proofMsg(code), body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
   const hw = pk.hw;
   if (row.hw && row.hw !== hw) return INVALID;
 
@@ -168,6 +169,42 @@ export function submitPairing(db, body = {}) {
     return { ...base, approved: false, autoError: auto.error };   // không tự duyệt được: để admin duyệt tay
   }
   return base;
+}
+
+export const USER_MAX_GATEWAYS = Number(process.env.USER_MAX_GATEWAYS || 5);
+
+/**
+ * Người dùng ĐÃ ĐĂNG NHẬP tự đăng ký gateway (không cần mã admin). Cổng vào là tài khoản (đã qua mật khẩu + TOTP):
+ * hạn mức theo tài khoản (USER_MAX_GATEWAYS), site cố định theo tài khoản (`u<id>`), truy vết được người tạo.
+ * Tái dùng đường duyệt tự động của submitPairing (khoá công khai + chữ ký + sanitizeConfig + cấp tem/MQTT).
+ */
+export function registerForUser(db, user, body = {}) {
+  if (!user?.id) return { error: 'unauthorized', status: 401 };
+  migratePairings(db);
+  const cols = new Set(db.prepare("SELECT name FROM pragma_table_info('gateway_pairings')").all().map((c) => c.name));
+  if (!cols.has('user_id')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN user_id INTEGER');
+  const used = db.prepare("SELECT COUNT(*) AS n FROM gateway_pairings WHERE user_id = ? AND status IN ('open','received','approved')").get(user.id).n;
+  if (used >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
+  const sol = cleanSolution(body.solution || '');
+  if (sol === null) return { error: 'invalid_solution', status: 400 };
+  // Chữ ký phủ `register|<userId>|<ts>`: chứng minh giữ khoá riêng và gắn với đúng tài khoản này (không phát lại sang tài khoản khác)
+  const pk = parsePubkey(body.pubkey);
+  if (!pk) return { error: 'invalid_pubkey', status: 400 };
+  const proof = `register|${user.id}|${body.ts}`;
+  if (!verifyProof(body.pubkey, proof, body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
+  // Cùng một máy (khoá công khai) đăng ký lại: trả lại kit cũ, không tạo thêm tem (một máy không ăn nhiều hạn mức)
+  const same = db.prepare("SELECT * FROM gateway_pairings WHERE user_id = ? AND pubkey = ? AND status = 'approved' ORDER BY created_at DESC LIMIT 1").get(user.id, pk.spki);
+  if (same) return autoResult(db, same, pk.hw);
+  const now = Date.now();
+  let code = '';
+  for (let k = 0; k < 8; k++) code += ALPHABET[crypto.randomInt(ALPHABET.length)];
+  const id = `pr_${crypto.randomBytes(6).toString('hex')}`;
+  const site = `u${user.id}`;
+  db.prepare(`INSERT INTO gateway_pairings (id, code_hash, admin_id, label, status, created_at, expires_at, site_pre, device_pre, auto, solution, user_id)
+    VALUES (?, ?, NULL, ?, 'open', ?, ?, ?, NULL, 1, ?, ?)`).run(id, hashCode(code), `user:${user.id}`, now, now + 5 * 60_000, site, sol, user.id);
+  const r = submitPairing(db, { ...body, code }, { proof, proofVerified: true });   // chữ ký đã kiểm ở trên (mỗi chữ ký chỉ dùng được một lần)
+  if (!r.ok || !r.approved) db.prepare("UPDATE gateway_pairings SET status = 'cancelled' WHERE id = ? AND status IN ('open','received')").run(id);
+  return r;
 }
 
 /** Chọn mã tem còn trống trong site: gw01, gw02… */

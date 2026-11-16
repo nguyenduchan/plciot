@@ -18,7 +18,7 @@ public sealed partial class MainForm
         var log = new List<string>();
         var api = Environment.GetEnvironmentVariable("GW_PAIR_API");
         if (string.IsNullOrEmpty(api)) api = "https://plc.dieukhientudong.net";
-        var code = Environment.GetEnvironmentVariable("GW_PAIR_CODE");
+        var code = Environment.GetEnvironmentVariable("GW_TEST_TOKEN");
         var seq = (Environment.GetEnvironmentVariable("GW_SOLUTIONS") ?? "aqua,hvac,,tank").Split(',');
         string Skin()
         {
@@ -37,7 +37,7 @@ public sealed partial class MainForm
         log.Add($"danh sách giải pháp từ server: ok={list.Ok} {(list.Ok ? list.Msg.Length + " byte" : list.Msg)}");
         if (!string.IsNullOrEmpty(code))
         {
-            await PairAsync(api, code);
+            await TestRegisterAsync(api, code);
             log.Add($"pair: error={LastToast.Error} text={LastToast.Text} site={_cfg.Site} device={_cfg.Device} cfg.Solution='{_cfg.Solution}' skin: {Skin()}");
         }
         foreach (var id in seq)
