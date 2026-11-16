@@ -66,6 +66,15 @@ public sealed class GatewayEnrollClient
         return new LoginPoll(status, r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "", r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
     }
 
+    /// <summary>Cách 2: nhập mã ghép (OTP) do người dùng/admin tạo trên webapp → nhận token đăng ký (dùng một lần).</summary>
+    public async Task<LoginPoll> LoginRedeemAsync(string otp, CancellationToken ct = default)
+    {
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/login/redeem", new { code = otp }, JsonOpts, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        return new LoginPoll(r.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "", r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "",
+            r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
+    }
+
     /// <summary>Đăng ký gateway bằng token đăng nhập + chữ ký khoá riêng: server cấp tem/MQTT trong hạn mức của tài khoản và trả kit.</summary>
     public async Task<PairResult> RegisterAsync(string token, long userId, string fp, byte[] configJson, GatewayIdentity id, string solution = "", CancellationToken ct = default)
     {
@@ -92,27 +101,6 @@ public sealed class GatewayEnrollClient
         if (!res.IsSuccessStatusCode)
             throw new InvalidOperationException(r.TryGetProperty("error", out var e) ? e.GetString() : $"HTTP {(int)res.StatusCode}");
         return r;
-    }
-
-    /// <summary>
-    /// Ghép cặp bằng mã do admin phát (cũ, sẽ bỏ): gửi KHOÁ CÔNG KHAI + chữ ký (chứng minh giữ khoá riêng) + bản khai (thiết bị, field, setting, UI).
-    /// Mã TỰ DUYỆT (admin chọn site lúc phát mã): server trả luôn kit (site/device/MQTT/pack) + QR → gateway tự enroll, không cần dán gì.
-    /// Mã duyệt tay: chỉ nhận bản khai, admin duyệt và đưa QR sau.
-    /// </summary>
-    public async Task<PairResult> PairAsync(string code, string fp, byte[] configJson, GatewayIdentity id, CancellationToken ct = default)
-    {
-        using var cfg = JsonDocument.Parse(configJson);
-        var (ts, sig) = id.PairProof(code);
-        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/pair", new { code, fp, pubkey = id.PublicKey, ts, sig, config = cfg.RootElement.Clone() }, JsonOpts, ct).ConfigureAwait(false);
-        var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
-        var r = doc.RootElement;
-        if (!res.IsSuccessStatusCode)
-            throw new InvalidOperationException(r.TryGetProperty("error", out var e) ? e.GetString() : $"HTTP {(int)res.StatusCode}");
-        string? S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-        var approved = r.TryGetProperty("approved", out var ap) && ap.ValueKind == JsonValueKind.True;
-        GatewayProvisionKit? kit = approved && r.TryGetProperty("kit", out var k) ? JsonSerializer.Deserialize<GatewayProvisionKit>(k.GetRawText(), JsonOpts) : null;
-        return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
     }
 
     async Task<GatewayProvisionKit?> PostAsync(string path, object body, CancellationToken ct)

@@ -110,8 +110,6 @@ services:
       APP_LOCK_DISABLED: ${APP_LOCK_DISABLED:-false}
       # PHASE TEST: true = thao tác nhạy cảm (admin ghi, đổi cài đặt) không đòi xác thực lại. PRODUCTION: đặt false.
       REAUTH_DISABLED: ${REAUTH_DISABLED:-false}
-      ACTIVATE_OPEN: ${ACTIVATE_OPEN:-true}
-      ACTIVATE_FACEID_DISABLED: ${ACTIVATE_FACEID_DISABLED:-false}
       CONTROL_LAN_CIDRS: ${CONTROL_LAN_CIDRS:-}
       CONTROL_CRITICAL_ADDRS: ${CONTROL_CRITICAL_ADDRS:-4,6}
       CONTROL_PHYSICAL_BIT: ${CONTROL_PHYSICAL_BIT:-}

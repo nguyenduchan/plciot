@@ -78,10 +78,11 @@ for (const id of sols) {
   const site = `mg_${id}`.slice(0, 24);
   // gateway setup quyết định kiểu UI: bản config gateway gửi kèm "solution" — KHÔNG đặt giải pháp ở admin
   const cfg = { ...setup, solution: id };
-  const pc = await j('/api/admin/pairings', { method: 'POST', body: JSON.stringify({ site, label: `MULTI ${id}`, auto: true }) }, adminTok);
+  // đăng ký bằng token đăng nhập (như app C# sau khi người dùng duyệt); site do server đặt = u<id>
+  const regTok = signToken({ uid: u.id, tv: u.token_version | 0, scope: 'gateway_register' }, process.env.APP_JWT_SECRET, 1800);
   const gw = makeGateway();
-  const pr = await j('/api/v1/gateway/pair', { method: 'POST', body: JSON.stringify(gw.pairBody(pc.body.code, { config: cfg })) });
-  if (!pr.body.approved) throw new Error(`pair ${id}: ` + JSON.stringify(pr.body));
+  const pr = await j('/api/v1/gateway/register', { method: 'POST', body: JSON.stringify(gw.registerBody(u.id, { config: cfg })) }, regTok);
+  if (!pr.body.approved) throw new Error(`register ${id}: ` + JSON.stringify(pr.body));
   const kit = pr.body.kit, qr = pr.body.qr;
   const cli = mqtt.connect(`mqtts://${process.env.E2E_MQTT_HOST || kit.mqtt.host}:${kit.mqtt.port}`, { rejectUnauthorized: false, username: kit.mqtt.username, password: kit.mqtt.password, clientId: `mg-${id}-${Date.now() % 1e6}` });
   await new Promise((res, rej) => { cli.once('connect', res); cli.once('error', rej); setTimeout(() => rej(new Error('mqtt timeout')), 15000); });

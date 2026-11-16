@@ -13,7 +13,8 @@
  * userCode hết hạn 10 phút, dùng một lần; poll quá nhanh bị 429 (`slow_down`).
  */
 import crypto from 'node:crypto';
-import { rateLimit, clientIp, signToken, verifyToken, audit } from '@plciot/security';
+import { rateLimit, clientIp, signToken, verifyToken, audit, findUserByUsername, checkControlSession } from '@plciot/security';
+import { isDashboardAdmin } from './roles.js';
 import { subnetOf } from './gatewayEnroll.js';
 import { registerForUser } from './gatewayPairing.js';
 
@@ -41,13 +42,37 @@ export function migrateGatewayLogins(db) {
       created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL,
       last_poll INTEGER NOT NULL DEFAULT 0,
-      ip TEXT
+      ip TEXT,
+      kind TEXT NOT NULL DEFAULT 'device'
     );
   `);
+  // DB cũ chưa có cột kind: 'device' = gateway xin → người dùng duyệt; 'code' = người dùng/admin tạo mã trên webapp → gateway nhập
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('gateway_logins') WHERE name = 'kind'").get()) db.exec("ALTER TABLE gateway_logins ADD COLUMN kind TEXT NOT NULL DEFAULT 'device'");
+}
+
+const truthyEnv = (k, d) => !['false', '0', 'no'].includes(String(process.env[k] ?? d).toLowerCase());
+
+/**
+ * Cổng OTP: ghép gateway (tạo mã / duyệt đăng nhập) cần yếu tố thứ hai (Authenticator TOTP hoặc Face ID/vân tay) — KHÔNG đủ
+ * nếu chỉ đăng nhập bằng tên + mật khẩu. Phiên điều khiển (control session) phải mở bằng `totp` hoặc `passkey`.
+ * Trang admin riêng: đã bắt TOTP lúc đăng nhập (ADMIN_REQUIRE_TOTP) nên chấp nhận phiên admin-site khi cờ này bật.
+ * PHASE TEST: REAUTH_DISABLED=true bỏ qua (giống reauth của security). PRODUCTION: false.
+ */
+export function makeRequireOtp(db) {
+  return (req, res, next) => {
+    if (String(process.env.REAUTH_DISABLED || 'false').toLowerCase() === 'true') return next();
+    const sid = req.tokenPayload?.sid;
+    const dev = sid ? db.prepare('SELECT device_id FROM app_sessions WHERE id = ?').get(sid)?.device_id : '';
+    if (dev === 'admin-site') return truthyEnv('ADMIN_REQUIRE_TOTP', 'true') ? next() : res.status(401).json({ error: 'otp_required' });
+    const proof = checkControlSession(db, req.user.id, String(req.headers['x-control-token'] || ''), clientIp(req));
+    if (!proof.ok || !['totp', 'passkey'].includes(proof.method)) return res.status(401).json({ error: 'otp_required' });
+    next();
+  };
 }
 
 export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }) {
   migrateGatewayLogins(db);
+  const requireOtp = makeRequireOtp(db);
   const sweep = () => db.prepare('DELETE FROM gateway_logins WHERE expires_at < ?').run(Date.now() - 3600_000);
 
   const ipLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_LOGIN || 10), keyFn: (req) => `${clientIp(req)}:gw-login` });
@@ -106,7 +131,7 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     res.json({ ok: true, createdAt: row.created_at, expiresAt: row.expires_at, ip: row.ip });
   });
 
-  app.post('/api/v1/gateway/login/approve', requireAuth, approveLimit, (req, res) => {
+  app.post('/api/v1/gateway/login/approve', requireAuth, requireOtp, approveLimit, (req, res) => {
     const code = normalizeUserCode(req.body?.code);
     if (!code) return res.status(404).json({ error: 'invalid_login' });
     const approve = req.body?.approve !== false;
@@ -115,6 +140,53 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     if (!r.changes) return res.status(404).json({ error: 'invalid_login' });
     audit(db, approve ? 'gateway_login_approve' : 'gateway_login_deny', { userId: req.user.id, ip: clientIp(req) });
     res.json({ ok: true, approved: approve });
+  });
+
+  // ---- Cách 2: MÃ KẾT NỐI tạo trên webapp (người dùng cho chính mình; admin cho một người dùng khác) → gateway nhập mã ----
+  const MAX_CODES_OPEN_PER_USER = Number(process.env.GATEWAY_CODES_MAX_OPEN || 5);
+  const codeLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_CODE || 10), keyFn: (req) => `${clientIp(req)}:gw-code` });
+  const redeemIp = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_REDEEM || 10), keyFn: (req) => `${clientIp(req)}:gw-redeem` });
+  const redeemNet = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_REDEEM_NET || 40), keyFn: (req) => `${subnetOf(clientIp(req))}:gw-redeem-net` });
+
+  // Người dùng đã đăng nhập webapp (đủ Face ID/TOTP) tạo mã. Admin có thể chỉ định `username` để tạo mã cho người đó.
+  app.post('/api/v1/gateway/connect-code', requireAuth, requireOtp, codeLimit, (req, res) => {
+    sweep();
+    const now = Date.now();
+    let target = req.user;
+    const forUser = String(req.body?.username ?? '').trim();
+    if (forUser && forUser !== req.user.username) {
+      if (!isDashboardAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
+      target = findUserByUsername(db, forUser);
+      if (!target || target.disabled) return res.status(404).json({ error: 'user_not_found' });
+    }
+    const open = db.prepare("SELECT COUNT(*) AS n FROM gateway_logins WHERE kind = 'code' AND user_id = ? AND status = 'approved' AND expires_at > ?").get(target.id, now).n;
+    if (open >= MAX_CODES_OPEN_PER_USER) return res.status(429).json({ error: 'too_many_codes' });
+    for (let i = 0; i < 5; i++) {
+      let code = '';
+      for (let k = 0; k < 8; k++) code += ALPHABET[crypto.randomInt(ALPHABET.length)];
+      try {
+        db.prepare("INSERT INTO gateway_logins (id, device_hash, user_code, status, user_id, created_at, expires_at, ip, kind) VALUES (?, ?, ?, 'approved', ?, ?, ?, ?, 'code')")
+          .run(`gl_${crypto.randomBytes(6).toString('hex')}`, sha(crypto.randomBytes(16).toString('hex')), code, target.id, now, now + TTL_MS, clientIp(req));
+        audit(db, 'gateway_code_create', { userId: req.user.id, ip: clientIp(req), detail: target.id === req.user.id ? 'self' : `for:${target.username}` });
+        return res.json({ ok: true, code: fmt(code), expiresIn: TTL_MS / 1000, forUser: target.username });
+      } catch { /* trùng mã (hiếm) → sinh lại */ }
+    }
+    res.status(500).json({ error: 'code_failed' });
+  });
+
+  // Gateway nhập mã → nhận token đăng ký (như poll). Mã sai/hết hạn/đã dùng trả CÙNG một lỗi; dùng một lần.
+  app.post('/api/v1/gateway/login/redeem', redeemIp, redeemNet, (req, res) => {
+    const code = normalizeUserCode(req.body?.code);
+    const bad = () => res.status(404).json({ error: 'invalid_code' });
+    if (!code) return bad();
+    const used = db.prepare("UPDATE gateway_logins SET status = 'used' WHERE user_code = ? AND kind = 'code' AND status = 'approved' AND expires_at > ?").run(code, Date.now()).changes;
+    if (!used) return bad();
+    const row = db.prepare("SELECT user_id, id FROM gateway_logins WHERE user_code = ? AND kind = 'code'").get(code);
+    const user = row && db.prepare('SELECT id, username, token_version, disabled FROM users WHERE id = ?').get(row.user_id);
+    if (!user || user.disabled) return bad();
+    const token = signToken({ uid: user.id, tv: user.token_version | 0, scope: 'gateway_register' }, jwtSecret, REG_TOKEN_SEC);
+    audit(db, 'gateway_code_redeem', { userId: user.id, ip: clientIp(req), detail: row.id });
+    res.json({ status: 'approved', token, expiresIn: REG_TOKEN_SEC, user: user.username, uid: user.id });
   });
 
   // Đăng ký gateway: token `gateway_register` (từ duyệt trình duyệt) + chữ ký khoá riêng của gateway

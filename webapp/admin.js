@@ -134,7 +134,6 @@
     clearInterval(solTimer);
     if (name === 'sol') { loadSolutions().catch((e) => msg(e.message, 'err')); solTimer = setInterval(() => { if (!document.hidden) loadSolutions().catch(() => {}); }, 20000); }   // thư mục mới chép lên server tự vào ô chọn
     if (name === 'cap') loadCapacity().catch(() => {});
-    if (name === 'add') loadPairings().catch(() => {});
     if (name === 'gw') { loadHw().catch(() => {}); loadDup().catch(() => {}); }
   }
   document.querySelector('.adm-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-at]'); if (b) showAdminTab(b.dataset.at); });
@@ -242,8 +241,6 @@
       cfg.style.color = j.configured ? 'var(--ok)' : 'var(--warn)';
     }
     renderHw();
-    const ps = $('#pr-sites');
-    if (ps) ps.innerHTML = [...new Set([...(j.sites || []), ...hwDevices.map((d) => d.site)])].map((x) => `<option value="${esc(x)}">`).join('');
     const sel = $('#act-dev');
     if (sel) {
       const cur = sel.value;
@@ -379,7 +376,6 @@
       await loadTypes();
       await loadUsers();
       await loadHw();
-      await loadPairings().catch(() => {});
       await loadDup();
     } catch (e) {
       $('#list').textContent = '';
@@ -388,94 +384,16 @@
     }
   }
 
-  /* ---------- Ghép cặp gateway: tạo mã → xem bản khai gateway gửi lên → duyệt + cấp QR ---------- */
-  let pairings = [];
+  /* ---------- (Ghép cặp bằng mã admin đã bỏ: gateway tự đăng ký bằng tài khoản người dùng) ---------- */
   // Tự làm mới danh sách gateway + mã ghép cặp (gateway vừa nhập mã là hiện ngay, không cần tải lại trang)
   setInterval(() => {
     if (document.hidden || $('#qr-modal')?.classList.contains('on')) return;
     if (curTab === 'gw') loadHw().catch(() => {});
-    if (curTab === 'add') loadPairings().catch(() => {});
   }, 8000);
   loadCapacity().catch(() => {});
   setInterval(() => { if (!document.hidden && (curTab === 'cap' || !document.querySelector('#at-cap-dot')?.dataset.set)) loadCapacity().catch(() => {}); }, 60000);
   { let st = 'gw'; try { st = localStorage.getItem('admTab') || 'gw'; } catch { /* */ } showAdminTab(st); }
-  const PR_STATUS = { open: 'chờ gateway nhập mã', received: 'chờ bạn duyệt', approved: 'đã kết nối', expired: 'hết hạn', cancelled: 'đã huỷ' };
-
-  async function loadPairings() {
-    const j = await api('/api/admin/pairings');
-    pairings = j.pairings || [];
-    $('#pr-list').innerHTML = pairings.map((p) => `
-      <div class="hw" data-pr="${esc(p.id)}">
-        <div><b>${esc(p.label || p.id)}</b> <span class="tag ${p.status === 'received' ? '' : 'viewer'}">${esc(PR_STATUS[p.status] || p.status)}</span>
-          <small>${p.devices ? `${p.devices} thiết bị` : ''}${p.fp ? ` · vân tay <code>${esc(p.fp)}</code>` : ''}${p.hw ? ` · ID máy <code>${esc(p.hw)}</code>` : ''}
-            ${p.site ? ` · <code>${esc(p.site)}/${esc(p.device)}</code>` : ''} · hết hạn ${esc(fmtTs(p.expiresAt))}</small></div>
-        <div class="acts">
-          ${p.status === 'received' ? '<button data-pr-act="review" class="primary">Xem trước &amp; duyệt</button>' : ''}
-          ${p.status === 'approved' && p.site ? '<button data-pr-act="qr" class="primary">Hiện QR</button>' : ''}
-          ${p.status === 'open' || p.status === 'received' ? '<button data-pr-act="cancel" class="danger">Huỷ</button>' : ''}
-        </div>
-      </div>`).join('') || '<p class="help">Chưa có mã ghép cặp nào.</p>';
-  }
-
   const PR_ICON = { tank: '🛢', pump: '⛽', env: '🌡', valve: '🚰', motor: '⚙️', energy: '⚡', pressure: '🧭', conveyor: '📦', di: '⬇️', do: '⬆️', custom: '➕' };
-
-  async function reviewPairing(id) {
-    const p = await api(`/api/admin/pairings/${encodeURIComponent(id)}`);
-    const box = $('#pr-review');
-    const devs = (p.config || []).map((d) => `
-      <div style="margin:8px 0">
-        <b>${PR_ICON[d.icon] || ''} ${esc(d.name)}</b> <code>${esc(d.id)}</code>${d.color ? ` <span class="tag">${esc(d.color)}</span>` : ''}
-        <ul style="margin:4px 0 0 18px;padding:0">${d.fields.map((f) => `<li><code>${esc(f.key)}</code> — ${esc(f.lbl)}${f.unit ? ` (${esc(f.unit)})` : ''} · ${esc(f.widget)}${f.writable ? ' · ghi được' : ''}${f.on || f.off ? ` · ${esc(f.on || '')}/${esc(f.off || '')}` : ''}${f.low != null || f.high != null ? ` · ngưỡng ${f.low ?? '—'}…${f.high ?? '—'}` : ''}</li>`).join('')}</ul>
-      </div>`).join('');
-    box.hidden = false;
-    box.innerHTML = `
-      <h3 style="margin:0 0 6px">Bản khai gateway ${p.fp ? `<small>vân tay <code>${esc(p.fp)}</code>${p.hw ? ` · ID máy <code>${esc(p.hw)}</code>` : ''} — đối chiếu với màn hình GatewayApp</small>` : ''}</h3>
-      <p class="help" style="margin-top:0">Dữ liệu do gateway gửi, <b>chưa xác thực</b> — chỉ nhận chữ/số hợp lệ theo quy tắc server. Kiểm tra rồi mới duyệt.</p>
-      ${devs}
-      <div class="row" style="gap:8px;margin-top:8px">
-        <label style="flex:1">Site (nhà máy)<input id="pr-site" autocapitalize="off" autocomplete="off" placeholder="demo_home"></label>
-        <label style="flex:1">Mã tem gateway<input id="pr-dev" autocapitalize="off" autocomplete="off" value="gw01"></label>
-        <label style="flex:1">Tên hiển thị<input id="pr-name" autocomplete="off" value="${esc(p.label || '')}"></label>
-      </div>
-      <div class="row" style="margin-top:10px;gap:8px"><button id="pr-ok" class="primary" data-id="${esc(p.id)}">Duyệt &amp; tạo QR</button><button id="pr-close" class="fit">Đóng</button></div>`;
-    $('#pr-close').onclick = () => { box.hidden = true; box.innerHTML = ''; };
-    $('#pr-ok').onclick = () => run(async () => {
-      const site = $('#pr-site').value.trim();
-      if (!site) throw new Error('Nhập mã nhà máy (site).');
-      const r = await api(`/api/admin/pairings/${encodeURIComponent(p.id)}/approve`, 'POST', {
-        site, device: $('#pr-dev').value.trim() || 'gw01', label: $('#pr-name').value.trim(),
-      });
-      box.hidden = true; box.innerHTML = '';
-      await loadPairings(); await loadHw();
-      await showQr(r);
-    }, 'Đã duyệt. Dán QR lên thiết bị; gateway dùng cùng QR để enroll, user quét để xem UI.');
-  }
-
-  $('#pr-new')?.addEventListener('click', () => run(async () => {
-    const site = $('#pr-site').value.trim();
-    if (!site) throw new Error('Nhập site (nhà máy / trạm).');
-    const r = await api('/api/admin/pairings', 'POST', { label: $('#pr-label').value.trim(), site });
-    $('#pr-label').value = '';
-    $('#pr-code').hidden = false;
-    $('#pr-code-val').textContent = r.code;
-    $('#pr-code-exp').textContent = `Hết hạn lúc ${fmtTs(r.expiresAt)} · site ${site}${r.solution ? ` · giải pháp ${r.solution}` : ''}`;
-    await loadPairings();
-  }, 'Đã tạo mã ghép cặp.'));
-
-  $('#pr-list')?.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-pr-act]');
-    const row = e.target.closest('[data-pr]');
-    if (!b || !row) return;
-    if (b.dataset.prAct === 'review') run(() => reviewPairing(row.dataset.pr), '');
-    else if (b.dataset.prAct === 'qr') {
-      const p = pairings.find((x) => x.id === row.dataset.pr);
-      if (p) run(async () => showQr(await api(`/api/admin/hardware/${encodeURIComponent(p.site)}/${encodeURIComponent(p.device)}/qr`)), '');
-    }
-    else if (b.dataset.prAct === 'cancel') {
-      if (!confirm('Huỷ mã ghép cặp này?')) return;
-      run(async () => { await api(`/api/admin/pairings/${encodeURIComponent(row.dataset.pr)}`, 'DELETE'); await loadPairings(); }, 'Đã huỷ.');
-    }
-  });
 
   $('#qp-go')?.addEventListener('click', () => run(async () => {
     const qr = $('#qp-qr').value.trim();

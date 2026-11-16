@@ -17,6 +17,8 @@ sealed class LoginForm : Form
     readonly Label _code = new(), _status = new();
     readonly FlatButton _open = new() { Caption = "Mở trình duyệt", Primary = true, Width = 190 };
     readonly FlatButton _cancel = new() { Caption = "Huỷ", Width = 120 };
+    readonly TextBox _otp = new();
+    readonly FlatButton _otpGo = new() { Caption = "Kết nối bằng mã ghép", Width = 220 };
     readonly CancellationTokenSource _cts = new();
     string _url = "";
 
@@ -25,7 +27,7 @@ sealed class LoginForm : Form
     public LoginForm(string api, string title = "Đăng nhập", string? reason = null)
     {
         _api = api.Trim();
-        Text = title; ClientSize = new Size(520, 330); StartPosition = FormStartPosition.CenterParent;
+        Text = title; ClientSize = new Size(520, 430); StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal;
         var head = new Label { Text = reason ?? "Đăng nhập tài khoản webapp để dùng gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 12f), AutoSize = false, Location = new Point(24, 20), Size = new Size(472, 28), BackColor = Color.Transparent };
@@ -35,9 +37,12 @@ sealed class LoginForm : Form
         _status.ForeColor = Theme.Muted; _status.AutoSize = false; _status.TextAlign = ContentAlignment.MiddleCenter;
         _status.Location = new Point(24, 200); _status.Size = new Size(472, 48); _status.Text = "Đang kết nối server…"; _status.BackColor = Color.Transparent;
         _open.Location = new Point(24, 268); _open.Enabled = false; _cancel.Location = new Point(376, 268);
+        var otpLbl = new Label { Text = "Hoặc nhập mã ghép (OTP) do bạn / admin tạo trên webapp:", ForeColor = Theme.Muted, AutoSize = false, Location = new Point(24, 318), Size = new Size(472, 22), BackColor = Color.Transparent };
+        Skin.Input(_otp); _otp.Location = new Point(24, 344); _otp.Width = 220; _otp.CharacterCasing = CharacterCasing.Upper; _otp.MaxLength = 9;
+        _otpGo.Location = new Point(264, 340); _otpGo.Click += async (_, _) => await RedeemAsync();
         _open.Click += (_, _) => OpenBrowser();
         _cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        Controls.AddRange(new Control[] { head, help, _code, _status, _open, _cancel });
+        Controls.AddRange(new Control[] { head, help, _code, _status, _open, _cancel, otpLbl, _otp, _otpGo });
         Shown += async (_, _) => await RunAsync();
         FormClosed += (_, _) => _cts.Cancel();
     }
@@ -47,6 +52,23 @@ sealed class LoginForm : Form
         if (_url.Length == 0) return;
         try { Process.Start(new ProcessStartInfo(_url) { UseShellExecute = true }); }
         catch (Exception) { Clipboard.SetText(_url); _status.Text = "Không mở được trình duyệt — đã chép địa chỉ, hãy dán vào trình duyệt."; }
+    }
+
+    /// <summary>Cách 2: mã ghép (OTP) tạo trên webapp (người dùng hoặc admin) — không cần mở trình duyệt từ app.</summary>
+    async Task RedeemAsync()
+    {
+        var otp = _otp.Text.Trim();
+        if (otp.Length == 0) { _status.Text = "Nhập mã ghép (OTP) tạo trên webapp."; return; }
+        _otpGo.Enabled = false;
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(_api), Timeout = TimeSpan.FromSeconds(15) };
+            var p = await new GatewayEnrollClient(http).LoginRedeemAsync(otp, _cts.Token);
+            if (p.Status == "approved" && p.Token.Length > 0) { Result = new LoginResult(p.Token, p.User, p.Uid); DialogResult = DialogResult.OK; Close(); return; }
+            _status.Text = "Mã ghép không hợp lệ.";
+        }
+        catch (Exception ex) { if (!IsDisposed) _status.Text = ex.Message == "invalid_code" ? "Mã ghép sai, đã dùng hoặc hết hạn (10 phút)." : ex.Message == "rate_limited" ? "Thử quá nhanh, đợi một chút." : "Không dùng được mã: " + ex.Message; }
+        finally { if (!IsDisposed) _otpGo.Enabled = true; }
     }
 
     async Task RunAsync()

@@ -43,8 +43,9 @@ const ADMIN_PAGES = new Set([
 /** Tệp dùng chung mà trang admin cần (có trên cả hai tên miền). */
 const SHARED_FILES = new Set([
   '/style.css', '/icon.svg', '/icon-180.png', '/icon-192.png', '/errors.js', '/control.js', '/plan.js', '/chat-image.js', '/favicon.ico',
+  '/gateway-login.html', '/gateway-login.js',   // trang tạo mã ghép (OTP) kết nối gateway: dùng được ở cả hai tên miền
 ]);
-const ADMIN_API_PREFIXES = ['/api/admin-site/', '/api/admin/', '/api/health', '/api/me', '/api/logout', '/api/login/activity', '/api/control/'];
+const ADMIN_API_PREFIXES = ['/api/v1/gateway/connect-code', '/api/admin-site/', '/api/admin/', '/api/health', '/api/me', '/api/logout', '/api/login/activity', '/api/control/'];
 
 const isApi = (p) => p === '/api' || p.startsWith('/api/');
 const apiAllowedOnAdminHost = (p) => ADMIN_API_PREFIXES.some((x) => (x.endsWith('/') ? p.startsWith(x) : p === x));

@@ -1,13 +1,8 @@
 /**
- * Ghép cặp gateway ↔ admin bằng mã do ADMIN phát (gateway không tự đăng ký → không có cửa vào mở để spam).
- *
- *  1. Admin tạo mã ghép cặp (8 ký tự, dùng một lần, hết hạn ~15 phút, tối đa MAX_OPEN mã mở / admin).
- *  2. Người lắp đặt nhập mã vào GatewayApp → POST /api/v1/gateway/pair { code, fp, config } (toàn bộ thiết bị + setting + UI).
- *  3. Server gắn bản khai vào đúng mã (trạng thái `received`), admin xem trước ở trang admin.
- *  4. Admin duyệt → server cấp site/device + tem QR (cùng cơ chế hardware_devices) và lưu cấu hình (gateway_configs).
- *
- * Chống spam: mã sai/hết hạn/đã khoá trả CÙNG một lỗi, không ghi DB, không báo admin; giới hạn tốc độ theo IP + toàn cục
- * (ở route); mỗi mã chỉ nhận tối đa MAX_SUBMITS lần gửi; kích thước chặn trước khi phân tích; mã quá hạn tự xoá.
+ * Đăng ký gateway theo TÀI KHOẢN (lõi dùng chung): registerForUser nhận token đăng ký đã được xác thực ở gatewayLogin.js
+ * (duyệt qua trình duyệt hoặc mã ghép OTP tạo trên webapp), kiểm chữ ký khoá riêng của gateway, cấp site `u<id>` + tem + MQTT.
+ * Bảng gateway_pairings giữ lịch sử đăng ký + hạn mức theo tài khoản (USER_MAX_GATEWAYS).
+ * Mã ghép cặp do admin phát (cũ) và các màn hình duyệt tay đã bỏ.
  */
 import crypto from 'node:crypto';
 import { provisionHardwareDevice, parseHardwareId, deleteHardwareDevice, getHardwareDeviceQr, audit } from '@plciot/security';
@@ -20,7 +15,6 @@ import { cleanSolution, setGatewaySolution, migrateGatewaySolutions } from './ga
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
-export const MAX_OPEN_PER_ADMIN = Number(process.env.PAIRING_MAX_OPEN || 10);
 export const MAX_SUBMITS = Number(process.env.PAIRING_MAX_SUBMITS || 5);
 const RETAIN_MS = 24 * 3600 * 1000;
 
@@ -56,16 +50,6 @@ export function migratePairings(db) {
   migrateGatewaySolutions(db);
 }
 
-/** Chỉ đọc (không ghi DB): mã có đang mở không? Dùng để ngân sách lần-thất-bại không chặn mã hợp lệ. */
-export function pairingCodeValid(db, rawCode) {
-  const code = normalizeCode(rawCode);
-  if (!code) return false;
-  try {
-    const row = db.prepare('SELECT status, expires_at FROM gateway_pairings WHERE code_hash = ?').get(hashCode(code));
-    return Boolean(row) && ['open', 'received'].includes(row.status) && row.expires_at >= Date.now();
-  } catch { return false; }   // bảng chưa tạo
-}
-
 export function normalizeCode(raw) {
   const c = String(raw ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
   return CODE_RE.test(c) ? c : null;
@@ -76,43 +60,12 @@ const migrated = new WeakSet();
 export function sweepPairings(db) { purge(db); }
 
 const hashCode = (c) => crypto.createHash('sha256').update(`pairing:${c}`).digest('hex');
-const fmt = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
 
 /** Mã chưa dùng quá hạn → expired; bản ghi cũ hơn RETAIN_MS bị xoá. */
 function purge(db, now = Date.now()) {
   migratePairings(db);
   db.prepare("UPDATE gateway_pairings SET status = 'expired' WHERE status IN ('open','received') AND expires_at < ?").run(now);
   db.prepare('DELETE FROM gateway_pairings WHERE expires_at < ?').run(now - RETAIN_MS);
-}
-
-/**
- * @param {{ site?: string, device?: string, auto?: boolean }} opts
- *   site (+device) đặt sẵn → mã TỰ DUYỆT: gateway nhập mã là tự được cấp tem + MQTT (mã do admin phát, dùng một lần, ~15 phút, khoá theo máy).
- *   auto:false hoặc không có site → admin xem bản khai rồi duyệt tay như trước.
- */
-export function createPairing(db, { adminId, label = '', ttlMin = 15, site = '', device = '', auto, solution = '' } = {}) {
-  const now = Date.now();
-  purge(db, now);
-  const siteP = String(site || '').trim();
-  const devP = String(device || '').trim();
-  if ((siteP && !SAFE.test(siteP)) || (devP && !SAFE.test(devP))) return { error: 'invalid_site_or_device', status: 400 };
-  const isAuto = siteP && auto !== false ? 1 : 0;
-  const sol = cleanSolution(solution);
-  if (sol === null) return { error: 'invalid_solution', status: 400 };
-  const open = db.prepare("SELECT COUNT(*) AS n FROM gateway_pairings WHERE admin_id IS ? AND status IN ('open','received')").get(adminId ?? null).n;
-  if (open >= MAX_OPEN_PER_ADMIN) return { error: 'too_many_pairings', status: 429 };
-  const ttl = Math.min(60, Math.max(5, Number(ttlMin) || 15));
-  for (let i = 0; i < 5; i++) {
-    let code = '';
-    for (let k = 0; k < 8; k++) code += ALPHABET[crypto.randomInt(ALPHABET.length)];
-    const id = `pr_${crypto.randomBytes(6).toString('hex')}`;
-    try {
-      db.prepare(`INSERT INTO gateway_pairings (id, code_hash, admin_id, label, status, created_at, expires_at, site_pre, device_pre, auto, solution)
-        VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`).run(id, hashCode(code), adminId ?? null, String(label).trim().slice(0, 80) || null, now, now + ttl * 60_000, siteP || null, devP || null, isAuto, sol);
-      return { ok: true, id, code: fmt(code), expiresAt: now + ttl * 60_000, auto: Boolean(isAuto), site: siteP || null, solution: sol };
-    } catch { /* trùng hash (cực hiếm) → sinh lại */ }
-  }
-  return { error: 'pairing_failed', status: 500 };
 }
 
 /** Một lỗi chung cho mã sai / hết hạn / đã dùng / đã bị khoá: người ngoài không phân biệt được. */
@@ -183,7 +136,10 @@ export function registerForUser(db, user, body = {}) {
   migratePairings(db);
   const cols = new Set(db.prepare("SELECT name FROM pragma_table_info('gateway_pairings')").all().map((c) => c.name));
   if (!cols.has('user_id')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN user_id INTEGER');
-  const used = db.prepare("SELECT COUNT(*) AS n FROM gateway_pairings WHERE user_id = ? AND status IN ('open','received','approved')").get(user.id).n;
+  // Hạn mức tính theo gateway CÒN TỒN TẠI (xoá gateway thì trả lại hạn mức), cộng các lượt đang dở
+  const used = db.prepare(`SELECT COUNT(*) AS n FROM gateway_pairings p WHERE p.user_id = ? AND (
+      p.status IN ('open','received')
+      OR (p.status = 'approved' AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device)))`).get(user.id).n;
   if (used >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
   const sol = cleanSolution(body.solution || '');
   if (sol === null) return { error: 'invalid_solution', status: 400 };
@@ -193,7 +149,7 @@ export function registerForUser(db, user, body = {}) {
   const proof = `register|${user.id}|${body.ts}`;
   if (!verifyProof(body.pubkey, proof, body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
   // Cùng một máy (khoá công khai) đăng ký lại: trả lại kit cũ, không tạo thêm tem (một máy không ăn nhiều hạn mức)
-  const same = db.prepare("SELECT * FROM gateway_pairings WHERE user_id = ? AND pubkey = ? AND status = 'approved' ORDER BY created_at DESC LIMIT 1").get(user.id, pk.spki);
+  const same = db.prepare("SELECT * FROM gateway_pairings p WHERE user_id = ? AND pubkey = ? AND status = 'approved' AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device) ORDER BY created_at DESC LIMIT 1").get(user.id, pk.spki);
   if (same) return autoResult(db, same, pk.hw);
   const now = Date.now();
   let code = '';
@@ -237,32 +193,6 @@ function autoResult(db, row, hw, ap = null) {
   const kit = enrollGateway(db, { qr, hw }, { includePassword: true, trusted: true });   // vừa chứng minh khoá riêng ở bước ghép cặp
   if (kit.error) return { ok: false, approved: false, error: kit.error, status: kit.status || 400 };
   return { ok: true, id: row.id, approved: true, site, device, qr, loginUrl, kit };
-}
-
-function summary(r) {
-  let devices = 0;
-  try { devices = r.config ? JSON.parse(r.config).length : 0; } catch { /* hỏng */ }
-  return {
-    id: r.id, label: r.label, status: r.status, createdAt: r.created_at, expiresAt: r.expires_at,
-    receivedAt: r.received_at, fp: r.fp, hw: r.hw || null, devices, site: r.site || r.site_pre || null, device: r.device, auto: Boolean(r.auto), solution: r.solution || '',
-  };
-}
-
-export function listPairings(db) {
-  purge(db);
-  return db.prepare('SELECT * FROM gateway_pairings ORDER BY created_at DESC LIMIT 100').all().map(summary);
-}
-
-export function getPairing(db, id) {
-  purge(db);
-  const r = db.prepare('SELECT * FROM gateway_pairings WHERE id = ?').get(String(id));
-  if (!r) return { error: 'not_found', status: 404 };
-  return { ...summary(r), config: r.config ? JSON.parse(r.config) : null };
-}
-
-export function cancelPairing(db, id) {
-  const r = db.prepare("UPDATE gateway_pairings SET status = 'cancelled' WHERE id = ? AND status IN ('open','received')").run(String(id));
-  return r.changes ? { ok: true } : { error: 'not_found', status: 404 };
 }
 
 /**
