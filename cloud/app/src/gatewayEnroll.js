@@ -19,7 +19,7 @@ import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
 import { submitPairing, pairingCodeValid } from './gatewayPairing.js';
 import { verifyProof, requestMessage, ensureKeyColumns } from './gatewayKey.js';
-import { gatewaySolution, solutionUi } from './gatewaySolution.js';
+import { gatewaySolution, solutionUi, cleanSolution, setGatewaySolution } from './gatewaySolution.js';
 
 /** Khoá theo dải mạng: IPv4 /24, IPv6 /64 (xấp xỉ theo 4 nhóm đầu). */
 export function subnetOf(ip) {
@@ -296,6 +296,11 @@ export function enrollGateway(db, body = {}, opts = {}) {
     required: process.env.ENROLL_REQUIRE_HW === '1',
   });
   if (bind.error) return fail(bind, id.site, id.device);
+  // Gateway QUYẾT ĐỊNH giải pháp (UI): báo qua kênh HTTPS có chữ ký (chắc chắn hơn MQTT); chỉ nhận khi đã chứng minh giữ khoá riêng
+  if (proven && opts.kind === 'config' && typeof body.solution === 'string') {
+    const want = cleanSolution(body.solution);
+    if (want !== null) setGatewaySolution(db, id.site, id.device, want);
+  }
 
   // Xoay mật khẩu MQTT chỉ khi máy đã xác thực bằng hw (người chỉ có ảnh QR không được làm gateway thật rớt kết nối)
   const rotateMqtt = Boolean(opts.rotateMqtt ?? body.rotateMqtt) && (opts.trusted === true || bind.bound === true);

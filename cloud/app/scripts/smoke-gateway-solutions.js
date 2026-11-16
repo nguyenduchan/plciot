@@ -46,6 +46,8 @@ const m = JSON.parse(fs.readFileSync(path.join(root, 'solutions.json'), 'utf8'))
 ok(m.aqua && m.hvac, 'solutions.json có giải pháp của cả hai gateway');
 ok(fs.existsSync(path.join(root, 'sol/aqua/spec.js')) && fs.existsSync(path.join(root, 'sol/hvac/spec.js')), 'bundle có sol/<id>/spec.js từng giải pháp');
 ok(fs.existsSync(path.join(root, 'sol-multi.js')) && fs.existsSync(path.join(root, 'index.html')), 'bundle có shell + sol-multi.js');
+ok(fs.existsSync(path.join(root, 'industry-engine.js')) && fs.existsSync(path.join(root, 'industry.css')), 'engine + CSS dùng chung nằm ở shell (một bản)');
+ok(!fs.existsSync(path.join(root, 'sol/aqua/industry.js')) && !fs.existsSync(path.join(root, 'sol/aqua/industry.css')), 'giải pháp không chép engine/CSS rời');
 ok(!/spec\.js/.test(fs.readFileSync(path.join(root, 'index.html'), 'utf8')), 'index.html không bị chèn spec của giải pháp nào');
 
 const dash = getDashboardFor(db, u(), 'simple');

@@ -17,33 +17,26 @@ Có thể phát triển ở repo khác rồi chép thư mục vào `solutions/` 
 
 - `overlay` (mặc định): `webapp/` của giải pháp chồng lên `webapp/` cơ bản (file trùng tên thì giải pháp thắng); `inject` chèn CSS/JS vào `index.html`. Sửa mã dùng chung → mọi giải pháp nhận bản mới.
 - `full`: bundle chỉ gồm file của giải pháp (webapp độc lập hoàn toàn; tự lo đăng nhập/boot như bản cơ bản).
-- Mapping user ↔ giải pháp: cột `users.solution` (admin đặt trong trang Người dùng, ô chọn "giải pháp"; đổi là bundle thay ngay). Trống → `DEFAULT_SOLUTION` (env, mặc định `basic`). Id lạ/thư mục mất → tự về `basic`.
+- Mapping: **mỗi gateway đúng một giải pháp (UI)**, do GATEWAY chọn (GatewayApp → trang Cloud → ô "Giải pháp (UI)") và đồng bộ lên server (`gateway_solutions`). Không còn gán theo user/admin. User có nhiều gateway khác kiểu → webapp chia tab theo gateway, mỗi tab một giao diện (bundle chứa giao diện của mọi gateway của user, `sol/<id>/` + `solutions.json`).
 - Triển khai: `.\cloud\scripts\sync-vps.ps1 -Build` (đã gồm `solutions/`; compose mount `../solutions:/app/solutions`).
-- Code: `cloud/app/src/solutions.js`. Test: `cloud/app/scripts/smoke-solutions.js`.
+- Code: `cloud/app/src/solutions.js`. Test: `cloud/app/scripts/smoke-gateway-solutions.js`.
 
 ## Gateway (C# GatewayApp)
 
 ```powershell
-dotnet build tools/GatewayApp -c Release                      # bản cơ bản
-dotnet build tools/GatewayApp -c Release -p:Solution=solar    # bản solar (biên dịch solutions/solar/gateway/*.cs vào)
+dotnet build tools/GatewayApp -c Release    # MỘT bản dùng chung cho mọi giải pháp
 ```
 
-Giải pháp đăng ký qua `[ModuleInitializer]` vào `Ui/SolutionHost.cs` (đổi bảng màu `Theme`, thêm trang). Địa chỉ server: file `server.json` (ẩn) cạnh file chạy; ghép cặp bằng QR như bản cơ bản.
-
-## Giải pháp solar
-
-Field gateway nên gửi (`d.<thiết bị>.<field>`, kW hoặc W): `pv_kw`, `load_kw`, `grid_kw` (+mua/−bán), `batt_kw` (+sạc/−xả), `batt_soc`, `e_today`, `e_total`. Loại thiết bị trên server: `inverter`, `battery`, `grid-meter`.
-Lịch sử sản lượng trong webapp solar được ghi trên thiết bị người dùng khi app mở (chưa lấy từ DB server).
+Giao diện gateway theo giải pháp là DỮ LIỆU (`gateway/ui.json` do server gửi), không build riêng từng giải pháp. Địa chỉ server: file `server.json` (ẩn) cạnh file chạy; ghép cặp bằng QR/mã như bản cơ bản.
 
 ## Quản lý trong admin (không cần sửa code server)
 
 - Thư mục chuẩn đồng bộ: PC `solutions/` ↔ VPS `/root/plciot/solutions/` (`.\cloud\scripts\sync-solutions.ps1` chỉ chép thư mục này, không build/restart). Xem `solutions/README.md`, mẫu `solutions/_template/`.
 - **Mục trong ô chọn tự động:** thư mục mới chép lên server tự có mục (mã = tên thư mục). Admin → tab **Giải pháp** chỉ để đổi tên hiển thị, ẩn/hiện, trỏ mục sang thư mục khác hoặc thêm mục tên khác cho cùng một thư mục. Sổ lưu ở `<DATA_DIR>/solutions.json`. Xoá mục mang tên thư mục còn trên đĩa chỉ ẩn (không tự hiện lại).
-- Gán người dùng: admin → **Người dùng** → ô “giải pháp” (đổi là bundle thay ngay).
 
 ## Giải pháp ngành (sinh từ `tools/solution-kit/`)
 
-Một engine giao diện dùng chung (`industry.js` + `industry.css`) đọc `spec.js` của từng giải pháp (chỉ số, ngưỡng, khối giao diện, dữ liệu mẫu). Bảng màu riêng ở `theme.css`. Sinh lại: `python tools/solution-kit/gen.py [id…]` (ghi `solutions/<id>/` độc lập, mỗi thư mục có bản copy engine). Xem thử không cần server: `python tools/solution-kit/preview.py <thư_mục>` rồi `python -m http.server`.
+Một engine giao diện dùng chung (`webapp/industry-engine.js` + `webapp/industry.css`, MỘT bản ở shell — giải pháp chỉ có `spec.js` + `theme.css`) đọc `spec.js` của từng giải pháp (chỉ số, ngưỡng, khối giao diện, dữ liệu mẫu). Bảng màu riêng ở `theme.css`. Sinh lại: `python tools/solution-kit/gen.py [id…]` (ghi `solutions/<id>/` độc lập, mỗi thư mục có bản copy engine). Xem thử không cần server: `python tools/solution-kit/preview.py <thư_mục>` rồi `python -m http.server`.
 
 | Nhóm | Giải pháp |
 |---|---|
@@ -51,7 +44,6 @@ Một engine giao diện dùng chung (`industry.js` + `industry.css`) đọc `sp
 | Công nghiệp, xưởng | `factory` OEE · `andon` bảng Andon · `workshop` xưởng cơ khí · `process` P&ID pha chế · `boiler` lò hơi · `compressor` khí nén · `dryer` lò sấy · `tank` bồn xăng dầu/hóa chất · `facility` mặt bằng nhà máy · `schedule` lịch vận hành |
 | Nông nghiệp, chuỗi lạnh | `agri` nhà kính · `aqua` thủy sản · `coldchain` kho lạnh |
 | Trạm độc lập, di động | `bts` viễn thông · `pumpstn` trạm bơm pin mặt trời · `generator` máy phát/ATS · `ev` trạm sạc xe điện · `fleet` đội xe GPS |
-| (sẵn có) | `solar` năng lượng mặt trời |
 
 Khối giao diện: KPI, đồng hồ vòng, bồn/bể, chip trạng thái, thanh ngang, xu hướng, thẻ theo thiết bị, dây chuyền, vòng OEE, cảnh báo, **mặt bằng (plan), P&ID (pid), lịch tuần (schedule), thang máy (elevator), bản đồ (map), Andon, kế hoạch/thực tế (progress), la bàn gió (wind)**.
 
@@ -72,7 +64,7 @@ Không build riêng từng giải pháp. Mỗi giải pháp là **một thư m�
 ```
 solutions/<id>/
   solution.json   { "kind": "plciot-solution", "title", "themeColor", … }   ← DẤU NHẬN DIỆN (thiếu thì server bỏ qua thư mục)
-  webapp/         spec.js (cấu hình giao diện) + theme.css (+ engine industry.js/css); chỉ cần có file
+  webapp/         spec.js (cấu hình giao diện) + theme.css ; chỉ cần có file
   gateway/        ui.json (giao diện gateway = dữ liệu) + setup.json (bản khai thiết bị/field) [+ solution.json]
 ```
 
