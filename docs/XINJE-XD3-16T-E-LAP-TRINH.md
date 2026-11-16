@@ -14,31 +14,198 @@
 | Kiểu ngõ ra | `T` = transistor (tốc độ cao, dùng được xuất xung `Y0`, `Y1`) |
 | Hậu tố `E` | Biến thể của model; **chưa xác nhận từ tài liệu lệnh** — kiểm tra nhãn máy / hardware manual |
 | Địa chỉ I/O | **Hệ bát phân** (X0..X7, rồi X10..) — thực tế 16 I/O chỉ dùng X0–X7, Y0–Y7 |
-| Mở rộng | Mô-đun mở rộng (X/Y 10000…), BD/ED theo cấu hình |
+| Mở rộng | Tối đa **10 mô-đun mở rộng** (X/Y10000…). **Không gắn được bo BD** (PLC 16 điểm). ED mở rộng trái: chưa xác nhận riêng cho 16T |
 
 ## 1. Phần tử mềm (soft component) của XD3
 
-| Ký hiệu | Ý nghĩa | Dải XD3 | Ghi chú |
-|---|---|---|---|
-| `X` | Ngõ vào | X0~X7 (16 I/O) | Bát phân |
-| `Y` | Ngõ ra | Y0~Y7 (16 I/O) | Bát phân |
-| `M` | Rơ-le trung gian (mất khi tắt nguồn) | M0~M69999 | |
-| `HM` | Rơ-le trung gian **giữ khi mất điện** | HM0~HM11999 | |
-| `SM` | Rơ-le đặc biệt | SM0~SM4999 | Không dùng như M thường |
-| `S` / `HS` | Bước/luồng (flow) / giữ điện | S0~S1023 / HS0~HS127 | Dùng với STL |
-| `T` | Timer thường | T0~T575 | |
-| `HT` | Timer tích lũy, giữ khi mất điện | HT0~HT95 | |
-| `ET` | Timer chính xác | ET0~ET31 | |
-| `C` | Counter thường | C0~C575 | |
-| `HC` | Counter giữ khi mất điện | HC0~HC95 | |
-| `HSC` | Counter tốc độ cao | HSC0~HSC31 | |
-| `D` | Thanh ghi dữ liệu 16-bit | D0~D7999 | |
-| `HD` | Thanh ghi giữ khi mất điện | HD0~HD999 | |
-| `SD` / `HSD` | Thanh ghi đặc biệt | SD0~SD2047 / HSD0~HSD499 | |
-| `FD` / `SFD` / `FS` | Thanh ghi Flash | FD0~FD5119, SFD0~SFD1999, FS0~FS47 | Ghi bằng `FWRT` |
-| `P` | Con trỏ (nhãn nhảy / chương trình con) | P0~P9999 | CJ, CALL |
-| `I` | Con trỏ ngắt | Ngắt ngoài X2.. (I0000/I0001…), ngắt timer I40**~I59** | |
-| `K` / `H` | Hằng thập phân / thập lục | | `K100`, `H1122` |
+| Ký hiệu | Ý nghĩa | Dải XD3 | Khả dụng trên XD3-16T-E | Ghi chú |
+|---|---|---|---|---|
+| `X` | Ngõ vào | X0~X7 (16 I/O) | ✅ **X0~X7** (8 điểm) | Bát phân. X10 trở lên chỉ có khi gắn mô-đun mở rộng. Ngõ X nhận xung HSC/ngắt thì không dùng làm đầu vào thường cùng lúc |
+| `Y` | Ngõ ra | Y0~Y7 (16 I/O) | ✅ **Y0~Y7** (8 điểm, transistor) | Bát phân. **Chỉ Y0, Y1 xuất xung/PWM**. Địa chỉ Y vượt số điểm vật lý (Y10…) dùng được như rơ-le trung gian |
+| `M` | Rơ-le trung gian (mất khi tắt nguồn) | M0~M69999 | ✅ Đầy đủ | |
+| `HM` | Rơ-le trung gian **giữ khi mất điện** | HM0~HM11999 | ✅ Đầy đủ | Vùng giữ điện cố định, không đổi được |
+| `SM` | Rơ-le đặc biệt | SM0~SM4999 | ✅ Đầy đủ | Không dùng như M thường |
+| `S` / `HS` | Bước/luồng (flow) / giữ điện | S0~S1023 / HS0~HS127 | ✅ Đầy đủ | Dùng với STL |
+| `T` | Timer thường | T0~T575 | ✅ Đầy đủ | |
+| `HT` | Timer tích lũy, giữ khi mất điện | HT0~HT95 | ✅ Đầy đủ | |
+| `ET` | Timer chính xác | ET0~ET31 | ⚠️ Có, **xung đột tài nguyên** | Trùng kênh với HSC và xuất xung Y0/Y1 (mục 4.9) |
+| `C` | Counter thường | C0~C575 | ✅ Đầy đủ | |
+| `HC` | Counter giữ khi mất điện | HC0~HC95 | ✅ Đầy đủ | |
+| `HSC` | Counter tốc độ cao | HSC0~HSC30 (số chẵn) | ⚠️ Khai báo tới HSC31 nhưng **16T chỉ có 3 kênh** (HSC0, HSC2, HSC4) | HSC0 80 kHz; HSC2/HSC4 10 kHz (một pha) |
+| `D` | Thanh ghi dữ liệu 16-bit | D0~D7999 | ✅ Đầy đủ | |
+| `HD` | Thanh ghi giữ khi mất điện | HD0~HD999 | ✅ Đầy đủ | |
+| `SD` / `HSD` | Thanh ghi đặc biệt | SD0~SD2047 / HSD0~HSD499 | ✅ Đầy đủ | |
+| `FD` / `SFD` / `FS` | Thanh ghi Flash | FD0~FD5119, SFD0~SFD1999, FS0~FS47 | ✅ Đầy đủ | Ghi bằng `FWRT` (~150 ms/lần, ~1.000.000 lần ghi) |
+| `P` | Con trỏ (nhãn nhảy / chương trình con) | P0~P9999 | ✅ Đầy đủ | CJ, CALL |
+| `I` | Con trỏ ngắt | Ngắt ngoài X2.. (I0000/I0001…), ngắt timer I40**~I59** | ⚠️ Ngắt ngoài chỉ **X2~X7** (6 ngõ); ngắt timer 20 cái | Ngắt sườn lên và xuống |
+| `K` / `H` | Hằng thập phân / thập lục | | ✅ | `K100`, `H1122` |
+| X/Y **mô-đun mở rộng** | X/Y10000… | XD3 nhận tối đa **10 mô-đun** | ⚠️ Chỉ khi gắn mô-đun | Mô-đun 1 bắt đầu X10000/Y10000, mô-đun 2 từ X10100/Y10100 |
+| X/Y **BD** | X20000… | | ❌ **Không hỗ trợ** | Sổ tay: PLC 16 điểm không gắn được bo BD (chỉ 24–32 điểm: 1 BD; 48–60 điểm: 2 BD) |
+| X/Y **ED** (mô-đun mở rộng trái) | X30000/Y30000… | 1 mô-đun | ⚠️ Chưa xác nhận riêng cho 16T | Sổ tay nói dòng XD/XL hỗ trợ 1 ED; xem hardware manual cho XD3-16 |
+
+### 1.1 Chi tiết từng loại phần tử mềm
+
+> Nguồn: sổ tay XD/XL mục 2 (soft component), kèm xác nhận riêng cho **XD3-16T-E** ở những chỗ có số liệu.
+
+#### `X` — Ngõ vào (input relay)
+
+**Là gì:** ảnh nội bộ của các **đầu vào vật lý**. Mỗi `X` ứng với một đầu vào cách ly quang (opto) của PLC. Trạng thái ON/OFF phản ánh tín hiệu bên ngoài (nút nhấn, cảm biến, công tắc hành trình).
+
+**Cách hoạt động:**
+- Trước khi chạy chương trình, PLC **đọc toàn bộ đầu vào** và chép vào *vùng ảnh ngõ vào*. Trong suốt chu kỳ quét, giá trị trong vùng ảnh **không đổi** dù tín hiệu ngoài có đổi, đến chu kỳ sau mới cập nhật.
+- Muốn đọc trực tiếp từ chân, dùng `LDD`, `ANDD`, `ORD`… (mục 3.1).
+- `X` chỉ **đọc**, không dùng `OUT` cho `X`.
+
+**Trên XD3-16T-E:** `X0~X7` (8 điểm, **bát phân**). Địa chỉ `X10` trở lên chỉ có khi gắn mô-đun mở rộng (`X10000…`). Địa chỉ `X` không nối thiết bị có thể dùng như rơ-le trung gian tốc độ cao.
+
+**Lưu ý:** các ngõ `X0~X7` còn là ngõ **xung HSC** và **ngắt ngoài** (`X2~X7`); khi dùng cho mục đích đó thì không dùng làm ngõ vào thường cùng lúc.
+
+```ladder
+# Y0 = X0 · ¬X1  (X0 nhấn, X1 chưa nhấn)
+NO:X0 NC:X1 OUT:Y0
+```
+
+#### `Y` — Ngõ ra (output relay)
+
+**Là gì:** ảnh nội bộ của các **đầu ra vật lý** để điều khiển tải bên ngoài (đèn, contactor, van, biến tần…).
+
+**Cách hoạt động:**
+- Chương trình ghi vào *vùng ảnh ngõ ra*. **Sau khi chạy hết chương trình**, PLC mới chuyển toàn bộ vùng ảnh ra chân đầu ra thật. Nên một `Y` bị `OUT` hai lần (*dual coil*) chỉ lần cuối có tác dụng.
+- Muốn xuất ngay trong chương trình dùng `OUTD`.
+
+**Trên XD3-16T-E:** `Y0~Y7` (8 điểm, **transistor**, bát phân). **Chỉ `Y0`, `Y1` xuất được xung/PWM** (tối đa 100 kHz); `Y2~Y7` chỉ là ngõ ra thường. Địa chỉ `Y` vượt số điểm vật lý (`Y10`…) dùng được như rơ-le trung gian nếu không gắn mô-đun mở rộng.
+
+**Lưu ý:** ngõ ra transistor chỉ chịu dòng nhỏ và có cực tính; tải lớn cần rơ-le/contactor trung gian bên ngoài.
+
+#### `M`, `HM`, `SM` — Rơ-le trung gian và đặc biệt
+
+Đã mô tả ở mục dưới đây. Tóm tắt: `M0~M69999` mất trạng thái khi tắt nguồn; `HM0~HM11999` **giữ trạng thái** khi mất điện (vùng giữ cố định, không đổi được); `SM0~SM4999` là rơ-le **do hệ thống định nghĩa** (`SM0` luôn ON, `SM2` xung khởi động, `SM11` xung dao động, `SM34` cấm ngõ ra, `SM20/21/22` cờ 0/mượn/nhớ). Mỗi rơ-le có vô hạn tiếp điểm NO/NC, nhưng **không điều khiển được tải ngoài**.
+
+#### `S`, `HS` — Trạng thái / luồng (status relay, flow)
+
+**Là gì:** rơ-le dành cho **điều khiển tuần tự** (từng bước). Mỗi `S` đại diện một bước (flow). Dùng cùng lệnh `STL Sn … STLE`.
+
+**Hai loại:** `S0~S1023` (thường, **OFF khi tắt nguồn**); `HS0~HS127` (**giữ ON/OFF** khi mất điện — để tiếp tục đúng bước sau khi cấp điện lại).
+
+**Cách dùng:**
+- `SET Sn`: mở bước `Sn` và **đóng** bước hiện tại (chuyển bước). `ST Sn`: mở `Sn` nhưng **giữ** bước hiện tại (chạy song song). `RST Sn`: tắt bước.
+- Mỗi `S` cũng có vô hạn tiếp điểm NO/NC, dùng được như rơ-le thường.
+- Khi bước chuyển ON→OFF, các `OUT`, `PLS`, `PLF` và timer không tích lũy trong bước đó bị reset.
+
+```ladder
+NO:SM2 SET:S0
+BOX:STL_S0
+NO:SM0 OUT:Y0
+NO:X0 SET:S1
+BOX:STLE
+```
+
+#### `T`, `HT`, `ET` — Timer
+
+**Là gì:** bộ định thời. Cộng dồn xung 1 ms, 10 ms hoặc 100 ms; đạt giá trị đặt thì **cuộn ra** (tiếp điểm `T0`) ON.
+
+**Các loại:** `T0~T575` timer thường; `HT0~HT95` timer **tích lũy giữ khi mất điện**; `ET0~ET31` **timer chính xác** (chiếm tài nguyên phần cứng, xung đột với HSC và xuất xung, mục 4.9).
+
+**Cú pháp:** `TMR Tn K<giá trị> K<đơn vị>` (không tích lũy), `TMR_A HTn …` (tích lũy).
+- **Đơn vị chỉ được là `K1`, `K10`, `K100`** (1/10/100 ms). Ghi giá trị khác hoặc thanh ghi: vẫn tải xuống được nhưng **lệnh timer không chạy**.
+- Giá trị đặt `K1~K32767` (hoặc thanh ghi `D`). Thời gian thực = giá trị × đơn vị. Ví dụ `K200 K10` = 2 s; dải 100 ms: 0,1 s ~ 3276,7 s.
+- Giá trị hiện tại lưu ở thanh ghi `TD` (cùng số): `MOV T0 D0` ≡ `MOV TD0 D0`. Đếm tuyến tính 0…32767 rồi **dừng giữ nguyên**.
+- Cùng một timer có thể dùng dạng tích lũy hay không tích lũy, chọn đơn vị bằng lệnh.
+- `RST Tn` reset cả giá trị và cuộn ra.
+
+```ladder
+# Trễ tắt 2 s: X0 nhả, Y0 vẫn ON thêm 2 s
+( NO:X0 / NO:Y0 ) NC:T2 OUT:Y0
+NO:Y0 NC:X0 BOX:TMR_T2_K200_K10
+# Nhấp nháy: tắt 2 s (T1), sáng 1 s (T2)
+NO:X0 NC:T2 BOX:TMR_T1_K20_K10
+NO:T1 BOX:TMR_T2_K10_K10
+NO:T1 OUT:Y0
+```
+
+#### `C`, `HC`, `HSC` — Counter
+
+**Là gì:** bộ đếm số lần chuyển **OFF→ON** của cuộn đếm.
+
+**Các loại:** `C0~C575` thường (**mất giá trị khi tắt nguồn**); `HC0~HC95` **giữ giá trị và trạng thái khi mất điện**; `HSC0~HSC30` **counter tốc độ cao** (chỉ số chẵn, mỗi HSC chiếm hai thanh ghi; 16T có **3 kênh**).
+
+**Điểm đặc biệt của XD:** loại counter (16/32-bit, đếm lên/xuống) do **lệnh** quyết định, không do tên phần tử:
+
+| Lệnh | Kiểu | Giá trị đặt |
+|---|---|---|
+| `CNT Cn K` | 16-bit **đếm lên** | `K1~K32767` (`K0` và `K1` như nhau) |
+| `CNT_D Cn K` | 16-bit **đếm xuống** | số âm, ví dụ `K-100` |
+| `DCNT Cn K` | 32-bit **đếm lên** | đến `K2147483647` |
+| `DCNT_D Cn K` | 32-bit **đếm xuống** | đến `K-2147483648` |
+
+- **Reset:** `RST Cn` (16-bit), `DRST Cn` (32-bit): xoá giá trị và cuộn ra.
+- **Hành vi khi chạm giới hạn:** 16-bit dừng ở 32767 / −32768 và giữ trạng thái; 32-bit **quay vòng** (2147483647 → −2147483648).
+- 32-bit chiếm **hai thanh ghi**, địa chỉ phải là **số chẵn**.
+- Giá trị hiện tại lưu ở `CD` (cùng số): `MOV C0 D0` ≡ `MOV CD0 D0`.
+- Counter thường chỉ đếm được tần số thấp (**trên khoảng 25 Hz hãy dùng HSC**). HSC không bị ảnh hưởng bởi bộ lọc ngõ vào và chu kỳ quét; ví dụ `CNT HSC0 K888888` đếm xung ở `X0` khi `SM0` ON.
+
+```ladder
+NO:X10 RST:C0
+NO:X11 BOX:CNT_C0_K10
+NO:C0 OUT:Y0
+# HC0: đếm xuống, giữ giá trị khi mất điện
+NO:X3 RST:HC0
+NO:X4 BOX:CNT__D_HC0_K-5
+NO:HC0 OUT:Y1
+```
+
+#### `D`, `HD`, `SD`, `HSD` — Thanh ghi dữ liệu
+
+**Là gì:** ô nhớ để lưu **số**. Mỗi thanh ghi 16-bit (bit cao nhất là bit dấu), −32768 ~ +32767. Hai thanh ghi liên tiếp ghép thành 32-bit (−2147483648 ~ 2147483647), thanh ghi thấp ở địa chỉ **chẵn**.
+
+**Các loại:**
+- `D0~D7999` — thường: ghi đè giá trị cũ, **bị xoá** khi PLC chuyển RUN↔STOP hoặc mất điện.
+- `HD0~HD999` — **giữ** khi RUN→STOP và khi mất điện (vùng giữ cố định).
+- `SD0~SD2047`, `HSD0~HSD499` — thanh ghi **đặc biệt** do hệ thống dùng (một số khởi tạo khi cấp điện). Không dùng cho mục đích khác.
+
+**Dùng làm gì:** lưu số liệu, truyền dữ liệu (`MOV`), đọc giá trị timer/counter, **đặt giá trị cho timer/counter** (`TMR T0 D0 K10`, `CNT HC0 D4`), giao tiếp HMI/Modbus.
+
+**Địa chỉ gián tiếp (offset):** `Dn[Dm]`, `Xn[Dm]`, `Yn[Dm]`, `Mn[Dm]` — địa chỉ thực = n + giá trị `Dm`. Ví dụ `MOV D10[D0] D100` với `D0=5` đọc `D15`; `Y0[D0]` với `D0=5` là `Y5`. Offset chỉ được là thanh ghi `D`. Rất tiện để quét mảng bằng `INC D0`.
+
+```ladder
+NO:X0 BOX:MOV_K10_D10
+NO:X1 BOX:MOV_D10[D0]_D100
+```
+
+#### `FD`, `SFD`, `FS` — Thanh ghi Flash
+
+**Là gì:** thanh ghi lưu trong **bộ nhớ Flash**, giữ dữ liệu khi mất điện **mà không cần pin**.
+- `FD0~FD5119` — dữ liệu người dùng (thông số quan trọng của quy trình).
+- `SFD0~SFD1999` — thông số **hệ thống**, không sửa tuỳ tiện.
+- `FS0~FS47` — **bảo vệ bản quyền**: ghi được nhưng **đọc luôn ra 0**, chỉ so sánh với hằng số.
+
+**Quy tắc ghi (quan trọng):**
+- `MOV` vào FD/SFD/FS **chỉ có hiệu lực ở sườn lên**; chạy đúng một lần dù điều kiện là mức.
+- Flash ghi được khoảng **1.000.000 lần**, mỗi lần xoá cả khối nên **chậm** (khoảng 150 ms). Ghi liên tục sẽ **hỏng Flash vĩnh viễn**.
+- **Không** dùng xung dao động (`SM11`) làm điều kiện ghi; **không** dùng `SM0`, `SM2` làm điều kiện trực tiếp (nhiễu khi cấp điện) — nên ghi sau khi PLC chạy một lúc.
+- Nếu giá trị nguồn không đổi so với lần ghi trước, lệnh **không chạy** dù điều kiện thoả lại.
+
+#### `P` và `I` — Con trỏ
+
+- `P0~P9999` (thập phân): **nhãn** cho `CJ Pn` (nhảy) và `CALL Pn` (chương trình con).
+- `I`: **nhãn ngắt**. Trên XD3-16: ngắt ngoài `X2~X7` (`I0000`/`I0001` cho `X2` sườn lên/xuống, `I0100`/`I0101` cho `X3`… ), **ngắt timer** 20 cái `I40**~I59**` (`**` là thời gian, đơn vị ms), ngắt HSC, ngắt timer chính xác. Chương trình ngắt đặt sau `FEND` và kết thúc bằng `IRET`.
+
+#### `K`, `H`, `B` — Hằng số và các hệ số
+
+| Ký hiệu | Hệ số | Dùng cho |
+|---|---|---|
+| `K` | Thập phân (DEC) | Giá trị đặt timer/counter, toán hạng lệnh (`K10`) |
+| `H` | Thập lục (HEX) | Toán hạng lệnh (`HA` = 10, `H1122`) |
+| `B` | Nhị phân (BIN) | Toán hạng lệnh (`B10` = 2) |
+| (bát phân) | OCT | Địa chỉ **X, Y** (X0~X7, X10~X17…) |
+| BCD | Mã nhị phân thập phân | LED 7 đoạn, công tắc số (`BCD`/`BIN`) |
+| Số thực | Float | Phép toán `E…`, `SIN/COS`… (tính nhị phân, hiển thị thập phân) |
+
+Bên trong PLC mọi số xử lý ở dạng nhị phân; khi giám sát được đổi sang HEX/DEC.
+
+#### `ID`, `QD` — Ngõ vào/ra analog (module/BD/ED)
+
+`ID` (analog vào) và `QD` (analog ra) là địa chỉ thanh ghi của **mô-đun hoặc bo mở rộng**. Khi **không gắn** thiết bị mở rộng, các địa chỉ này dùng được như thanh ghi phụ. (XD3-16 không gắn được bo BD nên chỉ qua mô-đun/ED.)
 
 **Quy tắc quan trọng**
 - Dữ liệu 16-bit trong 1 thanh ghi: −32768 ~ 32767 (hoặc H0000~HFFFF).
@@ -55,6 +222,8 @@ PLC lặp: **đọc ngõ vào → thực hiện chương trình (trên xuống d
 - `END` kết thúc chương trình; lệnh phía sau `END` không thực thi. Khi debug có thể chèn `END` để kiểm tra từng đoạn.
 
 ## 3. Lệnh cơ bản (basic instructions)
+
+> **Khả dụng:** toàn bộ lệnh trong mục này dùng được trên XD3-16T-E (xem bảng ghi chú ở mục 4.9).
 
 Toán hạng bit chung: `X, Y, M, HM, SM, S, HS, T, HT, C, HC, Dn.m` (bit thứ m của thanh ghi Dn).
 
@@ -77,7 +246,7 @@ Toán hạng bit chung: `X, Y, M, HM, SM, S, HS, T, HT, C, HC, Dn.m` (bit thứ 
 | `ALT` | Đảo trạng thái phần tử mỗi lần có xung điều khiển (toggle) |
 | `MCS` / `MCR` | Điều khiển chủ: bắt đầu / kết thúc đường bus chung; lồng tối đa **10 cấp**, phải đi cặp |
 | `TMR` / `TMR_A` | Timer thường / timer tích lũy giữ khi mất điện |
-| `CNT` `CNT_D` `DCNT` `DCNT_D` | Counter 16-bit / 32-bit, đếm lên/xuống; `_D` = giữ khi mất điện |
+| `CNT` `CNT_D` `DCNT` `DCNT_D` | Counter 16-bit (`CNT`, `CNT_D`) / 32-bit (`DCNT`, `DCNT_D`); **chữ `_D` = đếm xuống**. Giữ khi mất điện hay không do **loại phần tử** quyết định: `C` thường, `HC` giữ điện |
 | `END` | Kết thúc chương trình |
 | `GROUP` / `GROUPE` | Nhóm chương trình để thu gọn/mở rộng trong editor (không ảnh hưởng chạy) |
 
@@ -376,7 +545,7 @@ RST HT0
 
 ```ladder
 # TMR_A: tích lũy 20 s, reset bằng X2
-NO:X0 BOX:TMR_A_HT0_K2000_K10
+NO:X0 BOX:TMR__A_HT0_K2000_K10
 NO:HT0 OUT:Y1
 NO:X2 RST:HT0
 ```
@@ -384,8 +553,9 @@ NO:X2 RST:HT0
 
 ### 3.9 CNT / DCNT — Counter
 
-- `CNT Cn K` — đếm lên 16-bit (giữ giá trị khi mất điện nếu dùng `CNT_D`/HC).
-- `DCNT` — đếm 32-bit; `DCNT_D` giữ khi mất điện.
+- `CNT Cn K` — đếm **lên** 16-bit; `CNT_D Cn K` — đếm **xuống** 16-bit (giá trị đặt âm, ví dụ `K-100`).
+- `DCNT` — đếm lên 32-bit; `DCNT_D` — đếm xuống 32-bit.
+- **Giữ khi mất điện** do chọn phần tử: dùng `C` (thường, mất giá trị khi tắt nguồn) hoặc `HC` (giữ giá trị và trạng thái cuộn). Không phụ thuộc chữ `_D`.
 - Mỗi lần cuộn đếm chuyển **OFF→ON** là +1; chạm giá trị đặt thì cuộn counter ON, sau đó vẫn tiếp tục tăng.
 - **Reset** bằng `RST Cn`.
 
@@ -405,12 +575,14 @@ OUT Y0
 NO:X10 RST:C0
 NO:X11 BOX:CNT_C0_K10
 NO:C0 OUT:Y0
-# DCNT_D: 32-bit giữ khi mất điện
-NO:X12 BOX:DCNT_D_HC0_K100000
+# DCNT với HC0: đếm lên 32-bit, giữ khi mất điện
+NO:X12 BOX:DCNT_HC0_K100000
 ```
 
 
 ## 4. Lệnh ứng dụng (applied instructions)
+
+> **Khả dụng:** sổ tay ghi mọi lệnh bên dưới là *XD, XL* — dùng được trên XD3-16T-E. Giới hạn chủ yếu ở phần cứng (xung chỉ Y0/Y1, 3 kênh HSC, ngắt X2~X7); RTC và số cổng truyền thông chưa xác nhận — xem **mục 4.9**.
 
 **Cách đọc:** `S` = nguồn (không đổi), `D` = đích (bị ghi), `n` = số lượng. Lệnh có chữ `D` đứng đầu là bản 32-bit (ví dụ `DMOV`, `DADD`). Điều kiện thực thi: mức (liên tục mỗi chu kỳ) hoặc sườn (dùng `LDP` để chỉ chạy 1 lần).
 
@@ -681,6 +853,31 @@ NO:SM0 BOX:EADD_D12_E-20.0_D14
 NO:SM0 BOX:TRD_D0
 ```
 
+### 4.9 Khả dụng trên XD3-16T-E — ghi chú hỗ trợ / giới hạn
+
+> **Kết luận từ sổ tay:** mọi lệnh cơ bản (mục 3) và lệnh ứng dụng (mục 4) trong tài liệu này đều ghi *Suitable Models: XD, XL* — **không có lệnh nào bị loại trừ riêng cho XD3**. Giới hạn của XD3-16T-E nằm ở **phần cứng và tài nguyên** (số I/O, kênh xung, kênh HSC, ngắt), không phải ở tập lệnh. Một vài mục dưới đây tôi **không xác nhận được** từ sổ tay và ghi rõ để bạn kiểm tra thêm.
+
+| Nhóm lệnh / chức năng | Trạng thái trên XD3-16T-E | Ghi chú |
+|---|---|---|
+| Lệnh cơ bản: `LD/AND/OR/OUT/SET/RST/PLS/PLF/ALT/MCS/MCR/TMR/CNT/END` | ✅ Có | Dải phần tử: M0~M69999, T0~T575, C0~C575, D0~D7999… (mục 1) |
+| Luồng: `CJ`, `CALL/SRET`, `FOR/NEXT`, `STL/STLE`, `SET/ST Sn` | ✅ Có | CALL lồng tối đa 10 cấp |
+| So sánh, truyền (`CMP`, `ZCP`, `MOV`, `BMOV`, `FMOV`…) | ✅ Có | |
+| Số học, logic, dịch, chuyển đổi (`ADD…NEG`, `SHL…WSFR`, `BCD`, `DECO`…) | ✅ Có | Bản 32-bit thêm tiền tố `D` |
+| Số thực (`E…`, `SIN/COS…`) | ✅ Có | |
+| `FWRT` (ghi Flash) | ✅ Có, **hạn chế sử dụng** | Mất ~150 ms mỗi lần ghi, tuổi thọ ~1.000.000 lần; luôn kích bằng sườn (`LDP`) |
+| Timer chính xác `ET0~ET31` | ✅ Có | **Xung đột tài nguyên** với HSC và xuất xung (xem dưới) |
+| Counter tốc độ cao (HSC) | ✅ Có, **3 kênh** | HSC0: 80 kHz một pha / 50 kHz AB; HSC2, HSC4: 10 kHz một pha / 5 kHz AB. Ngõ vào X0.. dùng làm xung thì không dùng được làm ngõ vào thường |
+| Xuất xung / PWM | ✅ Có, **chỉ Y0 và Y1** | Cần ngõ ra transistor (`T`, đúng với 16T). PWM tối đa 100 kHz. Không có Y2, Y3 như XD2/XD5 → **tối đa 2 trục** |
+| Ngắt ngoài `Ixxxx` | ✅ Có, **6 ngõ: X2~X7** | Ngắt sườn lên/xuống; timer ngắt 20 cái (I40**~I59**) |
+| RTC: `TRD`, `TWR`, `TCMP` | ⚠️ **Chưa xác nhận** | Lệnh thuộc XD/XL nhưng sổ tay lệnh không nói XD3-16 có đồng hồ phần cứng hay không. Thử `TRD` khi chạy, hoặc xem *hardware manual* / nhãn máy |
+| Truyền thông (Modbus RTU/ASCII, X-NET, `SEND/RCV`) | ✅ Lệnh có; ⚠️ **số cổng/kiểu cổng tuỳ model** | XD3-16T-E có USB và cổng nối tiếp; số cổng COM chính xác xem Phụ lục 5 / hardware manual. Hậu tố **E** chưa xác nhận (có thể liên quan Ethernet/RJ45) |
+| PID, khối hàm C, BLOCK | ✅ Không thấy hạn chế riêng cho XD3 | Nhưng kiểm tra dung lượng/phiên bản XDPPro |
+| Mô-đun mở rộng, BD, ED | Mô-đun: ✅ tối đa 10; BD: ❌ không hỗ trợ (PLC 16 điểm); ED: ⚠️ chưa xác nhận | Chi tiết xem bảng phần tử mềm (mục 1) |
+
+**Xung đột tài nguyên (XD3-16):** ET (timer chính xác), HSC và xuất xung Y0/Y1 dùng chung một số kênh phần cứng; **hai tài nguyên cùng một hàng trong bảng xung đột (Appendix 4) không được dùng đồng thời**. Ví dụ: ET8 trùng HSC0; ET10 trùng HSC2; ET12 trùng HSC4; ET14, ET16 trùng Y0; ET18, ET20 trùng Y1.
+
+**Cách kiểm tra chắc chắn:** trong XDPPro chọn đúng model **XD3-16T** (hoặc XD3-16T-E nếu có) rồi biên dịch; lệnh/tài nguyên không hỗ trợ sẽ báo lỗi. Hoặc đối chiếu *XD/XL hardware manual* và Phụ lục 4, 5 của sổ tay lệnh.
+
 ## 5. Các chức năng đặc biệt (chương riêng trong sổ tay)
 
 | Chức năng | Tóm tắt |
@@ -786,9 +983,9 @@ Ví dụ `X0 → Y0`: nhập `X0` ở ô đầu, dời khung sang phải một �
 | Timer thường | `TMR T0 K10 K100` (số timer, giá trị đặt, đơn vị thời gian) |
 | Timer tích lũy | `TMR_A HT0 K2000 K10` |
 | Counter 16-bit tăng | `CNT C0 K10` |
-| Counter 16-bit giữ điện | `CNT_D HC0 K10` |
+| Counter 16-bit đếm xuống | `CNT_D C0 K-10` |
 | Counter 32-bit tăng | `DCNT C0 K10` |
-| Counter 32-bit giữ điện | `DCNT_D HC0 K10` |
+| Counter 32-bit, giữ khi mất điện (đếm lên) | `DCNT HC0 K10` |
 
 **d) Lệnh khác (MOV, ADD, CALL, FOR…) bằng danh sách lệnh — không cần nhớ tên.**
 1. Đặt con trỏ ở ô nhập lệnh.
