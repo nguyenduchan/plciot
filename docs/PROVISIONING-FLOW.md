@@ -104,3 +104,10 @@ Giới hạn tốc độ: `RATE_LIMIT_GATEWAY_LOGIN`, `RATE_LIMIT_GATEWAY_LOGIN_
 
 ### OTP mỗi lần mở app
 Mỗi lần mở GatewayApp (cả bản khách), gateway **chạy cục bộ, KHÔNG nối cloud** cho tới khi người dùng xác thực: duyệt đăng nhập trên webapp hoặc nhập mã ghép (OTP) tạo trên webapp (phía server bắt TOTP/Face ID khi tạo mã / duyệt). Có OTP → app tự cấp ID + QR nếu chưa có, hoặc chạy lại host với cloud bật và đồng bộ. Hết 10 phút chỉ khoá phần *sửa cấu hình*, cloud đang nối không bị ngắt. Hệ quả: gateway không tự nối cloud sau khi mất điện cho tới khi có người xác thực; chế độ chạy nền không người trông chỉ chạy cục bộ.
+
+### Quy tắc OTP hiện hành (thay mục "OTP mỗi lần mở app" ở trên)
+- **Khởi động:** gateway tự chạy nền và tự nối server bằng khoá riêng của máy; **không** đòi đăng nhập/OTP. Chỉ gateway **chưa đăng ký** mới hiện màn hình OTP để đăng ký lần đầu (server tự cấp ID + QR rồi đồng bộ).
+- **Xem** trang Thiết bị / Giao thức / Cloud: không cần OTP. **Sửa** (thêm/sửa/xoá/tạm dừng thiết bị, thêm/áp dụng giao thức, bật-tắt đồng bộ, cấu hình nâng cao, đổi giải pháp, enroll): hiện màn hình OTP nếu chưa nhập; nhập **một lần** là sửa được cho tới khi đóng gateway; mở lại gateway thì phải nhập lại để sửa.
+- **Đổi giải pháp (kiểu UI) trong mục Cloud áp dụng NGAY:** app dựng lại cửa sổ trong cùng tiến trình với bảng màu/trang mới, giữ nguyên trạng thái OTP.
+- Gateway mới đăng ký khi chưa có thiết bị: khi user quét QR, server lấy danh sách thiết bị con từ cấu hình gateway đã gửi lên (`gateway_configs`), không chỉ từ seed lúc đăng ký.
+- Cờ `--noauth` (TẠM THỜI, chỉ để test) bỏ qua đăng nhập/OTP; xoá trước khi phát hành.

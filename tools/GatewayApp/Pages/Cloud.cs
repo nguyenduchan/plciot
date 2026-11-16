@@ -39,7 +39,8 @@ sealed class CloudPage : UserControl
         var lbl = new Label { Text = "Đồng bộ lên cloud để xem và điều khiển từ điện thoại", ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = true, Location = new Point(62, 12), BackColor = Color.Transparent };
         row.Controls.AddRange(new Control[] { _sync, lbl });
         _sync.On = app.Config.Mobile != MobileAccess.Off;
-        _sync.Toggled += on => { app.Config.Mobile = on ? MobileAccess.Control : MobileAccess.Off; _ = app.ApplyAsync(on ? "Đã bật đồng bộ cloud" : "Đã tắt cloud — chạy hoàn toàn cục bộ (offline)"); };
+        var syncGuard = false;
+        _sync.Toggled += on => { if (syncGuard) return; if (!app.RequireEdit()) { syncGuard = true; _sync.On = !on; syncGuard = false; return; } app.Config.Mobile = on ? MobileAccess.Control : MobileAccess.Off; _ = app.ApplyAsync(on ? "Đã bật đồng bộ cloud" : "Đã tắt cloud — chạy hoàn toàn cục bộ (offline)"); };
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
         var pair = new FlatButton { Caption = "Đăng nhập & kết nối server", Primary = true, Width = 230 };
@@ -111,6 +112,7 @@ sealed class CloudPage : UserControl
 
     void ShowAdvanced()
     {
+        if (!_app.RequireEdit()) return;
         using var f = new Form { Text = "Cấu hình nâng cao (toàn bộ ScadaConfig)", Width = 560, Height = 760, StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Bg };
         var g = new PropertyGrid { Dock = DockStyle.Fill, SelectedObject = _app.Config, BackColor = Theme.Panel, ViewBackColor = Theme.Panel, ViewForeColor = Theme.Text, HelpBackColor = Theme.Panel2, HelpForeColor = Theme.Muted, LineColor = Theme.Border, CategoryForeColor = Theme.Muted, CommandsBackColor = Theme.Panel2, DisabledItemForeColor = Theme.Muted };
         f.Controls.Add(g);

@@ -22,31 +22,25 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>--customer: bản của khách — chỉ giám sát và điều khiển; thiết lập do tool admin gửi qua IP (xem MainForm.Remote.cs).</summary>
     readonly bool _customer = Environment.GetCommandLineArgs().Contains("--customer");
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest" }.Any(Environment.GetCommandLineArgs().Contains);
+    /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
+    bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest", "--autodemo" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Giao thức / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
     // ---- đăng nhập + mở khoá chỉnh sửa (duyệt qua trình duyệt, xem LoginForm) ----
-    /// <summary>Thời gian một lần duyệt còn cho phép sửa cấu hình. Hết hạn → phải duyệt lại trên webapp.</summary>
-    static readonly TimeSpan UnlockLife = TimeSpan.FromMinutes(10);
     /// <summary>Token đăng ký do server cấp sống 30 phút; quá 25 phút coi như hết để không gửi token chết.</summary>
     static readonly TimeSpan TokenLife = TimeSpan.FromMinutes(25);
     LoginResult? _login;
     DateTime _loginAt = DateTime.MinValue;
     bool _prompting;
-    bool Unlocked => _testMode || (_login != null && DateTime.UtcNow - _loginAt < UnlockLife);
-    /// <summary>OTP MỖI LẦN MỞ: chưa duyệt (OTP/Face ID trên webapp) trong lần chạy này thì gateway chạy CỤC BỘ, không nối cloud, dù đã đăng ký từ trước.</summary>
-    bool _otpThisRun;
-    bool CloudAllowed => _testMode || _otpThisRun;
-
-    /// <summary>Bản cấu hình dùng cho host khi chưa có OTP: giống cấu hình thật nhưng tắt cloud (Mobile = Off).</summary>
-    ScadaConfig OfflineCopy()
-    {
-        var c = new ScadaConfig();
-        foreach (var p in typeof(ScadaConfig).GetProperties().Where(p => p.CanWrite && p.GetIndexParameters().Length == 0)) p.SetValue(c, p.GetValue(_cfg));
-        c.Mobile = MobileAccess.Off;
-        return c;
-    }
+    /// <summary>TẠM THỜI (theo yêu cầu): --noauth bỏ qua màn hình đăng nhập/OTP để test đầy đủ gateway. Bỏ cờ này trước khi phát hành.</summary>
+    readonly bool _noAuth = Environment.GetCommandLineArgs().Contains("--noauth");
+    /// <summary>OTP chỉ cần MỘT lần cho mỗi lần mở app (không hết hạn giữa chừng); mở lại gateway thì phải nhập lại để sửa.</summary>
+    bool Unlocked => _testMode || _noAuth || _login != null;
+    /// <summary>Hộp thoại/nút sửa cấu hình gọi trước khi sửa: chưa OTP thì hiện màn hình OTP; false = bị từ chối.</summary>
+    public bool RequireEdit() => EnsureUnlockedAsync().GetAwaiter().GetResult();   // EnsureUnlockedAsync không có await: hoàn tất đồng bộ
+    // Gateway khởi động là TỰ CHẠY NỀN và nối server bằng khoá riêng của máy. Login/OTP chỉ cần khi: đăng ký lần đầu, hoặc chỉnh sửa cấu hình.
 
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
     readonly Panel _head = new() { Dock = DockStyle.Top, Height = 62, BackColor = Theme.Bg };
@@ -115,8 +109,11 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         try { SaveCfg(); } catch (IOException) { /* không quan trọng */ }
         _rev++;
-        if (_host != null) { await StopAsync(); await StartAsync(); }
-        Toast(why);
+        // Gateway luôn tự chạy: lưu cấu hình xong là chạy lại (kể cả khi lần chạy trước lỗi và host đang dừng). Chế độ kiểm thử tự điều khiển việc chạy.
+        var wasRunning = _host != null;
+        if (wasRunning) await StopAsync();
+        if (AutoRun || wasRunning) await StartAsync();
+        if (_host != null || !AutoRun) Toast(why);   // chạy lỗi thì giữ nguyên thông báo lỗi của StartAsync
     }
 
     /// <summary>Thông báo cuối cùng (kiểm thử đọc lại kết quả thao tác).</summary>
@@ -149,7 +146,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _meta = new UiMetaStore(SettingsPath);
         try { if (File.Exists(SettingsPath)) CopyFrom(ConfigStore.Load(SettingsPath)); } catch (Exception e) when (e is IOException or JsonException) { /* dùng mặc định */ }
 
-        _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = !_editUi || !Unlocked };
+        _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = !_editUi };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _protos = new ProtocolsPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
@@ -197,6 +194,11 @@ public sealed partial class MainForm : Form, IGatewayApp
 
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
+        if (_carry.Login != null || _carry.Toast != null)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ OTP, báo đã áp dụng
+        {
+            _login = _carry.Login; _loginAt = _carry.At; var t = _carry.Toast; _carry = default;
+            if (!string.IsNullOrEmpty(t)) Shown += (_, _) => Toast(t);
+        }
         Shown += async (_, _) => await StartupLoginAsync();   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
         FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); };
         var args = Environment.GetCommandLineArgs();
@@ -222,9 +224,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         }
     }
 
-    bool IsEditPage(Control p) => p == _devices || p == _protos || p == _cloud;
-
-    /// <summary>Cổng chỉnh sửa: cần một lần duyệt trên webapp còn hiệu lực (10 phút). Hết hạn → khoá lại, về Tổng quan chỉ xem.</summary>
+    /// <summary>Cổng chỉnh sửa: cần OTP MỘT lần cho mỗi lần mở app (qua webapp: duyệt đăng nhập hoặc mã ghép). Xem trang thì không cần.</summary>
     async Task<bool> EnsureUnlockedAsync(string why = "Xác nhận trên webapp để chỉnh sửa cấu hình gateway")
     {
         if (Unlocked) return true;
@@ -234,9 +234,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Xác nhận chỉnh sửa", why);
             if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return false;
-            _login = f.Result; _loginAt = DateTime.UtcNow; _otpThisRun = true;
-            _dash.ReadOnly = false; _dash.Rebuild();
-            Toast($"Đã xác nhận ({f.Result.User}) — sửa được trong {(int)UnlockLife.TotalMinutes} phút.");
+            _login = f.Result; _loginAt = DateTime.UtcNow;
+            Toast($"Đã xác nhận OTP ({f.Result.User}) — sửa được cho tới khi đóng gateway.");
             _ = AutoConnectAsync();
             return true;
         }
@@ -244,38 +243,26 @@ public sealed partial class MainForm : Form, IGatewayApp
     }
 
     bool _autoBusy;
-    /// <summary>Sau đăng nhập: gateway CHƯA có ID + QR thì server tự cấp (đăng ký tự động); ĐÃ có thì tự nối cloud và đồng bộ, không cần bấm gì.</summary>
+    /// <summary>Sau đăng nhập: gateway CHƯA có ID + QR thì server tự cấp (đăng ký lần đầu) và đồng bộ. Đã đăng ký thì không làm gì (đã tự nối từ lúc khởi động).</summary>
     async Task AutoConnectAsync()
     {
-        if (_testMode || _login == null || _autoBusy) return;
+        if ((_testMode && !_noAuth) || (_login == null && !_noAuth) || _autoBusy) return;
         _autoBusy = true;
         try
         {
-            var hasId = _cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0;
-            if (!hasId)
+            if (_cfg.MqttId.Length == 0 || _cfg.GatewayQr.Length == 0)
             {
                 var r = await RegisterAsync(CloudPage.ServerOf(_cfg));
                 if (r.Ok) Toast("Đã tự cấp ID + QR từ server và đồng bộ.");
             }
-            else { if (_host != null) await StopAsync(); await StartAsync(); }   // đã đăng ký: chạy lại với cloud bật (đã có OTP) → tự nối + đồng bộ
         }
         finally { _autoBusy = false; }
-    }
-
-    /// <summary>Hết hạn mở khoá: khoá lại giao diện sửa.</summary>
-    void RelockIfExpired()
-    {
-        if (!_editUi || _testMode || _login == null || Unlocked) return;
-        _login = null;
-        _dash.ReadOnly = true; _dash.Rebuild();
-        if (IsEditPage(_current)) Show(_dash);
-        Toast("Hết thời gian chỉnh sửa — cần xác nhận lại trên webapp để sửa tiếp.");
     }
 
     /// <summary>Token đăng ký còn dùng được không; không thì đăng nhập lại (một lần duyệt mới).</summary>
     async Task<LoginResult?> FreshLoginAsync()
     {
-        if (_login != null && DateTime.UtcNow - _loginAt < TokenLife) return _login;
+        if (_login != null && (_noAuth || DateTime.UtcNow - _loginAt < TokenLife)) return _login;
         _login = null; _loginAt = DateTime.MinValue;
         return await EnsureUnlockedAsync("Đăng nhập webapp để kết nối gateway với server") ? _login : null;
     }
@@ -283,17 +270,22 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Màn hình đăng nhập lúc mở app. Huỷ → chạy ở chế độ chỉ xem (vẫn offline được).</summary>
     async Task StartupLoginAsync()
     {
-        if (_testMode) return;   // bản khách cũng phải qua OTP mới nối cloud
-        if (!await EnsureUnlockedAsync("Xác thực OTP trên webapp để nối cloud và chỉnh sửa gateway")) Toast("Chưa có OTP: gateway chạy cục bộ, KHÔNG nối cloud, chỉ xem.");
+        if (_noAuth)   // TẠM THỜI: không đăng nhập; nếu có token đăng ký lấy sẵn (env) thì dùng để tự cấp ID + QR
+        {
+            long.TryParse(Environment.GetEnvironmentVariable("GW_TEST_UID"), out var uid);
+            if (Environment.GetEnvironmentVariable("GW_TEST_TOKEN") is { Length: > 0 } tk) { _login = new LoginResult(tk, "noauth", uid); _loginAt = DateTime.UtcNow; }
+            _dash.ReadOnly = false; _dash.Rebuild();
+            Toast("⚠ CHẾ ĐỘ KHÔNG XÁC THỰC (--noauth) — chỉ để test.", true);
+            await AutoConnectAsync();
+            return;
+        }
+        if (_testMode) return;
+        if (_cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0) return;   // đã đăng ký: tự chạy nền + nối server, KHÔNG đòi đăng nhập
+        if (!await EnsureUnlockedAsync("Đăng nhập webapp (OTP) để đăng ký gateway lần đầu")) Toast("Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
     }
 
     void Show(Control page)
     {
-        if (IsEditPage(page) && !Unlocked)
-        {
-            _ = UnlockThenShowAsync(page);
-            return;
-        }
         _current = page;
         foreach (var (btn, p, title) in _pages)
         {
@@ -303,8 +295,6 @@ public sealed partial class MainForm : Form, IGatewayApp
         page.BringToFront();
         Tick();
     }
-
-    async Task UnlockThenShowAsync(Control page) { if (await EnsureUnlockedAsync()) Show(page); }
 
     /// <summary>Chỉ cho chế độ kiểm thử (--pairtest/--soltest): dùng token đăng ký lấy sẵn (env GW_TEST_TOKEN, GW_TEST_UID) thay vì mở trình duyệt.</summary>
     async Task TestRegisterAsync(string api, string token)
@@ -346,7 +336,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         try
         {
             _values.Clear();
-            var h = new ScadaHost(CloudAllowed ? _cfg : OfflineCopy(), _demo ? new DemoDriver(_cfg) : null);   // chưa OTP: chạy cục bộ
+            var h = new ScadaHost(_cfg, _demo ? new DemoDriver(_cfg) : null);
             h.Describer = new MetaDescriber(_meta, _cfg);   // nhãn/đơn vị/kiểu từ hộp thoại thêm thiết bị → bản tin config
             h.Log += l => _log.Add("LOG", "gateway", l);
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
@@ -528,12 +518,20 @@ public sealed partial class MainForm : Form, IGatewayApp
     }
 
     /// <summary>Giao diện của giải pháp (kit.Solution + kit.Ui) → lưu cache; có thay đổi thì báo (áp dụng khi mở lại gateway).</summary>
+    /// <summary>Đổi giải pháp (giao diện) xong là ÁP DỤNG NGAY: dựng lại cửa sổ trong cùng tiến trình với bảng màu/trang mới (xem Program.Main). Giữ trạng thái OTP.</summary>
+    internal static bool RestartRequested;
+    static (LoginResult? Login, DateTime At, string Toast) _carry;
+
     void ApplySkin(GatewayProvisionKit kit)
     {
         var (changed, title) = SkinStore.Save(kit.Solution, kit.Ui);
         if (!changed) return;
         _log.Add("INFO", "ui", title.Length > 0 ? $"giao diện giải pháp \"{title}\" đã nhận từ server" : "gateway về giao diện cơ bản");
-        Toast(title.Length > 0 ? $"Giao diện \"{title}\" sẽ áp dụng khi mở lại gateway" : "Giao diện cơ bản sẽ áp dụng khi mở lại gateway");
+        var msg = title.Length > 0 ? $"Đã áp dụng giao diện \"{title}\"" : "Đã về giao diện cơ bản";
+        if (_testMode) { Toast(msg + " (áp dụng khi mở lại)"); return; }   // chế độ kiểm thử không dựng lại cửa sổ
+        Toast(msg);
+        // trễ ngắn để thao tác đang chạy (lưu cấu hình, báo kết quả) xong rồi mới dựng lại cửa sổ
+        _ = Task.Delay(400).ContinueWith(_ => { if (!IsDisposed) BeginInvoke(async () => { await StopAsync(); _carry = (_login, _loginAt, msg); RestartRequested = true; Close(); }); });   // dừng host trước để cửa sổ mới không tranh cổng/ID MQTT
     }
 
     // ------------------------------------------------------------------ chờ user: hỏi server tem đã claim chưa
@@ -562,7 +560,6 @@ public sealed partial class MainForm : Form, IGatewayApp
     // ------------------------------------------------------------------ nhịp giao diện
     void Tick()
     {
-        RelockIfExpired();
         PollClaimed();
         _log.Flush();
         var running = _host != null;

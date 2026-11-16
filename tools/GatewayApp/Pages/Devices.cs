@@ -51,6 +51,7 @@ sealed class PreviewApp : IGatewayApp
     public string HwText => "";
     public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
+    public bool RequireEdit() => true;   // chỉ để xem trước hộp thoại: không có gì để bảo vệ
 }
 
 /// <summary>
@@ -438,6 +439,7 @@ sealed class DeviceDialog : Form
 
     public static bool Run(IGatewayApp app, IWin32Window owner, string? editChild, out string child, out bool deleted)
     {
+        if (!app.RequireEdit()) { child = ""; deleted = false; return false; }   // sửa cấu hình cần OTP (một lần mỗi lần mở app)
         using var d = new DeviceDialog(app, editChild);
         if (Hook != null) { var hook = Hook; d.Shown += (_, _) => hook(d); }
         var ok = d.ShowDialog(owner) == DialogResult.OK;
@@ -505,6 +507,7 @@ sealed class DevicesPage : UserControl
     async Task ToggleRun()
     {
         var c = SelectedChild(); if (c == null) { _app.Toast("Chọn một dòng của thiết bị cần chạy hoặc tạm dừng.", true); return; }
+        if (!_app.RequireEdit()) return;
         var err = await _app.SetDeviceEnabledAsync(c, IsEnabled(c) == false);
         if (err != null) _app.Toast($"Không đổi được trạng thái {c}: {err}", true);
         Refill();
@@ -513,6 +516,7 @@ sealed class DevicesPage : UserControl
     async Task Delete()
     {
         var c = SelectedChild(); if (c == null) { _app.Toast("Chọn một dòng của thiết bị cần xoá.", true); return; }
+        if (!_app.RequireEdit()) return;
         if (!DeviceDialog.ConfirmDelete(_app, FindForm(), c)) return;
         DeviceDialog.Remove(_app, c);
         Refill(); await _app.ApplyAsync($"Đã xoá thiết bị {c}");

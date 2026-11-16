@@ -71,6 +71,7 @@ sealed class ProtocolsPage : UserControl
         var hint = new Label { Text = "Mỗi giao thức có một kết nối (địa chỉ, cổng, tuỳ chọn). Thiết bị chọn giao thức + thông số riêng ở trang Thiết bị; nhiều giao thức chạy cùng lúc.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = true, Margin = new Padding(14, 10, 0, 0) };
         add.Click += (_, _) =>
         {
+            if (!app.RequireEdit()) return;
             var m = new ContextMenuStrip { BackColor = Theme.Panel2, ForeColor = Theme.Text, Font = Theme.Normal, ShowImageMargin = false };
             foreach (var p in All) m.Items.Add($"{p.Name}", null, (_, _) => Select(p));
             m.Show(add, new Point(0, add.Height));
@@ -185,6 +186,7 @@ sealed class ProtocolsPage : UserControl
 
     async Task ApplyAsync()
     {
+        if (!_app.RequireEdit()) { Say("Cần xác nhận OTP trên webapp để sửa kết nối.", Theme.Red); return; }
         var err = WriteTo(_app.Config);
         if (err != null) { Say("✖ " + err, Theme.Red); return; }
         Select(_sel);

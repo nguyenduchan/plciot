@@ -24,6 +24,8 @@ public interface IGatewayApp
     /// <summary>Việc cloud do GATEWAY thực hiện (cần mạng của gateway): action = "pair" (value = mã ghép cặp) hoặc "enroll" (value = mã QR của tem).</summary>
     Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value);
     void Toast(string text, bool error = false);
+    /// <summary>Cổng OTP trước khi SỬA cấu hình (thêm/sửa/xoá thiết bị, giao thức, cloud): chưa nhập OTP thì hiện màn hình OTP. false = bị từ chối, không được sửa.</summary>
+    bool RequireEdit();
 }
 
 /// <summary>Thẻ của một thiết bị con: mỗi field là một widget (bồn, đồng hồ, công tắc, thanh trượt, số).</summary>

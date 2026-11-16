@@ -134,7 +134,16 @@ export function addFromHardwareRow(db, user, hw) {
   const gateway = user.notify_device || String(hw.device);
   const added = [];
 
-  const seeds = Array.isArray(meta?.seed) ? meta.seed : null;
+  let seeds = Array.isArray(meta?.seed) && meta.seed.length ? meta.seed : null;
+  if (!seeds) {
+    // Gateway đăng ký KHI CHƯA có thiết bị (cài mới) rồi mới thêm thiết bị: tem không có seed, nhưng gateway đã gửi cấu hình lên
+    // (gateway_configs) → user quét QR sau đó vẫn nhận đủ thiết bị con (bồn, bơm...) để xem và điều khiển.
+    try {
+      const cfg = db.prepare('SELECT devices FROM gateway_configs WHERE site = ? AND device = ?').get(site, String(hw.device));
+      const ds = cfg ? JSON.parse(cfg.devices) : [];
+      if (Array.isArray(ds) && ds.length) seeds = ds.map((d) => ({ childId: d.id, type: 'dynamic', title: d.name }));
+    } catch { /* chưa có bảng / cấu hình hỏng: dùng đường mặc định bên dưới */ }
+  }
   if (seeds?.length) {
     for (const s of seeds) {
       const childId = String(s.childId || s.id || '').trim();

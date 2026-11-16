@@ -20,9 +20,21 @@ static class SkinStore
         try { return Color.FromArgb(Convert.ToInt32(h[1..3], 16), Convert.ToInt32(h[3..5], 16), Convert.ToInt32(h[5..7], 16)); } catch (FormatException) { return d; }
     }
 
+    /// <summary>Màu mặc định (bản cơ bản), chụp trước khi bất kỳ giải pháp nào đổi màu — để quay về cơ bản khi đổi giải pháp lúc đang chạy.</summary>
+    static (Color Bg, Color Side, Color Panel, Color Panel2, Color Border, Color Text, Color Muted, Color Accent, Color Teal)? _defaults;
+
+    /// <summary>Nạp lại giao diện từ file đã lưu (gọi khi đổi giải pháp lúc gateway đang chạy, trước khi dựng cửa sổ mới).</summary>
+    public static void Reload()
+    {
+        if (_defaults is { } d) { Theme.Bg = d.Bg; Theme.Side = d.Side; Theme.Panel = d.Panel; Theme.Panel2 = d.Panel2; Theme.Border = d.Border; Theme.Text = d.Text; Theme.Muted = d.Muted; Theme.Accent = d.Accent; Theme.Teal = d.Teal; }
+        SolutionHost.Name = ""; SolutionHost.Title = ""; SolutionHost.ExtraPage = null;
+        Boot();
+    }
+
     [ModuleInitializer]
     internal static void Boot()
     {
+        _defaults ??= (Theme.Bg, Theme.Side, Theme.Panel, Theme.Panel2, Theme.Border, Theme.Text, Theme.Muted, Theme.Accent, Theme.Teal);
         try
         {
             if (Environment.GetEnvironmentVariable("GATEWAYAPP_NOSKIN") == "1") return;
