@@ -82,6 +82,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         var h = _host;
         if (h == null) return "gateway chưa chạy";
+        if (!await EnsureUnlockedAsync("Nhập mã ghép (OTP) để điều khiển thiết bị")) return "cần OTP để điều khiển";
         var payload = JsonSerializer.SerializeToUtf8Bytes(new { id = Guid.NewGuid().ToString("N")[..8], child, key = field, v = value });
         string? ack;
         try { ack = await h.Core.ExecuteKeyAsync(payload, ControlSource.LocalScreen, "ui"); }
@@ -199,7 +200,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             _login = _carry.Login; _loginAt = _carry.At; var t = _carry.Toast; _carry = default;
             if (!string.IsNullOrEmpty(t)) Shown += (_, _) => Toast(t);
         }
-        Shown += async (_, _) => await StartupLoginAsync();   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
+        Shown += (_, _) => BeginInvoke(async () => await StartupLoginAsync());   // hoãn: hộp thoại OTP (modal) không được chặn việc tự chạy nền ở các handler Shown khác;   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
         FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); };
         var args = Environment.GetCommandLineArgs();
         _demo = args.Contains("--demo");
@@ -280,8 +281,10 @@ public sealed partial class MainForm : Form, IGatewayApp
             return;
         }
         if (_testMode) return;
-        if (_cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0) return;   // đã đăng ký: tự chạy nền + nối server, KHÔNG đòi đăng nhập
-        if (!await EnsureUnlockedAsync("Đăng nhập webapp (OTP) để đăng ký gateway lần đầu")) Toast("Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
+        // Luôn hỏi OTP lúc mở app; có thể BỎ QUA: đã đăng ký thì vẫn tự chạy nền + nối server, chỉ khi sửa cấu hình mới hỏi lại.
+        var registered = _cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0;
+        if (!await EnsureUnlockedAsync(registered ? "Nhập mã ghép (OTP) để sửa cấu hình — có thể bỏ qua" : "Nhập mã ghép (OTP) để đăng ký gateway lần đầu"))
+            Toast(registered ? "Đã bỏ qua OTP: gateway vẫn chạy và nối server; sửa cấu hình sẽ hỏi lại." : "Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
     }
 
     void Show(Control page)
@@ -341,6 +344,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             h.Log += l => _log.Add("LOG", "gateway", l);
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
             h.Core.Publish += OnPublish;
+            h.Core.ControlGate = () => Unlocked;   // điều khiển (ghi xuống PLC, kể cả từ cloud/điện thoại) chỉ sau khi đã nhập OTP
             _host = h;
             await h.StartAsync();
         }

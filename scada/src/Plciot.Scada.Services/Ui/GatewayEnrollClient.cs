@@ -75,6 +75,15 @@ public sealed class GatewayEnrollClient
             r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
     }
 
+    /// <summary>Cách 3: tên + mật khẩu + mã Authenticator (thiếu mã → lỗi totp_required). Chỉ mật khẩu thì server không cấp token.</summary>
+    public async Task<LoginPoll> LoginPasswordAsync(string username, string password, string code, CancellationToken ct = default)
+    {
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/login/password", new { username, password, code }, JsonOpts, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        return new LoginPoll(r.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "", r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "",
+            r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
+    }
+
     /// <summary>Đăng ký gateway bằng token đăng nhập + chữ ký khoá riêng: server cấp tem/MQTT trong hạn mức của tài khoản và trả kit.</summary>
     public async Task<PairResult> RegisterAsync(string token, long userId, string fp, byte[] configJson, GatewayIdentity id, string solution = "", CancellationToken ct = default)
     {

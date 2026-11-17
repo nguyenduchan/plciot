@@ -13,7 +13,7 @@
  * userCode hết hạn 10 phút, dùng một lần; poll quá nhanh bị 429 (`slow_down`).
  */
 import crypto from 'node:crypto';
-import { rateLimit, clientIp, signToken, verifyToken, audit, findUserByUsername, checkControlSession } from '@plciot/security';
+import { rateLimit, clientIp, signToken, verifyToken, audit, countAudit, findUserByUsername, checkControlSession, verifyPassword, hashPassword, openSecret, verifyTotp } from '@plciot/security';
 import { isDashboardAdmin } from './roles.js';
 import { subnetOf } from './gatewayEnroll.js';
 import { registerForUser } from './gatewayPairing.js';
@@ -69,6 +69,11 @@ export function makeRequireOtp(db) {
     next();
   };
 }
+
+const PW_FAIL = 'gateway_pw_fail';
+const PW_LOCK_FAILS = 5;
+const PW_LOCK_MS = 15 * 60_000;
+const PW_DUMMY = hashPassword('dummy-password-for-timing');
 
 export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }) {
   migrateGatewayLogins(db);
@@ -186,6 +191,36 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     if (!user || user.disabled) return bad();
     const token = signToken({ uid: user.id, tv: user.token_version | 0, scope: 'gateway_register' }, jwtSecret, REG_TOKEN_SEC);
     audit(db, 'gateway_code_redeem', { userId: user.id, ip: clientIp(req), detail: row.id });
+    res.json({ status: 'approved', token, expiresIn: REG_TOKEN_SEC, user: user.username, uid: user.id });
+  });
+
+  // Đăng nhập gateway bằng tên + mật khẩu NHƯNG bắt buộc thêm mã Authenticator (TOTP): chỉ mật khẩu thì không đủ.
+  // Mật khẩu đúng mà thiếu mã → totp_required (app hiện ô nhập mã). Tài khoản chưa bật Authenticator → totp_not_enabled.
+  const pwLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_PASSWORD || 8), keyFn: (req) => `${clientIp(req)}:gw-pw` });
+  const pwNet = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_PASSWORD_NET || 30), keyFn: (req) => `${subnetOf(clientIp(req))}:gw-pw-net` });
+  app.post('/api/v1/gateway/login/password', pwLimit, pwNet, (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const code = String(req.body?.code || '').replace(/\s/g, '');
+    const user = username ? findUserByUsername(db, username) : null;
+    const usable = Boolean(user && !user.disabled && user.login_password_hash && user.setup_complete !== 0);
+    if (usable && countAudit(db, user.id, PW_FAIL, Date.now() - PW_LOCK_MS) >= PW_LOCK_FAILS) return res.status(429).json({ error: 'locked' });
+    const match = verifyPassword(password, usable ? user.login_password_hash : PW_DUMMY);
+    if (!usable || !match) {
+      if (user) audit(db, PW_FAIL, { userId: user.id, ip: clientIp(req), detail: 'password' });
+      return res.status(401).json({ error: 'invalid_credentials' });
+    }
+    if (!user.totp_enabled) return res.status(403).json({ error: 'totp_not_enabled' });
+    if (!code) return res.status(401).json({ error: 'totp_required' });
+    const secret = openSecret(user.totp_secret);
+    const step = secret ? verifyTotp(secret, code, { lastStep: user.totp_last_step | 0 }) : null;
+    if (!step) {
+      audit(db, PW_FAIL, { userId: user.id, ip: clientIp(req), detail: 'totp' });
+      return res.status(401).json({ error: 'totp_invalid' });
+    }
+    db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, user.id);
+    const token = signToken({ uid: user.id, tv: user.token_version | 0, scope: 'gateway_register' }, jwtSecret, REG_TOKEN_SEC);
+    audit(db, 'gateway_password_login', { userId: user.id, ip: clientIp(req) });
     res.json({ status: 'approved', token, expiresIn: REG_TOKEN_SEC, user: user.username, uid: user.id });
   });
 

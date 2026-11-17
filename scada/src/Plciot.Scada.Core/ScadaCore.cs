@@ -59,6 +59,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     public event Action<string, byte[], bool>? Publish;
     /// <summary>Chế độ gateway: nơi gửi lệnh tới gateway.</summary>
     public Func<byte[], Task>? ExternalCommandSink { get; set; }
+    /// <summary>Cổng điều khiển bổ sung do app chủ đặt (vd. GatewayApp: chỉ cho ghi sau khi đã nhập OTP). null = không chặn. Chỉ áp cho lệnh GHI, mọi nguồn.</summary>
+    public Func<bool>? ControlGate { get; set; }
 
     public void Emit(string s)
     {
@@ -218,6 +220,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         var (cmd, err, id) = CommandPolicy.Parse(payload, _writable);
         if (cmd == null) return CommandPolicy.AckJson(id, false, err);
         // MỘT điểm kiểm soát quyền điều khiển cho mọi nguồn (màn hình chính, màn hình phụ, điện thoại, LAN): đọc luôn được, ghi theo chính sách
+        if (!cmd.IsRead && ControlGate is { } g1 && !g1()) return CommandPolicy.AckJson(cmd.Id, false, "otp_required");
         if (!cmd.IsRead && !_cfg.AllowsControl(source))
         {
             Emit($"Từ chối lệnh ghi từ {source} ({actor}): chính sách không cho phép");
@@ -284,6 +287,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             if (r.TryGetProperty("child", out var c) && c.ValueKind == JsonValueKind.String) child = c.GetString();
         }
         catch (JsonException) { return CommandPolicy.AckJson(null, false, "bad_json"); }
+        if (ControlGate is { } g2 && !g2()) return CommandPolicy.AckJson(id, false, "otp_required");
         if (!_cfg.AllowsControl(source))
         {
             Emit($"Từ chối lệnh ghi từ {source} ({actor}): chính sách không cho phép");

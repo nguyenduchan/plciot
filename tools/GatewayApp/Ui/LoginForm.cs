@@ -1,60 +1,94 @@
-using System.Diagnostics;
 using Plciot.Scada.Services.Ui;
 
 namespace GatewayApp.Ui;
 
-/// <summary>Kết quả đăng nhập qua trình duyệt: token đăng ký ngắn hạn + tài khoản đã duyệt.</summary>
+/// <summary>Kết quả đăng nhập: token đăng ký ngắn hạn + tài khoản đã xác thực.</summary>
 public sealed record LoginResult(string Token, string User, long Uid);
 
 /// <summary>
-/// Màn hình đăng nhập: app KHÔNG nhận mật khẩu. Hiện mã ngắn + mở trang webapp; người dùng đăng nhập trên webapp
-/// (Face ID / TOTP như thường) và bấm Duyệt. App hỏi server mỗi vài giây cho tới khi được duyệt, bị từ chối hoặc hết hạn.
-/// Cũng dùng làm "mở khoá chỉnh sửa": mọi thay đổi cấu hình cần một lần duyệt còn hiệu lực.
+/// Màn hình đăng nhập lúc mở app (có thể "Bỏ qua": gateway vẫn chạy ngầm, chỉ điều khiển/sửa cấu hình mới cần).
+/// Cách 1: tên đăng nhập + mật khẩu + mã Authenticator (mật khẩu một mình KHÔNG đủ — server từ chối nếu thiếu mã).
+/// Cách 2: mã ghép (OTP) tạo trên webapp bằng ĐIỆN THOẠI (Face ID / Authenticator), gõ vào đây — không cần gõ mật khẩu trên PC.
+/// Gateway chạy trên PC nên không mở trình duyệt ở đây.
 /// </summary>
 sealed class LoginForm : Form
 {
     readonly string _api;
-    readonly Label _code = new(), _status = new();
-    readonly FlatButton _open = new() { Caption = "Mở trình duyệt", Primary = true, Width = 190 };
-    readonly FlatButton _cancel = new() { Caption = "Huỷ", Width = 120 };
-    readonly TextBox _otp = new();
-    readonly FlatButton _otpGo = new() { Caption = "Kết nối bằng mã ghép", Width = 220 };
+    readonly Label _status = new();
+    readonly TextBox _user = new(), _pass = new() { UseSystemPasswordChar = true }, _totp = new(), _otp = new();
+    readonly FlatButton _login = new() { Caption = "Đăng nhập", Primary = true, Width = 160 };
+    readonly FlatButton _otpGo = new() { Caption = "Dùng mã ghép", Width = 160 };
+    readonly FlatButton _cancel = new() { Caption = "Bỏ qua", Width = 120 };
     readonly CancellationTokenSource _cts = new();
-    string _url = "";
 
     public LoginResult? Result { get; private set; }
 
     public LoginForm(string api, string title = "Đăng nhập", string? reason = null)
     {
         _api = api.Trim();
-        Text = title; ClientSize = new Size(520, 430); StartPosition = FormStartPosition.CenterParent;
+        var host = Uri.TryCreate(_api, UriKind.Absolute, out var u) ? u.Host : _api;
+        Text = title; ClientSize = new Size(520, 560); StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal;
-        var head = new Label { Text = reason ?? "Đăng nhập tài khoản webapp để dùng gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 12f), AutoSize = false, Location = new Point(24, 20), Size = new Size(472, 28), BackColor = Color.Transparent };
-        var help = new Label { Text = "1. Bấm “Mở trình duyệt” (hoặc vào địa chỉ bên dưới).\n2. Đăng nhập webapp, đối chiếu mã này rồi bấm Duyệt.\nApp không bao giờ hỏi mật khẩu của bạn.", ForeColor = Theme.Muted, AutoSize = false, Location = new Point(24, 54), Size = new Size(472, 62), BackColor = Color.Transparent };
-        _code.Font = new Font("Consolas", 34f, FontStyle.Bold); _code.ForeColor = Theme.Teal; _code.AutoSize = false; _code.TextAlign = ContentAlignment.MiddleCenter;
-        _code.Location = new Point(24, 124); _code.Size = new Size(472, 70); _code.Text = "…"; _code.BackColor = Color.Transparent;
-        _status.ForeColor = Theme.Muted; _status.AutoSize = false; _status.TextAlign = ContentAlignment.MiddleCenter;
-        _status.Location = new Point(24, 200); _status.Size = new Size(472, 48); _status.Text = "Đang kết nối server…"; _status.BackColor = Color.Transparent;
-        _open.Location = new Point(24, 268); _open.Enabled = false; _cancel.Location = new Point(376, 268);
-        var otpLbl = new Label { Text = "Hoặc nhập mã ghép (OTP) do bạn / admin tạo trên webapp:", ForeColor = Theme.Muted, AutoSize = false, Location = new Point(24, 318), Size = new Size(472, 22), BackColor = Color.Transparent };
-        Skin.Input(_otp); _otp.Location = new Point(24, 344); _otp.Width = 220; _otp.CharacterCasing = CharacterCasing.Upper; _otp.MaxLength = 9;
-        _otpGo.Location = new Point(264, 340); _otpGo.Click += async (_, _) => await RedeemAsync();
-        _open.Click += (_, _) => OpenBrowser();
+        Label L(string t, int y, int h = 22, bool bold = false) => new() { Text = t, ForeColor = bold ? Theme.Text : Theme.Muted, Font = bold ? new Font("Segoe UI Semibold", 12f) : Font, AutoSize = false, Location = new Point(24, y), Size = new Size(472, h), BackColor = Color.Transparent };
+        var head = L(reason ?? "Đăng nhập tài khoản webapp", 18, 28, true);
+        var l1 = L("Tên đăng nhập", 56); Skin.Input(_user); _user.Location = new Point(24, 80); _user.Width = 472;
+        var l2 = L("Mật khẩu", 112); Skin.Input(_pass); _pass.Location = new Point(24, 136); _pass.Width = 472;
+        var l3 = L("Mã Authenticator (6 số) — bắt buộc, chỉ mật khẩu là không đủ", 168); Skin.Input(_totp); _totp.Location = new Point(24, 192); _totp.Width = 200; _totp.MaxLength = 8;
+        _login.Location = new Point(336, 188);
+        var l4 = L($"Hoặc lấy mã ghép (OTP) trên ĐIỆN THOẠI: mở {host}, đăng nhập (Face ID / Authenticator) → “Kết nối gateway” → “Tạo mã ghép”, rồi gõ mã:", 248, 46);
+        Skin.Input(_otp); _otp.Location = new Point(24, 302); _otp.Width = 200; _otp.CharacterCasing = CharacterCasing.Upper; _otp.MaxLength = 9;
+        _otpGo.Location = new Point(336, 298);
+        _status.ForeColor = Theme.Muted; _status.AutoSize = false; _status.Location = new Point(24, 356); _status.Size = new Size(472, 60); _status.BackColor = Color.Transparent;
+        var note = L("Bỏ qua: gateway vẫn chạy ngầm và nối server; khi điều khiển hoặc sửa cấu hình sẽ hỏi lại. Đóng rồi mở lại app phải đăng nhập lại.", 424, 44);
+        _cancel.Location = new Point(376, 500);
+        _login.Click += async (_, _) => await PasswordAsync();
+        _otpGo.Click += async (_, _) => await RedeemAsync();
+        _totp.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await PasswordAsync(); } };
+        _pass.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _totp.Focus(); } };
+        _user.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _pass.Focus(); } };
+        _otp.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await RedeemAsync(); } };
         _cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        Controls.AddRange(new Control[] { head, help, _code, _status, _open, _cancel, otpLbl, _otp, _otpGo });
-        Shown += async (_, _) => await RunAsync();
+        Controls.AddRange(new Control[] { head, l1, _user, l2, _pass, l3, _totp, _login, l4, _otp, _otpGo, _status, note, _cancel });
+        Shown += (_, _) => _user.Focus();
         FormClosed += (_, _) => _cts.Cancel();
     }
 
-    void OpenBrowser()
+    HttpClient NewHttp() => new() { BaseAddress = new Uri(_api), Timeout = TimeSpan.FromSeconds(15) };
+
+    bool Accept(LoginPoll p)
     {
-        if (_url.Length == 0) return;
-        try { Process.Start(new ProcessStartInfo(_url) { UseShellExecute = true }); }
-        catch (Exception) { Clipboard.SetText(_url); _status.Text = "Không mở được trình duyệt — đã chép địa chỉ, hãy dán vào trình duyệt."; }
+        if (p.Status != "approved" || p.Token.Length == 0) return false;
+        Result = new LoginResult(p.Token, p.User, p.Uid); DialogResult = DialogResult.OK; Close(); return true;
     }
 
-    /// <summary>Cách 2: mã ghép (OTP) tạo trên webapp (người dùng hoặc admin) — không cần mở trình duyệt từ app.</summary>
+    async Task PasswordAsync()
+    {
+        var name = _user.Text.Trim();
+        if (name.Length == 0 || _pass.Text.Length == 0) { _status.Text = "Nhập tên đăng nhập và mật khẩu."; return; }
+        if (_totp.Text.Trim().Length == 0) { _status.Text = "Nhập mã Authenticator — chỉ mật khẩu là không đủ."; _totp.Focus(); return; }
+        _login.Enabled = false;
+        try
+        {
+            using var http = NewHttp();
+            if (!Accept(await new GatewayEnrollClient(http).LoginPasswordAsync(name, _pass.Text, _totp.Text.Trim(), _cts.Token))) _status.Text = "Đăng nhập không thành công.";
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed) _status.Text = ex.Message switch
+            {
+                "invalid_credentials" => "Sai tên đăng nhập hoặc mật khẩu.",
+                "totp_required" => "Nhập mã Authenticator.",
+                "totp_invalid" => "Mã Authenticator sai hoặc đã dùng — đợi mã mới rồi thử lại.",
+                "totp_not_enabled" => "Tài khoản chưa bật Authenticator: bật trong Cài đặt webapp, hoặc dùng mã ghép bên dưới.",
+                "locked" => "Sai quá nhiều lần, khoá 15 phút.",
+                "rate_limited" => "Thử quá nhanh, đợi một chút.",
+                _ => "Không đăng nhập được: " + ex.Message,
+            };
+        }
+        finally { if (!IsDisposed) { _login.Enabled = true; _pass.Clear(); } }
+    }
+
     async Task RedeemAsync()
     {
         var otp = _otp.Text.Trim();
@@ -62,52 +96,10 @@ sealed class LoginForm : Form
         _otpGo.Enabled = false;
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(_api), Timeout = TimeSpan.FromSeconds(15) };
-            var p = await new GatewayEnrollClient(http).LoginRedeemAsync(otp, _cts.Token);
-            if (p.Status == "approved" && p.Token.Length > 0) { Result = new LoginResult(p.Token, p.User, p.Uid); DialogResult = DialogResult.OK; Close(); return; }
-            _status.Text = "Mã ghép không hợp lệ.";
+            using var http = NewHttp();
+            if (!Accept(await new GatewayEnrollClient(http).LoginRedeemAsync(otp, _cts.Token))) _status.Text = "Mã ghép không hợp lệ.";
         }
-        catch (Exception ex) { if (!IsDisposed) _status.Text = ex.Message == "invalid_code" ? "Mã ghép sai, đã dùng hoặc hết hạn (10 phút)." : ex.Message == "rate_limited" ? "Thử quá nhanh, đợi một chút." : "Không dùng được mã: " + ex.Message; }
+        catch (Exception ex) { if (!IsDisposed) _status.Text = ex.Message is "invalid_code" or "invalid_login" ? "Mã sai, đã dùng hoặc hết hạn (10 phút)." : ex.Message == "rate_limited" ? "Thử quá nhanh, đợi một chút." : "Không dùng được mã: " + ex.Message; }
         finally { if (!IsDisposed) _otpGo.Enabled = true; }
-    }
-
-    async Task RunAsync()
-    {
-        try
-        {
-            using var http = new HttpClient { BaseAddress = new Uri(_api), Timeout = TimeSpan.FromSeconds(15) };
-            var client = new GatewayEnrollClient(http);
-            var st = await client.LoginStartAsync(_cts.Token);
-            if (st.DeviceCode.Length == 0 || st.UserCode.Length == 0) throw new InvalidOperationException("server không trả mã đăng nhập");
-            // Chỉ mở địa chỉ thuộc đúng server đã cấu hình (không mở link tuỳ ý do phản hồi mang về)
-            _url = Uri.TryCreate(st.VerifyUrl, UriKind.Absolute, out var u) && (u.Scheme == "https" || u.Scheme == "http") ? st.VerifyUrl : "";
-            _code.Text = st.UserCode; _open.Enabled = _url.Length > 0;
-            _status.Text = "Chờ bạn duyệt trên trình duyệt…";
-            if (_url.Length > 0) OpenBrowser();
-            var until = DateTime.UtcNow.AddSeconds(Math.Max(30, st.ExpiresIn));
-            while (DateTime.UtcNow < until && !_cts.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(2, st.Interval)), _cts.Token);
-                var p = await client.LoginPollAsync(st.DeviceCode, _cts.Token);
-                if (p.Status == "approved" && p.Token.Length > 0)
-                {
-                    Result = new LoginResult(p.Token, p.User, p.Uid);
-                    DialogResult = DialogResult.OK; Close(); return;
-                }
-            }
-            if (!_cts.IsCancellationRequested) _status.Text = "Mã đã hết hạn. Đóng cửa sổ rồi thử lại.";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (IsDisposed) return;
-            _status.Text = ex.Message switch
-            {
-                "denied" => "Bạn đã từ chối đăng nhập này.",
-                "expired" => "Mã đã hết hạn. Đóng cửa sổ rồi thử lại.",
-                "rate_limited" => "Server đang bận, thử lại sau ít phút.",
-                _ => "Không đăng nhập được: " + ex.Message,
-            };
-        }
     }
 }
