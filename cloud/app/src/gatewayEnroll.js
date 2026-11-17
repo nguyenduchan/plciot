@@ -18,6 +18,7 @@ import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
 import { verifyProof, requestMessage, ensureKeyColumns } from './gatewayKey.js';
+import { cmdPublicKey } from './cmdSign.js';
 import { gatewaySolution, solutionUi, cleanSolution, setGatewaySolution } from './gatewaySolution.js';
 
 /** Khoá theo dải mạng: IPv4 /24, IPv6 /64 (xấp xỉ theo 4 nhóm đầu). */
@@ -219,6 +220,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     // Gateway tự gửi chậm theo gói của chủ (ms giữa hai bản telemetry; 0 = không giới hạn). Chưa có chủ → mức gói miễn phí.
     telemetryMinMs: telemetryMinMsFor(db, hw),
     mqttId,
+    // Khoá công khai của server: gateway kiểm chữ ký lệnh cloud (cmdSign.js) → không cần OTP riêng để nhận lệnh đã qua step-up
+    cmdKey: cmdPublicKey(),
     topicBase: base,
     topics,
     pack,

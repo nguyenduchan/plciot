@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../client/session.js', import.meta.url), 'utf8');
-function browser({ entry = true, demo = false } = {}) {
+function browser({ entry = true, demo = false, alive = null } = {}) {
   let now = 1_000_000;
   const storage = new Map([['session', JSON.stringify({ token: 'session-token', demo })], ['ctl', JSON.stringify({ token: 'control-token' })], ['cfg', JSON.stringify({ user: 'mqtt-user', pass: 'mqtt-password' })]]);
   const tab = new Map(entry ? [['app-entry', 'session-token']] : []);
+  if (alive) tab.set('app-alive', alive);   // dấu tab vừa rời trang: `<ms>|<token>`
   const listeners = new Map();
   const intervals = [];
   const timeouts = new Map();
@@ -80,8 +81,20 @@ brief.advance(10_000);
 brief.document.hidden = false;
 brief.fire('document', 'visibilitychange');
 assert.equal(brief.window.AppLock.isLocked(), false);
+// Rời trang KHÔNG khoá ngay (tải lại trang không bắt đăng nhập lại) nhưng bỏ quyền điều khiển tạm và báo server tính giờ ở nền.
 brief.fire('window', 'pagehide');
-assert.equal(brief.window.AppLock.isLocked(), true, 'Leaving the page locks the session');
+assert.equal(brief.window.AppLock.isLocked(), false, 'Leaving the page does not lock immediately');
+assert.equal(brief.storage.has('ctl'), false, 'Leaving the page drops the control token');
+assert.match(brief.tab.get('app-alive') || '', /^\d+\|session-token$/);
+assert.ok(brief.calls.filter((call) => call.url.endsWith('/api/login/background')).length >= 2, 'Leaving the page starts the server background timer');
+
+// Tải lại trong CÙNG tab trong vòng 60 giây: không khoá, và hỏi server ngay (server khoá thì trang khoá theo).
+const reloadSoon = browser({ entry: false, alive: `${1_000_000 - 5_000}|session-token` });
+assert.equal(reloadSoon.window.AppLock.isLocked(), false, 'Reload within a minute keeps the app unlocked');
+assert.equal(reloadSoon.tab.has('app-alive'), false, 'Reload marker is single-use');
+assert.ok(reloadSoon.calls.some((call) => call.url.endsWith('/api/login/activity')));
+assert.equal(browser({ entry: false, alive: `${1_000_000 - 60_000}|session-token` }).window.AppLock.isLocked(), true, 'Reload marker expires after a minute');
+assert.equal(browser({ entry: false, alive: `${1_000_000 - 5_000}|another-token` }).window.AppLock.isLocked(), true, 'Reload marker is bound to the session token');
 
 const update = browser();
 update.window.AppLock.allowNavigation();

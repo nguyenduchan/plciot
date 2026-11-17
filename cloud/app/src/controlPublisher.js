@@ -1,6 +1,7 @@
 import mqtt from 'mqtt';
 import { topicOf, withSchema } from './contract.js';
 import { shardOf, allShards, shardUrls } from './shards.js';
+import { signCmd } from './cmdSign.js';
 
 /**
  * Kênh duy nhất được phép ghi …/cmd (user MQTT `ctl`, xem mqttProvision.js).
@@ -59,6 +60,6 @@ export async function publishCmd(site, device, cmd, opts = {}) {
   await whenConnected(c);
   const topic = topicOf({ mqttId: opts.mqttId }, 'cmd');
   return new Promise((resolve, reject) => {
-    c.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => (err ? reject(err) : resolve({ topic })));
+    c.publish(topic, signCmd(opts.mqttId, payload), { qos: 1 }, (err) => (err ? reject(err) : resolve({ topic })));
   });
 }

@@ -65,6 +65,13 @@ public sealed class GatewayIdentity : IDisposable
         return (ts, Sign($"register|{userId}|{ts}"));
     }
 
+    /// <summary>Chứng minh cho /gateway/rebind (chuyển gateway sang PC này): ký `rebind|&lt;site&gt;|&lt;device&gt;|&lt;ts&gt;` bằng khoá riêng của PC MỚI.</summary>
+    public (long Ts, string Sig) RebindProof(string site, string device)
+    {
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return (ts, Sign($"rebind|{site}|{device}|{ts}"));
+    }
+
     /// <summary>Chứng minh cho /gateway/pair.</summary>
     public (long Ts, string Sig) PairProof(string code)
     {

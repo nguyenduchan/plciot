@@ -57,6 +57,20 @@ public sealed partial class MainForm
             L($"lệnh từ cloud pump1.run={want} → PLC: {(changed ? "OK" : "LỖI")} giá trị hiện tại={run1}");
         }
         else L("không nhận được tín hiệu đã gửi lệnh (script ngoài)");
+
+        // 7) SAU KHI user đã quét QR: gateway thêm thiết bị mới → publish config → dashboard của user phải tự có thêm thiết bị đó
+        //    (script ngoài ghi add-more.txt khi sẵn sàng, rồi tự hỏi dashboard để kiểm).
+        if (await Until(() => File.Exists(Path.Combine(outDir, "add-more.txt")), 60))
+        {
+            var e3 = AddDeviceViaDialog("env", PlcSource.ModbusTcp, "127.0.0.1", 1502, none, modbus);
+            await ApplyAsync("fresh: thêm thiết bị sau khi đã có user");
+            var up2 = await Until(() => Running, 20);
+            var haveEnv = await Until(() => TryValue("env1.t", out _), 20);
+            L($"thêm cảm biến sau khi user đã quét: {(e3.Length == 0 ? "OK" : "LỖI " + e3)}; chạy lại: {(up2 ? "OK" : "LỖI")}; đọc env1.t: {(haveEnv ? "OK" : "LỖI")}; pack={_cfg.Pack.Count} field");
+            File.WriteAllText(Path.Combine(outDir, "added-more.txt"), "1");
+            await Task.Delay(15000);   // để script ngoài kịp hỏi dashboard + đọc telemetry mới
+        }
+        else L("không có yêu cầu thêm thiết bị lần hai (script ngoài)");
         await Task.Delay(8000);   // để telemetry cuối kịp lên server
         L("RESULT=DONE");
         Application.Exit();

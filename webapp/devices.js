@@ -124,7 +124,8 @@
       return `<div class="dw locked" data-locked="1" data-wid="${esc(w.id)}" role="button" tabindex="0" aria-label="Widget bị khoá — bấm để xem lý do"><div class="k">${esc(w.label)}</div><div class="v">🔒 <small>Đã khoá</small></div></div>`;
     }
     const v = val(dev, w.bind);
-    const show = v == null || v === '' ? '—' : (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v);
+    // số lẻ: càng lớn càng ít chữ số thập phân (1234 · 62.6 · 4.75) — "62.59 %" trên đồng hồ chỉ là nhiễu
+    const show = v == null || v === '' ? '—' : (typeof v === 'number' && !Number.isInteger(v) ? (Math.abs(v) >= 100 ? Math.round(v) : Math.abs(v) >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100) : v);
     const unit = w.unit ? ` <small>${esc(w.unit)}</small>` : '';
     if (w.kind === 'gauge') {
       const min = Number(w.min ?? 0); const max = Number(w.max ?? 100);
@@ -212,11 +213,42 @@
   const DEV_ICON = { tank: '🛢', pump: '⛽', env: '🌡', valve: '🚰', motor: '⚙️', energy: '⚡', pressure: '🧭', conveyor: '📦', di: '⬇️', do: '⬆️', custom: '➕' };
 
   /** HTML một thẻ thiết bị. readonly = xem thử: không nút gỡ, không điều khiển được. */
+  // Thiết bị mà MỌI widget đều bị khoá theo gói: gộp vào một dòng thu gọn thay vì kéo dài màn hình bằng hàng chục thẻ "Đã khoá".
+  const allLocked = (d) => d.widgets.length > 0 && d.widgets.every((w) => w.locked);
+  function lockedGroup(devs) {
+    if (!devs.length) return '';
+    const n = devs.reduce((a, d) => a + d.widgets.length, 0);
+    return `<details class="locked-group"><summary>🔒 ${devs.length} thiết bị (${n} widget) đang bị khoá theo gói — bấm để xem</summary><div class="gw-cards">${devs.map((d) => cardHtml(d, false)).join('')}</div></details>`;
+  }
+
+  // Chế độ "Chạy thử không đăng nhập": có sẵn vài thiết bị mẫu chạy bằng số liệu mô phỏng (app.js DemoLink phát env01/pump1/energy1).
+  const DEMO_DASH = () => ({ demo: true, layout: { simple: { order: ['demo-env', 'demo-pump', 'demo-energy', 'demo-light'] } }, devices: [
+    { id: 'demo-env', childId: 'env01', type: 'env', icon: 'env', title: 'Môi trường xưởng (mẫu)', widgets: [
+      { id: 'de1', kind: 'gauge', bind: 't', label: 'Nhiệt độ', unit: '°C', min: 0, max: 50, high: 35 },
+      { id: 'de2', kind: 'gauge', bind: 'h', label: 'Độ ẩm', unit: '%', min: 0, max: 100 }] },
+    { id: 'demo-pump', childId: 'pump1', type: 'pump', icon: 'pump', title: 'Bơm nước (mẫu)', widgets: [
+      { id: 'dp1', kind: 'gauge', bind: 'flow', label: 'Lưu lượng', unit: 'L/phút', min: 0, max: 60 },
+      { id: 'dp2', kind: 'gauge', bind: 'hours', label: 'Giờ chạy', unit: 'h', min: 0, max: 100 }] },
+    { id: 'demo-energy', childId: 'energy1', type: 'energy', icon: 'energy', title: 'Điện năng (mẫu)', widgets: [
+      { id: 'dg1', kind: 'gauge', bind: 'kw', label: 'Công suất', unit: 'kW', min: 0, max: 3 }] },
+    { id: 'demo-light', childId: 'light1', type: 'switch', icon: 'switch', title: 'Đèn xưởng (mẫu — thử bấm)', widgets: [
+      { id: 'dl1', kind: 'toggle', bind: 'on', label: 'Bật / Tắt', onText: 'Bật', offText: 'Tắt', cmd: {} }] },
+  ] });
+
+  /** Nhãn loại ở góc thẻ: bỏ khi nó chỉ lặp lại tiêu đề ("Băng tải" + "BĂNG TẢI"). */
+  function typeTag(d) {
+    if (GENERIC_TYPE.test(d.type || '')) return '';
+    const label = TYPE_VI[d.type] || d.type || '';
+    const norm = (x) => String(x).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!label || norm(d.title).startsWith(norm(label))) return '';
+    return `<span class="muted">${esc(label)}</span>`;
+  }
+
   function cardHtml(d, readonly) {
     const st = devState(d);
     const icon = window.PlcIcons ? `<span class="dev-ic" aria-hidden="true">${window.PlcIcons.device(iconFor(d), { on: st.on, speed: st.spin })}</span>` : '';
     return `<article class="dev-card${window.PlcIcons?.category ? ` cat-${window.PlcIcons.category(iconFor(d))}` : ''}${d.color ? ` acc-${esc(d.color)}` : ''}${readonly ? ' readonly' : ''}${st.on ? '' : ' is-off'}" data-id="${esc(d.id)}" data-child="${esc(d.childId)}" data-type="${esc(d.type)}">
-      <header>${icon}<h3>${esc(d.title)}</h3>${GENERIC_TYPE.test(d.type || '') ? '' : `<span class="muted">${esc(TYPE_VI[d.type] || d.type)}</span>`}
+      <header>${icon}<h3>${esc(d.title)}</h3>${typeTag(d)}
       </header>
       <div class="dev-widgets">${d.widgets.map((w) => widgetHtml(d, w)).join('')}</div>
     </article>`;
@@ -231,6 +263,33 @@
   const holdKey = (dev, w) => `${lk(dev)}|${w.bind}`;
   const setHold = (dev, w, v) => hold.set(holdKey(dev, w), { v: Number(v), until: Date.now() + 3500 });
   const clearHold = (dev, w) => hold.delete(holdKey(dev, w));
+
+  // Lệnh đã tới máy chủ CHƯA phải là thiết bị đã làm: chờ gateway trả ack (ok / lý do từ chối). Không có ack sau ACK_WAIT_MS → báo rõ
+  // "chưa phản hồi" thay vì để nút tự nhảy về giá trị cũ không lời giải thích.
+  const ACK_WAIT_MS = 8000;
+  const awaiting = new Map();              // id lệnh → { dev, w, prev, timer }
+  function revert(p) {
+    clearHold(p.dev, p.w);
+    live[lk(p.dev)] = { ...live[lk(p.dev)], [p.w.bind]: p.prev };
+    render();
+  }
+  function trackAck(id, dev, w, prev) {
+    if (!id) return toast('Đã gửi lệnh tới thiết bị.');
+    toast(`Đã gửi “${w.label}” — đang chờ thiết bị xác nhận…`);
+    const timer = setTimeout(() => {
+      const p = awaiting.get(id); if (!p) return;
+      awaiting.delete(id);
+      toast(`“${w.label}”: ${window.ErrText('gateway_no_reply')}`, true);
+    }, ACK_WAIT_MS);
+    awaiting.set(id, { dev, w, prev, timer });
+  }
+  function onAck(a) {
+    const p = a && awaiting.get(String(a.id)); if (!p) return;
+    clearTimeout(p.timer); awaiting.delete(String(a.id));
+    if (a.ok) return toast(`Thiết bị đã thực hiện: ${p.w.label}.`);
+    revert(p);
+    toast(`Thiết bị từ chối “${p.w.label}”, không có gì thay đổi. ${window.ErrText(a.err || a.error || 'bad_command')}`, true);
+  }
   // Giá trị thanh trượt người dùng đã chọn nhưng CHƯA gửi: lưu ở đây để không mất khi lưới dựng lại, và luôn hiện rõ "chưa gửi".
   const staged = {};                       // "<dev.id>|<w.id>" → số
   const PENDING_TTL_MS = 60000;            // quên quá 60 giây thì bỏ, nhưng PHẢI báo cho người dùng (không im lặng nhảy về số cũ)
@@ -318,7 +377,7 @@
     const host = $('#dev-grid');
     if (!host) return;
     if (loadErr && !dashboard?.devices?.length) {
-      const why = ({ unauthorized: 'phiên đăng nhập hết hạn — hãy đăng nhập lại', session_revoked: 'phiên đã bị thu hồi — hãy đăng nhập lại', app_locked: 'ứng dụng đang khoá — mở khoá rồi thử lại', login_step_up_required: 'cần xác thực thêm — đăng nhập lại', network: 'không có kết nối mạng' })[loadErr.code] || `lỗi ${loadErr.code}`;
+      const why = ({ unauthorized: 'phiên đăng nhập hết hạn — hãy đăng nhập lại', session_revoked: 'phiên đã bị thu hồi — hãy đăng nhập lại', app_locked: 'ứng dụng đang khoá — mở khoá rồi thử lại', login_step_up_required: 'cần xác thực thêm — đăng nhập lại', network: 'không có kết nối mạng' })[loadErr.code] || (window.ErrInfo && window.ErrInfo(loadErr.code, loadErr.status).reason.replace(/\.$/, '').toLowerCase()) || `lỗi ${loadErr.code}`;
       host.innerHTML = `<div class="dev-empty muted">Không tải được danh sách thiết bị (${esc(why)}).<br><button type="button" class="primary" id="dev-retry">Thử lại</button> <button type="button" id="dev-relogin">Đăng nhập lại</button></div>`;
       $('#dev-retry')?.addEventListener('click', () => { loadRetried = false; load().catch(() => {}); });
       $('#dev-relogin')?.addEventListener('click', () => { try { localStorage.removeItem('session'); } catch { /* */ } location.replace('login.html'); });
@@ -350,12 +409,15 @@
       if (!g) { g = { key, gw: d.gw, devs: [] }; groups.push(g); }
       g.devs.push(d);
     }
+    // Nhãn mục cạnh nút Thêm: hiện tổng số thay vì lặp lại chữ "Thiết bị" của tiêu đề trang
+    const headLbl = document.querySelector('.dev-head h2');
+    if (headLbl) { const nd = order.filter((id) => byId[id]).length; const nw = order.reduce((a, id) => a + (byId[id]?.widgets.length || 0), 0); headLbl.textContent = nd ? `${nd} thiết bị · ${nw} widget` : 'Thiết bị'; }
     host.innerHTML = banner + groups.map((g) => `
       <section class="gw-group" data-gw="${esc(g.key)}">
-        <div class="gw-head"><span class="gw-ic" aria-hidden="true">${window.PlcIcons ? window.PlcIcons.device('gear', { on: false }) : ''}</span>
+        <div class="gw-head"${g.gw ? '' : ' hidden'}><span class="gw-ic" aria-hidden="true">${window.PlcIcons ? window.PlcIcons.device('gear', { on: false }) : ''}</span>
           <div class="gw-title"><b>${esc(g.gw ? `${g.gw.site} / ${g.gw.device}` : 'Thiết bị')}</b><small>${g.devs.length} thiết bị · ${g.devs.reduce((n, d) => n + d.widgets.length, 0)} widget</small></div>
           ${g.gw ? `<button type="button" class="fit danger gw-rm" data-site="${esc(g.gw.site)}" data-device="${esc(g.gw.device)}" data-n="${g.devs.length}" title="Gỡ cả gateway khỏi tài khoản">Gỡ gateway</button>` : ''}</div>
-        <div class="gw-cards">${g.devs.map((d) => cardHtml(d, false)).join('')}</div>
+        <div class="gw-cards">${g.devs.filter((d) => !allLocked(d)).map((d) => cardHtml(d, false)).join('')}${lockedGroup(g.devs.filter(allLocked))}</div>
       </section>`).join('');
 
     host.querySelectorAll('.gw-rm').forEach((b) => {
@@ -465,7 +527,7 @@
         clearDirty();
         btn.disabled = true; btn.textContent = 'Đang gửi…';
         window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
-          if (r?.ok) return toast('Đã gửi lệnh tới thiết bị.');
+          if (r?.ok) return trackAck(r.id, dev, w, prev);
           clearHold(dev, w);
           live[lk(dev)] = { ...live[lk(dev)], [w.bind]: prev };
           render();
@@ -493,7 +555,7 @@
           setHold(dev, w, next);
           render();
           window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
-            if (r?.ok) return toast('Đã gửi lệnh tới thiết bị.');
+            if (r?.ok) return trackAck(r.id, dev, w, prev);
             clearHold(dev, w);
             live[lk(dev)] = { ...live[lk(dev)], [w.bind]: prev };
             render();
@@ -515,7 +577,7 @@
   async function load() {
     const s = session();
     if (!s?.token || s.demo) {
-      dashboard = { devices: [], layout: { simple: { order: [] } } };
+      dashboard = s?.demo ? DEMO_DASH() : { devices: [], layout: { simple: { order: [] } } };
       render();
       return;
     }
@@ -536,7 +598,7 @@
     render();
   }
 
-  const TYPE_VI = { env: 'Môi trường', pump: 'Bơm', switch: 'Công tắc', relay: 'Rơ-le', energy: 'Điện năng', tank: 'Bồn chứa', motor: 'Động cơ', conveyor: 'Băng tải', sensor: 'Cảm biến', valve: 'Van', light: 'Đèn', fan: 'Quạt' };
+  const TYPE_VI = { env: 'Môi trường', pump: 'Bơm', switch: 'Công tắc', relay: 'Rơ-le', energy: 'Điện năng', tank: 'Bồn chứa', motor: 'Động cơ', conveyor: 'Băng tải', sensor: 'Cảm biến', valve: 'Van', light: 'Đèn', fan: 'Quạt', di: 'Đầu vào số', do: 'Đầu ra số', inverter: 'Inverter', battery: 'Pin lưu trữ', 'grid-meter': 'Công tơ' };
 
   // ---- Mã QR của tôi: lưu chính mã QR đã nạp (trên máy này) và hiển thị lại ----------------------
   function qrInfo(qr) {
@@ -941,7 +1003,7 @@
   }
   document.addEventListener('DOMContentLoaded', renderSample);
 
-  window.DevicesUi = { load, onConfig, onTelemetry, injectDemoLive, openModal, getDashboard: () => dashboard };
+  window.DevicesUi = { load, onConfig, onTelemetry, onAck, injectDemoLive, openModal, getDashboard: () => dashboard };
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);

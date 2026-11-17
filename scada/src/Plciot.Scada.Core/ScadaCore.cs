@@ -215,12 +215,13 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
 
     // ------------------------------------------------------------------ điều khiển
     /// <summary>Kết quả thực thi lệnh: JSON ack theo hợp đồng ({"id","ok",...}) hoặc null nếu ack sẽ do gateway gửi sau.</summary>
-    public async Task<string?> ExecuteAsync(byte[] payload, ControlSource source, string actor, CancellationToken ct = default)
+    /// <param name="trusted">true = lệnh đã được cloud KÝ (ScadaHost kiểm chữ ký, cloud đã bắt step-up Face ID/TOTP) → không cần cổng mở khoá cục bộ (OTP/mật khẩu). Chính sách AllowsControl + whitelist vẫn áp dụng.</param>
+    public async Task<string?> ExecuteAsync(byte[] payload, ControlSource source, string actor, CancellationToken ct = default, bool trusted = false)
     {
         var (cmd, err, id) = CommandPolicy.Parse(payload, _writable);
         if (cmd == null) return CommandPolicy.AckJson(id, false, err);
         // MỘT điểm kiểm soát quyền điều khiển cho mọi nguồn (màn hình chính, màn hình phụ, điện thoại, LAN): đọc luôn được, ghi theo chính sách
-        if (!cmd.IsRead && ControlGate is { } g1 && !g1()) return CommandPolicy.AckJson(cmd.Id, false, "otp_required");
+        if (!trusted && !cmd.IsRead && ControlGate is { } g1 && !g1()) return CommandPolicy.AckJson(cmd.Id, false, "otp_required");
         if (!cmd.IsRead && !_cfg.AllowsControl(source))
         {
             Emit($"Từ chối lệnh ghi từ {source} ({actor}): chính sách không cho phép");
@@ -273,7 +274,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     /// (D = v × Scale) rồi chạy qua đường thường (whitelist, chính sách). Chế độ gateway → chuyển nguyên lệnh cho PLC/gateway, ack đến sau.
     /// Trả về JSON ack, hoặc null nếu ack sẽ do PLC gửi.
     /// </summary>
-    public async Task<string?> ExecuteKeyAsync(byte[] payload, ControlSource source, string actor, CancellationToken ct = default)
+    public async Task<string?> ExecuteKeyAsync(byte[] payload, ControlSource source, string actor, CancellationToken ct = default, bool trusted = false)
     {
         string? id = null, child = null, key;
         double v;
@@ -287,7 +288,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             if (r.TryGetProperty("child", out var c) && c.ValueKind == JsonValueKind.String) child = c.GetString();
         }
         catch (JsonException) { return CommandPolicy.AckJson(null, false, "bad_json"); }
-        if (ControlGate is { } g2 && !g2()) return CommandPolicy.AckJson(id, false, "otp_required");
+        if (!trusted && ControlGate is { } g2 && !g2()) return CommandPolicy.AckJson(id, false, "otp_required");
         if (!_cfg.AllowsControl(source))
         {
             Emit($"Từ chối lệnh ghi từ {source} ({actor}): chính sách không cho phép");

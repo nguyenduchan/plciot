@@ -1,4 +1,11 @@
 'use strict';
+/* Trang đăng nhập dùng cùng bảng màu với app: kiểu "Đơn giản" (mặc định) trừ khi người dùng đã chọn kiểu Vận hành. */
+(function () {
+  let pro = false;
+  try { pro = (JSON.parse(localStorage.getItem('cfg')) || {}).uiMode === 'pro'; } catch {}
+  const apply = () => document.body && document.body.classList.toggle('ui-simple', !pro);
+  if (document.body) apply(); else document.addEventListener('DOMContentLoaded', apply);
+}());
 window.AuthApp = {
   contactLabel: 'Xác minh thiết bị',
   presenceHint: (state, seconds) => `Hãy kích hoạt đầu vào X${state.plcBit} trên PLC trong ${seconds} giây.`,

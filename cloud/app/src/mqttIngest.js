@@ -13,6 +13,7 @@ import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
 import { planTelemetryMinMs } from './entitlements.js';
 import { evaluateStatusAlert, parseGatewayAlert, forwardGatewayAlert } from './pushAlerts.js';
+import { featureOn } from './serverProfile.js';
 
 /** Tem chưa có user? Cache 5 giây để không truy vấn DB cho từng gói telemetry (gateway cũng đã ngừng gửi khi chưa claim). */
 const unclaimedCache = new Map();
@@ -79,6 +80,11 @@ export function startMqttIngest(db) {
   const prevStatus = new Map();
   const prevAlarm = new Map();
   const lastTeleStore = new Map();
+  // HISTORY_ON_CHANGE: bỏ mẫu telemetry có giá trị y hệt mẫu đã lưu gần nhất; vẫn lưu một mẫu nhịp tim mỗi HISTORY_HEARTBEAT_MS
+  // để đồ thị không đứt và biết gateway còn sống. Chỉ ảnh hưởng LƯU lịch sử — webapp xem trực tiếp vẫn nhận mọi mẫu từ broker.
+  const onChange = featureOn('HISTORY_ON_CHANGE', false);
+  const heartbeatMs = Math.max(1000, Number(process.env.HISTORY_HEARTBEAT_MS) || 60_000);
+  const lastTeleValue = new Map();   // key → { v: chuỗi giá trị, at: lúc lưu }
   // Hàng đợi do BROKER giữ (phiên persistent + QoS 1, xem mosquitto.conf listener 1883): app xử lý tới đâu nhận tới đó, broker xếp phần còn lại
   // và giữ cả khi app khởi động lại. App chỉ gom ghi: các message cùng một lượt đọc socket được ghi trong MỘT transaction SQLite.
   let batchRows = [];
@@ -188,6 +194,13 @@ export function startMqttIngest(db) {
           const prev = lastTeleStore.get(key) || 0;
           if (now - prev < gap) return;
           lastTeleStore.set(key, now);
+        }
+        if (onChange) {
+          const v = canonical.d ? JSON.stringify(canonical.d) : r ? JSON.stringify(r) : storeText;
+          const last = lastTeleValue.get(key);
+          if (last && last.v === v && now - last.at < heartbeatMs) return;
+          if (lastTeleValue.size > 50_000) lastTeleValue.clear();   // chặn phình bộ nhớ; hệ quả chỉ là lưu thừa một mẫu
+          lastTeleValue.set(key, { v, at: now });
         }
 
         insert({

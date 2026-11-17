@@ -28,7 +28,7 @@ sealed class CloudPage : UserControl
 
     readonly IGatewayApp _app;
     readonly ToggleSwitch _sync = new();
-    readonly Label _info = new() { AutoSize = false, Height = 110, Dock = DockStyle.Top, ForeColor = Theme.Muted, Font = Theme.Normal };
+    readonly Label _info = new() { UseMnemonic = false, AutoSize = false, Height = 110, Dock = DockStyle.Top, ForeColor = Theme.Muted, Font = Theme.Normal };
 
     public CloudPage(IGatewayApp app)
     {
@@ -48,6 +48,13 @@ sealed class CloudPage : UserControl
         var adv = new FlatButton { Caption = "Cấu hình nâng cao…", Width = 190 };
         adv.Click += (_, _) => ShowAdvanced();
         buttons.Controls.AddRange(new Control[] { pair, adv });
+        // Hàng 2: việc ít dùng nhưng phải tìm được — đổi mật khẩu mở khoá tại máy, và chuyển gateway đã đăng ký sang PC này (đổi PC / cài lại máy)
+        var buttons2 = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
+        var pw = new FlatButton { Caption = "Đặt / đổi mật khẩu gateway", Width = 230 };
+        pw.Click += async (_, _) => { var r = await _app.CloudAsync("password", ServerOf(_app.Config), ""); if (!r.Ok) _app.Toast(r.Msg, true); };
+        var mig = new FlatButton { Caption = "Chuyển gateway cũ sang PC này…", Width = 250 };
+        mig.Click += async (_, _) => { var r = await _app.CloudAsync("migrate", ServerOf(_app.Config), ""); _app.Toast(r.Msg, !r.Ok); Refresh2(); };
+        buttons2.Controls.AddRange(new Control[] { pw, mig });
 
         // Giải pháp (kiểu UI giám sát/điều khiển): GATEWAY quyết định, mỗi gateway đúng một loại; webapp theo gateway này
         var solRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
@@ -56,7 +63,7 @@ sealed class CloudPage : UserControl
         var solBtn = new FlatButton { Caption = "Áp dụng", Primary = true, Width = 110, Location = new Point(400, 6) };
         solBtn.Click += async (_, _) => await RunSolution();
         solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn });
-        card.Controls.Add(_info); card.Controls.Add(solRow); card.Controls.Add(buttons); card.Controls.Add(row);
+        card.Controls.Add(_info); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
         Controls.Add(card);
         Refresh2();
         _ = LoadSolutions();
@@ -105,7 +112,7 @@ sealed class CloudPage : UserControl
     {
         var c = _app.Config;
         _info.Text = string.IsNullOrEmpty(c.CloudPassword)
-            ? $"Chưa đăng ký (ID máy: {_app.HwText} · vân tay: {_app.FingerprintText}).\nAdmin tạo mã ghép cặp trên trang quản trị web (nhập site → Tạo mã), nhập mã vào ô trên rồi bấm \"Kết nối bằng mã\": server tự cấp tem, ID MQTT và đồng bộ setting. QR hiện ở góc phải thanh trên."
+            ? $"Chưa đăng ký (ID máy: {_app.HwText} · vân tay: {_app.FingerprintText}).\nBấm \"Đăng nhập & kết nối server\": đăng nhập tài khoản webapp (Authenticator hoặc mã ghép lấy trên điện thoại), server tự cấp ID + QR cho gateway này.\nĐổi PC hoặc cài lại máy: bấm \"Chuyển gateway cũ sang PC này\" để giữ nguyên QR, thiết bị và lịch sử. QR hiện ở góc phải thanh trên sau khi đăng ký."
             : $"Đã đăng ký: site {c.Site} · thiết bị {c.Device} · ID MQTT {c.MqttId} · broker {c.CloudHost}:{c.CloudPort}. Mật khẩu MQTT được lưu mã hoá trên máy này.\n" + (c.CloudSendData ? "Đã có user — gateway đang gửi data lên cloud." : "Chưa có user quét QR — gateway CHỈ đồng bộ setting, chưa gửi data. Bấm biểu tượng QR góc phải thanh trên, đưa QR cho user quét trên webapp.");
         _sync.On = c.Mobile != MobileAccess.Off;
     }

@@ -1,3 +1,4 @@
+import { serverProfileInfo } from './serverProfile.js';   // PHẢI đứng đầu: đặt mặc định biến môi trường theo cỡ VPS trước khi module khác đọc
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
@@ -299,6 +300,7 @@ mountAdminOps(app, {
 });
 
 mountCapacity(app, { db, requireAuth, requireAdmin, dataDir: DATA_DIR });
+app.get('/api/admin/server-profile', requireAuth, requireAdmin, (_req, res) => res.json(serverProfileInfo()));
 
 /* ---------- Chat hỗ trợ người dùng ↔ admin (chỉ văn bản; xem docs/CHAT-COMPLIANCE.md) ---------- */
 mountSupport(app, { db, requireAuth, requireAdmin });
@@ -417,6 +419,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`plciot app listening on :${PORT}`);
+  { const p = serverProfileInfo(); console.log(`SERVER_PROFILE=${p.profile} (${p.label})` + (p.applied.length ? ` — hồ sơ đặt: ${p.applied.join(', ')}` : '') + (p.overridden.length ? ` — .env ghi đè: ${p.overridden.join(', ')}` : '')); }
   console.log(`DATA_DIR=${DATA_DIR}`);
   console.log(`SHELL_DIR=${SHELL_DIR}`);
   startControlPublisher();

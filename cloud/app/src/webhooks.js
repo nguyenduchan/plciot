@@ -2,6 +2,7 @@
  * Webhook partner: đăng ký URL, đẩy sự kiện status / alarm / count_done.
  * Chữ ký: header X-Plciot-Signature = sha256=<hmac_hex> (HMAC-SHA256 body, secret lúc tạo).
  */
+import { featureOn } from './serverProfile.js';
 import crypto from 'crypto';
 import { isValidId, sanitizeId } from './contract.js';
 
@@ -60,6 +61,7 @@ export function emitWebhook(db, {
   tenantId, site, device, event, data = {},
 }) {
   if (!tenantId || !ALLOWED_EVENTS.has(event)) return;
+  if (!featureOn('WEBHOOKS_ENABLED')) return;   // SERVER_PROFILE=small: không gọi ra ngoài
   let hooks = [];
   try {
     hooks = db.prepare(`

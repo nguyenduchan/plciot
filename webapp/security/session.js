@@ -80,7 +80,17 @@
   if (!isApp || lockOff || readSession()?.demo) return;
   let entry = null;
   try { entry = sessionStorage.getItem('app-entry'); sessionStorage.removeItem('app-entry'); } catch {}
-  if (!entry || entry !== readSession()?.token) { lock(); return; }
+  // Tải lại trang (F5 / kéo để làm mới) trong CÙNG tab: không khoá. Dấu `app-alive` nằm trong sessionStorage nên mất khi đóng tab;
+  // quá 60 giây (đúng luật "ở nền 60 giây" của server) cũng không còn hiệu lực. Server vẫn là nơi quyết định: phiên đã bị khoá thì
+  // lần gọi /api/login/activity bên dưới trả 401 và trang khoá lại ngay.
+  let reloaded = false;
+  try {
+    const [at, tok] = String(sessionStorage.getItem('app-alive') || '').split('|');
+    sessionStorage.removeItem('app-alive');
+    reloaded = Boolean(tok) && tok === readSession()?.token && !readSession()?.locked && Date.now() - Number(at) < 60_000;
+  } catch {}
+  if (!reloaded && (!entry || entry !== readSession()?.token)) { lock(); return; }
+  if (reloaded) post('/api/login/activity', readSession()).then((res) => { if (res.status === 401) lock(false); }).catch(() => {});
 
   function activity() {
     if (locked || document.hidden) return;
@@ -103,7 +113,12 @@
       post('/api/login/activity', readSession()).then((res) => { if (res.status === 401) lock(false); }).catch(() => {});
     }
   });
-  window.addEventListener('pagehide', () => { if (!navigating) lock(); });
+  window.addEventListener('pagehide', () => {
+    if (navigating || locked) return;
+    // Rời trang: KHÔNG khoá ngay (để tải lại trang không phải đăng nhập lại) nhưng bỏ quyền điều khiển tạm (ctl) và báo server tính 60 giây ở nền.
+    try { sessionStorage.setItem('app-alive', `${Date.now()}|${readSession()?.token || ''}`); localStorage.removeItem('ctl'); } catch {}
+    post('/api/login/background', readSession()).catch(() => {});
+  });
   window.addEventListener('pageshow', (event) => { if (event.persisted) lock(); });
   window.addEventListener('storage', (event) => {
     if (event.key === 'session' && (!readSession() || readSession().locked)) lock(false);

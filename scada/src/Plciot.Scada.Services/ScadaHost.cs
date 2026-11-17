@@ -165,6 +165,19 @@ public sealed class ScadaHost : IAsyncDisposable
     /// <summary>Lệnh từ cloud: whitelist + công tắc điều khiển từ xa + giới hạn tốc độ, rồi đi thẳng vào lõi.</summary>
     async Task OnCloudCommandAsync(byte[] payload)
     {
+        // Cloud ký mọi lệnh (cloud/app/src/cmdSign.js). Đã có khoá công khai của server → BẮT BUỘC chữ ký đúng (kể cả lệnh sys);
+        // chữ ký đúng nghĩa là lệnh đã qua step-up Face ID/TOTP ở server → không cần OTP/mật khẩu cục bộ. Chưa có khoá (server cũ) → như trước.
+        var trusted = false;
+        if (_cfg.CloudCmdKey.Length > 0)
+        {
+            if (!CmdSignature.TryVerify(payload, _cfg.MqttId, _cfg.CloudCmdKey, out var plain))
+            {
+                Core.Emit("Từ chối lệnh cloud: thiếu/sai chữ ký của server");
+                await RejectAsync(IdOf(payload), "bad_sig");
+                return;
+            }
+            payload = plain; trusted = true;
+        }
         var replay = CheckReplay(payload);
         if (replay != null) { await RejectAsync(IdOf(payload), replay); return; }
         var sys = SysOf(payload);
@@ -183,7 +196,7 @@ public sealed class ScadaHost : IAsyncDisposable
             // lệnh theo thiết bị con: cùng công tắc điều khiển từ xa + giới hạn tốc độ như lệnh thanh ghi
             if (!_cfg.AllowRemoteControl) { await RejectAsync(null, "remote_disabled"); return; }
             if (!TakeToken()) { await RejectAsync(null, "rate_limited"); return; }
-            var kack = await Core.ExecuteKeyAsync(payload, ControlSource.Mobile, "mobile");
+            var kack = await Core.ExecuteKeyAsync(payload, ControlSource.Mobile, "mobile", default, trusted);
             Core.Trace("GW→PLC", "latency", $"lệnh đã xử lý tại gateway sau {System.Diagnostics.Stopwatch.GetElapsedTime(rx).TotalMilliseconds:F0} ms");
             if (kack != null)
             {
@@ -196,7 +209,7 @@ public sealed class ScadaHost : IAsyncDisposable
         if (cmd == null) { await RejectAsync(id, err!); return; }
         if (!cmd.IsRead && !_cfg.AllowRemoteControl) { await RejectAsync(id, "remote_disabled"); return; }
         if (!TakeToken()) { await RejectAsync(id, "rate_limited"); return; }
-        var ack = await Core.ExecuteAsync(payload, ControlSource.Mobile, "mobile");
+        var ack = await Core.ExecuteAsync(payload, ControlSource.Mobile, "mobile", default, trusted);
         Core.Trace("GW→PLC", "latency", $"lệnh đã xử lý tại gateway sau {System.Diagnostics.Stopwatch.GetElapsedTime(rx).TotalMilliseconds:F0} ms");
         if (ack != null)
         {

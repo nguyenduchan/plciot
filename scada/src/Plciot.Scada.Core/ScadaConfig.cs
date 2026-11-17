@@ -197,6 +197,12 @@ public sealed class ScadaConfig
     public string CloudApiUrl { get; set; } = "";
     /// <summary>Khoá RIÊNG ECDSA P-256 của gateway (PKCS#8 base64, mã hoá DPAPI khi lưu). Khoá công khai gửi server lúc ghép cặp; không bao giờ rời máy.</summary>
     public string GatewayKey { get; set; } = "";
+    /// <summary>Khoá công khai (SPKI base64url) của server để kiểm chữ ký lệnh cloud — nhận qua HTTPS lúc enroll/config. Có khoá → lệnh cloud KHÔNG ký bị từ chối, lệnh ký hợp lệ không cần OTP. Rỗng = bản server cũ (vẫn cần mở khoá cục bộ).</summary>
+    public string CloudCmdKey { get; set; } = "";
+    /// <summary>Mật khẩu CỤC BỘ mở khoá sửa cấu hình/điều khiển tại máy (băm PBKDF2, xem LocalPassword). Không phụ thuộc webapp/Internet. Rỗng = chưa đặt.</summary>
+    public string LocalAdminHash { get; set; } = "";
+    /// <summary>ID máy (băm MachineGuid) lúc đăng ký. Khác máy hiện tại = config bị sao chép sang PC khác → không nối cloud, phải "Chuyển gateway sang PC này".</summary>
+    public string BoundMachineId { get; set; } = "";
     /// <summary>false = tem chưa có user: chỉ đồng bộ setting (config/status), KHÔNG gửi telemetry/history. Server cũng bỏ nếu gửi.</summary>
     public bool CloudSendData { get; set; } = true;
     public string ClientSuffix { get; set; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();

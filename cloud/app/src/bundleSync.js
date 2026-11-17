@@ -58,7 +58,7 @@ export function syncBundles(db, { dataDir, shellDir }, { force = false } = {}) {
   return { version, updated };
 }
 
-export function startBundleSync(db, opts, everyMs = 5000) {
+export function startBundleSync(db, opts, everyMs = Math.max(2000, Number(process.env.BUNDLE_SYNC_MS) || 5000)) {
   if (String(process.env.BUNDLE_AUTOSYNC || 'true').toLowerCase() === 'false') return;
   const run = () => { try { syncBundles(db, opts); } catch (e) { console.error('bundle sync', e.message); } };
   run();

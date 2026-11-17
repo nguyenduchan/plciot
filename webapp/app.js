@@ -66,7 +66,7 @@ class MqttLink {
         else if (this.h.tick) this.h.tick();         // có dữ liệu mới → làm mới mốc "dữ liệu còn tươi"
         window.DevicesUi?.onTelemetry?.(j, base);
       }
-      else if (k === 'ack') this.h.ack(JSON.parse(p));
+      else if (k === 'ack') { const a = JSON.parse(p); this.h.ack(a); window.DevicesUi?.onAck?.(a); }
       else if (k === 'history') this.h.history(JSON.parse(p));
       else if (k === 'config') window.DevicesUi?.onConfig?.(JSON.parse(p), base);   // gateway thêm/bớt thiết bị → dựng lại dashboard
     } catch {}

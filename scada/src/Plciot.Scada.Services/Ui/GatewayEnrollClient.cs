@@ -102,6 +102,39 @@ public sealed class GatewayEnrollClient
         return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
     }
 
+    /// <summary>Gateway của tài khoản (token đăng nhập) — chọn gateway cũ để chuyển sang PC này.</summary>
+    public async Task<List<(string Site, string Device, string Label)>> MineAsync(string token, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/gateway/mine");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        var list = new List<(string, string, string)>();
+        if (r.TryGetProperty("gateways", out var g))
+            foreach (var x in g.EnumerateArray())
+            {
+                string S(string n) => x.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+                list.Add((S("site"), S("device"), S("label")));
+            }
+        return list;
+    }
+
+    /// <summary>Chuyển gateway cũ sang PC này: giữ tem/QR/id MQTT/lịch sử; server đổi khoá công khai + xoay mật khẩu MQTT (PC cũ bị cắt).</summary>
+    public async Task<PairResult> RebindAsync(string token, string site, string device, GatewayIdentity id, CancellationToken ct = default)
+    {
+        var (ts, sig) = id.RebindProof(site, device);
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/gateway/rebind")
+        {
+            Content = JsonContent.Create(new { site, device, pubkey = id.PublicKey, ts, sig }, options: JsonOpts),
+        };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        string? S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        GatewayProvisionKit? kit = r.TryGetProperty("kit", out var k) ? JsonSerializer.Deserialize<GatewayProvisionKit>(k.GetRawText(), JsonOpts) : null;
+        return new PairResult("", 0, kit != null, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
+    }
+
     static async Task<JsonElement> ReadAsync(HttpResponseMessage res, CancellationToken ct)
     {
         var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -144,6 +177,8 @@ public sealed class GatewayProvisionKit
     public int? TelemetryMinMs { get; set; }
     /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
     public string? MqttId { get; set; }
+    /// <summary>Khoá công khai (SPKI base64url) của server để kiểm chữ ký lệnh cloud. Null = server cũ.</summary>
+    public string? CmdKey { get; set; }
     public string? TopicBase { get; set; }
     public Dictionary<string, string>? Topics { get; set; }
     /// <summary>Chỉ id + fields để đóng gói — không dùng type để vẽ.</summary>

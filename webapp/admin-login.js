@@ -35,6 +35,7 @@
   }
 
   const msg = (t) => { const e = $('#error'); e.textContent = t || ''; e.style.display = t ? 'block' : 'none'; };
+  if (new URLSearchParams(location.search).get('why') === 'idle') msg('Phiên quản trị đã tự đăng xuất vì không thao tác 15 phút. Đăng nhập lại để tiếp tục.');
   async function post(path, body) {
     const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));

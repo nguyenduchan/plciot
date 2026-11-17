@@ -7,6 +7,9 @@
 @media (prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--fg:#e2e2e2;--mut:#9a9a9a;--line:#3b3b3b;--acc:#e2e2e2;--accbg:#ffffff1a;
   --ok:#e2e2e2;--on:#e2e2e2;--warn:#f0b429;--bad:#ff5b52;
   --al-crit:#ff5b52;--al-crit-bg:#ff5b5226;--al-warn:#f0b429;--al-warn-bg:#f0b42926}}
+/* Tên biến cũ (--text/--muted/--panel/--panel2/--accent) từng không được định nghĩa nên rơi về màu dự phòng của nền TỐI:
+   số trên đồng hồ/bồn gần như vô hình ở nền sáng, ô chọn gói thành khối đen. Khai báo trên cả body để nhận màu của body.ui-simple. */
+:root,body{--text:var(--fg);--muted:var(--mut);--panel:var(--card);--panel2:var(--bg);--accent:var(--acc)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
@@ -822,3 +825,8 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:10
 nav button { position: relative; }
 nav button .ind-badge { position: absolute; top: 0; left: calc(50% + 6px); }
 .gw-tabs .gw-badge { margin-left: 6px; vertical-align: 1px; }
+/* Thiết bị bị khoá theo gói: gộp một dòng thu gọn */
+.locked-group { grid-column: 1 / -1; }
+.locked-group > summary { cursor: pointer; padding: 10px 12px; border: 1px dashed rgba(128,128,128,.45); border-radius: 12px; font-size: 13px; opacity: .8; list-style-position: inside; }
+.locked-group[open] > summary { margin-bottom: 10px; }
+.gw-head[hidden] { display: none; }

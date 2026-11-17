@@ -32,7 +32,7 @@ services:
     image: haproxy:2.8-alpine
     container_name: plciot-haproxy
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: ${HAPROXY_MEM_LIMIT:-128m}
     cpus: 1.0
     pids_limit: 64
     user: root
@@ -42,6 +42,7 @@ services:
       MQTT_SHARDS: ${MQTT_SHARDS:-1}                      # số tiến trình Mosquitto (1..16 hoặc auto = số core - MQTT_RESERVE_CORES)
       MQTT_RESERVE_CORES: ${MQTT_RESERVE_CORES:-1}         # chỉ dùng khi MQTT_SHARDS=auto: core dành cho app/haproxy/hệ điều hành
       MQTT_PUBLIC_IP: ${MQTT_PUBLIC_IP:-}
+      MQTT_LEGACY_SHARDS: ${MQTT_LEGACY_SHARDS:-0}          # số nhóm trước khi giảm MQTT_SHARDS: giữ cổng mqtts cũ, trỏ về nhóm 0
       MAX_CONN_PER_IP: ${MAX_CONN_PER_IP:-30}
       MAX_CONN_RATE: ${MAX_CONN_RATE:-60}
       BAN_CONN_RATE: ${BAN_CONN_RATE:-300}
@@ -64,8 +65,8 @@ services:
       dockerfile: cloud/app/Dockerfile
     container_name: plciot-app
     restart: unless-stopped
-    mem_limit: 256m
-    cpus: 0.5
+    mem_limit: ${APP_MEM_LIMIT:-256m}
+    cpus: ${APP_CPUS:-0.5}
     pids_limit: 128
     ports:
       - "127.0.0.1:3080:3080"
@@ -119,7 +120,16 @@ services:
       CONTROL_REG_LIMITS: ${CONTROL_REG_LIMITS:-}
       CSP_CONNECT_EXTRA: ${CSP_CONNECT_EXTRA:-}
       TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
-      MQTT_INGEST_MIN_MS: ${MQTT_INGEST_MIN_MS:-0}
+      # Hồ sơ cỡ máy chủ (app/src/serverProfile.js): small = VPS 2 CPU/2 GB, large = bật đủ. Các biến để TRỐNG bên dưới nhận mặc định theo hồ sơ;
+      # đặt giá trị trong .env để ghi đè riêng từng biến.
+      SERVER_PROFILE: ${SERVER_PROFILE:-large}
+      PARTNER_API_ENABLED: ${PARTNER_API_ENABLED:-}
+      WEBHOOKS_ENABLED: ${WEBHOOKS_ENABLED:-}
+      HISTORY_ON_CHANGE: ${HISTORY_ON_CHANGE:-}
+      HISTORY_HEARTBEAT_MS: ${HISTORY_HEARTBEAT_MS:-}
+      BUNDLE_SYNC_MS: ${BUNDLE_SYNC_MS:-}
+      NODE_OPTIONS: ${APP_NODE_OPTIONS:-}
+      MQTT_INGEST_MIN_MS: ${MQTT_INGEST_MIN_MS:-}
       HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-1}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}   # lịch sử đăng nhập + điều khiển (audit_log): 1 năm
       HISTORY_OPEN_ACCESS: ${HISTORY_OPEN_ACCESS:-false}
@@ -140,16 +150,16 @@ services:
       SUPPORT_MAX_MESSAGES: ${SUPPORT_MAX_MESSAGES:-200}
       SUPPORT_ARCHIVE_MAX: ${SUPPORT_ARCHIVE_MAX:-5000}
       SUPPORT_IMAGE_ARCHIVE_DAYS: ${SUPPORT_IMAGE_ARCHIVE_DAYS:-730}
-      SUPPORT_USER_IMAGE_BYTES: ${SUPPORT_USER_IMAGE_BYTES:-31457280}
-      SUPPORT_GLOBAL_IMAGE_BYTES: ${SUPPORT_GLOBAL_IMAGE_BYTES:-1073741824}
+      SUPPORT_USER_IMAGE_BYTES: ${SUPPORT_USER_IMAGE_BYTES:-}
+      SUPPORT_GLOBAL_IMAGE_BYTES: ${SUPPORT_GLOBAL_IMAGE_BYTES:-}
       SUPPORT_GLOBAL_MESSAGES: ${SUPPORT_GLOBAL_MESSAGES:-300000}
       SUPPORT_IP_PER_MIN: ${SUPPORT_IP_PER_MIN:-30}
       SUPPORT_GLOBAL_PER_MIN: ${SUPPORT_GLOBAL_PER_MIN:-300}
       PRICING_VPS_VND_MONTH: ${PRICING_VPS_VND_MONTH:-260000}      # ước tính báo giá cho admin (docs/CHAT-COMPLIANCE.md)
       PRICING_CAPACITY_WIDGETS: ${PRICING_CAPACITY_WIDGETS:-500}
       DB_BACKUP: ${DB_BACKUP:-1}
-      DB_BACKUP_DAILY: ${DB_BACKUP_DAILY:-7}
-      DB_BACKUP_WEEKLY: ${DB_BACKUP_WEEKLY:-4}
+      DB_BACKUP_DAILY: ${DB_BACKUP_DAILY:-}
+      DB_BACKUP_WEEKLY: ${DB_BACKUP_WEEKLY:-}
       # PHASE TEST: nâng tạm tài khoản test lên admin. PRODUCTION: đặt rỗng.
       TEST_ADMIN_USERNAMES: ${TEST_ADMIN_USERNAMES:-}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
@@ -166,7 +176,7 @@ services:
       DEPLOY_COMPOSE_FILE: ${DEPLOY_COMPOSE_FILE:-/repo/cloud/docker-compose.yml}
       DEPLOY_COMPOSE_PROJECT: ${DEPLOY_COMPOSE_PROJECT:-plciot}
       DEPLOY_APP_SERVICE: ${DEPLOY_APP_SERVICE:-app}
-      DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-false}
+      DEBUG_CLIENT_TRACE: ${DEBUG_CLIENT_TRACE:-}
       # Khoá công khai xác minh chữ ký tem QR (khoá riêng KHÔNG để trên server; ký bằng máy provision)
       CLAIM_ROOT_PUBLIC_KEY: ${CLAIM_ROOT_PUBLIC_KEY:-}
       # PHASE TEST: khoá riêng nằm trên VPS để trang admin tự ký QR mỗi lần (Thêm & tạo QR / reissue). PRODUCTION: bỏ biến này.

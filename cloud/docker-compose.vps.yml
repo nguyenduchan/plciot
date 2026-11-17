@@ -29,7 +29,7 @@ services:
     image: haproxy:2.8-alpine
     container_name: plciot-haproxy
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: ${HAPROXY_MEM_LIMIT:-128m}
     cpus: 1.0
     pids_limit: 64
     user: root                   # entrypoint đọc khoá TLS của Caddy; haproxy tự bỏ quyền worker
@@ -38,6 +38,7 @@ services:
       MQTT_DOMAIN: ${MQTT_DOMAIN:-plc-mqtt.dieukhientudong.net}
       MQTT_SHARDS: ${MQTT_SHARDS:-1}                      # số tiến trình Mosquitto (1..16 hoặc auto = số core - MQTT_RESERVE_CORES)
       MQTT_RESERVE_CORES: ${MQTT_RESERVE_CORES:-1}         # chỉ dùng khi MQTT_SHARDS=auto: core dành cho app/haproxy/hệ điều hành
+      MQTT_LEGACY_SHARDS: ${MQTT_LEGACY_SHARDS:-0}          # số nhóm trước khi giảm MQTT_SHARDS: giữ cổng mqtts cũ, trỏ về nhóm 0
       MAX_CONN_PER_IP: ${MAX_CONN_PER_IP:-30}
       MAX_CONN_RATE: ${MAX_CONN_RATE:-60}
       BAN_CONN_RATE: ${BAN_CONN_RATE:-300}

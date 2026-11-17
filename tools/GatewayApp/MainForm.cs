@@ -37,7 +37,10 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>TẠM THỜI (theo yêu cầu): --noauth bỏ qua màn hình đăng nhập/OTP để test đầy đủ gateway. Bỏ cờ này trước khi phát hành.</summary>
     readonly bool _noAuth = Environment.GetCommandLineArgs().Contains("--noauth");
     /// <summary>OTP chỉ cần MỘT lần cho mỗi lần mở app (không hết hạn giữa chừng); mở lại gateway thì phải nhập lại để sửa.</summary>
-    bool Unlocked => _testMode || _noAuth || _login != null;
+    bool Unlocked => _testMode || _noAuth || _login != null || _localUnlocked;
+    /// <summary>Đã mở khoá bằng MẬT KHẨU CỤC BỘ (không cần webapp/Internet). Giữ khi dựng lại cửa sổ.</summary>
+    bool _localUnlocked;
+    static bool _carryLocal;
     /// <summary>Hộp thoại/nút sửa cấu hình gọi trước khi sửa: chưa OTP thì hiện màn hình OTP; false = bị từ chối.</summary>
     public bool RequireEdit() => EnsureUnlockedAsync().GetAwaiter().GetResult();   // EnsureUnlockedAsync không có await: hoàn tất đồng bộ
     // Gateway khởi động là TỰ CHẠY NỀN và nối server bằng khoá riêng của máy. Login/OTP chỉ cần khi: đăng ký lần đầu, hoặc chỉnh sửa cấu hình.
@@ -48,6 +51,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent };
     readonly StatusChip _chipPlc = new(), _chipCloud = new(), _chipMode = new();
     readonly FlatButton _demoBtn = new() { Caption = "Demo: tắt", Width = 110 };
+    /// <summary>Trạng thái khoá luôn hiện ở đầu trang: người vận hành biết ngay có sửa/điều khiển được không, và khoá lại khi rời máy.</summary>
+    readonly FlatButton _lockBtn = new() { Caption = "🔒 Mở khoá", Width = 130 };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _ui = new() { Interval = 500 };
     readonly System.Windows.Forms.Timer _toastTimer = new() { Interval = 4000 };
@@ -82,7 +87,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         var h = _host;
         if (h == null) return "gateway chưa chạy";
-        if (!await EnsureUnlockedAsync("Nhập mã ghép (OTP) để điều khiển thiết bị")) return "cần OTP để điều khiển";
+        if (!await EnsureUnlockedAsync("Nhập mật khẩu gateway để điều khiển thiết bị")) return "cần mở khoá (mật khẩu gateway) để điều khiển";
         var payload = JsonSerializer.SerializeToUtf8Bytes(new { id = Guid.NewGuid().ToString("N")[..8], child, key = field, v = value });
         string? ack;
         try { ack = await h.Core.ExecuteKeyAsync(payload, ControlSource.LocalScreen, "ui"); }
@@ -181,7 +186,9 @@ public sealed partial class MainForm : Form, IGatewayApp
         // thanh trên
         _head.Controls.Add(_pageTitle);
         _qrIcon = new QrIcon(this, () => CloudPage.DefaultServer);
-        foreach (var c in new Control[] { _qrIcon, _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _qrIcon, _lockBtn, _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        _lockBtn.Click += async (_, _) => await ToggleLockAsync();
+        if (_testMode || _noAuth) _lockBtn.Visible = false;
         _head.Resize += (_, _) => LayoutHead();
         _demoBtn.Click += async (_, _) => await ToggleDemoAsync();
 
@@ -195,9 +202,9 @@ public sealed partial class MainForm : Form, IGatewayApp
 
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
-        if (_carry.Login != null || _carry.Toast != null)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ OTP, báo đã áp dụng
+        if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng
         {
-            _login = _carry.Login; _loginAt = _carry.At; var t = _carry.Toast; _carry = default;
+            _login = _carry.Login; _loginAt = _carry.At; _localUnlocked = _carryLocal; var t = _carry.Toast; _carry = default; _carryLocal = false;
             if (!string.IsNullOrEmpty(t)) Shown += (_, _) => Toast(t);
         }
         Shown += (_, _) => BeginInvoke(async () => await StartupLoginAsync());   // hoãn: hộp thoại OTP (modal) không được chặn việc tự chạy nền ở các handler Shown khác;   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
@@ -217,10 +224,10 @@ public sealed partial class MainForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _qrIcon, _demoBtn, _chipMode, _chipCloud, _chipPlc })
+        foreach (var c in new Control[] { _qrIcon, _lockBtn, _demoBtn, _chipMode, _chipCloud, _chipPlc })
         {
             if ((_customer || !_editUi) && c == _demoBtn) continue;
-            if (c == _qrIcon && !c.Visible) continue;
+            if ((c == _qrIcon || c == _lockBtn) && !c.Visible) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : c == _qrIcon ? 11 : 14);
         }
     }
@@ -233,14 +240,74 @@ public sealed partial class MainForm : Form, IGatewayApp
         _prompting = true;
         try
         {
+            // Đã đặt mật khẩu cục bộ: mở khoá offline, không cần webapp. Quên mật khẩu → xác nhận bằng webapp (OTP/Authenticator) rồi đặt lại.
+            var hadLocal = _cfg.LocalAdminHash.Length > 0;
+            if (hadLocal)
+            {
+                var r = LocalPasswordForm.Unlock(this, _cfg.LocalAdminHash, why);
+                if (r == DialogResult.OK) { _localUnlocked = true; Toast("Đã mở khoá — sửa được cho tới khi đóng gateway."); return true; }
+                if (r != DialogResult.Retry) return false;
+            }
             using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Xác nhận chỉnh sửa", why);
             if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return false;
             _login = f.Result; _loginAt = DateTime.UtcNow;
-            Toast($"Đã xác nhận OTP ({f.Result.User}) — sửa được cho tới khi đóng gateway.");
+            Toast($"Đã xác nhận qua webapp ({f.Result.User}) — sửa được cho tới khi đóng gateway.");
+            OfferLocalPassword(hadLocal);
             _ = AutoConnectAsync();
             return true;
         }
         finally { _prompting = false; }
+    }
+
+    /// <summary>Nút đầu trang: đang khoá → hỏi mật khẩu gateway; đang mở → khoá lại ngay (rời máy không để ngỏ quyền sửa/điều khiển).</summary>
+    async Task ToggleLockAsync()
+    {
+        if (!Unlocked) { await EnsureUnlockedAsync("Nhập mật khẩu gateway để sửa cấu hình và điều khiển tại máy"); return; }
+        _localUnlocked = false; _login = null; _loginAt = DateTime.MinValue;
+        Toast("Đã khoá. Gateway vẫn chạy và nối server; sửa cấu hình hoặc điều khiển tại máy sẽ hỏi mật khẩu.");
+    }
+
+    /// <summary>Sau khi chủ tài khoản đã xác thực trên webapp: mời đặt (hoặc đặt lại) mật khẩu cục bộ để lần sau mở khoá không cần webapp.</summary>
+    void OfferLocalPassword(bool reset)
+    {
+        if (_testMode || _noAuth) return;
+        var h = LocalPasswordForm.Create(this, reset ? "Đặt mật khẩu mới cho gateway này" : "Đặt mật khẩu gateway — lần sau mở khoá tại máy, không cần webapp");
+        if (h == null) { if (reset) Toast("Giữ nguyên mật khẩu cũ."); return; }
+        _cfg.LocalAdminHash = h;
+        try { SaveCfg(); } catch (IOException) { }
+        Toast("Đã đặt mật khẩu gateway.");
+    }
+
+    /// <summary>
+    /// Chuyển gateway ĐÃ ĐĂNG KÝ sang PC này (đổi PC / cài lại Windows): chủ tài khoản đăng nhập (Authenticator hoặc OTP điện thoại),
+    /// chọn gateway cũ; server đổi khoá công khai sang PC này, giữ tem/QR/id MQTT/thiết bị/lịch sử và ngắt PC cũ (xoay mật khẩu MQTT).
+    /// </summary>
+    async Task<bool> MigrateAsync()
+    {
+        var api = CloudPage.ServerOf(_cfg);
+        using var f = new LoginForm(api, "Chuyển gateway sang PC này", "Đăng nhập tài khoản chủ gateway cũ");
+        if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return false;
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(30) };
+            var cli = new GatewayEnrollClient(http);
+            var mine = await cli.MineAsync(f.Result.Token);
+            if (mine.Count == 0) { Toast("Tài khoản này chưa có gateway nào để chuyển — hãy đăng ký mới.", true); return false; }
+            var pick = GatewayPickerForm.Pick(this, mine);
+            if (pick == null) return false;
+            var r = await cli.RebindAsync(f.Result.Token, pick.Value.Site, pick.Value.Device, Identity());
+            if (r.Kit == null || string.IsNullOrEmpty(r.Qr)) { Toast("Server không trả dữ liệu chuyển PC.", true); return false; }
+            _login = f.Result; _loginAt = DateTime.UtcNow;
+            _log.Add("INFO", "rebind", $"đã chuyển {r.Site}/{r.Device} sang PC này, ID máy {Identity().Hw}");
+            var (ok, msg) = await ApplyKitAsync(r.Kit, r.Qr!, api);
+            if (ok) { _cfg.LocalAdminHash = ""; OfferLocalPassword(false); }   // PC mới: đặt mật khẩu cục bộ mới (mật khẩu PC cũ không mang theo)
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Toast(ex.Message switch { "not_found" => "Không tìm thấy gateway này trong tài khoản.", "invalid_proof" => "Đồng hồ máy lệch quá 5 phút so với server — chỉnh lại giờ rồi thử lại.", "unauthorized" or "session_revoked" => "Phiên đăng nhập hết hạn — thử lại.", _ => "Chuyển PC lỗi: " + ex.Message }, true);
+            return false;
+        }
     }
 
     bool _autoBusy;
@@ -281,10 +348,22 @@ public sealed partial class MainForm : Form, IGatewayApp
             return;
         }
         if (_testMode) return;
-        // Luôn hỏi OTP lúc mở app; có thể BỎ QUA: đã đăng ký thì vẫn tự chạy nền + nối server, chỉ khi sửa cấu hình mới hỏi lại.
         var registered = _cfg.MqttId.Length > 0 && _cfg.GatewayQr.Length > 0;
-        if (!await EnsureUnlockedAsync(registered ? "Nhập mã ghép (OTP) để sửa cấu hình — có thể bỏ qua" : "Nhập mã ghép (OTP) để đăng ký gateway lần đầu"))
-            Toast(registered ? "Đã bỏ qua OTP: gateway vẫn chạy và nối server; sửa cấu hình sẽ hỏi lại." : "Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
+        var machine = GatewayActivation.MachineId();
+        if (registered && _cfg.BoundMachineId.Length > 0 && _cfg.BoundMachineId != machine)
+        {
+            // Config được SAO CHÉP sang PC khác (khoá riêng + mật khẩu cloud mã hoá theo máy nên không dùng được ở đây): không nhân bản gateway.
+            if (Ask.Yes(this, "Cấu hình gateway này được tạo trên một PC khác nên PC này không nối cloud để tránh nhân bản.\n\nChuyển gateway sang PC này? (giữ QR, thiết bị, lịch sử; PC cũ sẽ bị ngắt)", "Gateway từ PC khác"))
+                if (await MigrateAsync()) { await StopAsync(); await StartAsync(); return; }
+            Toast("PC này chưa nối cloud (cấu hình thuộc PC khác).", true);
+            return;
+        }
+        if (registered && _cfg.BoundMachineId.Length == 0) { _cfg.BoundMachineId = machine; try { SaveCfg(); } catch (IOException) { } }   // config cũ: gắn với PC hiện tại
+        if (!registered && Ask.Yes(this, "PC này thay cho một PC gateway đã đăng ký trước đó?\n\nCó: chuyển gateway cũ sang PC này (giữ QR, thiết bị, lịch sử).\nKhông: đăng ký gateway mới.", "Cài đặt gateway"))
+            if (await MigrateAsync()) return;
+        // Mở khoá lúc mở app; có thể BỎ QUA: đã đăng ký thì vẫn tự chạy nền + nối server, chỉ khi sửa cấu hình/điều khiển tại máy mới hỏi lại.
+        if (!await EnsureUnlockedAsync(registered ? "Nhập mật khẩu gateway để sửa cấu hình — có thể bỏ qua" : "Đăng ký gateway lần đầu: xác nhận bằng tài khoản webapp"))
+            Toast(registered ? "Đã bỏ qua: gateway vẫn chạy và nối server; sửa cấu hình/điều khiển tại máy sẽ hỏi lại." : "Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
     }
 
     void Show(Control page)
@@ -385,7 +464,9 @@ public sealed partial class MainForm : Form, IGatewayApp
     public async Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value)
     {
         // Mọi việc đổi cấu hình/kết nối cloud cần một lần duyệt còn hiệu lực trên webapp (đọc danh sách giải pháp thì không)
-        if (action != "solutions" && !await EnsureUnlockedAsync()) return (false, "Cần xác nhận trên webapp để thực hiện.");
+        if (action == "migrate") { var ok = await MigrateAsync(); if (ok) { await StopAsync(); await StartAsync(); } return (ok, ok ? "Đã chuyển gateway sang PC này." : "Chưa chuyển gateway."); }   // tự đăng nhập chủ tài khoản bên trong
+        if (action != "solutions" && !await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
+        if (action == "password") { OfferLocalPassword(_cfg.LocalAdminHash.Length > 0); return (true, ""); }
         return action switch
         {
             "register" => await RegisterAsync(api),
@@ -451,6 +532,8 @@ public sealed partial class MainForm : Form, IGatewayApp
             if (_cfg.Solution.Length == 0 && _cfg.MqttId.Length == 0 && !string.IsNullOrEmpty(kit.Solution)) _cfg.Solution = kit.Solution;   // lần đăng ký đầu: nhận giải pháp mã ghép cặp gợi ý; sau đó GATEWAY quyết định
             ApplySkin(kit);   // giao diện theo giải pháp (dữ liệu từ server) — áp dụng khi mở lại
             _cfg.GatewayQr = qr; _cfg.CloudApiUrl = api.Trim();
+            if (!string.IsNullOrEmpty(kit.CmdKey)) _cfg.CloudCmdKey = kit.CmdKey;   // từ giờ chỉ nhận lệnh cloud có chữ ký của server
+            _cfg.BoundMachineId = GatewayActivation.MachineId();
             _cfg.CloudSendData = kit.Claimed ?? true;   // chưa có user → chỉ đồng bộ setting
             _cfg.Site = kit.Site ?? _cfg.Site; _cfg.Device = kit.Device ?? _cfg.Device;
             // id MQTT ngẫu nhiên do server cấp: gateway ghép vào mọi topic (gw/<id>/<kind>); không có id thì không nối cloud được
@@ -535,7 +618,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (_testMode) { Toast(msg + " (áp dụng khi mở lại)"); return; }   // chế độ kiểm thử không dựng lại cửa sổ
         Toast(msg);
         // trễ ngắn để thao tác đang chạy (lưu cấu hình, báo kết quả) xong rồi mới dựng lại cửa sổ
-        _ = Task.Delay(400).ContinueWith(_ => { if (!IsDisposed) BeginInvoke(async () => { await StopAsync(); _carry = (_login, _loginAt, msg); RestartRequested = true; Close(); }); });   // dừng host trước để cửa sổ mới không tranh cổng/ID MQTT
+        _ = Task.Delay(400).ContinueWith(_ => { if (!IsDisposed) BeginInvoke(async () => { await StopAsync(); _carry = (_login, _loginAt, msg); _carryLocal = _localUnlocked; RestartRequested = true; Close(); }); });   // dừng host trước để cửa sổ mới không tranh cổng/ID MQTT
     }
 
     // ------------------------------------------------------------------ chờ user: hỏi server tem đã claim chưa
@@ -550,6 +633,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(10) };
             var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
             if (kit != null) ApplySkin(kit);
+            if (!string.IsNullOrEmpty(kit?.CmdKey) && kit!.CmdKey != _cfg.CloudCmdKey) { _cfg.CloudCmdKey = kit.CmdKey; try { SaveCfg(); } catch (IOException) { } }   // server đổi khoá ký: nhận qua HTTPS có chữ ký
             if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
             {
                 _cfg.CloudSendData = cl;
@@ -574,6 +658,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         _chipCloud.Caption = cs switch { CloudState.Connected => "Cloud: đã nối", CloudState.Connecting => "Cloud: đang nối", CloudState.Disconnected => "Cloud: mất kết nối", _ => "Cloud: tắt" };
         _chipCloud.Dot = cs switch { CloudState.Connected => Theme.Green, CloudState.Connecting => Theme.Yellow, CloudState.Disconnected => Theme.Red, _ => Theme.Muted };
         var offline = _cfg.Mobile == MobileAccess.Off || cs != CloudState.Connected;
+        var lockCap = Unlocked ? "🔓 Khoá lại" : "🔒 Mở khoá";
+        if (_lockBtn.Caption != lockCap) { _lockBtn.Caption = lockCap; _lockBtn.Primary = !Unlocked; _lockBtn.Invalidate(); }
         _chipMode.Caption = offline ? "Chế độ cục bộ (offline)" : "Có cloud";
         _chipMode.Dot = offline ? Theme.Teal : Theme.Accent;
         _qrIcon.Update();
@@ -600,7 +686,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             _cfg.GatewayQr = demoQr; _cfg.Site = "e2etest"; _cfg.Device = "gw01";
             foreach (var p in _pages) (p.Page as CloudPage)?.Refresh2();
         }
-        var names = new[] { "dashboard", "devices", "protocols", "log", "admin" };
+        var names = new[] { "dashboard", "devices", "protocols", "cloud", "log" };
         for (var i = 0; i < _pages.Count; i++)
         {
             var shotName = SolutionHost.ExtraPage != null && i >= 1 ? (i == 1 ? SolutionHost.Name : names[i - 1]) : names[i];

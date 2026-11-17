@@ -18,6 +18,7 @@ import { publishCmd } from './controlPublisher.js';
 import { createWebhook, listWebhooks, deleteWebhook } from './webhooks.js';
 import { mayPartnerCmd } from './entitlements.js';
 import { partnerApiGate, isOpsOpen } from './opsFlags.js';
+import { featureOn } from './serverProfile.js';
 
 function send(res, result) {
   if (!result) return res.status(500).json({ error: 'server_error' });
@@ -52,6 +53,8 @@ export function mountPartnerRoutes(app, { db, requireAuth, reauth }) {
   app.use('/api/v1', partnerApiGate);
 
   function requirePartner(req, res, next) {
+    // SERVER_PROFILE=small tắt riêng các route dùng KHOÁ API của đối tác; /api/v1 của webapp + gateway không bị ảnh hưởng
+    if (!featureOn('PARTNER_API_ENABLED')) return res.status(503).json({ error: 'partner_api_disabled' });
     const key = extractApiKey(req);
     if (!key) return res.status(401).json({ error: 'api_key_required' });
     const tenant = findTenantByApiKey(db, key);

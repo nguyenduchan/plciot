@@ -16,7 +16,7 @@ import crypto from 'node:crypto';
 import { rateLimit, clientIp, signToken, verifyToken, audit, countAudit, findUserByUsername, checkControlSession, verifyPassword, hashPassword, openSecret, verifyTotp } from '@plciot/security';
 import { isDashboardAdmin } from './roles.js';
 import { subnetOf } from './gatewayEnroll.js';
-import { registerForUser } from './gatewayPairing.js';
+import { registerForUser, listGatewaysOfUser, rebindForUser } from './gatewayPairing.js';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
@@ -235,6 +235,27 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     if ((payload.tv | 0) !== (user.token_version | 0)) return res.status(401).json({ error: 'session_revoked' });
     const r = registerForUser(db, user, req.body || {});
     if (r.ok) audit(db, 'gateway_register_user', { userId: user.id, ip: clientIp(req), detail: `${r.site}/${r.device}` });
+    if (r.error) return res.status(r.status || 400).json(r);
+    res.json(r);
+  });
+  // Chuyển gateway sang PC mới: cùng cổng token `gateway_register` như register (chủ tài khoản vừa qua TOTP / OTP điện thoại)
+  const regUser = (req, res) => {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+    let payload = null;
+    try { payload = m ? verifyToken(m[1], jwtSecret) : null; } catch { payload = null; }
+    if (!payload || payload.scope !== 'gateway_register' || !payload.uid) { res.status(401).json({ error: 'unauthorized' }); return null; }
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
+    if (!user || user.disabled) { res.status(user?.disabled ? 403 : 401).json({ error: user?.disabled ? 'account_disabled' : 'unauthorized' }); return null; }
+    if ((payload.tv | 0) !== (user.token_version | 0)) { res.status(401).json({ error: 'session_revoked' }); return null; }
+    return user;
+  };
+  app.get('/api/v1/gateway/mine', regLimit, (req, res) => {
+    const user = regUser(req, res); if (!user) return;
+    res.json(listGatewaysOfUser(db, user));
+  });
+  app.post('/api/v1/gateway/rebind', regLimit, (req, res) => {
+    const user = regUser(req, res); if (!user) return;
+    const r = rebindForUser(db, user, req.body || {});
     if (r.error) return res.status(r.status || 400).json(r);
     res.json(r);
   });

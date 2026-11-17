@@ -31,3 +31,6 @@ tools/*/obj/
 broker-pack/
 cloud/app/data/vapid.json
 cloud/app/data/backups/
+
+# Khoá riêng ký lệnh cloud → gateway (tự sinh trong DATA_DIR) — không bao giờ commit
+cloud/app/data/*.pem

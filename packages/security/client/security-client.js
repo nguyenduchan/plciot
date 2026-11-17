@@ -438,7 +438,7 @@
       const exportText = [
         'Thông tin đăng nhập plciot (giữ bí mật)',
         username ? `Tên tài khoản: ${username}` : '',
-        password ? `Mật khẩu: ${password}` : '',
+        password ? 'Mật khẩu: (mật khẩu bạn vừa đặt — không ghi vào đây để file này lộ cũng chưa đủ đăng nhập)' : '',
         list.length ? `Mã khôi phục:\n${codeText}` : '',
         '',
         'Đổi điện thoại: đăng nhập bằng username + mật khẩu (hoặc mã khôi phục). Không quét lại QR tem.',
@@ -447,15 +447,20 @@
       const m = modal(`
         <h3>${registered ? '✓ Đăng ký thành công — hãy lưu lại ngay' : 'Lưu thông tin đăng nhập'}</h3>
         ${registered ? '<p><b>Bạn cần đúng 3 thứ dưới đây để đăng nhập lại hoặc khôi phục tài khoản khi đổi điện thoại, mất máy hay quên mật khẩu.</b></p>' : ''}
-        <p class="muted">Không có SĐT/email để khôi phục. Hãy lưu các mục dưới đây (trình quản lý mật khẩu / in / ảnh). Mật khẩu và mã khôi phục <b>chỉ hiện một lần</b> ở đây — đóng cửa sổ này là không xem lại được.</p>
+        <p class="muted">Không có SĐT/email để khôi phục. Hãy lưu các mục dưới đây (trình quản lý mật khẩu / in). Mã khôi phục <b>chỉ hiện một lần</b> ở đây — đóng cửa sổ này là không xem lại được. Nút sao chép / tải file <b>không kèm mật khẩu</b>: hãy tự ghi nhớ hoặc lưu mật khẩu ở nơi khác với mã khôi phục.</p>
         ${username ? `<p><b>Tên tài khoản</b></p><pre class="codes">${escHtml(username)}</pre>` : ''}
-        ${password ? `<p><b>Mật khẩu</b></p><pre class="codes">${escHtml(password)}</pre>` : ''}
+        ${password ? `<p><b>Mật khẩu</b> <small class="muted">— ẩn để người bên cạnh không nhìn thấy</small></p><div class="row"><pre class="codes ctl-pw" style="flex:1;margin:0">••••••••••</pre><button type="button" class="fit ctl-showpw">Hiện</button></div>` : ''}
         ${list.length ? `<p><b>Mã khôi phục</b> (mỗi mã dùng một lần; mất máy → chờ 24 giờ)</p><pre class="codes">${escHtml(codeText)}</pre>` : ''}
         <p class="muted">Đổi điện thoại: dùng username + mật khẩu hoặc Khôi phục. <b>Không</b> quét lại QR tem thiết bị.</p>
         <div class="row"><button class="fit ctl-copy">Sao chép tất cả</button><button class="fit ctl-dl">Tải .txt</button></div>
         <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" class="ctl-saved"> Tôi đã lưu tên tài khoản${password ? ', mật khẩu' : ''}${list.length ? ' và mã khôi phục' : ''}</label>
         <div class="row"><button class="primary ctl-done" disabled>Xong</button></div>`);
       m.q('.ctl-saved').onchange = (e) => { m.q('.ctl-done').disabled = !e.target.checked; };
+      if (m.q('.ctl-showpw')) m.q('.ctl-showpw').onclick = () => {
+        const shown = m.q('.ctl-showpw').textContent === 'Ẩn';
+        m.q('.ctl-pw').textContent = shown ? '••••••••••' : password;
+        m.q('.ctl-showpw').textContent = shown ? 'Hiện' : 'Ẩn';
+      };
       m.q('.ctl-copy').onclick = async () => { try { await navigator.clipboard.writeText(exportText); m.q('.ctl-copy').textContent = 'Đã chép'; } catch {} };
       m.q('.ctl-dl').onclick = () => {
         const a = document.createElement('a');

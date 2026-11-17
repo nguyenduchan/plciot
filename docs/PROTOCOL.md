@@ -98,3 +98,10 @@ Telemetry vẫn là `<base>/telemetry`: `{"schema":2,"ts":…,"data":{"bien_ap_0
 - `id` `[A-Za-z0-9_-]{1,48}`, `key` `[A-Za-z0-9_]{1,32}`; tối đa 64 thiết bị × 32 field, 16 KB (khớp `max_packet_size` của broker) (`POLICY_MAX_CONFIG_BYTES`).
 - Config trùng bản cũ (hash) → bỏ qua; thiết bị `dynamic` vắng trong config mới → gỡ khỏi dashboard. Thiết bị gắn bằng QR giữ nguyên.
 - Topic `config` được ghi bởi `gw`/`edge`/thiết bị, đọc bởi ingest và user có scope `telemetry`.
+
+## Lệnh cloud có chữ ký, mật khẩu cục bộ, đổi PC
+
+- **Lệnh server → gateway được ký** (`cloud/app/src/cmdSign.js`, ECDSA P-256/SHA-256, IEEE P1363). JSON lệnh có thuộc tính cuối `"sig"`; thông điệp ký = `cmd1|<mqttId>|<JSON lệnh không sig>`. Khoá công khai của server (`cmdKey`, SPKI base64url) đi trong kit enroll/config qua HTTPS. Gateway có `CloudCmdKey` thì **từ chối lệnh không ký/sai chữ ký** (`bad_sig`); lệnh ký đúng đã qua step-up Face ID/TOTP ở server nên **không cần OTP tại gateway** (`ScadaCore.ExecuteAsync(..., trusted: true)`). Whitelist, `AllowsControl`, giới hạn min/max, chống phát lại (`ts` + `id`) vẫn áp dụng. Khoá ký: `CMD_SIGN_KEY_PEM` hoặc `DATA_DIR/cmd-sign.pem` (tự sinh) — **phải sao lưu cùng DB**; mất khoá thì gateway tự nhận khoá mới ở lần đồng bộ config kế (~1–5 phút).
+- **Mật khẩu cục bộ** (`LocalAdminHash`, PBKDF2-SHA256): mở khoá sửa cấu hình/điều khiển tại máy, không cần webapp/Internet. Quên → xác nhận bằng webapp (OTP/Authenticator) rồi đặt lại.
+- **Gắn máy**: khoá riêng ECDSA + mật khẩu cloud mã hoá DPAPI theo máy; `BoundMachineId` phát hiện config bị sao chép sang PC khác (gateway không nối cloud, mời chuyển).
+- **Đổi PC**: PC mới → "Chuyển gateway sang PC này" → đăng nhập chủ tài khoản (Authenticator/OTP) → chọn gateway cũ → `GET /api/v1/gateway/mine`, `POST /api/v1/gateway/rebind` (chữ ký `rebind|site|device|ts` của khoá PC mới). Server đổi `gw_pubkey`/`activated_hw`, xoay mật khẩu MQTT (PC cũ bị cắt), **giữ nguyên QR/id MQTT/thiết bị/lịch sử**. Thiết bị PLC (Pack, giao thức, thanh ghi) khai báo cục bộ nên cần xuất/nhập file cấu hình từ PC cũ.

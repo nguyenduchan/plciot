@@ -69,6 +69,10 @@ if [ "$N" = "auto" ]; then N=$(( $(nproc 2>/dev/null || echo 1) - ${MQTT_RESERVE
 case "$N" in ''|*[!0-9]*) N=1 ;; esac
 [ "$N" -ge 1 ] || N=1
 [ "$N" -le 16 ] || N=16
+# MQTT_LEGACY_SHARDS = số nhóm TRƯỚC KHI giảm (vd. từng chạy 2 nhóm, nay 1 → đặt 2): các cổng mqtts của nhóm đã bỏ vẫn mở và trỏ về nhóm 0.
+LEGACY="${MQTT_LEGACY_SHARDS:-0}"
+case "$LEGACY" in ''|*[!0-9]*) LEGACY=0 ;; esac
+[ "$LEGACY" -le 16 ] || LEGACY=16
 k=1
 while [ "$k" -lt 16 ]; do
   # backend wss luôn được khai báo cho k=1..15 (haproxy.cfg có use_backend tĩnh cho /mqtt-k); nhóm chưa dùng thì disabled → 503
@@ -100,10 +104,30 @@ frontend mqtt_tls_$k
     tcp-request content reject
     default_backend mqtt_tcp_secure_$k
 EOF
+  elif [ "$k" -lt "$LEGACY" ]; then
+    # Cổng của nhóm đã BỎ (giảm MQTT_SHARDS): gateway cũ còn cấu hình cổng gốc + k vẫn nối được, về broker nhóm 0.
+    # Tài khoản MQTT của mọi gateway đều có trong passwd nhóm 0 nên không phải cấp lại cấu hình.
+    cat >> "$SHARDS_CFG" <<EOF
+
+frontend mqtt_tls_legacy_$k
+    bind :$((8883 + k)) ssl crt /tmp/mqtt.pem alpn mqtt
+    mode tcp
+    tcp-request connection accept if { src -f /usr/local/etc/haproxy/trusted.lst }
+    tcp-request connection track-sc0 src table t_abuse
+    tcp-request connection sc-inc-gpc0(0) if { sc0_conn_rate gt 300 }
+    tcp-request connection reject if { sc0_get_gpc0 gt 0 }
+    tcp-request connection reject if { sc0_conn_cur gt 30 }
+    tcp-request connection reject if { sc0_conn_rate gt 60 }
+    tcp-request connection reject if { sc0_bytes_in_rate gt 262144 }
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req.len ge 14 } { req.payload(0,1),hex -m str 10 }
+    tcp-request content reject
+    default_backend mqtt_tcp_secure
+EOF
   fi
   k=$((k + 1))
 done
-echo "HAProxy: $N nhóm Mosquitto (nhóm >= 1: mqtts :8884.. và wss /mqtt-k)"
+echo "HAProxy: $N nhóm Mosquitto (nhóm >= 1: mqtts :8884.. và wss /mqtt-k); cổng nhóm cũ giữ lại tới nhóm $LEGACY"
 
 # Chỉ kiểm tra cấu hình (không chạy): HAPROXY_CHECK_ONLY=1 → dùng khi kiểm thử/triển khai thử
 if [ -n "${HAPROXY_CHECK_ONLY:-}" ]; then

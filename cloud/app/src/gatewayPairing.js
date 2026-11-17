@@ -253,3 +253,43 @@ export function expireUnusedTems(db, { ttlDays = TEM_TTL_DAYS, now = Date.now() 
 }
 
 /** hw đầy đủ chỉ admin thấy; summary rút gọn để đối chiếu. */
+
+/** Gateway của tài khoản (đã duyệt, còn tồn tại): dùng cho "chuyển gateway sang PC mới". */
+export function listGatewaysOfUser(db, user) {
+  migratePairings(db);
+  const cols = new Set(db.prepare("SELECT name FROM pragma_table_info('gateway_pairings')").all().map((c) => c.name));
+  if (!cols.has('user_id')) return { ok: true, gateways: [] };
+  const rows = db.prepare(`SELECT p.site, p.device, p.created_at, h.label, h.activated_at FROM gateway_pairings p
+    JOIN hardware_devices h ON h.site = p.site AND h.device = p.device
+    WHERE p.user_id = ? AND p.status = 'approved' ORDER BY p.created_at DESC`).all(user.id);
+  return { ok: true, gateways: rows.map((r) => ({ site: r.site, device: r.device, label: r.label || null, boundAt: r.activated_at || null })) };
+}
+
+/**
+ * CHUYỂN gateway sang PC mới, GIỮ NGUYÊN tem/QR/id MQTT/lịch sử/thiết bị.
+ * Cổng vào: token `gateway_register` (chủ tài khoản vừa qua mật khẩu+TOTP hoặc OTP điện thoại) + chữ ký khoá riêng của PC MỚI
+ * phủ `rebind|<site>|<device>|<ts>`. Chỉ chủ đã đăng ký gateway đó mới chuyển được.
+ * Hiệu lực: khoá công khai + hw của tem đổi sang PC mới, mật khẩu MQTT xoay → PC cũ bị cắt (không dùng song song được).
+ */
+export function rebindForUser(db, user, body = {}) {
+  if (!user?.id) return { error: 'unauthorized', status: 401 };
+  migratePairings(db);
+  ensureKeyColumns(db);
+  const site = String(body.site || '').trim();
+  const device = String(body.device || '').trim();
+  const pk = parsePubkey(body.pubkey);
+  if (!pk) return { error: 'invalid_pubkey', status: 400 };
+  if (!verifyProof(body.pubkey, `rebind|${site}|${device}|${body.ts}`, body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
+  const own = db.prepare(`SELECT p.id FROM gateway_pairings p JOIN hardware_devices h ON h.site = p.site AND h.device = p.device
+    WHERE p.user_id = ? AND p.status = 'approved' AND p.site = ? AND p.device = ?`).get(user.id, site, device);
+  if (!own) return { error: 'not_found', status: 404 };   // không phân biệt "không có" với "của người khác"
+  db.prepare('UPDATE hardware_devices SET activated_hw = ?, activated_at = ?, activations = COALESCE(activations, 0) + 1, gw_pubkey = ? WHERE site = ? AND device = ?')
+    .run(pk.hw, Date.now(), pk.spki, site, device);
+  db.prepare('UPDATE gateway_pairings SET pubkey = ?, hw = ? WHERE id = ?').run(pk.spki, pk.hw, own.id);
+  const q = getHardwareDeviceQr(db, { site, device });
+  if (q.error) return { error: 'not_found', status: 404 };
+  const kit = enrollGateway(db, { qr: q.qr, hw: pk.hw }, { includePassword: true, trusted: true, rotateMqtt: true });
+  if (kit.error) return { ok: false, error: kit.error, status: kit.status || 400 };
+  audit(db, 'gateway_rebind', { userId: user.id, detail: `${site}/${device} → ${pk.hw}` });
+  return { ok: true, site, device, qr: q.qr, loginUrl: q.loginUrl, kit };
+}
