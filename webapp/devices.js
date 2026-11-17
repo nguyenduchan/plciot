@@ -371,7 +371,8 @@
     document.dispatchEvent(new CustomEvent('plc-gw-active', { detail: { gw: g, all: gwList() } }));
   }
   function render() { renderGrid(); renderGwTabs(); announceGw(); }
-  document.addEventListener('plc-sol-manifest', renderGwTabs);   // có tên giải pháp → cập nhật nhãn tab
+  document.addEventListener('plc-sol-manifest', renderGwTabs);
+  document.addEventListener('plc-ind-keys', () => { lastSig = ''; render(); });   // gắn/gỡ giao diện giải pháp → vẽ lại khung thiết bị (ẩn/hiện field trong sơ đồ)   // có tên giải pháp → cập nhật nhãn tab
 
   function renderGrid() {
     const host = $('#dev-grid');
@@ -390,7 +391,11 @@
       return;
     }
     const allOrder = dashboard.layout?.simple?.order || dashboard.devices.map((d) => d.id);
-    const byId = Object.fromEntries(dashboard.devices.map((d) => [d.id, d]));
+    // Gateway đang xem có giao diện giải pháp: field đã nằm trong sơ đồ không lặp thành widget; thiết bị mà mọi field đều trong sơ đồ thì không có thẻ
+    const ind = window.__indKeys;
+    const byId = Object.fromEntries(dashboard.devices
+      .map((d) => [d.id, ind ? { ...d, widgets: d.widgets.filter((w) => !ind.has(String(w.bind || '').toLowerCase())) } : d])
+      .filter(([, d]) => !ind || d.widgets.length));
     const multiGw = gwList().length > 1, curKey = currentGw()?.key;
     const order = multiGw ? allOrder.filter((id) => byId[id] && gwKey(byId[id]) === curKey) : allOrder;   // chỉ thiết bị của gateway đang chọn
     const pl = dashboard.plan;

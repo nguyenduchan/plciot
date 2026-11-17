@@ -12,8 +12,8 @@ import { sanitizeConfig, applyGatewayConfig, MAX_CONFIG_BYTES } from './gatewayC
 import { attachGatewayBundle, enrollGateway } from './gatewayEnroll.js';
 import { cleanSolution, setGatewaySolution, migrateGatewaySolutions } from './gatewaySolution.js';
 
-const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
+const ALPHABET = '0123456789';   // mã ghép / OTP CHỈ gồm chữ số (dễ gõ trên bàn phím số, không nhầm O/0, I/1)
+const CODE_RE = /^\d{8}$/;
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 export const MAX_SUBMITS = Number(process.env.PAIRING_MAX_SUBMITS || 5);
 const RETAIN_MS = 24 * 3600 * 1000;
@@ -47,11 +47,13 @@ export function migratePairings(db) {
   if (!cols.has('auto')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN auto INTEGER NOT NULL DEFAULT 0');
   // Giải pháp (kiểu giao diện webapp + gateway) admin chọn lúc phát mã: gateway nhận ở kit, user quét QR tự map cùng giải pháp
   if (!cols.has('solution')) db.exec("ALTER TABLE gateway_pairings ADD COLUMN solution TEXT NOT NULL DEFAULT ''");
+  // Chủ gateway (đăng ký theo tài khoản / đổi chủ): tạo ngay ở đây — tra cứu đổi chủ chạy TRƯỚC registerForUser nên không được chờ nó thêm cột
+  if (!cols.has('user_id')) db.exec('ALTER TABLE gateway_pairings ADD COLUMN user_id INTEGER');
   migrateGatewaySolutions(db);
 }
 
 export function normalizeCode(raw) {
-  const c = String(raw ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  const c = String(raw ?? '').replace(/\s/g, '');   // chỉ bỏ khoảng trắng gõ thừa; ký tự khác số → không hợp lệ
   return CODE_RE.test(c) ? c : null;
 }
 
@@ -161,6 +163,40 @@ export function registerForUser(db, user, body = {}) {
   const r = submitPairing(db, { ...body, code }, { proof, proofVerified: true });   // chữ ký đã kiểm ở trên (mỗi chữ ký chỉ dùng được một lần)
   if (!r.ok || !r.approved) db.prepare("UPDATE gateway_pairings SET status = 'cancelled' WHERE id = ? AND status IN ('open','received')").run(id);
   return r;
+}
+
+/**
+ * Gateway ĐÃ đăng ký cho tài khoản KHÁC (cùng khoá công khai) mà người đang đăng nhập muốn nhận về → trả dòng pairing hiện hữu, ngược lại null.
+ * Chỉ tra cứu (chưa xác minh chữ ký): transferToUser mới kiểm chứng khoá riêng.
+ */
+export function findForeignPairing(db, user, body = {}) {
+  const pk = parsePubkey(body.pubkey);
+  if (!user?.id || !pk) return null;
+  migratePairings(db);
+  return db.prepare("SELECT * FROM gateway_pairings p WHERE pubkey = ? AND status = 'approved' AND user_id IS NOT NULL AND user_id != ? AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device) ORDER BY created_at DESC LIMIT 1").get(pk.spki, user.id) || null;
+}
+
+/**
+ * Yêu cầu ĐỔI CHỦ: người xin phải giữ đúng khoá riêng của gateway (chữ ký `register|<userId>|<ts>`, dùng một lần) và còn hạn mức.
+ * Không tự chuyển ở đây — gatewayTransfer.js giữ yêu cầu chờ chủ cũ duyệt (hoặc hết hạn chờ) rồi mới gọi reassignPairing.
+ */
+export function checkTransferRequest(db, user, body = {}) {
+  const pk = parsePubkey(body.pubkey);
+  if (!pk) return { error: 'invalid_pubkey', status: 400 };
+  if (!verifyProof(body.pubkey, `register|${user.id}|${body.ts}`, body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
+  if (userGatewayCount(db, user.id) >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
+  return { ok: true };
+}
+
+/** Số gateway đang tính vào hạn mức của tài khoản (gateway còn tồn tại + lượt đăng ký đang dở). */
+export function userGatewayCount(db, userId) {
+  return db.prepare(`SELECT COUNT(*) AS n FROM gateway_pairings p WHERE p.user_id = ? AND (p.status IN ('open','received')
+      OR (p.status = 'approved' AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device)))`).get(userId).n;
+}
+
+/** Gán dòng pairing (gateway) sang chủ mới — chỉ gọi khi yêu cầu đổi chủ đã được duyệt / hết hạn chờ. */
+export function reassignPairing(db, pairingId, toUserId) {
+  db.prepare('UPDATE gateway_pairings SET user_id = ?, label = ? WHERE id = ?').run(toUserId, `user:${toUserId}`, pairingId);
 }
 
 /** Chọn mã tem còn trống trong site: gw01, gw02… */

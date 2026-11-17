@@ -7,7 +7,8 @@
   let session = null;
   try { session = JSON.parse(localStorage.getItem('session')); } catch { /* chưa đăng nhập */ }
   if (!session?.token || session.demo) { location.replace(LOGIN); return; }
-  const code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+  const code = (new URLSearchParams(location.search).get('code') || '').replace(/\s/g, '');
+  const focusTransfer = (new URLSearchParams(location.search).get('transfer') || '').trim();
   const rawApi = (m, p, b) => window.Security.api(m, p, b);
   // Ghép gateway cần OTP (Authenticator) hoặc Face ID: chưa có phiên xác thực thứ hai thì mở khoá rồi gọi lại một lần.
   async function api(m, p, b) {
@@ -33,16 +34,52 @@
     too_many_codes: 'Đang có quá nhiều mã chưa dùng, đợi hết hạn rồi tạo lại.',
     unauthorized: 'Phiên đăng nhập hết hạn — đăng nhập lại rồi mở lại liên kết.',
     rate_limited: 'Thao tác quá nhanh, chờ một chút.',
+    not_found: 'Yêu cầu không còn (đã xử lý hoặc hết hạn).',
+    gateway_changed: 'Gateway đã thay đổi — yêu cầu bị huỷ.',
+    new_owner_gone: 'Tài khoản xin nhận không còn — yêu cầu bị huỷ.',
+    too_many_gateways: 'Tài khoản xin nhận đã đủ số gateway tối đa — yêu cầu bị huỷ.',
   };
   const errText = (e) => ERR[e] || (e ? `Lỗi: ${e}` : 'Có lỗi xảy ra.');
 
+  // Yêu cầu đổi chủ gateway đang chờ (chủ cũ = mình): Duyệt cần Face ID/TOTP, Từ chối chỉ cần đăng nhập
+  const fmtTime = (ms) => new Date(ms).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+  async function loadTransfers() {
+    const r = await rawApi('GET', '/api/v1/gateway/transfers');
+    const list = r.ok ? (r.body?.transfers || []) : [];
+    const box = $('#tr-list'); box.textContent = '';
+    $('#tr').hidden = list.length === 0;
+    for (const t of list) {
+      const el = document.createElement('div'); el.className = 'tr-item';
+      if (t.id === focusTransfer) el.style.borderColor = 'var(--bad)';
+      const h = document.createElement('b'); h.textContent = `${t.site}/${t.device} → ${t.toUser}`;
+      const p = document.createElement('p'); p.className = 'help';
+      p.textContent = `Xin lúc ${fmtTime(t.createdAt)}${t.ip ? ` từ ${t.ip}` : ''}. Tự chuyển lúc ${fmtTime(t.dueAt)} nếu bạn không từ chối.`;
+      const row = document.createElement('div'); row.className = 'row';
+      const no = document.createElement('button'); no.textContent = 'Từ chối';
+      const yes = document.createElement('button'); yes.className = 'primary'; yes.textContent = 'Duyệt chuyển';
+      no.addEventListener('click', () => decideTransfer(t, false, no, yes));
+      yes.addEventListener('click', () => decideTransfer(t, true, no, yes));
+      row.append(no, yes); el.append(h, p, row); box.append(el);
+    }
+  }
+  async function decideTransfer(t, approve, no, yes) {
+    if (approve && !confirm(`Chuyển gateway ${t.site}/${t.device} sang tài khoản "${t.toUser}"? Bạn sẽ mất quyền xem và điều khiển gateway này.`)) return;
+    no.disabled = yes.disabled = true; msg('');
+    const r = await api('POST', `/api/v1/gateway/transfers/${encodeURIComponent(t.id)}/${approve ? 'approve' : 'reject'}`);
+    if (r.status === 401 && r.body?.error !== 'otp_required') { location.replace(LOGIN); return; }
+    if (!r.ok) { msg(errText(r.body?.error), 'err'); no.disabled = yes.disabled = false; await loadTransfers(); return; }
+    msg(approve ? 'Đã chuyển gateway.' : 'Đã từ chối. Nếu không phải người quen, hãy đổi mật khẩu và kiểm tra máy gateway.', approve ? 'ok' : 'ok');
+    await loadTransfers();
+  }
+
   async function boot() {
+    await loadTransfers().catch(() => {});
     if (!code) { $('#mk').hidden = false; return; }   // không kèm mã từ app → trang tạo mã kết nối
-    if (!/^[0-9A-Z]{4}-?[0-9A-Z]{4}$/.test(code)) { msg('Liên kết thiếu mã đăng nhập.', 'err'); return; }
+    if (!/^\d{8}$/.test(code)) { msg('Liên kết thiếu mã đăng nhập.', 'err'); return; }
     const r = await api('GET', `/api/v1/gateway/login/info?code=${encodeURIComponent(code)}`);
     if (r.status === 401) { location.replace(LOGIN); return; }
     if (!r.ok) { msg(errText(r.body?.error), 'err'); return; }
-    $('#code').textContent = code.includes('-') ? code : `${code.slice(0, 4)}-${code.slice(4)}`;
+    $('#code').textContent = code;
     const t = new Date(r.body.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     $('#meta').textContent = `Yêu cầu lúc ${t}${r.body.ip ? ` từ địa chỉ ${r.body.ip}` : ''}.`;
     $('#box').hidden = false;

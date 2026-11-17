@@ -33,6 +33,8 @@ static class Program
                 if (q >= 0 && q + 1 < args.Length) form.Shown += async (_, _) => await form.SolTestAsync(args[q + 1]);
                 var fr = Array.IndexOf(args, "--freshtest");
                 if (fr >= 0 && fr + 1 < args.Length) form.Shown += async (_, _) => await form.FreshTestAsync(args[fr + 1]);
+                var st = Array.IndexOf(args, "--slottest");
+                if (st >= 0 && st + 1 < args.Length) form.Shown += async (_, _) => await form.SlotTestAsync(args[st + 1]);
                 var m = Array.IndexOf(args, "--edittest");
                 if (m >= 0 && m + 1 < args.Length) form.Shown += async (_, _) => await form.EditTestAsync(args[m + 1]);
             }

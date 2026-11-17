@@ -19,12 +19,19 @@ button{min-height:48px}
 #msg{min-height:1.4em;font-size:14px;margin:0 0 10px;text-align:center}
 #msg.err{color:var(--bad)}#msg.ok{color:var(--ok);font-weight:600}
 [hidden]{display:none!important}
+.tr-item{border:1px solid var(--line,#444);border-radius:12px;padding:10px;margin:8px 0;text-align:left}
+.tr-item b{font-size:16px}
 </style>
 <script src="no-zoom.js?v=1"></script>
 </head>
-<body>
+<body data-parent="index.html">
 <h1>Duyệt đăng nhập gateway</h1>
 <p id="msg"></p>
+<section id="tr" class="panel" hidden>
+  <h2 style="margin-top:0">⚠ Yêu cầu nhận gateway của bạn</h2>
+  <p class="help">Có người đã đăng nhập vào máy gateway bằng tài khoản khác và xin chuyển gateway về họ. <b>Chỉ duyệt nếu chính bạn đồng ý</b> (ví dụ: bàn giao máy). Không làm gì thì gateway tự chuyển khi hết hạn.</p>
+  <div id="tr-list"></div>
+</section>
 <section id="mk" class="panel" hidden>
   <h2 style="margin-top:0">Tạo mã ghép (OTP) cho gateway</h2>
   <p class="help">Tạo một mã rồi nhập vào ứng dụng <b>Gateway</b> trên máy tính (ô “Mã ghép (OTP)”). Mã dùng một lần, hết hạn sau 10 phút. Gateway kết nối được sẽ thuộc tài khoản của bạn.</p>
@@ -50,5 +57,6 @@ button{min-height:48px}
 <script src="security/device-proof.js"></script>
 <script src="security/security-client.js"></script>
 <script src="gateway-login.js"></script>
+<script src="back-nav.js?v=1"></script>
 </body>
 </html>

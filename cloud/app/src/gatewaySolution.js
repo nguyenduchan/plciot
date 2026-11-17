@@ -20,13 +20,19 @@ export function gatewaySolution(db, site, device) {
   try { migrateGatewaySolutions(db); return db.prepare('SELECT solution FROM gateway_solutions WHERE site = ? AND device = ?').get(site, device)?.solution || ''; } catch { return ''; }
 }
 
+/** Móc của server: giải pháp của gateway vừa ĐỔI → dựng lại bundle webapp của người dùng gateway đó (để webapp đổi giao diện theo). */
+let onSolutionChanged = null;
+export const setSolutionChangedHook = (fn) => { onSolutionChanged = fn; };
+
 export function setGatewaySolution(db, site, device, solution) {
   migrateGatewaySolutions(db);
   const s = cleanSolution(solution);
   if (s === null) return { error: 'invalid_solution', status: 400 };
+  const before = gatewaySolution(db, site, device);
   if (!s) db.prepare('DELETE FROM gateway_solutions WHERE site = ? AND device = ?').run(site, device);
   else db.prepare('INSERT INTO gateway_solutions (site, device, solution) VALUES (?, ?, ?) ON CONFLICT(site, device) DO UPDATE SET solution = excluded.solution').run(site, device, s);
-  return { ok: true, solution: s };
+  if (before !== s) { try { onSolutionChanged?.(db, site, device, s); } catch (e) { console.error('solution changed hook', e.message); } }
+  return { ok: true, solution: s, changed: before !== s };
 }
 
 /** Giải pháp gateway có thể chọn (có phần gateway/, đang bật) — phần mềm gateway hiện ô chọn từ danh sách này. */

@@ -74,7 +74,8 @@ sealed class DeviceDialog : Form
     readonly System.Windows.Forms.Timer _prevTimer = new() { Interval = 200 };
     readonly PreviewApp _pa;
 
-    const int ColField = 0, ColMqtt = 1, ColTitle = 2, ColAccess = 3, ColType = 4, ColD = 5, ColScale = 6, ColUnit = 7, ColMin = 8, ColMax = 9, ColKind = 10, ColOn = 11, ColOff = 12, ColLow = 13, ColHigh = 14;
+    const int ColField = 0, ColMqtt = 1, ColTitle = 2, ColAccess = 3, ColType = 4, ColD = 5, ColScale = 6, ColUnit = 7, ColMin = 8, ColMax = 9, ColKind = 10, ColOn = 11, ColOff = 12, ColLow = 13, ColHigh = 14, ColSlot = 15;
+    const string NoSlot = "— Widget riêng —";
 
     // Kết nối + thông số giao thức + thứ tự word: khai báo rõ cho thiết bị, không có giá trị ngầm định (ô gợi ý có thể sửa)
     static readonly string[] AccessNames = { "Chỉ đọc", "Chỉ ghi", "Đọc/ghi" };
@@ -289,6 +290,34 @@ sealed class DeviceDialog : Form
         var kind = new DataGridViewComboBoxColumn { HeaderText = "Hiển thị", Width = 108, FlatStyle = FlatStyle.Flat, SortMode = DataGridViewColumnSortMode.NotSortable };
         kind.Items.AddRange(FieldMeta.KindNames); _g.Columns.Add(kind);
         T("Chữ khi Bật", 100); T("Chữ khi Tắt", 90); T("Ngưỡng thấp", 96); T("Ngưỡng cao", 92);
+        // GHÉP VÀO SƠ ĐỒ (chỉ khi gateway đang dùng một giải pháp UI): chọn ô sơ đồ → đặt tên field = khoá của ô đó (gateway + webapp
+        // cùng nhận theo tên field). "Widget riêng" = field giữ tên riêng, hiện thành thẻ widget ngoài sơ đồ.
+        if (SolutionHost.Slots.Count > 0)
+        {
+            var slot = new DataGridViewComboBoxColumn { HeaderText = "Gắn vào sơ đồ", Width = 170, FlatStyle = FlatStyle.Flat, SortMode = DataGridViewColumnSortMode.NotSortable };
+            slot.Items.Add(NoSlot); foreach (var x in SolutionHost.Slots) slot.Items.Add(SlotName(x));
+            _g.Columns.Add(slot);
+            _g.Columns[ColSlot].DisplayIndex = 1;   // đứng ngay sau cột Field cho dễ thấy
+            _g.CellValueChanged += (_, e) =>
+            {
+                if (e.RowIndex < 0 || _syncingSlot) return;
+                var r = _g.Rows[e.RowIndex];
+                if (e.ColumnIndex == ColSlot)
+                {
+                    var name = Convert.ToString(r.Cells[ColSlot].Value) ?? NoSlot;
+                    var sl = SolutionHost.Slots.FirstOrDefault(x => SlotName(x) == name);
+                    if (sl.Keys == null) return;   // "Widget riêng": giữ nguyên tên field
+                    _syncingSlot = true;
+                    r.Cells[ColField].Value = sl.Keys[0];
+                    r.Cells[ColMqtt].Value = "";   // khoá MQTT riêng sẽ làm webapp nhận tên khác → bỏ để webapp ghép đúng ô
+                    if (string.IsNullOrWhiteSpace(Convert.ToString(r.Cells[ColTitle].Value))) r.Cells[ColTitle].Value = sl.Label;
+                    if (string.IsNullOrWhiteSpace(Convert.ToString(r.Cells[ColUnit].Value)) && sl.Unit.Length > 0) r.Cells[ColUnit].Value = sl.Unit;
+                    _syncingSlot = false;
+                }
+                else if (e.ColumnIndex is ColField or ColMqtt) SyncSlot(r);
+            };
+            _g.RowsAdded += (_, e) => { for (var i = e.RowIndex; i < e.RowIndex + e.RowCount && i < _g.Rows.Count; i++) SyncSlot(_g.Rows[i]); };
+        }
         _g.DataError += (_, e) => e.ThrowException = false;
         _g.CurrentCellDirtyStateChanged += (_, _) => { if (_g.IsCurrentCellDirty && _g.CurrentCell is DataGridViewComboBoxCell) _g.CommitEdit(DataGridViewDataErrorContexts.Commit); };
     }
@@ -357,6 +386,20 @@ sealed class DeviceDialog : Form
     }
 
     static string Cell(DataGridViewRow r, int c) => (Convert.ToString(r.Cells[c].Value) ?? "").Trim();
+
+    bool _syncingSlot;
+    static string SlotName((string Label, string Unit, string[] Keys) s) => $"{s.Label} ({s.Keys[0]})";
+    /// <summary>Hiện ô sơ đồ tương ứng tên field (khoá MQTT riêng khác tên → webapp không ghép được → coi như widget riêng).</summary>
+    void SyncSlot(DataGridViewRow r)
+    {
+        if (SolutionHost.Slots.Count == 0 || r.IsNewRow || _g.Columns.Count <= ColSlot) return;
+        var f = Cell(r, ColField); var mk = Cell(r, ColMqtt);
+        var sl = mk.Length > 0 && !string.Equals(mk, f, StringComparison.OrdinalIgnoreCase) ? default
+            : SolutionHost.Slots.FirstOrDefault(x => x.Keys.Contains(f, StringComparer.OrdinalIgnoreCase));
+        _syncingSlot = true;
+        r.Cells[ColSlot].Value = sl.Keys == null ? NoSlot : SlotName(sl);
+        _syncingSlot = false;
+    }
 
     static bool TryNum(string s, out double? v)
     {

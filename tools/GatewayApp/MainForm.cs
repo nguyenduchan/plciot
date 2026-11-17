@@ -8,7 +8,7 @@ namespace GatewayApp;
 
 /// <summary>
 /// Gateway C# có giao diện: dashboard tối kiểu Grafana vẽ bằng GDI+ (C# thuần, không web, không CDN → chạy offline).
-/// Trang: Tổng quan · Thiết bị (thêm thiết bị ngoại vi) · Giao thức · Cloud (tuỳ chọn) · Nhật ký.
+/// Trang: Tổng quan · Thiết bị (thêm thiết bị ngoại vi, kèm giao thức/kết nối) · Cloud (tuỳ chọn) · Nhật ký.
 /// Điều khiển đi qua đúng đường của gateway (ScadaCore.ExecuteKeyAsync): whitelist + giới hạn Min/Max.
 /// </summary>
 public sealed partial class MainForm : Form, IGatewayApp
@@ -24,8 +24,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest", "--autodemo" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Giao thức / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest", "--slottest" }.Any(Environment.GetCommandLineArgs().Contains);
+    /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
     // ---- đăng nhập + mở khoá chỉnh sửa (duyệt qua trình duyệt, xem LoginForm) ----
@@ -59,7 +59,6 @@ public sealed partial class MainForm : Form, IGatewayApp
 
     readonly DashboardPage _dash;
     readonly DevicesPage _devices;
-    readonly ProtocolsPage _protos;
     readonly AdminAccessPage _access = new() { Dock = DockStyle.Fill };
     CloudPage _cloud = null!;
     readonly LogPage _log = new();
@@ -154,7 +153,6 @@ public sealed partial class MainForm : Form, IGatewayApp
 
         _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = !_editUi };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
-        _protos = new ProtocolsPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
         _log.Dock = DockStyle.Fill;
 
@@ -163,13 +161,15 @@ public sealed partial class MainForm : Form, IGatewayApp
         var sub = new Label { Text = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("⇄", "Giao thức", _protos), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log),
+            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log),
         };   // tool Admin đã gộp vào đây: không còn trang "Kết nối admin" (không mở cổng cho tool ngoài)
         if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log).ToArray();   // bản khách: chỉ xem + điều khiển
-        if (SolutionHost.ExtraPage is { } extra)   // giải pháp (vd. solar) thêm trang sau Tổng quan; bản cơ bản không có
+        if (SolutionHost.ExtraPage is { } extra)   // MỘT gateway = MỘT loại UI: giao diện giải pháp GỘP vào trang chính (một mục, không tách "Tổng quan" riêng)
         {
             var x = extra(this);
-            items = items.Take(1).Append((x.Icon, x.Name, x.Page)).Concat(items.Skip(1)).ToArray();
+            if (x.Page is IndustryPage ip) { ip.Merged = true; ip.AutoScroll = false; }
+            _dash.Embed(x.Page);
+            items = items.Select(it => it.Page == _dash ? (x.Icon, x.Name, (Control)_dash) : it).ToArray();
         }
         foreach (var (icon, name, page) in items)
         {
@@ -192,7 +192,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         _head.Resize += (_, _) => LayoutHead();
         _demoBtn.Click += async (_, _) => await ToggleDemoAsync();
 
-        Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
+        BuildLockScreen();
+        Controls.Add(_lockScreen); Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
         Resize += (_, _) => PlaceToast();
         _toastTimer.Tick += (_, _) => { _toast.Visible = false; _toastTimer.Stop(); };
         _qrIcon.Update();
@@ -200,6 +201,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         Show(_dash);
         _dash.Rebuild();
 
+        AutoLock.Install();
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
         if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng
@@ -214,9 +216,11 @@ public sealed partial class MainForm : Form, IGatewayApp
         UpdateDemoButton();
         if (_customer || !_editUi) _demoBtn.Visible = false;
         // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
-        if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--pairtest") && !args.Contains("--autodemo")) Shown += async (_, _) => await StartAsync();
+        if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest") && !args.Contains("--autodemo")) Shown += async (_, _) => await StartAsync();
         Shown += (_, _) => InitRemoteAccess(args);
-        FormClosed += (_, _) => _api?.Dispose();
+        // Đổi giải pháp (UI) dựng lại cửa sổ trong CÙNG tiến trình: timer của cửa sổ cũ phải dừng, nếu không nó vẫn chạy Tick()
+        // trên các điều khiển đã huỷ (vd. thêm dòng vào bảng nhật ký đã mất cột → crash "No row can be added…").
+        FormClosed += (_, _) => { _ui.Stop(); _toastTimer.Stop(); _codeTimer.Stop(); _ui.Dispose(); _toastTimer.Dispose(); _codeTimer.Dispose(); _api?.Dispose(); };
     }
 
     QrIcon _qrIcon = null!;
@@ -245,13 +249,13 @@ public sealed partial class MainForm : Form, IGatewayApp
             if (hadLocal)
             {
                 var r = LocalPasswordForm.Unlock(this, _cfg.LocalAdminHash, why);
-                if (r == DialogResult.OK) { _localUnlocked = true; Toast("Đã mở khoá — sửa được cho tới khi đóng gateway."); return true; }
+                if (r == DialogResult.OK) { _localUnlocked = true; Toast("Đã mở khoá."); return true; }
                 if (r != DialogResult.Retry) return false;
             }
-            using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Xác nhận chỉnh sửa", why);
+            using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Đăng nhập gateway", why);
             if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return false;
             _login = f.Result; _loginAt = DateTime.UtcNow;
-            Toast($"Đã xác nhận qua webapp ({f.Result.User}) — sửa được cho tới khi đóng gateway.");
+            Toast($"Đã đăng nhập ({f.Result.User}).");
             OfferLocalPassword(hadLocal);
             _ = AutoConnectAsync();
             return true;
@@ -259,12 +263,56 @@ public sealed partial class MainForm : Form, IGatewayApp
         finally { _prompting = false; }
     }
 
-    /// <summary>Nút đầu trang: đang khoá → hỏi mật khẩu gateway; đang mở → khoá lại ngay (rời máy không để ngỏ quyền sửa/điều khiển).</summary>
+    /// <summary>
+    /// MÀN HÌNH KHOÁ: đăng nhập chỉ hỏi ở ĐÚNG hai lúc — mới mở app và khi bấm "Khoá lại" (hoặc tự khoá vì không thao tác).
+    /// Đã mở khoá thì mọi tính năng (sửa cấu hình, điều khiển…) dùng ngay, không hỏi lại. Đang khoá: màn hình che giao diện,
+    /// gateway vẫn chạy nền + nối server bình thường.
+    /// </summary>
+    readonly Panel _lockScreen = new() { Dock = DockStyle.Fill, Visible = false };
+
+    void BuildLockScreen()
+    {
+        _lockScreen.BackColor = Theme.Bg;
+        var box = new Panel { Size = new Size(460, 210), BackColor = Theme.Panel };
+        var t = new Label { Text = "🔒  Gateway đang khoá", Font = new Font("Segoe UI Semibold", 16f), ForeColor = Theme.Text, AutoSize = false, Location = new Point(24, 22), Size = new Size(412, 34), BackColor = Color.Transparent };
+        var d = new Label { Text = "Gateway vẫn chạy nền và nối server. Đăng nhập để xem và thao tác trên máy này.", ForeColor = Theme.Muted, AutoSize = false, Location = new Point(24, 64), Size = new Size(412, 48), BackColor = Color.Transparent };
+        var go = new FlatButton { Caption = "Đăng nhập", Primary = true, Width = 160, Location = new Point(24, 132) };
+        go.Click += async (_, _) => await ShowLoginAsync();
+        box.Controls.AddRange(new Control[] { t, d, go });
+        _lockScreen.Controls.Add(box);
+        _lockScreen.Resize += (_, _) => box.Location = new Point(Math.Max(0, (_lockScreen.Width - box.Width) / 2), Math.Max(0, (_lockScreen.Height - box.Height) / 2));
+    }
+
+    /// <summary>Hiện/ẩn màn hình khoá theo trạng thái (gọi mỗi nhịp Tick).</summary>
+    void SyncLockScreen()
+    {
+        var locked = !Unlocked;
+        if (_lockScreen.Visible == locked) return;
+        _lockScreen.Visible = locked;
+        if (locked) _lockScreen.BringToFront(); else _toast.BringToFront();
+    }
+
+    /// <summary>Khoá ngay rồi mở màn hình đăng nhập.</summary>
+    void LockNow(string toast)
+    {
+        _localUnlocked = false; _login = null; _loginAt = DateTime.MinValue;
+        SyncLockScreen();
+        Toast(toast);
+        BeginInvoke(async () => await ShowLoginAsync());
+    }
+
+    async Task ShowLoginAsync()
+    {
+        if (Unlocked) { SyncLockScreen(); return; }
+        await EnsureUnlockedAsync("Đăng nhập để dùng gateway");
+        SyncLockScreen();
+    }
+
+    /// <summary>Nút đầu trang: đang mở → khoá lại + hiện đăng nhập; đang khoá → hiện đăng nhập.</summary>
     async Task ToggleLockAsync()
     {
-        if (!Unlocked) { await EnsureUnlockedAsync("Nhập mật khẩu gateway để sửa cấu hình và điều khiển tại máy"); return; }
-        _localUnlocked = false; _login = null; _loginAt = DateTime.MinValue;
-        Toast("Đã khoá. Gateway vẫn chạy và nối server; sửa cấu hình hoặc điều khiển tại máy sẽ hỏi mật khẩu.");
+        if (!Unlocked) { await ShowLoginAsync(); return; }
+        LockNow("Đã khoá. Gateway vẫn chạy và nối server.");
     }
 
     /// <summary>Sau khi chủ tài khoản đã xác thực trên webapp: mời đặt (hoặc đặt lại) mật khẩu cục bộ để lần sau mở khoá không cần webapp.</summary>
@@ -361,9 +409,12 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (registered && _cfg.BoundMachineId.Length == 0) { _cfg.BoundMachineId = machine; try { SaveCfg(); } catch (IOException) { } }   // config cũ: gắn với PC hiện tại
         if (!registered && Ask.Yes(this, "PC này thay cho một PC gateway đã đăng ký trước đó?\n\nCó: chuyển gateway cũ sang PC này (giữ QR, thiết bị, lịch sử).\nKhông: đăng ký gateway mới.", "Cài đặt gateway"))
             if (await MigrateAsync()) return;
-        // Mở khoá lúc mở app; có thể BỎ QUA: đã đăng ký thì vẫn tự chạy nền + nối server, chỉ khi sửa cấu hình/điều khiển tại máy mới hỏi lại.
-        if (!await EnsureUnlockedAsync(registered ? "Nhập mật khẩu gateway để sửa cấu hình — có thể bỏ qua" : "Đăng ký gateway lần đầu: xác nhận bằng tài khoản webapp"))
-            Toast(registered ? "Đã bỏ qua: gateway vẫn chạy và nối server; sửa cấu hình/điều khiển tại máy sẽ hỏi lại." : "Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
+        // Đã đăng ký: gateway TỰ nối server bằng khoá riêng của máy, không hiện màn hình đăng nhập; sửa cấu hình/điều khiển tại máy mới hỏi (mật khẩu gateway hoặc webapp).
+        // Mới mở app: LUÔN hiện màn hình đăng nhập (gateway đã tự chạy nền + nối server từ trước). Chưa đăng ký thì đăng nhập này cũng cấp ID + QR.
+        SyncLockScreen();
+        if (!await EnsureUnlockedAsync(registered ? "Đăng nhập để dùng gateway" : "Đăng ký gateway lần đầu: đăng nhập tài khoản webapp"))
+            Toast(registered ? "Gateway đang khoá — vẫn chạy nền và nối server." : "Gateway chạy cục bộ; chưa đăng ký nên chưa nối server.");
+        SyncLockScreen();
     }
 
     void Show(Control page)
@@ -505,9 +556,16 @@ public sealed partial class MainForm : Form, IGatewayApp
                 _log.Add("INFO", "register", $"đã đăng ký: {r.Site}/{r.Device}, tài khoản {login.User}, ID máy {Identity().Hw}");
                 return await ApplyKitAsync(r.Kit, r.Qr, api);
             }
+            if (r.Status == "transfer_pending")
+            {
+                var when = r.DueAt > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(r.DueAt).LocalDateTime.ToString("HH:mm dd/MM") : "sau 24 giờ";
+                _log.Add("INFO", "register", $"gateway thuộc tài khoản khác: đã gửi yêu cầu chuyển sang {login.User}, chờ chủ cũ duyệt (tự chuyển lúc {when})");
+                return Done(true, $"Gateway đang thuộc tài khoản khác. Đã gửi yêu cầu chuyển sang \"{login.User}\": chủ cũ duyệt trên webapp thì chuyển ngay, không từ chối thì tự chuyển lúc {when}. Gateway vẫn chạy bình thường trong lúc chờ.");
+            }
+            if (r.Status == "transfer_done") return Done(true, $"Đã chuyển gateway sang tài khoản \"{login.User}\".");
             return Done(false, "Server chưa cấp gateway cho tài khoản này.");
         }
-        catch (Exception ex) { return Done(false, ex.Message switch { "too_many_gateways" => "Tài khoản đã đạt số gateway tối đa.", "invalid_proof" => "Đồng hồ máy lệch quá 5 phút so với server — chỉnh lại giờ rồi thử lại.", "unauthorized" or "session_revoked" => "Phiên đăng nhập hết hạn — đăng nhập lại.", "rate_limited" => "Thao tác quá nhanh, thử lại sau.", _ => "Kết nối lỗi: " + ex.Message }); }
+        catch (Exception ex) { return Done(false, ex.Message switch { "too_many_gateways" => "Tài khoản đã đạt số gateway tối đa.", "invalid_proof" => "Đồng hồ máy lệch quá 5 phút so với server — chỉnh lại giờ rồi thử lại.", "unauthorized" or "session_revoked" => "Phiên đăng nhập hết hạn — đăng nhập lại.", "rate_limited" => "Thao tác quá nhanh, thử lại sau.", "transfer_in_progress" => "Gateway đang có yêu cầu chuyển cho tài khoản khác — chờ yêu cầu đó xử lý xong.", "transfer_rejected" => "Chủ gateway đã từ chối chuyển cho tài khoản này — thử lại sau 24 giờ.", _ => "Kết nối lỗi: " + ex.Message }); }
     }
 
     /// <summary>Enroll từ QR của tem (cần Internet của gateway): nhận site/MQTT từ server.</summary>
@@ -529,8 +587,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         try
         {
-            if (_cfg.Solution.Length == 0 && _cfg.MqttId.Length == 0 && !string.IsNullOrEmpty(kit.Solution)) _cfg.Solution = kit.Solution;   // lần đăng ký đầu: nhận giải pháp mã ghép cặp gợi ý; sau đó GATEWAY quyết định
-            ApplySkin(kit);   // giao diện theo giải pháp (dữ liệu từ server) — áp dụng khi mở lại
+            // Mặc định giao diện CƠ BẢN: gateway tự quyết giải pháp (đổi ở mục Cloud), không nhận giải pháp server gợi ý lúc đăng ký
+            ApplySkin(kit);
             _cfg.GatewayQr = qr; _cfg.CloudApiUrl = api.Trim();
             if (!string.IsNullOrEmpty(kit.CmdKey)) _cfg.CloudCmdKey = kit.CmdKey;   // từ giờ chỉ nhận lệnh cloud có chữ ký của server
             _cfg.BoundMachineId = GatewayActivation.MachineId();
@@ -596,10 +654,12 @@ public sealed partial class MainForm : Form, IGatewayApp
             try
             {
                 using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(15) };
-                var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, _cfg.Solution);   // báo giải pháp qua HTTPS có chữ ký rồi nhận giao diện
+                var kit = await RefreshKitAsync(http, _cfg.Solution);   // báo giải pháp qua HTTPS có chữ ký rồi nhận giao diện
                 if (kit != null) ApplySkin(kit);
+                // Server không nhận lựa chọn (vd. tem không xác thực được) → nói rõ thay vì im lặng giữ giao diện cũ
+                if (kit != null && (kit.Solution ?? "") != id) return Done(false, $"Server chưa nhận giải pháp \"{id}\" cho gateway này (đang là \"{(string.IsNullOrEmpty(kit.Solution) ? "cơ bản" : kit.Solution)}\").");
             }
-            catch (Exception) { /* giao diện sẽ nhận ở lần đồng bộ kế */ }
+            catch (Exception ex) { return Done(false, "Đã lưu trên máy nhưng chưa đồng bộ được giao diện từ server: " + ex.Message); }
         }
         return (true, id.Length > 0 ? $"Gateway này dùng giải pháp \"{id}\"." : "Gateway này dùng giao diện cơ bản.");
     }
@@ -611,6 +671,8 @@ public sealed partial class MainForm : Form, IGatewayApp
 
     void ApplySkin(GatewayProvisionKit kit)
     {
+        // MỘT gateway = MỘT loại UI, do GATEWAY chọn (mặc định cơ bản): giao diện server gửi khác lựa chọn trên máy thì bỏ qua
+        if ((kit.Solution ?? "") != (_cfg.Solution ?? "")) return;
         var (changed, title) = SkinStore.Save(kit.Solution, kit.Ui);
         if (!changed) return;
         _log.Add("INFO", "ui", title.Length > 0 ? $"giao diện giải pháp \"{title}\" đã nhận từ server" : "gateway về giao diện cơ bản");
@@ -619,6 +681,29 @@ public sealed partial class MainForm : Form, IGatewayApp
         Toast(msg);
         // trễ ngắn để thao tác đang chạy (lưu cấu hình, báo kết quả) xong rồi mới dựng lại cửa sổ
         _ = Task.Delay(400).ContinueWith(_ => { if (!IsDisposed) BeginInvoke(async () => { await StopAsync(); _carry = (_login, _loginAt, msg); _carryLocal = _localUnlocked; RestartRequested = true; Close(); }); });   // dừng host trước để cửa sổ mới không tranh cổng/ID MQTT
+    }
+
+    /// <summary>
+    /// Đồng bộ cấu hình từ server; QR trên máy đã cũ (tem được cấp lại QR) → TỰ lấy QR mới bằng khoá riêng của máy, lưu lại rồi thử lại một lần.
+    /// </summary>
+    async Task<GatewayProvisionKit?> RefreshKitAsync(HttpClient http, string? solution = null)
+    {
+        var client = new GatewayEnrollClient(http);
+        try { return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, solution); }
+        catch (Exception ex) when (GatewayEnrollClient.IsStaleQr(ex))
+        {
+            var sd = GatewayIdentity.SiteDeviceOfQr(_cfg.GatewayQr);
+            var site = sd?.Site ?? _cfg.Site; var device = sd?.Device ?? _cfg.Device;
+            string qr;
+            try { qr = await client.RefreshQrAsync(site, device, Identity()); }
+            catch (Exception e2) { _log.Add("WARN", "cloud", $"QR trên máy đã cũ và không lấy lại được ({e2.Message})"); throw new InvalidOperationException("QR của gateway đã cũ và server không cấp lại được (" + e2.Message + ")."); }
+            _cfg.GatewayQr = qr;
+            try { SaveCfg(); } catch (IOException) { }
+            _qrIcon.Update();
+            _log.Add("INFO", "cloud", $"QR của tem {site}/{device} đã được cấp lại trên server — gateway tự cập nhật QR mới");
+            Toast("Đã tự cập nhật mã QR mới của gateway từ server.");
+            return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, solution);
+        }
     }
 
     // ------------------------------------------------------------------ chờ user: hỏi server tem đã claim chưa
@@ -631,7 +716,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         try
         {
             using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(10) };
-            var kit = await new GatewayEnrollClient(http).RefreshConfigAsync(_cfg.GatewayQr, Identity());
+            var kit = await RefreshKitAsync(http);
             if (kit != null) ApplySkin(kit);
             if (!string.IsNullOrEmpty(kit?.CmdKey) && kit!.CmdKey != _cfg.CloudCmdKey) { _cfg.CloudCmdKey = kit.CmdKey; try { SaveCfg(); } catch (IOException) { } }   // server đổi khoá ký: nhận qua HTTPS có chữ ký
             if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
@@ -648,6 +733,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     // ------------------------------------------------------------------ nhịp giao diện
     void Tick()
     {
+        if (IsDisposed || Disposing) return;   // cửa sổ cũ đã đóng (dựng lại khi đổi UI)
         PollClaimed();
         _log.Flush();
         var running = _host != null;
@@ -658,6 +744,11 @@ public sealed partial class MainForm : Form, IGatewayApp
         _chipCloud.Caption = cs switch { CloudState.Connected => "Cloud: đã nối", CloudState.Connecting => "Cloud: đang nối", CloudState.Disconnected => "Cloud: mất kết nối", _ => "Cloud: tắt" };
         _chipCloud.Dot = cs switch { CloudState.Connected => Theme.Green, CloudState.Connecting => Theme.Yellow, CloudState.Disconnected => Theme.Red, _ => Theme.Muted };
         var offline = _cfg.Mobile == MobileAccess.Off || cs != CloudState.Connected;
+        if (Unlocked && !_testMode && !_noAuth && !_prompting && AutoLock.Expired())
+        {
+            LockNow($"Đã tự khoá sau {AutoLock.Minutes} phút không thao tác. Gateway vẫn chạy nền.");
+        }
+        SyncLockScreen();
         var lockCap = Unlocked ? "🔓 Khoá lại" : "🔒 Mở khoá";
         if (_lockBtn.Caption != lockCap) { _lockBtn.Caption = lockCap; _lockBtn.Primary = !Unlocked; _lockBtn.Invalidate(); }
         _chipMode.Caption = offline ? "Chế độ cục bộ (offline)" : "Có cloud";

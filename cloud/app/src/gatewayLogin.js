@@ -1,7 +1,7 @@
 /**
  * Đăng nhập cho app C# (GatewayApp / GatewayAdmin) bằng DUYỆT QUA TRÌNH DUYỆT (kiểu "device code"):
  *
- *  1. App gọi POST /api/v1/gateway/login/start → nhận { deviceCode (bí mật, chỉ app giữ), userCode `XXXX-XXXX`, verifyUrl }.
+ *  1. App gọi POST /api/v1/gateway/login/start → nhận { deviceCode (bí mật, chỉ app giữ), userCode 8 chữ số, verifyUrl }.
  *  2. Người dùng mở verifyUrl trên webapp (đã đăng nhập đầy đủ: Face ID / TOTP như bình thường), đối chiếu mã rồi bấm Duyệt
  *     → POST /api/v1/gateway/login/approve (cần phiên webapp hợp lệ).
  *  3. App hỏi POST /api/v1/gateway/login/poll { deviceCode } → khi đã duyệt nhận MỘT token đăng ký ngắn hạn (scope riêng
@@ -13,21 +13,24 @@
  * userCode hết hạn 10 phút, dùng một lần; poll quá nhanh bị 429 (`slow_down`).
  */
 import crypto from 'node:crypto';
-import { rateLimit, clientIp, signToken, verifyToken, audit, countAudit, findUserByUsername, checkControlSession, verifyPassword, hashPassword, openSecret, verifyTotp } from '@plciot/security';
+import { rateLimit, clientIp, signToken, verifyToken, audit, countAudit, findUserByUsername, checkControlSession, verifyPassword, hashPassword } from '@plciot/security';
 import { isDashboardAdmin } from './roles.js';
 import { subnetOf } from './gatewayEnroll.js';
-import { registerForUser, listGatewaysOfUser, rebindForUser } from './gatewayPairing.js';
+import { addDeviceFromQr } from './userDevices.js';
+import { requestTransfer, mountGatewayTransfers } from './gatewayTransfer.js';
+import { notifyGateway } from './gatewayNotify.js';
+import { findForeignPairing, checkTransferRequest, registerForUser, listGatewaysOfUser, rebindForUser } from './gatewayPairing.js';
 
-const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const CODE_RE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
+const ALPHABET = '0123456789';   // mã ghép / OTP CHỈ gồm chữ số (dễ gõ trên bàn phím số, không nhầm O/0, I/1)
+const CODE_RE = /^\d{8}$/;
 const TTL_MS = 10 * 60_000;
 const POLL_MIN_MS = 2_000;
 const REG_TOKEN_SEC = 30 * 60;
 const MAX_OPEN = Number(process.env.GATEWAY_LOGIN_MAX_OPEN || 300);
 const sha = (s) => crypto.createHash('sha256').update(`gwlogin:${s}`).digest('hex');
-const fmt = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
+const fmt = (c) => c;   // hiển thị đúng 8 chữ số, không gạch nối
 export const normalizeUserCode = (raw) => {
-  const c = String(raw ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  const c = String(raw ?? '').replace(/\s/g, '');   // chỉ bỏ khoảng trắng gõ thừa; ký tự khác số → không hợp lệ
   return CODE_RE.test(c) ? c : null;
 };
 
@@ -78,6 +81,7 @@ const PW_DUMMY = hashPassword('dummy-password-for-timing');
 export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }) {
   migrateGatewayLogins(db);
   const requireOtp = makeRequireOtp(db);
+  mountGatewayTransfers(app, { db, requireAuth, requireOtp });
   const sweep = () => db.prepare('DELETE FROM gateway_logins WHERE expires_at < ?').run(Date.now() - 3600_000);
 
   const ipLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_LOGIN || 10), keyFn: (req) => `${clientIp(req)}:gw-login` });
@@ -150,8 +154,6 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
   // ---- Cách 2: MÃ KẾT NỐI tạo trên webapp (người dùng cho chính mình; admin cho một người dùng khác) → gateway nhập mã ----
   const MAX_CODES_OPEN_PER_USER = Number(process.env.GATEWAY_CODES_MAX_OPEN || 5);
   const codeLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_CODE || 10), keyFn: (req) => `${clientIp(req)}:gw-code` });
-  const redeemIp = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_REDEEM || 10), keyFn: (req) => `${clientIp(req)}:gw-redeem` });
-  const redeemNet = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_REDEEM_NET || 40), keyFn: (req) => `${subnetOf(clientIp(req))}:gw-redeem-net` });
 
   // Người dùng đã đăng nhập webapp (đủ Face ID/TOTP) tạo mã. Admin có thể chỉ định `username` để tạo mã cho người đó.
   app.post('/api/v1/gateway/connect-code', requireAuth, requireOtp, codeLimit, (req, res) => {
@@ -179,29 +181,13 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     res.status(500).json({ error: 'code_failed' });
   });
 
-  // Gateway nhập mã → nhận token đăng ký (như poll). Mã sai/hết hạn/đã dùng trả CÙNG một lỗi; dùng một lần.
-  app.post('/api/v1/gateway/login/redeem', redeemIp, redeemNet, (req, res) => {
-    const code = normalizeUserCode(req.body?.code);
-    const bad = () => res.status(404).json({ error: 'invalid_code' });
-    if (!code) return bad();
-    const used = db.prepare("UPDATE gateway_logins SET status = 'used' WHERE user_code = ? AND kind = 'code' AND status = 'approved' AND expires_at > ?").run(code, Date.now()).changes;
-    if (!used) return bad();
-    const row = db.prepare("SELECT user_id, id FROM gateway_logins WHERE user_code = ? AND kind = 'code'").get(code);
-    const user = row && db.prepare('SELECT id, username, token_version, disabled FROM users WHERE id = ?').get(row.user_id);
-    if (!user || user.disabled) return bad();
-    const token = signToken({ uid: user.id, tv: user.token_version | 0, scope: 'gateway_register' }, jwtSecret, REG_TOKEN_SEC);
-    audit(db, 'gateway_code_redeem', { userId: user.id, ip: clientIp(req), detail: row.id });
-    res.json({ status: 'approved', token, expiresIn: REG_TOKEN_SEC, user: user.username, uid: user.id });
-  });
-
-  // Đăng nhập gateway bằng tên + mật khẩu NHƯNG bắt buộc thêm mã Authenticator (TOTP): chỉ mật khẩu thì không đủ.
-  // Mật khẩu đúng mà thiếu mã → totp_required (app hiện ô nhập mã). Tài khoản chưa bật Authenticator → totp_not_enabled.
+  // Đăng nhập gateway: tên + mật khẩu + MÃ GHÉP (tạo trên webapp bằng điện thoại, của đúng tài khoản này, dùng một lần). Thiếu một trong ba → không cấp token.
   const pwLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_PASSWORD || 8), keyFn: (req) => `${clientIp(req)}:gw-pw` });
   const pwNet = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_GATEWAY_PASSWORD_NET || 30), keyFn: (req) => `${subnetOf(clientIp(req))}:gw-pw-net` });
   app.post('/api/v1/gateway/login/password', pwLimit, pwNet, (req, res) => {
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
-    const code = String(req.body?.code || '').replace(/\s/g, '');
+    const code = normalizeUserCode(req.body?.code);
     const user = username ? findUserByUsername(db, username) : null;
     const usable = Boolean(user && !user.disabled && user.login_password_hash && user.setup_complete !== 0);
     if (usable && countAudit(db, user.id, PW_FAIL, Date.now() - PW_LOCK_MS) >= PW_LOCK_FAILS) return res.status(429).json({ error: 'locked' });
@@ -210,22 +196,22 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
       if (user) audit(db, PW_FAIL, { userId: user.id, ip: clientIp(req), detail: 'password' });
       return res.status(401).json({ error: 'invalid_credentials' });
     }
-    if (!user.totp_enabled) return res.status(403).json({ error: 'totp_not_enabled' });
-    if (!code) return res.status(401).json({ error: 'totp_required' });
-    const secret = openSecret(user.totp_secret);
-    const step = secret ? verifyTotp(secret, code, { lastStep: user.totp_last_step | 0 }) : null;
-    if (!step) {
-      audit(db, PW_FAIL, { userId: user.id, ip: clientIp(req), detail: 'totp' });
-      return res.status(401).json({ error: 'totp_invalid' });
+    if (!String(req.body?.code ?? '').trim()) return res.status(401).json({ error: 'code_required' });
+    const used = code ? db.prepare("UPDATE gateway_logins SET status = 'used' WHERE user_code = ? AND kind = 'code' AND status = 'approved' AND user_id = ? AND expires_at > ?").run(code, user.id, Date.now()).changes : 0;
+    if (!used) {
+      audit(db, PW_FAIL, { userId: user.id, ip: clientIp(req), detail: 'code' });
+      return res.status(401).json({ error: 'invalid_code' });
     }
-    db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, user.id);
     const token = signToken({ uid: user.id, tv: user.token_version | 0, scope: 'gateway_register' }, jwtSecret, REG_TOKEN_SEC);
     audit(db, 'gateway_password_login', { userId: user.id, ip: clientIp(req) });
     res.json({ status: 'approved', token, expiresIn: REG_TOKEN_SEC, user: user.username, uid: user.id });
   });
 
   // Đăng ký gateway: token `gateway_register` (từ duyệt trình duyệt) + chữ ký khoá riêng của gateway
-  app.post('/api/v1/gateway/register', regLimit, (req, res) => {
+  app.post('/api/v1/gateway/register', regLimit, async (req, res) => {
+    try { await registerHandler(req, res); } catch (e) { console.error('gateway register', e.message); if (!res.headersSent) res.status(500).json({ error: 'register_failed' }); }
+  });
+  async function registerHandler(req, res) {
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     let payload = null;
     try { payload = m ? verifyToken(m[1], jwtSecret) : null; } catch { payload = null; }
@@ -233,11 +219,28 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
     if (!user || user.disabled) return res.status(user?.disabled ? 403 : 401).json({ error: user?.disabled ? 'account_disabled' : 'unauthorized' });
     if ((payload.tv | 0) !== (user.token_version | 0)) return res.status(401).json({ error: 'session_revoked' });
+    // Gateway này đang thuộc tài khoản KHÁC → không chuyển ngay: tạo YÊU CẦU ĐỔI CHỦ chờ chủ cũ duyệt (Face ID/TOTP) hoặc hết hạn chờ (gatewayTransfer.js).
+    const prev = findForeignPairing(db, user, req.body || {});
+    if (prev) {
+      const chk = checkTransferRequest(db, user, req.body || {});
+      if (chk.error) return res.status(chk.status || 400).json(chk);
+      const t = await requestTransfer(db, user, prev, { ip: clientIp(req) });
+      if (t.error) return res.status(t.status || 400).json(t);
+      return res.status(202).json(t);
+    }
     const r = registerForUser(db, user, req.body || {});
     if (r.ok) audit(db, 'gateway_register_user', { userId: user.id, ip: clientIp(req), detail: `${r.site}/${r.device}` });
+    // Tự gắn gateway vào CHÍNH tài khoản vừa đăng nhập (như quét QR) — không cần quét mã. Admin chỉ xem thử nên không được gắn.
+    if (r.ok && r.approved && r.qr) {
+      try {
+        const c = await addDeviceFromQr(db, user, { qr: r.qr, ip: clientIp(req) });
+        if (c?.ok) { r.claimed = true; if (r.kit) r.kit.claimed = true; notifyGateway(db, r.site, r.device, 'claimed'); }
+        else console.error('auto-claim', c?.error);
+      } catch (e) { console.error('auto-claim', e.message); }
+    }
     if (r.error) return res.status(r.status || 400).json(r);
     res.json(r);
-  });
+  }
   // Chuyển gateway sang PC mới: cùng cổng token `gateway_register` như register (chủ tài khoản vừa qua TOTP / OTP điện thoại)
   const regUser = (req, res) => {
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');

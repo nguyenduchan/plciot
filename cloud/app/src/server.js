@@ -34,7 +34,7 @@ import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
-import { gatewaySolution, setSolutionsContext } from './gatewaySolution.js';
+import { gatewaySolution, setSolutionsContext, setSolutionChangedHook } from './gatewaySolution.js';
 import { mountGatewayEnroll } from './gatewayEnroll.js';
 import { mountGatewayLogin } from './gatewayLogin.js';
 import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
@@ -286,6 +286,14 @@ setInterval(sweepTems, 3600_000).unref();
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
 setSolutionsContext(WEBAPP_SRC);
 setGatewayAddedHook((d, u, hw) => adoptSolution(d, u.id, gatewaySolution(d, hw.site, hw.device), { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
+// Gateway đổi giải pháp UI → dựng lại bundle webapp của mọi người dùng gateway đó (webapp tải giao diện mới, không giữ giao diện cũ)
+setSolutionChangedHook((d, site, device, sol) => {
+  const ids = d.prepare(`SELECT DISTINCT u.id FROM users u WHERE u.disabled = 0 AND (
+      (u.notify_site = ? AND u.notify_device = ?)
+      OR u.id IN (SELECT claimed_by FROM hardware_devices WHERE site = ? AND device = ? AND claimed_by IS NOT NULL)
+      OR u.id IN (SELECT user_id FROM user_devices WHERE site = ? AND gateway_device = ?))`).all(site, device, site, device, site, device).map((r) => r.id);
+  for (const id of ids) adoptSolution(d, id, sol, { shellDir: WEBAPP_SRC, dataDir: DATA_DIR });
+});
 /* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 mountAdminOps(app, {

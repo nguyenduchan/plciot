@@ -34,6 +34,11 @@ sealed class IndustryPage : UserControl
     Dictionary<string, Dictionary<string, double>> _devs = new(StringComparer.OrdinalIgnoreCase);
     bool _demoShown;
     int _tab;                       // 0 = tổng quan; i = tab thứ i của spec
+    /// <summary>
+    /// GỘP: trang giải pháp nằm chung trang chính của gateway (một mục duy nhất, cùng thẻ thiết bị) — vẽ MỌI khối của mọi tab
+    /// liền nhau, không có thanh tab; cao theo nội dung (trang chính cuộn), không tự cuộn.
+    /// </summary>
+    public bool Merged { get; set; }
     readonly List<(string Label, JsonElement Blocks)> _tabs = new();
     readonly List<(RectangleF R, int Idx)> _tabRects = new();
     DateTime _lastHist = DateTime.MinValue;
@@ -228,27 +233,37 @@ sealed class IndustryPage : UserControl
         var st = _devs.Count == 0 ? ("▲ Chưa có dữ liệu", Theme.Yellow) : _demoShown ? ("● Dữ liệu mẫu (--demo)", Theme.Teal) : act.Count > 0 ? ($"▲ {act.Count} cảnh báo", Theme.Yellow) : ("● Đang nhận dữ liệu", Theme.Green);
         using (var sb = new SolidBrush(st.Item2)) { var sz = g.MeasureString(st.Item1, Theme.Normal); g.DrawString(st.Item1, Theme.Normal, sb, pad + w - sz.Width, y + 10); }
         y += 46;
-        // thanh tab
-        _tabRects.Clear(); float tx = pad;
-        for (var i = 0; i < _tabs.Count; i++)
+        if (!Merged)
         {
-            var sz = g.MeasureString(_tabs[i].Label, Theme.Semi); var r = new RectangleF(tx, y, sz.Width + 24, 28);
-            using (var path = Theme.Round(r, 14)) using (var br = new SolidBrush(i == _tab ? Theme.Accent : Theme.Panel)) using (var pen = new Pen(Theme.Border)) { g.FillPath(br, path); if (i != _tab) g.DrawPath(pen, path); }
-            using (var tb = new SolidBrush(i == _tab ? Color.White : Theme.Muted)) g.DrawString(_tabs[i].Label, Theme.Semi, tb, r.X + 12, r.Y + 4);
-            _tabRects.Add((new RectangleF(r.X + AutoScrollPosition.X * -1 - 0, r.Y + AutoScrollPosition.Y * -1, r.Width, r.Height), i)); tx += r.Width + 8;
+            // thanh tab
+            _tabRects.Clear(); float tx = pad;
+            for (var i = 0; i < _tabs.Count; i++)
+            {
+                var sz = g.MeasureString(_tabs[i].Label, Theme.Semi); var r = new RectangleF(tx, y, sz.Width + 24, 28);
+                using (var path = Theme.Round(r, 14)) using (var br = new SolidBrush(i == _tab ? Theme.Accent : Theme.Panel)) using (var pen = new Pen(Theme.Border)) { g.FillPath(br, path); if (i != _tab) g.DrawPath(pen, path); }
+                using (var tb = new SolidBrush(i == _tab ? Color.White : Theme.Muted)) g.DrawString(_tabs[i].Label, Theme.Semi, tb, r.X + 12, r.Y + 4);
+                _tabRects.Add((new RectangleF(r.X + AutoScrollPosition.X * -1 - 0, r.Y + AutoScrollPosition.Y * -1, r.Width, r.Height), i)); tx += r.Width + 8;
+            }
+            y += 40;
         }
-        y += 40;
         y = MissingBanner(g, pad, y, w);
-        foreach (var b in _tabs[_tab].Blocks.EnumerateArray())
+        // Gộp: mọi tab liền nhau (mỗi tab sau "Tổng quan" có tiêu đề nhóm); không gộp: chỉ tab đang chọn
+        for (var ti = Merged ? 0 : _tab; ti < (Merged ? _tabs.Count : _tab + 1); ti++)
         {
-            if (b.TryGetProperty("title", out var tt) && tt.ValueKind == JsonValueKind.String)
-            { using var mb = new SolidBrush(Theme.Muted); g.DrawString((tt.GetString() ?? "").ToUpperInvariant(), Theme.Small, mb, pad, y); y += 20; }
-            var h = Block(g, b, pad, y, w);
-            y += h + 18;
+            if (Merged && ti > 0)
+            { using var hb = new SolidBrush(Theme.Text); g.DrawString(_tabs[ti].Label, Theme.Semi, hb, pad, y); y += 28; }
+            foreach (var b in _tabs[ti].Blocks.EnumerateArray())
+            {
+                if (b.TryGetProperty("title", out var tt) && tt.ValueKind == JsonValueKind.String)
+                { using var mb = new SolidBrush(Theme.Muted); g.DrawString((tt.GetString() ?? "").ToUpperInvariant(), Theme.Small, mb, pad, y); y += 20; }
+                var h = Block(g, b, pad, y, w);
+                y += h + 18;
+            }
         }
         y += pad;
         var need = new Size(0, (int)y);
-        if (AutoScrollMinSize.Height != need.Height) BeginInvoke(() => AutoScrollMinSize = need);
+        if (Merged) { if (Height != need.Height) BeginInvoke(() => Height = need.Height); }   // cao theo nội dung, trang chính cuộn
+        else if (AutoScrollMinSize.Height != need.Height) BeginInvoke(() => AutoScrollMinSize = need);
     }
 
     List<(Metric M, double? V, string Lv)> Active()
@@ -303,6 +318,17 @@ sealed class IndustryPage : UserControl
             };
         }
         catch (Exception) { return 0f; }
+    }
+
+    /// <summary>
+    /// Thiết bị cho khối liệt kê THEO THIẾT BỊ: chỉ thiết bị có field GẮN vào khối (tên field trùng khoá chỉ số) — giống webapp (industry-engine idsFor).
+    /// Thiết bị khác của gateway (vd. động cơ phụ) không chen vào danh sách, nó hiện thành widget riêng.
+    /// </summary>
+    List<string> DevIds(JsonElement b, params Metric?[] ms)
+    {
+        var use = ms.Where(m => m != null).Select(m => m!).ToList();
+        return _devs.Keys.Where(k => (!b.TryGetProperty("only", out var o) || o.EnumerateArray().Any(z => z.GetString() == k))
+            && (use.Count == 0 || use.Any(m => m.Expr != null ? Own(_devs[k], m) != null : m.Keys.Any(kk => _devs[k].ContainsKey(kk.Key))))).ToList();
     }
 
     IEnumerable<string> Items(JsonElement b, string k = "items") => b.TryGetProperty(k, out var a) && a.ValueKind == JsonValueKind.Array ? a.EnumerateArray().Select(v => v.GetString() ?? "") : Enumerable.Empty<string>();
@@ -397,7 +423,7 @@ sealed class IndustryPage : UserControl
     float Tiles(Graphics g, JsonElement b, float x, float y, float w)
     {
         var main = M(b.GetProperty("main").GetString()!); var subs = Items(b, "subs").Select(M).ToList();
-        var ids = _devs.Keys.Where(k => !b.TryGetProperty("only", out var o) || o.EnumerateArray().Any(z => z.GetString() == k)).ToList();
+        var ids = DevIds(b, subs.Prepend(main).ToArray());
         if (ids.Count == 0) return 0;
         var cols = w >= 760 ? 3 : 2; var cw = (w - (cols - 1) * 10) / cols; const float h = 118;
         for (var i = 0; i < ids.Count; i++)
@@ -430,7 +456,7 @@ sealed class IndustryPage : UserControl
     {
         var perDev = Str(b, "type") == "tanks"; const float h = 150;
         var list = new List<(Metric M, double? V, string L)>();
-        if (perDev) { var m = M(b.GetProperty("main").GetString()!); foreach (var (id, o) in _devs) list.Add((m, Own(o, m), TitleOf(id))); }
+        if (perDev) { var m = M(b.GetProperty("main").GetString()!); foreach (var id in DevIds(b, m)) list.Add((m, Own(_devs[id], m), TitleOf(id))); }
         else foreach (var id in Items(b)) list.Add((M(id), Val(id), M(id).Label));
         var cw = Math.Min(130f, w / Math.Max(1, list.Count)); var total = cw * list.Count; var sx = x + (w - total) / 2;
         Card(g, new RectangleF(x, y, w, h + 20));
@@ -473,7 +499,7 @@ sealed class IndustryPage : UserControl
 
     float Andon(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var st = M(Str(b, "state")); var vm = b.TryGetProperty("value", out var vv) ? M(vv.GetString()!) : null; var ids = _devs.Keys.ToList();
+        var st = M(Str(b, "state")); var vm = b.TryGetProperty("value", out var vv) ? M(vv.GetString()!) : null; var ids = DevIds(b, st, vm);
         var cols = w >= 760 ? 3 : 2; var cw = (w - (cols - 1) * 10) / cols; const float h = 96; var blink = DateTime.Now.Second % 2 == 0;
         for (var i = 0; i < ids.Count; i++)
         {
@@ -490,7 +516,7 @@ sealed class IndustryPage : UserControl
 
     float Line(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var st = M(Str(b, "state")); var sub = b.TryGetProperty("sub", out var s) ? M(s.GetString()!) : null; var ids = _devs.Keys.ToList(); if (ids.Count == 0) return 0;
+        var st = M(Str(b, "state")); var sub = b.TryGetProperty("sub", out var s) ? M(s.GetString()!) : null; var ids = DevIds(b, st, sub); if (ids.Count == 0) return 0;
         var gap = 22f; var cw = (w - gap * (ids.Count - 1)) / ids.Count; const float h = 76;
         for (var i = 0; i < ids.Count; i++)
         {
@@ -568,7 +594,7 @@ sealed class IndustryPage : UserControl
 
     float Elevator(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var N = (int)(Dbl(b, "floors") ?? 10); var fm = Str(b, "floor", "floor").ToLowerInvariant(); var ids = _devs.Keys.ToList(); const float sh = 200; float h = sh + 74;
+        var N = (int)(Dbl(b, "floors") ?? 10); var fm = Str(b, "floor", "floor").ToLowerInvariant(); var ids = DevIds(b, new Metric { Id = fm, Keys = { (fm, 1) } }); const float sh = 200; float h = sh + 74;
         Card(g, new RectangleF(x, y, w, h)); using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
         for (var i = 0; i < N; i++) g.DrawString((i + 1).ToString(), Theme.Small, mb, x + 12, y + 12 + (sh - 16) * (1 - (float)i / (N - 1)) - 6);
         var cw = Math.Min(130f, (w - 60) / Math.Max(1, ids.Count));

@@ -177,6 +177,16 @@ sealed class DashboardPage : UserControl
         };
     }
 
+    /// <summary>Gộp trang giải pháp (UI ngành) vào ĐẦU trang chính: một mục duy nhất, rộng hết khung, thẻ thiết bị nằm dưới.</summary>
+    public void Embed(Control top)
+    {
+        top.Dock = DockStyle.None; top.Margin = new Padding(0, 0, 0, 12);
+        void Fit() { var w = _flow.ClientSize.Width - _flow.Padding.Horizontal - top.Margin.Horizontal - 2; if (w > 100) top.Width = w; }
+        _flow.Controls.Add(top); _flow.Controls.SetChildIndex(top, 0);
+        _flow.SetFlowBreak(top, true);
+        _flow.Resize += (_, _) => Fit(); Fit();
+    }
+
     void AddDevice() { if (DeviceDialog.Run(_app, FindForm()!, null, out var c)) { Rebuild(); _ = _app.ApplyAsync($"Đã thêm thiết bị {c}"); } }
     void EditDevice(string child) { if (DeviceDialog.Run(_app, FindForm()!, child, out var c, out var del)) { Rebuild(); _ = _app.ApplyAsync(del ? $"Đã xoá thiết bị {c}" : $"Đã lưu thiết bị {c}"); } }
 
@@ -196,7 +206,12 @@ sealed class DashboardPage : UserControl
         if (ReadOnly) foreach (var l in _empty.Controls.OfType<Label>().Where(x => x.Font != Theme.Big)) l.Text = "Thiết bị được cài đặt bằng tool Admin (kết nối ở trang Kết nối admin).";
         foreach (var g in groups)
         {
-            var card = new DeviceCard(g.Key, g.ToList(), _app, k => { _selected = k; UpdateChart(); }, ReadOnly ? null : EditDevice);
+            // Có sơ đồ giải pháp: field đã GẮN vào sơ đồ (tên trùng ô sơ đồ, không có khoá MQTT khác tên) hiện trong sơ đồ, không lặp thành widget;
+            // field còn lại → thẻ widget riêng. Thiết bị mà mọi field đều nằm trong sơ đồ thì không có thẻ.
+            var own = g.Where(p => !(SolutionHost.Slots.Count > 0 && SolutionHost.InDiagram(p.Field)
+                && (string.IsNullOrEmpty(p.MqttKey) || string.Equals(p.MqttKey, p.Field, StringComparison.OrdinalIgnoreCase)))).ToList();
+            if (own.Count == 0) continue;
+            var card = new DeviceCard(g.Key, own, _app, k => { _selected = k; UpdateChart(); }, ReadOnly ? null : EditDevice);
             _cards.Add(card); _flow.Controls.Add(card);
         }
         _flow.ResumeLayout();

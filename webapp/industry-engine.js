@@ -147,6 +147,10 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     if (m.expr) return calc(m, (x) => own(rec, x), (k) => num(rec.v[k]));
     for (const [k, mul] of keyList(m)) { const n = num(rec.v[k]); if (n != null) return n * mul; } return null;
   };
+  // Khối liệt kê THEO THIẾT BỊ chỉ gồm thiết bị có field GẮN vào khối đó (tên field trùng khoá chỉ số) — thiết bị khác của gateway
+  // (vd. động cơ phụ trong giải pháp thủy sản) không chen vào danh sách ao, nó hiện thành widget riêng ở khung thiết bị
+  const hasAny = (id, ms) => { const r = devs.get(id); return !!r && ms.some((m) => m && (m.expr ? own(r, m) != null : keyList(m).some(([k]) => k in r.v))); };
+  const idsFor = (b, ms) => [...devs.keys()].filter((id) => (!b.only || b.only.includes(id)) && (!ms.filter(Boolean).length || hasAny(id, ms)));
   function value(m, recs) {
     if (m.expr) return calc(m, (x) => value(x, recs), (k) => { let v = null; for (const r of recs) { const n = num(r.v[k]); if (n != null) v = n; } return v; });
     const xs = [];
@@ -262,7 +266,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   // mỗi thiết bị một bồn (bồn xăng dầu, bể nước…)
   function bTanks(b) {
     const m = mget(b.main);
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [m]);
     return `<div class="itk-grid">` + ids.map((id) => tankSvg(m, own(devs.get(id), m), titleOf(id))).join('') + '</div>';
   }
 
@@ -303,7 +307,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   }
   function bTiles(b) {
     const main = mget(b.main), subs = (b.subs || []).map(mget);
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [main, ...subs]);
     if (!ids.length) return '<p class="muted">Chưa có thiết bị. Thêm thiết bị bằng mã QR ở tab Thiết bị.</p>';
     return `<div class="it-grid">` + ids.map((id) => {
       const r = devs.get(id), v = own(r, main), lv = main.lv ? stateLevel(main, v) : level(main, v);
@@ -317,7 +321,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
 
   // dây chuyền: các trạm nối tiếp bằng mũi tên chạy, màu theo trạng thái
   function bLine(b) {
-    const st = mget(b.state), ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const st = mget(b.state), ids = idsFor(b, [st]);
     if (!ids.length) return '';
     return `<div class="il">` + ids.map((id, i) => {
       const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off';
@@ -407,7 +411,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
 
   /* ---------------- thang máy: giếng thang, cabin theo tầng, chiều đi, cửa, tải */
   function bElevator(b) {
-    const N = b.floors || 10, fm = b.floor || 'floor', ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const N = b.floors || 10, fm = b.floor || 'floor', ids = idsFor(b, [{ id: fm }]);
     if (!ids.length) return '<p class="muted">Chưa có thang máy nào gửi dữ liệu.</p>';
     const ruler = Array.from({ length: N }, (_, i) => `<span style="bottom:${(i / (N - 1)) * 100}%">${i + 1}</span>`).join('');
     return `<div class="iel"><div class="iel-r"><div class="iel-shaft">${ruler}</div></div>` + ids.map((id) => {
@@ -452,7 +456,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   /* ---------------- bảng Andon: ô lớn theo trạng thái từng máy/chuyền (nhìn từ xa), nhấp nháy khi lỗi */
   function bAndon(b) {
     const st = mget(b.state), vm = b.value ? mget(b.value) : null;
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [st, vm]);
     if (!ids.length) return '<p class="muted">Chưa có máy nào gửi dữ liệu.</p>';
     return `<div class="iad">` + ids.map((id) => {
       const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off', off = !demo && Date.now() - r.ts > STALE_MS;
@@ -534,7 +538,9 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   dash.insertBefore(card, (!HL && document.getElementById('gw-tabs')?.nextSibling) || dash.firstChild);   // dưới thanh tab gateway (nếu có)
 
   function drawOverview() {
-    $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview);
+    // MỘT gateway = MỘT giao diện, GỘP trong một mục (giống GatewayApp): mọi tab của giải pháp vẽ liền dưới phần tổng quan, không tách tab riêng
+    $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview)
+      + (S.tabs || []).map((t) => `<h3 class="ib-sub" style="margin-top:18px">${esc(t.title || t.label)}</h3>${renderBlocks(t.blocks)}`).join('');
     const st = $('#ind-st'), fresh = lastTs && Date.now() - lastTs < STALE_MS * 2, n = active().length;
     st.textContent = !lastTs ? 'Chờ dữ liệu…' : !fresh ? '▲ Mất liên lạc' : n ? `▲ ${n} cảnh báo` : '● Trực tuyến';
     st.className = 'st ' + (!lastTs ? '' : !fresh ? 'stale' : n ? 'warn' : 'live');
@@ -552,7 +558,6 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     nav.insertBefore(b, setBtn); btns[id] = b;
     b.onclick = () => showMine(id);
   };
-  for (const t of S.tabs || []) { mkTab(t.id, `<div class="panel"><h2>${esc(t.title || t.label)}</h2><div id="ind-t-${esc(t.id)}"></div></div>`); mkBtn(t.id, t.label, t.icon); }
   mkTab('devs', '<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Thiết bị</h2><button id="dv-add" class="primary fit">＋ Thêm thiết bị</button></div><div id="dv-sum" class="ik-grid c3"></div><div id="dv-list" class="dv-list"></div><div id="dv-req"></div></div>');
   mkBtn('devs', 'Thiết bị', 'device');
   mkTab('alm', '<div class="panel"><h2>Cảnh báo</h2><div id="alm-act"></div><h3 class="ib-sub">Nhật ký (phiên này)</h3><div id="alm-log"></div></div>');
@@ -613,6 +618,19 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   // ẩn các tab của bản cơ bản không dùng trong giải pháp này (CSS đã ẩn nút; ở đây ẩn thêm theo spec)
   const hidden = [];
   for (const t of S.hide || []) { const b = nav.querySelector(`button[data-tab="${t}"]`); if (b) { b.style.display = 'none'; hidden.push(b); } }
+  // MỘT gateway = MỘT giao diện trong MỘT mục (giống GatewayApp): mục trang chính mang tên giải pháp, không còn "Thiết bị"/"Tổng quan" trùng với tab Thiết bị
+  const dashSpan = HL ? null : nav.querySelector('button[data-tab="dash"] span');
+  const dashOrig = dashSpan?.textContent || '';
+  const solLabel = S.short || S.heading || S.title || '';
+  // Field đã có ô trong sơ đồ (tên trùng khoá của chỉ số đọc trực tiếp) → khung thiết bị không lặp lại thành widget (giống GatewayApp)
+  if (!HL) {
+    window.__indKeys = new Set((S.metrics || []).filter((m) => !m.expr).flatMap((m) => keyList(m).map(([k]) => k)));
+    document.dispatchEvent(new Event('plc-ind-keys'));
+  }
+  if (dashSpan && solLabel) {
+    window.__indDashLabel = solLabel; dashSpan.textContent = solLabel;
+    const tt = document.getElementById('title'); if (tt && nav.querySelector('button[data-tab="dash"]')?.classList.contains('on')) tt.textContent = solLabel;
+  }
 
   /* ------------------------------------------------------------------ nạp số liệu + chế độ chạy thử */
   function ingest(p) {
@@ -686,6 +704,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   const timer = setInterval(() => {
     try { demo = typeof cfg !== 'undefined' && cfg.demo === true; } catch { demo = false; }
     if (demo && !demoSeen) { demoSeen = true; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; prefill(); }
+    else if (!demo && demoSeen) { demoSeen = false; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; }   // rời chạy thử: bỏ thiết bị/số mẫu, không trộn với số thật
     if (demo) demoTick();
     sample(Date.now()); alarmScan(Date.now()); redraw();
   }, 1500);
@@ -701,6 +720,8 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     Object.values(MINE).forEach((e) => e.remove());
     Object.values(btns).forEach((e) => e.remove());
     hidden.forEach((e) => { e.style.display = ''; });
+    if (dashSpan) { window.__indDashLabel = null; dashSpan.textContent = dashOrig; }
+    if (!HL) { window.__indKeys = null; document.dispatchEvent(new Event('plc-ind-keys')); }
     if (!HL) delete document.documentElement.dataset.ind;
     document.dispatchEvent(new CustomEvent('plc-ind-unseen', { detail: { base: GW, n: ST.unseen } }));
   }

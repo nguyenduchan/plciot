@@ -39,6 +39,21 @@ public sealed class GatewayEnrollClient
         return SignedAsync("/api/v1/gateway/config", "config", qr, id, extra, ct);
     }
 
+    /// <summary>
+    /// Lấy lại QR HIỆN HÀNH của tem (khi QR trên máy bị từ chối vì tem đã được cấp lại QR). Chứng minh bằng khoá riêng của gateway
+    /// (chữ ký "qr|site|device|ts" + khoá công khai), không cần QR cũ hay đăng nhập. Trả chuỗi QR mới.
+    /// </summary>
+    public async Task<string> RefreshQrAsync(string site, string device, GatewayIdentity id, CancellationToken ct = default)
+    {
+        var (ts, sig) = id.RequestProof("qr", site, device);
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/qr", new { site, device, pubkey = id.PublicKey, ts, sig }, JsonOpts, ct).ConfigureAwait(false);
+        var r = await ReadAsync(res, ct).ConfigureAwait(false);
+        return r.TryGetProperty("qr", out var q) && q.GetString() is { Length: > 0 } s ? s : throw new InvalidOperationException("qr_missing");
+    }
+
+    /// <summary>Lỗi do QR trên máy đã cũ (server không còn nhận) — gọi RefreshQrAsync rồi thử lại.</summary>
+    public static bool IsStaleQr(Exception ex) => ex is InvalidOperationException { Message: "invalid_claim_signature" or "invalid_claim_secret" or "invalid_claim_payload" };
+
     Task<GatewayProvisionKit?> SignedAsync(string path, string kind, string qr, GatewayIdentity id, Dictionary<string, object?> extra, CancellationToken ct)
     {
         var sd = GatewayIdentity.SiteDeviceOfQr(qr) ?? throw new InvalidOperationException("invalid_claim_payload");
@@ -66,16 +81,7 @@ public sealed class GatewayEnrollClient
         return new LoginPoll(status, r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "", r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
     }
 
-    /// <summary>Cách 2: nhập mã ghép (OTP) do người dùng/admin tạo trên webapp → nhận token đăng ký (dùng một lần).</summary>
-    public async Task<LoginPoll> LoginRedeemAsync(string otp, CancellationToken ct = default)
-    {
-        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/login/redeem", new { code = otp }, JsonOpts, ct).ConfigureAwait(false);
-        var r = await ReadAsync(res, ct).ConfigureAwait(false);
-        return new LoginPoll(r.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "", r.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "",
-            r.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "", r.TryGetProperty("uid", out var d) && d.TryGetInt64(out var id) ? id : 0);
-    }
-
-    /// <summary>Cách 3: tên + mật khẩu + mã Authenticator (thiếu mã → lỗi totp_required). Chỉ mật khẩu thì server không cấp token.</summary>
+    /// <summary>Đăng nhập: tên + mật khẩu + mã ghép (tạo trên webapp bằng điện thoại). Thiếu một trong ba thì server không cấp token.</summary>
     public async Task<LoginPoll> LoginPasswordAsync(string username, string password, string code, CancellationToken ct = default)
     {
         using var res = await _http.PostAsJsonAsync("/api/v1/gateway/login/password", new { username, password, code }, JsonOpts, ct).ConfigureAwait(false);
@@ -99,7 +105,9 @@ public sealed class GatewayEnrollClient
         string? S(string n) => r.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
         var approved = r.TryGetProperty("approved", out var ap) && ap.ValueKind == JsonValueKind.True;
         GatewayProvisionKit? kit = approved && r.TryGetProperty("kit", out var k) ? JsonSerializer.Deserialize<GatewayProvisionKit>(k.GetRawText(), JsonOpts) : null;
-        return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit);
+        // 202 transfer_pending: gateway đang thuộc tài khoản khác → server tạo yêu cầu đổi chủ chờ chủ cũ duyệt (hoặc hết hạn chờ)
+        var due = r.TryGetProperty("dueAt", out var da) && da.TryGetInt64(out var dms) ? dms : 0;
+        return new PairResult(S("id") ?? "", r.TryGetProperty("devices", out var n) ? n.GetInt32() : 0, approved, S("site"), S("device"), S("qr"), S("loginUrl"), kit, S("status"), due);
     }
 
     /// <summary>Gateway của tài khoản (token đăng nhập) — chọn gateway cũ để chuyển sang PC này.</summary>
@@ -162,7 +170,7 @@ public sealed class GatewayEnrollClient
 public sealed record LoginStart(string DeviceCode, string UserCode, string VerifyUrl, int ExpiresIn, int Interval);
 public sealed record LoginPoll(string Status, string Token, string User, long Uid);
 
-public sealed record PairResult(string Id, int Devices, bool Approved = false, string? Site = null, string? Device = null, string? Qr = null, string? LoginUrl = null, GatewayProvisionKit? Kit = null);
+public sealed record PairResult(string Id, int Devices, bool Approved = false, string? Site = null, string? Device = null, string? Qr = null, string? LoginUrl = null, GatewayProvisionKit? Kit = null, string? Status = null, long DueAt = 0);
 
 public sealed class GatewayProvisionKit
 {

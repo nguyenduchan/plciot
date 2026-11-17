@@ -27,7 +27,7 @@ static class SkinStore
     public static void Reload()
     {
         if (_defaults is { } d) { Theme.Bg = d.Bg; Theme.Side = d.Side; Theme.Panel = d.Panel; Theme.Panel2 = d.Panel2; Theme.Border = d.Border; Theme.Text = d.Text; Theme.Muted = d.Muted; Theme.Accent = d.Accent; Theme.Teal = d.Teal; }
-        SolutionHost.Name = ""; SolutionHost.Title = ""; SolutionHost.ExtraPage = null;
+        SolutionHost.Name = ""; SolutionHost.Title = ""; SolutionHost.ExtraPage = null; SolutionHost.Slots.Clear();
         Boot();
     }
 
@@ -50,6 +50,17 @@ static class SkinStore
             var name = root.TryGetProperty("short", out var s) ? s.GetString() ?? id : id;
             var glyph = root.TryGetProperty("glyph", out var g) ? g.GetString() ?? "▦" : "▦";
             var specJson = spec.GetRawText();
+            // ô sơ đồ: chỉ số đọc trực tiếp từ field (bỏ chỉ số suy diễn bằng công thức — không gắn field vào được)
+            SolutionHost.Slots.Clear();
+            if (spec.TryGetProperty("metrics", out var ms))
+                foreach (var m in ms.EnumerateArray())
+                {
+                    if (m.TryGetProperty("expr", out var ex) && ex.ValueKind == JsonValueKind.String && ex.GetString()!.Length > 0) continue;
+                    var mid = m.TryGetProperty("id", out var mi) ? mi.GetString() ?? "" : "";
+                    var keys = m.TryGetProperty("keys", out var ks) ? ks.EnumerateArray().Select(k => (k.ValueKind == JsonValueKind.Array ? k[0].GetString() : k.GetString()) ?? "").Where(k => k.Length > 0).ToArray() : new[] { mid };
+                    if (keys.Length == 0) continue;
+                    SolutionHost.Slots.Add((m.TryGetProperty("label", out var l) ? l.GetString() ?? mid : mid, m.TryGetProperty("unit", out var u) ? u.GetString() ?? "" : "", keys));
+                }
             SolutionHost.Name = id; SolutionHost.Title = name;
             SolutionHost.ExtraPage = app => (glyph, name, new IndustryPage(app, specJson) { Dock = DockStyle.Fill });
         }

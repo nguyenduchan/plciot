@@ -96,7 +96,7 @@ Cài đặt → **Nhà máy & thành viên** (`src/sites.js`, `src/stationAuth.j
 | **Nhận thiết bị** (site chưa có người dùng) | Nhập tên site/device in trên gateway; bật-tắt một ngõ vào X do server chọn trong 2 phút | Gateway phải đang gửi telemetry + chứng minh có mặt tại PLC (plcProof). Site đã có người dùng thì không nhận được, phải được mời |
 | **Mời thành viên** | Chủ site nhập SĐT + quyền (điều khiển / chỉ xem); người được mời đăng nhập và bấm Chấp nhận | Cần xác nhận vân tay/Authenticator; lời mời 7 ngày; người được mời tự chấp nhận (vì sẽ chuyển namespace) |
 | **Gỡ thành viên** | Chủ site bấm Gỡ | Thành viên về vùng riêng, đổi mật khẩu MQTT, thu hồi phiên điều khiển và token |
-| **Ghép PC nhà máy** | Chủ site bấm "Thêm PC" → mã `XXXX-XXXX` (10 phút, một lần) → nhập vào phần mềm SCADA trên PC | PC sinh khoá ECDSA P-256; khoá riêng nằm trong DPAPI, không rời máy |
+| **Ghép PC nhà máy** | Chủ site bấm "Thêm PC" → mã 8 chữ số (10 phút, một lần) → nhập vào phần mềm SCADA trên PC | PC sinh khoá ECDSA P-256; khoá riêng nằm trong DPAPI, không rời máy |
 | **Đổi PC** | Ghép PC mới, thu hồi PC cũ | PC bị thu hồi mất quyền ngay; chủ site được báo khi có PC mới |
 
 Lệnh từ PC đã ghép: `POST /api/station/cmd` ký bằng khoá thiết bị — header `X-Station-Id`, `X-Station-Ts`, `X-Station-Sig`; chuỗi ký `ts\nMETHOD\npath\nsha256hex(body)`, chữ ký IEEE-P1363. Server chặn lệch giờ > 60 s, phát lại chữ ký, sửa nội dung sau khi ký, khoá lạ. Whitelist thanh ghi và nút vật lý cho lệnh nguy hiểm áp dụng như điện thoại. Không phụ thuộc IP (mạng xưởng hay đổi IP công cộng); `CONTROL_LAN_CIDRS` chỉ là lớp siết thêm nếu admin muốn. Phía C#: `StationClient` trong `Plciot.Scada.Services` (`PairAsync`, `WriteAsync`, `PingAsync`, `ConfirmAsync`).

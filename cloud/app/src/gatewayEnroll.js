@@ -9,7 +9,7 @@ import { gatewaySolutionChoices } from './gatewaySolution.js';
 import { shardOf } from './shards.js';
 import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
-  decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit,
+  decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit, getHardwareDeviceQr,
 } from '@plciot/security';
 import {
   DEFAULT_TENANT, mqttPublicEndpoints,
@@ -17,7 +17,7 @@ import {
 import { ensureDefaultTenant, provisionDevice, getTenant } from './tenants.js';
 import { getDeviceType, resolveDeviceTypeId } from './uiContract.js';
 import { normalizeLimits } from './childControl.js';
-import { verifyProof, requestMessage, ensureKeyColumns } from './gatewayKey.js';
+import { verifyProof, requestMessage, ensureKeyColumns, parsePubkey } from './gatewayKey.js';
 import { cmdPublicKey } from './cmdSign.js';
 import { gatewaySolution, solutionUi, cleanSolution, setGatewaySolution } from './gatewaySolution.js';
 
@@ -299,7 +299,9 @@ export function enrollGateway(db, body = {}, opts = {}) {
   });
   if (bind.error) return fail(bind, id.site, id.device);
   // Gateway QUYẾT ĐỊNH giải pháp (UI): báo qua kênh HTTPS có chữ ký (chắc chắn hơn MQTT); chỉ nhận khi đã chứng minh giữ khoá riêng
-  if (proven && opts.kind === 'config' && typeof body.solution === 'string') {
+  // Tem cũ (chưa có khoá công khai) xác thực bằng hw đã gắn — cùng mức tin cậy như lúc nhận cấu hình, nên cũng được đổi giải pháp
+  const legacyOwner = !pubkey && Boolean(owner) && given === owner;
+  if ((proven || legacyOwner) && opts.kind === 'config' && typeof body.solution === 'string') {
     const want = cleanSolution(body.solution);
     if (want !== null) setGatewaySolution(db, id.site, id.device, want);
   }
@@ -349,6 +351,30 @@ export function attachGatewayBundle(db, hwResult, { rotateMqtt = false, includeP
   };
 }
 
+/**
+ * Gateway lấy lại QR HIỆN HÀNH của tem mình (tem được cấp lại QR / đổi khoá ký → QR cũ trên máy bị từ chối: invalid_claim_signature/secret).
+ * Không cần QR cũ, không cần đăng nhập: chứng minh bằng KHOÁ RIÊNG của gateway, chữ ký "qr|<site>|<device>|<ts>".
+ *  - Tem có khoá công khai: khoá gửi lên phải TRÙNG khoá đã lưu.
+ *  - Tem cũ (chưa lưu khoá): hw của tem = 20 ký tự đầu SHA-256(khoá công khai) (gatewayKey.js) → khoá phải sinh ra đúng hw đã gắn;
+ *    qua được thì GẮN luôn khoá công khai vào tem (nâng cấp lên xác thực bằng chữ ký, như tem mới).
+ * Mọi lỗi trả cùng một mã (không lộ tem nào tồn tại / đã gắn máy nào).
+ */
+export function refreshGatewayQr(db, body = {}) {
+  const bad = { error: 'not_allowed', status: 403 };
+  const site = String(body.site || '').trim(); const device = String(body.device || '').trim();
+  const pk = parsePubkey(body.pubkey);
+  if (!site || !device || !pk) return bad;
+  ensureKeyColumns(db);
+  const row = db.prepare('SELECT site, device, activated_hw, gw_pubkey FROM hardware_devices WHERE site = ? AND device = ?').get(site, device);
+  if (!row) return bad;
+  const keyOk = row.gw_pubkey ? row.gw_pubkey === pk.spki : Boolean(row.activated_hw) && row.activated_hw === pk.hw;
+  if (!keyOk || !verifyProof(body.pubkey, requestMessage('qr', site, device, body.ts), body.sig, body.ts)) return { ...bad, site, device };
+  if (!row.gw_pubkey) db.prepare('UPDATE hardware_devices SET gw_pubkey = ? WHERE site = ? AND device = ? AND gw_pubkey IS NULL').run(pk.spki, site, device);
+  const q = getHardwareDeviceQr(db, { site, device });
+  if (q.error) return bad;
+  return { ok: true, site, device, qr: q.qr, keyBound: !row.gw_pubkey };
+}
+
 export function mountGatewayEnroll(app, { db } = {}) {
   const limit = rateLimit({
     windowMs: 60_000,
@@ -385,6 +411,14 @@ export function mountGatewayEnroll(app, { db } = {}) {
       });
     }
     send(res, r);
+  });
+
+  app.post('/api/v1/gateway/qr', limit, (req, res) => {
+    curReq = req;
+    const r = refreshGatewayQr(db, req.body || {});
+    if (r.error) { if (r.site) noteEnrollFail(`${r.site}/${r.device}`); auditEnrollFail({ error: 'qr_refresh_denied' }, r.site, r.device); return res.status(r.status).json({ error: r.error }); }
+    audit(db, 'gateway_qr_refresh', { ip: clientIp(req), detail: `${r.site}/${r.device}${r.keyBound ? ' +key' : ''}` });
+    res.json({ ok: true, qr: r.qr });
   });
 
   app.post('/api/v1/gateway/config', limit, (req, res) => {

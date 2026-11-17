@@ -32,6 +32,7 @@ sealed class LogPage : UserControl
 
     public void Flush()
     {
+        if (IsDisposed || _tbl.IsDisposed || _tbl.ColumnCount == 0) return;   // trang của cửa sổ đã đóng: bỏ qua
         (DateTime T, string Dir, string Ch, string Text)[] batch;
         lock (_pending) { batch = _pending.ToArray(); _pending.Clear(); }
         foreach (var (t, dir, ch, text) in batch)

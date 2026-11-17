@@ -339,7 +339,7 @@ function applyUi() {
   const h = $('#switches')?.previousElementSibling;
   if (h) h.textContent = simpleUi() ? 'Thiết bị' : 'Điều khiển đầu ra';
   const dashLbl = document.querySelector('nav button[data-tab="dash"] span');
-  if (dashLbl) dashLbl.textContent = simpleUi() ? 'Thiết bị' : 'Tổng quan';
+  if (dashLbl) dashLbl.textContent = window.__indDashLabel || (simpleUi() ? 'Thiết bị' : 'Tổng quan');   // có giao diện giải pháp: giữ tên giải pháp
   // Phone: ẩn ctrl/conv/báo cáo băng tải (chỉ chế độ pro)
   if (simpleUi() && (!$('#tab-ctrl').hidden || !$('#tab-conv').hidden || !$('#tab-rep').hidden)) showTab('dash');   // báo cáo băng tải chỉ ở chế độ pro
 }

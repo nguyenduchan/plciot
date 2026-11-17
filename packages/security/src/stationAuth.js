@@ -13,7 +13,7 @@ import { keyFrom, notify } from './config.js';
 import { securityConfig } from './sessions.js';
 import { ipInCidrs, clientIp } from './net.js';
 
-const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const DIGITS = '0123456789';   // mã ghép PC chỉ gồm chữ số
 const CODE_TTL = 10 * 60_000;
 const SKEW = 60_000;
 const nonces = new Map(); // chữ ký -> hết hạn (chống phát lại trong cửa sổ lệch giờ)
@@ -31,8 +31,8 @@ export function createPairCode(db, owner, { name, site, device }) {
   db.prepare('DELETE FROM pair_codes WHERE expires_at < ? OR used_at IS NOT NULL').run(Date.now() - 3_600_000);
   db.prepare('DELETE FROM pair_codes WHERE user_id = ?').run(owner.id); // một mã hiệu lực mỗi lần
   let s = '';
-  for (let i = 0; i < 8; i++) s += ALPHABET[crypto.randomInt(0, 32)];
-  const code = `${s.slice(0, 4)}-${s.slice(4)}`;
+  for (let i = 0; i < 8; i++) s += DIGITS[crypto.randomInt(0, 10)];
+  const code = s;
   db.prepare('INSERT INTO pair_codes (code_hash, user_id, site, device, name, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
     .run(hashCode(code), owner.id, site, device, String(name || 'PC nhà máy').slice(0, 60), Date.now() + CODE_TTL);
   audit(db, 'pair_code_created', { userId: owner.id, detail: `${site}/${device}` });

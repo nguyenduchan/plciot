@@ -28,12 +28,13 @@ sealed class CloudPage : UserControl
 
     readonly IGatewayApp _app;
     readonly ToggleSwitch _sync = new();
+    FlatButton _pair = null!;
     readonly Label _info = new() { UseMnemonic = false, AutoSize = false, Height = 110, Dock = DockStyle.Top, ForeColor = Theme.Muted, Font = Theme.Normal };
 
     public CloudPage(IGatewayApp app)
     {
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
-        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 460 };
+        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 510 };
         var row = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = Color.Transparent };
         _sync.Location = new Point(0, 9);
         var lbl = new Label { Text = "Đồng bộ lên cloud để xem và điều khiển từ điện thoại", ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = true, Location = new Point(62, 12), BackColor = Color.Transparent };
@@ -43,18 +44,14 @@ sealed class CloudPage : UserControl
         _sync.Toggled += on => { if (syncGuard) return; if (!app.RequireEdit()) { syncGuard = true; _sync.On = !on; syncGuard = false; return; } app.Config.Mobile = on ? MobileAccess.Control : MobileAccess.Off; _ = app.ApplyAsync(on ? "Đã bật đồng bộ cloud" : "Đã tắt cloud — chạy hoàn toàn cục bộ (offline)"); };
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
-        var pair = new FlatButton { Caption = "Đăng nhập & kết nối server", Primary = true, Width = 230 };
-        pair.Click += async (_, _) => await RunPair();
-        var adv = new FlatButton { Caption = "Cấu hình nâng cao…", Width = 190 };
-        adv.Click += (_, _) => ShowAdvanced();
-        buttons.Controls.AddRange(new Control[] { pair, adv });
+        _pair = new FlatButton { Caption = "Đăng nhập & kết nối server", Primary = true, Width = 230 };
+        _pair.Click += async (_, _) => await RunPair();
+        buttons.Controls.Add(_pair);
         // Hàng 2: việc ít dùng nhưng phải tìm được — đổi mật khẩu mở khoá tại máy, và chuyển gateway đã đăng ký sang PC này (đổi PC / cài lại máy)
         var buttons2 = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
         var pw = new FlatButton { Caption = "Đặt / đổi mật khẩu gateway", Width = 230 };
         pw.Click += async (_, _) => { var r = await _app.CloudAsync("password", ServerOf(_app.Config), ""); if (!r.Ok) _app.Toast(r.Msg, true); };
-        var mig = new FlatButton { Caption = "Chuyển gateway cũ sang PC này…", Width = 250 };
-        mig.Click += async (_, _) => { var r = await _app.CloudAsync("migrate", ServerOf(_app.Config), ""); _app.Toast(r.Msg, !r.Ok); Refresh2(); };
-        buttons2.Controls.AddRange(new Control[] { pw, mig });
+        buttons2.Controls.Add(pw);
 
         // Giải pháp (kiểu UI giám sát/điều khiển): GATEWAY quyết định, mỗi gateway đúng một loại; webapp theo gateway này
         var solRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
@@ -63,7 +60,15 @@ sealed class CloudPage : UserControl
         var solBtn = new FlatButton { Caption = "Áp dụng", Primary = true, Width = 110, Location = new Point(400, 6) };
         solBtn.Click += async (_, _) => await RunSolution();
         solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn });
-        card.Controls.Add(_info); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
+        // Tự khoá khi không thao tác: cài đặt theo máy, không cần quyền sửa cấu hình
+        var lockRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
+        var lockLbl = Skin.Lbl("Tự khoá sau"); lockLbl.Location = new Point(0, 14);
+        var lockBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260, Location = new Point(130, 10) };
+        foreach (var m in AutoLock.Choices) lockBox.Items.Add(AutoLock.Label(m));
+        lockBox.SelectedIndex = Math.Max(0, Array.IndexOf(AutoLock.Choices, AutoLock.Minutes));
+        lockBox.SelectedIndexChanged += (_, _) => { AutoLock.Minutes = AutoLock.Choices[lockBox.SelectedIndex]; _app.Toast(AutoLock.Minutes == 0 ? "Tắt tự khoá." : $"Sẽ tự khoá sau {AutoLock.Minutes} phút không thao tác."); };
+        lockRow.Controls.AddRange(new Control[] { lockLbl, lockBox });
+        card.Controls.Add(_info); card.Controls.Add(lockRow); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
         Controls.Add(card);
         Refresh2();
         _ = LoadSolutions();
@@ -102,6 +107,12 @@ sealed class CloudPage : UserControl
 
     async Task RunPair()
     {
+        // Đã đăng ký: "Đổi tài khoản" = xin đổi chủ → phải mở khoá tại máy trước (mật khẩu gateway / webapp), và xác nhận rõ ràng
+        if (!string.IsNullOrEmpty(_app.Config.CloudPassword))
+        {
+            if (!_app.RequireEdit()) return;
+            if (MessageBox.Show(FindForm(), "Đăng nhập tài khoản khác để xin chuyển gateway này sang tài khoản đó?\n\nChủ hiện tại sẽ được báo: họ duyệt thì chuyển ngay, từ chối thì huỷ; không phản hồi thì tự chuyển sau 24 giờ. Trong lúc chờ gateway vẫn chạy bình thường.", "Đổi tài khoản", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+        }
         // Không còn mã ghép cặp: đăng nhập qua trình duyệt (xem LoginForm) rồi server cấp gateway cho tài khoản này
         var r = await _app.CloudAsync("register", ServerOf(_app.Config), "");
         _app.Toast(r.Msg, !r.Ok);
@@ -112,18 +123,9 @@ sealed class CloudPage : UserControl
     {
         var c = _app.Config;
         _info.Text = string.IsNullOrEmpty(c.CloudPassword)
-            ? $"Chưa đăng ký (ID máy: {_app.HwText} · vân tay: {_app.FingerprintText}).\nBấm \"Đăng nhập & kết nối server\": đăng nhập tài khoản webapp (Authenticator hoặc mã ghép lấy trên điện thoại), server tự cấp ID + QR cho gateway này.\nĐổi PC hoặc cài lại máy: bấm \"Chuyển gateway cũ sang PC này\" để giữ nguyên QR, thiết bị và lịch sử. QR hiện ở góc phải thanh trên sau khi đăng ký."
-            : $"Đã đăng ký: site {c.Site} · thiết bị {c.Device} · ID MQTT {c.MqttId} · broker {c.CloudHost}:{c.CloudPort}. Mật khẩu MQTT được lưu mã hoá trên máy này.\n" + (c.CloudSendData ? "Đã có user — gateway đang gửi data lên cloud." : "Chưa có user quét QR — gateway CHỈ đồng bộ setting, chưa gửi data. Bấm biểu tượng QR góc phải thanh trên, đưa QR cho user quét trên webapp.");
+            ? $"Chưa đăng ký (ID máy: {_app.HwText} · vân tay: {_app.FingerprintText}).\nBấm \"Đăng nhập & kết nối server\": đăng nhập tài khoản webapp (tên + mật khẩu + mã ghép lấy trên điện thoại), server tự cấp ID và tự gắn gateway vào tài khoản đó, không cần quét QR.\nĐổi PC hoặc cài lại máy: khi mở app sẽ hỏi chuyển gateway cũ sang PC này. QR hiện ở góc phải thanh trên sau khi đăng ký."
+            : $"Đã đăng ký: site {c.Site} · thiết bị {c.Device} · ID MQTT {c.MqttId} · broker {c.CloudHost}:{c.CloudPort}. Mật khẩu MQTT được lưu mã hoá trên máy này.\n" + (c.CloudSendData ? "Đã có user — gateway đang gửi data lên cloud." : "Chưa có user — gateway CHỈ đồng bộ setting, chưa gửi data.");
         _sync.On = c.Mobile != MobileAccess.Off;
-    }
-
-    void ShowAdvanced()
-    {
-        if (!_app.RequireEdit()) return;
-        using var f = new Form { Text = "Cấu hình nâng cao (toàn bộ ScadaConfig)", Width = 560, Height = 760, StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Bg };
-        var g = new PropertyGrid { Dock = DockStyle.Fill, SelectedObject = _app.Config, BackColor = Theme.Panel, ViewBackColor = Theme.Panel, ViewForeColor = Theme.Text, HelpBackColor = Theme.Panel2, HelpForeColor = Theme.Muted, LineColor = Theme.Border, CategoryForeColor = Theme.Muted, CommandsBackColor = Theme.Panel2, DisabledItemForeColor = Theme.Muted };
-        f.Controls.Add(g);
-        f.ShowDialog(FindForm());
-        _ = _app.ApplyAsync("Đã lưu cấu hình nâng cao");
+        if (_pair != null) { _pair.Caption = string.IsNullOrEmpty(c.CloudPassword) ? "Đăng nhập & kết nối server" : "Đổi tài khoản…"; _pair.Invalidate(); }   // đã đăng ký: đăng nhập tài khoản khác = đổi chủ gateway (báo chủ cũ)
     }
 }
