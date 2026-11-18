@@ -53,15 +53,11 @@ sealed class CloudPage : UserControl
         pw.Click += async (_, _) => { var r = await _app.CloudAsync("password", ServerOf(_app.Config), ""); if (!r.Ok) _app.Toast(r.Msg, true); };
         buttons2.Controls.Add(pw);
 
-        // Giải pháp (kiểu UI giám sát/điều khiển): GATEWAY quyết định, mỗi gateway đúng một loại; webapp theo gateway này
+        // Kiểu giao diện: do nhà cung cấp (quản trị) đặt trên server — gateway chỉ hiển thị, không tự đổi
         var solRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
-        _sol.DropDownStyle = ComboBoxStyle.DropDownList; _sol.Width = 260; _sol.Location = new Point(130, 10);
-        var solLbl = Skin.Lbl("Giải pháp (UI)"); solLbl.Location = new Point(0, 14);
-        var solBtn = new FlatButton { Caption = "Đăng nhập & áp dụng", Primary = true, Width = 190, Location = new Point(400, 6) };
-        solBtn.Click += async (_, _) => await RunSolution();
-        var solNote = new Label { Text = "Đổi loại UI chỉ làm được khi đã đăng nhập kết nối server (tài khoản webapp); mật khẩu gateway tại máy không đủ.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Location = new Point(130, 42), Size = new Size(560, 20), BackColor = Color.Transparent };
-        solRow.Height = 68;
-        solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn, solNote });
+        var solLbl = Skin.Lbl("Kiểu giao diện"); solLbl.Location = new Point(0, 14);
+        _solInfo.Location = new Point(130, 14); _solInfo.AutoSize = true; _solInfo.ForeColor = Theme.Text;
+        solRow.Controls.AddRange(new Control[] { solLbl, _solInfo });
         // Tự khoá khi không thao tác: cài đặt theo máy, không cần quyền sửa cấu hình
         var lockRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
         var lockLbl = Skin.Lbl("Tự khoá sau"); lockLbl.Location = new Point(0, 14);
@@ -73,39 +69,13 @@ sealed class CloudPage : UserControl
         card.Controls.Add(_info); card.Controls.Add(lockRow); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
         Controls.Add(card);
         Refresh2();
-        _ = LoadSolutions();
+        ShowSolution();
     }
 
-    readonly ComboBox _sol = new();
-    sealed record SolItem(string Id, string Title) { public override string ToString() => Title; }
+    readonly Label _solInfo = new() { Text = "", BackColor = Color.Transparent };
 
-    async Task LoadSolutions()
-    {
-        try
-        {
-            var r = await _app.CloudAsync("solutions", ServerOf(_app.Config), "");
-            _sol.Items.Clear(); _sol.Items.Add(new SolItem("", "Cơ bản"));
-            if (r.Ok)
-            {
-                using var d = System.Text.Json.JsonDocument.Parse(r.Msg);
-                foreach (var s in d.RootElement.GetProperty("solutions").EnumerateArray())
-                {
-                    var id = s.GetProperty("id").GetString() ?? ""; var title = s.TryGetProperty("title", out var t) ? t.GetString() : id;
-                    if (id.Length > 0) _sol.Items.Add(new SolItem(id, title ?? id));
-                }
-            }
-            var cur = _app.Config.Solution ?? "";
-            _sol.SelectedItem = _sol.Items.Cast<SolItem>().FirstOrDefault(x => x.Id == cur) ?? _sol.Items[0];
-        }
-        catch (Exception) { /* chưa có mạng: giữ danh sách hiện có */ }
-    }
-
-    async Task RunSolution()
-    {
-        if (_sol.SelectedItem is not SolItem it) return;
-        var r = await _app.CloudAsync("solution", ServerOf(_app.Config), it.Id);
-        _app.Toast(r.Msg, !r.Ok);
-    }
+    /// <summary>Hiện kiểu giao diện đang dùng và ai đặt (cập nhật khi vẽ lại trang).</summary>
+    void ShowSolution() => _solInfo.Text = SolutionHost.Title.Length > 0 ? $"{SolutionHost.Heading}  —  do nhà cung cấp đặt (chỉ đổi cách hiển thị, không ảnh hưởng quyền điều khiển)" : "Cơ bản  —  nhà cung cấp chưa đặt kiểu giao diện riêng";
 
     async Task RunPair()
     {

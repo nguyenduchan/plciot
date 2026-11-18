@@ -23,7 +23,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--soltest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -41,30 +41,6 @@ public sealed partial class MainForm : Form, IGatewayApp
     bool _localUnlocked;
     static bool _carryLocal;
     /// <summary>Hộp thoại/nút sửa cấu hình gọi trước khi sửa: chưa OTP thì hiện màn hình OTP; false = bị từ chối.</summary>
-    public bool CloudLoggedIn => _login != null && DateTime.UtcNow - _loginAt < TokenLife;
-
-    /// <summary>
-    /// Đổi loại UI (giải pháp) cần đăng nhập KẾT NỐI SERVER: gateway đã đăng ký + tài khoản webapp đăng nhập (trình duyệt: mật khẩu/Authenticator).
-    /// Mật khẩu cục bộ, --noauth hay chế độ chỉ-xem không thay được. Trả null nếu được phép, ngược lại lý do.
-    /// </summary>
-    async Task<string?> RequireServerLoginAsync()
-    {
-        if (_cfg.GatewayQr.Length == 0 || _cfg.MqttId.Length == 0 || _cfg.CloudApiUrl.Length == 0)
-            return "Gateway chưa đăng ký với server — đăng nhập kết nối server (mục Cloud) trước rồi mới đổi loại UI.";
-        if (CloudLoggedIn) return null;
-        _login = null; _loginAt = DateTime.MinValue;
-        if (_prompting) return "Đang chờ đăng nhập — hoàn tất cửa sổ đăng nhập rồi thử lại.";
-        _prompting = true;
-        try
-        {
-            using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Đăng nhập server để đổi loại UI", "Đổi loại giao diện chỉ làm được khi đã đăng nhập kết nối server (tài khoản webapp).");
-            if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return "Chưa đăng nhập server — chưa đổi loại UI.";
-            _login = f.Result; _loginAt = DateTime.UtcNow;   // đăng nhập server cũng mở khoá tại máy (Unlocked)
-            return null;
-        }
-        finally { _prompting = false; }
-    }
-
     public bool RequireEdit() => EnsureUnlockedAsync().GetAwaiter().GetResult();   // EnsureUnlockedAsync không có await: hoàn tất đồng bộ
     // Gateway khởi động là TỰ CHẠY NỀN và nối server bằng khoá riêng của máy. Login/OTP chỉ cần khi: đăng ký lần đầu, hoặc chỉnh sửa cấu hình.
 
@@ -446,7 +422,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         Tick();
     }
 
-    /// <summary>Chỉ cho chế độ kiểm thử (--pairtest/--soltest): dùng token đăng ký lấy sẵn (env GW_TEST_TOKEN, GW_TEST_UID) thay vì mở trình duyệt.</summary>
+    /// <summary>Chỉ cho chế độ kiểm thử (--pairtest): dùng token đăng ký lấy sẵn (env GW_TEST_TOKEN, GW_TEST_UID) thay vì mở trình duyệt.</summary>
     async Task TestRegisterAsync(string api, string token)
     {
         long.TryParse(Environment.GetEnvironmentVariable("GW_TEST_UID"), out var uid);
@@ -517,15 +493,12 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         // Mọi việc đổi cấu hình/kết nối cloud cần một lần duyệt còn hiệu lực trên webapp (đọc danh sách giải pháp thì không)
         if (action == "migrate") { var ok = await MigrateAsync(); if (ok) { await StopAsync(); await StartAsync(); } return (ok, ok ? "Đã chuyển gateway sang PC này." : "Chưa chuyển gateway."); }   // tự đăng nhập chủ tài khoản bên trong
-        if (action == "solution" && await RequireServerLoginAsync() is { } why) return Done(false, why);   // đổi loại UI: bắt buộc đăng nhập server (không dùng mật khẩu cục bộ)
-        if (action is not ("solutions" or "solution") && !await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
+        if (!await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
         if (action == "password") { OfferLocalPassword(_cfg.LocalAdminHash.Length > 0); return (true, ""); }
         return action switch
         {
             "register" => await RegisterAsync(api),
             "enroll" => await EnrollAsync(api, value),
-            "solutions" => await SolutionsAsync(api),
-            "solution" => await SetSolutionAsync(api, value),
             _ => (false, "việc cloud không hợp lệ"),
         };
     }
@@ -633,39 +606,6 @@ public sealed partial class MainForm : Form, IGatewayApp
         catch (Exception ex) { return Done(false, "Enroll lỗi: " + ex.Message); }
     }
 
-    /// <summary>Danh sách giải pháp server cho phép gateway chọn (JSON {solutions:[{id,title}]}).</summary>
-    async Task<(bool Ok, string Msg)> SolutionsAsync(string api)
-    {
-        try
-        {
-            using var http = new HttpClient { BaseAddress = new Uri(api.Trim()), Timeout = TimeSpan.FromSeconds(10) };
-            return (true, await http.GetStringAsync("/api/v1/gateway/solutions"));
-        }
-        catch (Exception ex) { return (false, "Không lấy được danh sách giải pháp: " + ex.Message); }
-    }
-
-    /// <summary>GATEWAY chọn giải pháp (đúng một loại UI cho gateway này): lưu, publish config kèm solution lên server, rồi lấy giao diện mới.</summary>
-    async Task<(bool Ok, string Msg)> SetSolutionAsync(string api, string id)
-    {
-        id = (id ?? "").Trim();
-        if (id.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z][a-z0-9_]{0,23}$")) return Done(false, "Mã giải pháp không hợp lệ.");
-        _cfg.Solution = id;
-        await ApplyAsync(id.Length > 0 ? $"Đã chọn giải pháp \"{id}\" cho gateway này" : "Gateway dùng giao diện cơ bản");
-        if (_cfg.GatewayQr.Length > 0 && _cfg.CloudApiUrl.Length > 0)
-        {
-            try
-            {
-                using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(15) };
-                var kit = await RefreshKitAsync(http, _cfg.Solution);   // báo giải pháp qua HTTPS có chữ ký rồi nhận giao diện
-                if (kit != null) ApplySkin(kit);
-                // Server không nhận lựa chọn (vd. tem không xác thực được) → nói rõ thay vì im lặng giữ giao diện cũ
-                if (kit != null && (kit.Solution ?? "") != id) return Done(false, $"Server chưa nhận giải pháp \"{id}\" cho gateway này (đang là \"{(string.IsNullOrEmpty(kit.Solution) ? "cơ bản" : kit.Solution)}\").");
-            }
-            catch (Exception ex) { return Done(false, "Đã lưu trên máy nhưng chưa đồng bộ được giao diện từ server: " + ex.Message); }
-        }
-        return (true, id.Length > 0 ? $"Gateway này dùng giải pháp \"{id}\"." : "Gateway này dùng giao diện cơ bản.");
-    }
-
     /// <summary>Giao diện của giải pháp (kit.Solution + kit.Ui) → lưu cache; có thay đổi thì báo (áp dụng khi mở lại gateway).</summary>
     /// <summary>Đổi giải pháp (giao diện) xong là ÁP DỤNG NGAY: dựng lại cửa sổ trong cùng tiến trình với bảng màu/trang mới (xem Program.Main). Giữ trạng thái OTP.</summary>
     internal static bool RestartRequested;
@@ -674,7 +614,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     void ApplySkin(GatewayProvisionKit kit)
     {
         // MỘT gateway = MỘT loại UI, do GATEWAY chọn (mặc định cơ bản): giao diện server gửi khác lựa chọn trên máy thì bỏ qua
-        if ((kit.Solution ?? "") != (_cfg.Solution ?? "")) return;
+        // Giải pháp do QUẢN TRỊ VIÊN gán trên server: gateway nhận đúng giải pháp trong kit (không tự chọn)
+        if ((kit.Solution ?? "") != (_cfg.Solution ?? "")) { _cfg.Solution = kit.Solution ?? ""; try { SaveCfg(); } catch (IOException) { } }
         var (changed, title) = SkinStore.Save(kit.Solution, kit.Ui);
         if (!changed) return;
         _log.Add("INFO", "ui", title.Length > 0 ? $"giao diện giải pháp \"{title}\" đã nhận từ server" : "gateway về giao diện cơ bản");
@@ -688,10 +629,10 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>
     /// Đồng bộ cấu hình từ server; QR trên máy đã cũ (tem được cấp lại QR) → TỰ lấy QR mới bằng khoá riêng của máy, lưu lại rồi thử lại một lần.
     /// </summary>
-    async Task<GatewayProvisionKit?> RefreshKitAsync(HttpClient http, string? solution = null)
+    async Task<GatewayProvisionKit?> RefreshKitAsync(HttpClient http)
     {
         var client = new GatewayEnrollClient(http);
-        try { return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, solution); }
+        try { return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default); }
         catch (Exception ex) when (GatewayEnrollClient.IsStaleQr(ex))
         {
             var sd = GatewayIdentity.SiteDeviceOfQr(_cfg.GatewayQr);
@@ -704,7 +645,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             _qrIcon.Update();
             _log.Add("INFO", "cloud", $"QR của tem {site}/{device} đã được cấp lại trên server — gateway tự cập nhật QR mới");
             Toast("Đã tự cập nhật mã QR mới của gateway từ server.");
-            return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default, solution);
+            return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default);
         }
     }
 

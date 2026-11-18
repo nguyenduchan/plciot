@@ -17,6 +17,7 @@
 
   const ERR = {
     invalid_solution: 'Giải pháp không có trong danh sách.',
+    confirm_mismatch: 'Tên xác nhận không khớp — chưa đổi kiểu giao diện. Kiểm tra lại đúng gateway rồi gõ lại tên tài khoản.',
     invalid_id: 'Mã mục: chữ thường/số/gạch dưới, bắt đầu bằng chữ, tối đa 24 ký tự (không dùng “basic”).',
     invalid_folder: 'Thư mục này chưa có trên server (cần solutions/<tên>/webapp/ — chạy sync-solutions.ps1).',
     invalid_title: 'Tên hiển thị 1–60 ký tự, không chứa < >.',
@@ -170,13 +171,14 @@
   const solChip = (title, icon, color) => `<span class="sol-chip"${solColor(color) ? ` style="--c:${solColor(color)}"` : ''}><i>${solIc(icon || 'grid')}</i>${esc(title || 'Cơ bản')}</span>`;
   const solBadge = (icon, color) => `<span class="sol-badge"${solColor(color) ? ` style="--c:${solColor(color)}"` : ''}>${solIc(icon || 'grid')}</span>`;
 
+  let hwSolutions = [];
   function renderHw() {
     $('#hw-count').textContent = pg.hw.total; const nb = $('#at-gw-n'); if (nb) nb.textContent = pg.hw.total;
     renderPager('#hw-pager', pg.hw, loadHw);
     $('#hw-list').innerHTML = hwDevices.map((d) => `
       <div class="hw" data-site="${esc(d.site)}" data-device="${esc(d.device)}">
         <div><b>${esc(d.label || `${d.site}/${d.device}`)}</b>
-          <span title="Giải pháp (loại giao diện) do gateway chọn">${solChip(d.solutionTitle, d.solutionIcon, d.solutionColor)}</span>
+          <span title="Kiểu giao diện hiển thị do nhà cung cấp đặt — không phải quyền điều khiển">${solChip(d.solutionTitle, d.solutionIcon, d.solutionColor)}</span>
           ${d.claimed ? '<span class="tag">đã gắn</span>' : '<span class="tag viewer">chưa gắn</span>'}
           ${d.activated ? `<span class="tag">đã kích hoạt${d.activations > 1 ? ` · ${d.activations} lần` : ''}</span>` : ''}
           <small><code>${esc(d.site)}</code> / <code>${esc(d.device)}</code>
@@ -188,6 +190,8 @@
             ${d.mqttId ? ` · ID MQTT <code>${esc(d.mqttId)}</code>${d.mqttStatus && d.mqttStatus !== 'active' ? ` (${esc(d.mqttStatus)})` : ''}` : ''}
             ${d.config ? ` · setting rev ${d.config.rev}: ${d.config.devices} thiết bị, ${d.config.fields} field · cập nhật ${esc(fmtTs(d.config.updatedAt))}` : ' · chưa có setting'}</small></div>
         <div class="acts">
+          <label class="help" style="display:inline-flex;gap:6px;align-items:center;margin:0" title="Chỉ chọn cách hiển thị. Lệnh điều khiển thiết bị chỉ do chủ gateway gửi (có xác thực Face ID/Authenticator).">Kiểu giao diện
+            <select data-hw-sol><option value="">Cơ bản</option>${hwSolutions.map((s) => `<option value="${esc(s.id)}"${s.id === d.solution ? ' selected' : ''}>${esc(s.title)}</option>`).join('')}</select></label>
           <button data-hw="qr">Xem / in QR</button>
           ${d.activated ? '<button data-hw="unbind">Gỡ máy đã gắn</button>' : ''}
           ${d.claimed
@@ -237,6 +241,7 @@
   async function loadHw() {
     const j = await api(`/api/admin/hardware?${qs(pg.hw)}`);
     hwDevices = j.devices || [];
+    hwSolutions = j.solutions || [];
     pg.hw.total = j.total ?? hwDevices.length;
     if (!hwDevices.length && pg.hw.off > 0) { pg.hw.off = Math.max(0, pg.hw.off - PAGE); return loadHw(); }
     const cfg = $('#hw-cfg');
@@ -470,6 +475,22 @@
   }
   window.AdminCore = { api, msg, esc, run, showQr, fmtTs };   // cho admin-find.js (tab Tìm kiếm)
 
+  // Đặt kiểu giao diện: phải GÕ LẠI tên tài khoản chủ gateway để xác nhận (chống chọn nhầm khi nhiều gateway cùng ghép)
+  $('#hw-list').addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-hw-sol]'); if (!sel) return;
+    const row = sel.closest('.hw'); const site = row.dataset.site, device = row.dataset.device;
+    const d = hwDevices.find((x) => x.site === site && x.device === device);
+    const want = sel.value, title = hwSolutions.find((s) => s.id === want)?.title || 'Cơ bản';
+    const who = d?.claimedUsername || d?.label || `${site}/${device}`;
+    const typed = prompt(`ĐẶT KIỂU GIAO DIỆN "${title}" cho:\n\n  Tài khoản: ${who}\n  Gateway: ${site}/${device}${d?.activatedHw ? `\n  ID máy: …${String(d.activatedHw).slice(-4)}` : ''}\n  Hiện tại: ${d?.solutionTitle || 'Cơ bản'}\n\nChỉ đổi cách hiển thị (không điều khiển được thiết bị). Thiết bị cần khai báo lại theo kiểu mới; chủ gateway sẽ được báo.\n\nGõ lại "${who}" để xác nhận:`);
+    if (typed === null) { sel.value = d?.solution || ''; return; }
+    run(async () => {
+      const r = await api(`/api/admin/hardware/${encodeURIComponent(site)}/${encodeURIComponent(device)}`, 'PATCH', { solution: want, confirm: typed });
+      const need = r?.solutionResult?.required || [];
+      if (need.length) alert(`Đã đặt "${title}".\nGateway cần có các field: ${need.join(', ')}.\n${r.solutionResult.why || ''}`);
+      await loadHw();
+    }, 'Đã đặt kiểu giao diện.').then(() => loadHw());   // lỗi (vd. gõ sai tên) thì vẽ lại ô chọn về giá trị thật trên server
+  });
   $('#hw-list').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-hw]');
     const row = e.target.closest('.hw');

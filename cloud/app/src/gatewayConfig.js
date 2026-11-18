@@ -145,12 +145,9 @@ export function applyGatewayConfig(db, { tenantId = 'default', site, device, pay
   if (clean.error) return clean;
   migrateGatewayConfigs(db);
 
-  // Kiểu UI giám sát/điều khiển (giải pháp) do GATEWAY setup quyết định → đồng bộ lên server (webapp của user chọn giao diện theo đây).
-  let solChanged = false;
-  if (typeof payload.solution === 'string') {
-    const want = cleanSolution(payload.solution);
-    if (want !== null && want !== gatewaySolution(db, site, device)) { setGatewaySolution(db, site, device, want); solChanged = true; }
-  }
+  // Kiểu UI (giải pháp) do QUẢN TRỊ VIÊN gán và khoá (admin: tab Gateway). `solution` gateway báo kèm cấu hình bị BỎ QUA: giải pháp gắn chặt
+  // với bộ thiết bị/field cần có, gateway tự đổi sẽ làm lệch sơ đồ và field bắt buộc.
+  const solChanged = false;
 
   const json = JSON.stringify(clean.devices);
   const hash = crypto.createHash('sha256').update(json).digest('hex');

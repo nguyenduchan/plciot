@@ -2,7 +2,8 @@
  * API vận hành: gói subscribe, thiết bị IoT, thống kê DB.
  * Chỉ admin; ghi cần reauth (caller gắn middleware).
  */
-import { cleanSolution, setGatewaySolution, allGatewaySolutions } from './gatewaySolution.js';
+import { cleanSolution, setGatewaySolution, gatewaySolution, allGatewaySolutions, solutionUi } from './gatewaySolution.js';
+import { pushToUser } from './webPush.js';
 import { isKnownSolution, solutionMeta } from './solutions.js';
 
 /** Thường hoá + bỏ dấu tiếng Việt (đ→d) để tìm kiếm không phân biệt dấu. */
@@ -567,7 +568,7 @@ export function mountAdminOps(app, {
         config: cf ? { rev: cf.rev, devices: children, fields, updatedAt: cf.updated_at } : null,
       };
     });
-    res.json({ configured, devices, total, offset, limit, sites: [...new Set(all.map((d) => d.site))].slice(0, 500) });
+    res.json({ configured, devices, total, offset, limit, sites: [...new Set(all.map((d) => d.site))].slice(0, 500), solutions: listSolutions(deployPaths.shellDir, 'gateway') });
   });
 
   app.get('/api/admin/hardware/:site/:device/qr', ...gate, (req, res) => {
@@ -626,6 +627,7 @@ export function mountAdminOps(app, {
   app.post('/api/admin/hardware/:site/:device/unbind', ...writeGate, (req, res) => {
     const r = releaseGatewayHardware(db, req.params);
     if (!r.error) audit(db, 'hardware_unbind', { userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}` });
+    if (solutionResult && !r.error) return res.json({ ...(typeof r === 'object' ? r : {}), solutionResult });
     sendHw(res, r);
   });
 
@@ -657,6 +659,28 @@ export function mountAdminOps(app, {
     const site = req.params.site;
     const device = req.params.device;
     let uiMeta = req.body?.uiMeta ?? req.body?.ui_meta;
+    // Giải pháp (kiểu UI) của gateway: CHỈ admin đặt/đổi. Gắn chặt với bộ thiết bị + field cần có nên đổi phải khai báo lại thiết bị.
+    let solutionResult = null;
+    if (req.body && 'solution' in req.body) {
+      const want = solutionParam(req.body.solution);
+      if (want === '!') return res.status(400).json({ error: 'invalid_solution' });
+      const hw0 = listHardwareDevices(db).find((d) => d.site === site && d.device === device);
+      if (!hw0) return res.status(404).json({ error: 'not_found' });
+      // chống chọn nhầm gateway: admin phải GÕ LẠI tên tài khoản chủ gateway (hoặc nhãn / site/device nếu chưa có chủ) mới đổi được
+      const expect = String(hw0.claimedUsername || hw0.label || `${site}/${device}`).trim().toLowerCase();
+      if (want !== gatewaySolution(db, site, device) && String(req.body.confirm ?? '').trim().toLowerCase() !== expect) {
+        return res.status(409).json({ error: 'confirm_mismatch', expect: hw0.claimedUsername || hw0.label || `${site}/${device}` });
+      }
+      const r0 = setGatewaySolution(db, site, device, want);
+      if (r0.error) return res.status(r0.status || 400).json({ error: r0.error });
+      if (r0.changed) {
+        audit(db, 'gateway_solution_set', { userId: req.user?.id, ip: clientIp(req), detail: `${site}/${device} → ${want || 'basic'}` });
+        // chủ gateway được báo rõ: đây chỉ là cách hiển thị, không phải quyền điều khiển
+        if (hw0.claimedBy) pushToUser(db, hw0.claimedBy, { t: 'Kiểu giao diện gateway đã đổi', b: `${site}/${device}: nay hiển thị theo "${want || 'cơ bản'}" do nhà cung cấp đặt. Chỉ đổi cách hiển thị — việc điều khiển thiết bị vẫn chỉ do bạn thực hiện.`, tag: 'gw-ui', url: '/' }).catch(() => {});
+      }
+      const ui = want ? solutionUi(want) : null;
+      solutionResult = { solution: want, changed: r0.changed, required: ui?.spec?.required || [], why: ui?.spec?.why || '' };
+    }
     if (uiMeta !== undefined) {
       const row = db.prepare('SELECT ui_meta FROM hardware_devices WHERE site = ? AND device = ?')
         .get(site, device);

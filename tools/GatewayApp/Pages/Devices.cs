@@ -49,7 +49,6 @@ sealed class PreviewApp : IGatewayApp
     public string HwText => "";
     public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
-    public bool CloudLoggedIn => false;
     public bool RequireEdit() => true;   // chỉ để xem trước hộp thoại: không có gì để bảo vệ
 }
 

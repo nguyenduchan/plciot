@@ -143,8 +143,7 @@ export function registerForUser(db, user, body = {}) {
       p.status IN ('open','received')
       OR (p.status = 'approved' AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device)))`).get(user.id).n;
   if (used >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
-  const sol = cleanSolution(body.solution || '');
-  if (sol === null) return { error: 'invalid_solution', status: 400 };
+  const sol = '';   // giải pháp do quản trị viên gán sau (tab Gateway), không do gateway chọn lúc ghép
   // Chữ ký phủ `register|<userId>|<ts>`: chứng minh giữ khoá riêng và gắn với đúng tài khoản này (không phát lại sang tài khoản khác)
   const pk = parsePubkey(body.pubkey);
   if (!pk) return { error: 'invalid_pubkey', status: 400 };

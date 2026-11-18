@@ -34,10 +34,6 @@ public sealed partial class MainForm
         L($"thông báo cuối: error={LastToast.Error} {LastToast.Text}");
         L($"pack={_cfg.Pack.Count} field, gateway chạy lại sau khi thêm thiết bị: {(up ? "OK" : "LỖI không chạy")}");
 
-        // 3) chọn kiểu UI (giải pháp)
-        var sol = await CloudAsync("solution", api, "aqua");
-        L($"chọn giải pháp aqua: ok={sol.Ok} {sol.Msg}");
-
         // 4) chờ user quét QR → server báo claimed → gateway bắt đầu gửi telemetry
         var claimed = await Until(() => _cfg.CloudSendData, 120);
         L($"user quét QR → gateway nhận claimed: {(claimed ? "OK" : "LỖI (hết giờ)")}");

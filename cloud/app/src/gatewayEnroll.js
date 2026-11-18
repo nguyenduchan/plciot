@@ -5,7 +5,6 @@
  * POST /api/v1/gateway/enroll  → mqtt + topics + pack (+ password)
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
-import { gatewaySolutionChoices } from './gatewaySolution.js';
 import { shardOf } from './shards.js';
 import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
@@ -298,13 +297,7 @@ export function enrollGateway(db, body = {}, opts = {}) {
     required: process.env.ENROLL_REQUIRE_HW === '1',
   });
   if (bind.error) return fail(bind, id.site, id.device);
-  // Gateway QUYẾT ĐỊNH giải pháp (UI): báo qua kênh HTTPS có chữ ký (chắc chắn hơn MQTT); chỉ nhận khi đã chứng minh giữ khoá riêng
-  // Tem cũ (chưa có khoá công khai) xác thực bằng hw đã gắn — cùng mức tin cậy như lúc nhận cấu hình, nên cũng được đổi giải pháp
-  const legacyOwner = !pubkey && Boolean(owner) && given === owner;
-  if ((proven || legacyOwner) && opts.kind === 'config' && typeof body.solution === 'string') {
-    const want = cleanSolution(body.solution);
-    if (want !== null) setGatewaySolution(db, id.site, id.device, want);
-  }
+  // Giải pháp (UI) do QUẢN TRỊ VIÊN gán và khoá: `body.solution` gateway báo lên bị bỏ qua. Gateway chỉ NHẬN giải pháp trong kit trả về.
 
   // Xoay mật khẩu MQTT chỉ khi máy đã xác thực bằng hw (người chỉ có ảnh QR không được làm gateway thật rớt kết nối)
   const rotateMqtt = Boolean(opts.rotateMqtt ?? body.rotateMqtt) && (opts.trusted === true || bind.bound === true);
@@ -395,7 +388,6 @@ export function mountGatewayEnroll(app, { db } = {}) {
   };
 
   // Phần mềm gateway lấy danh sách giải pháp để người dùng CHỌN trên gateway (mỗi gateway đúng một loại UI)
-  app.get('/api/v1/gateway/solutions', limit, (_req, res) => res.json({ solutions: gatewaySolutionChoices() }));
 
   app.post('/api/v1/gateway/enroll', limit, (req, res) => {
     curReq = req;

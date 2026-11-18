@@ -35,8 +35,6 @@ export function setGatewaySolution(db, site, device, solution) {
   return { ok: true, solution: s, changed: before !== s };
 }
 
-/** Giải pháp gateway có thể chọn (có phần gateway/, đang bật) — phần mềm gateway hiện ô chọn từ danh sách này. */
-export const gatewaySolutionChoices = () => (shellDirCtx ? listSolutions(shellDirCtx, 'gateway') : []).filter((x) => x.id !== BASIC);
 
 export function allGatewaySolutions(db) {
   try { migrateGatewaySolutions(db); return new Map(db.prepare('SELECT site, device, solution FROM gateway_solutions').all().map((r) => [`${r.site}/${r.device}`, r.solution])); } catch { return new Map(); }
