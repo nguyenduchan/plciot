@@ -32,6 +32,8 @@ public sealed class ScadaHost : IAsyncDisposable
     public ScadaCore Core { get; }
     public ScadaConfig Config => _cfg;
     public CloudState Cloud => _bridge.State;
+    /// <summary>Gửi bù một mẫu lịch sử đã lưu lúc offline (xem CloudBridge.SendBackfillAsync).</summary>
+    public Task<bool> SendBackfillAsync(byte[] payload, CancellationToken ct) => _bridge.SendBackfillAsync(payload, ct);
     public int LocalClients => _broker?.ClientCount ?? 0;
     public int WebPort => _web?.Port ?? 0;
     public int ModbusServerPort => _mbServer?.Port ?? 0;

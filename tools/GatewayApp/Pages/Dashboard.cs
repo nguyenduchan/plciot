@@ -26,6 +26,12 @@ public interface IGatewayApp
     void Toast(string text, bool error = false);
     /// <summary>Cổng OTP trước khi SỬA cấu hình (thêm/sửa/xoá thiết bị, giao thức, cloud): chưa nhập OTP thì hiện màn hình OTP. false = bị từ chối, không được sửa.</summary>
     bool RequireEdit();
+    /// <summary>Lưu cấu hình xuống đĩa mà KHÔNG khởi động lại gateway (cài đặt có hiệu lực ngay, vd. lưu trữ lịch sử).</summary>
+    void SaveConfig();
+    /// <summary>Thống kê lịch sử SQLite: (tổng mẫu, mẫu chưa gửi cloud, mốc cũ nhất ms).</summary>
+    (long Total, long Unsent, long Oldest) HistoryStats();
+    /// <summary>Xuất lịch sử SQLite trong [fromMs, toMs] (epoch ms, UTC) ra file CSV; trả số dòng.</summary>
+    Task<long> ExportHistoryAsync(string path, string format, long fromMs, long toMs);
 }
 
 /// <summary>Thẻ của một thiết bị con: mỗi field là một widget (bồn, đồng hồ, công tắc, thanh trượt, số).</summary>

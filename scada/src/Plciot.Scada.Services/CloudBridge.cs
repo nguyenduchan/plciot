@@ -185,6 +185,19 @@ public sealed class CloudBridge : IAsyncDisposable
             ? SendAsync(_cfg.BaseTopic + "/ack", Encoding.UTF8.GetBytes(json), false, CancellationToken.None)
             : Task.CompletedTask;
 
+    /// <summary>Gửi một gói bù dữ liệu (telemetry có ts gốc, bf=1) với QoS 1, không retain. false = chưa gửi được (mất kết nối) → giữ lại gửi sau.</summary>
+    public async Task<bool> SendBackfillAsync(byte[] payload, CancellationToken ct)
+    {
+        if (State != CloudState.Connected || !_client.IsConnected || payload.Length > MaxPayload) return false;
+        try
+        {
+            var r = await _client.PublishAsync(new MqttApplicationMessageBuilder().WithTopic(_cfg.BaseTopic + "/telemetry").WithPayload(payload)
+                .WithRetainFlag(false).WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce).Build(), ct);
+            return r.IsSuccess;
+        }
+        catch (Exception ex) { Log?.Invoke($"Gửi bù dữ liệu lỗi: {ex.Message}"); return false; }
+    }
+
     async Task SendAsync(string topic, byte[] payload, bool retain, CancellationToken ct)
     {
         try

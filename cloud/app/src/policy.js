@@ -116,6 +116,23 @@ function checkFlood(site, device) {
   return null;
 }
 
+/** Gói bù dữ liệu đến dồn dập khi gateway nối lại: bucket riêng (không làm tràn bucket telemetry thường, không kích hoạt tự chặn). */
+const backfillBuckets = new Map();
+function checkBackfillFlood(site, device) {
+  const max = Number(process.env.POLICY_BACKFILL_MAX || 1200);
+  const windowMs = 60_000;
+  const key = `${site}/${device}`;
+  const now = Date.now();
+  let b = backfillBuckets.get(key);
+  if (!b || now - b.windowStart >= windowMs) {
+    if (backfillBuckets.size > 20_000) backfillBuckets.clear();
+    b = { n: 0, windowStart: now };
+    backfillBuckets.set(key, b);
+  }
+  b.n += 1;
+  return b.n > max ? { reason: 'backfill_rate', detail: `${b.n}/${max} per 60s` } : null;
+}
+
 function maybeAutoBlock(db, { site, device, tenant, reason }) {
   const cfg = autoBlockAfter();
   if (cfg.n <= 0) return;
@@ -203,7 +220,8 @@ export function evaluateIngest(db, {
     return { allow: false, reason: 'manual_block', detail: blocked.reason || blocked.id, blockId: blocked.id };
   }
 
-  const flood = checkFlood(site, device);
+  const backfill = kind === 'telemetry' && /"bf"\s*:\s*(1|true)\b/.test(text);
+  const flood = backfill ? checkBackfillFlood(site, device) : checkFlood(site, device);
   if (flood) return { allow: false, reason: flood.reason, detail: flood.detail };
 
   // Size trước parse — tránh lệch reason (invalid_json vs payload_too_large)

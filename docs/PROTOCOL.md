@@ -71,6 +71,8 @@ PLC tự lưu 48 giờ gần nhất, không cần đồng hồ thời gian thự
 ## Lịch sử trên server (app ingest)
 `plciot-app` subscribe `gw/+/+`, ghi mọi sự kiện (`telemetry`, `status`, `history`, `ack`, …) vào SQLite `mqtt_events`, retention mặc định 1 ngày (`HISTORY_DEFAULT_DAYS`); lịch sử đăng nhập/điều khiển (`audit_log`) giữ 365 ngày (`AUDIT_RETENTION_DAYS`), mỗi tài khoản có thể có gói riêng `users.retention_days` (NULL = mặc định, 0 = không giới hạn, N ≥ 4 = N ngày; site/device dùng chung lấy mức dài nhất).
 
+**Bù dữ liệu offline (backfill).** Gateway lưu lịch sử giá trị vào SQLite cục bộ (`history.db`, số ngày giữ + chu kỳ ghi do người dùng đặt trên gateway, 0 ngày = không giới hạn). Mẫu ghi lúc không nối được cloud được đánh dấu chưa gửi; khi nối lại gateway gửi bù lên `<base>/telemetry` (QoS 1, không retain) dạng `{"schema":2,"bf":1,"ts":<ms gốc>,"d":{…}}`, cũ nhất trước, ~10 bản tin/giây. Server chỉ nhận mẫu có `ts` trong thời hạn lưu của gói (`deviceRetentionDays`, người dài nhất thắng; cũ hơn thì bỏ), không sau hiện tại quá 60 giây, bỏ mẫu trùng `ts`, và KHÔNG đụng trạng thái online/nhịp/cảnh báo. Kit enroll có `retentionDays` (0 = không giới hạn) để gateway không gửi mẫu chắc chắn bị bỏ. Gói bù có bucket chống dồn riêng (`POLICY_BACKFILL_MAX`, mặc định 1200/phút).
+
 Webapp (đã đăng nhập) khi mở gọi `GET /api/history/telemetry?site=&dev=&since=` (Bearer JWT), ghi vào IndexedDB để xem offline / khi app từng đóng. Live vẫn qua MQTT trực tiếp.
 
 Dashboard widget (web + C#): [UI-CONTRACT.md](UI-CONTRACT.md) — `GET /api/v1/ui/dashboard`, thêm thiết bị bằng QR (`POST /api/devices`).

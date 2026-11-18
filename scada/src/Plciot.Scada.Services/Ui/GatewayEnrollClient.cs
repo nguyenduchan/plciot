@@ -183,6 +183,8 @@ public sealed class GatewayProvisionKit
     public bool? Claimed { get; set; }
     /// <summary>Khoảng cách tối thiểu (ms) giữa hai bản telemetry theo gói của chủ; gateway tự gửi chậm theo mức này. 0/null = không giới hạn.</summary>
     public int? TelemetryMinMs { get; set; }
+    /// <summary>Số ngày cloud lưu data theo gói của chủ (0 = không giới hạn); null = server cũ.</summary>
+    public int? RetentionDays { get; set; }
     /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
     public string? MqttId { get; set; }
     /// <summary>Khoá công khai (SPKI base64url) của server để kiểm chữ ký lệnh cloud. Null = server cũ.</summary>

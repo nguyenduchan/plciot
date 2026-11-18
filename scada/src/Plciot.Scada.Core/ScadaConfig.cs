@@ -187,6 +187,12 @@ public sealed class ScadaConfig
     public int CloudTelemetryMinMs { get; set; } = 1000;
     /// <summary>Telemetry ĐỔI được gửi ngay, cách nhau tối thiểu khoảng này (chống dồn; server ingest giới hạn ~120 tin/phút/thiết bị).</summary>
     public int CloudTelemetryFastMs { get; set; } = 300;
+    /// <summary>Lưu lịch sử giá trị trong SQLite của gateway (history.db): số ngày giữ. 0 = không giới hạn.</summary>
+    public int LocalHistoryDays { get; set; } = 30;
+    /// <summary>Chu kỳ ghi một mẫu vào lịch sử cục bộ (giây), mỗi field.</summary>
+    public int LocalHistoryIntervalSec { get; set; } = 10;
+    /// <summary>Số ngày cloud lưu data theo gói (server báo lúc đăng ký). Dữ liệu offline chỉ được bù trong khoảng này. 0 = không giới hạn.</summary>
+    public int CloudRetentionDays { get; set; } = 1;
     // ---- Kích hoạt gateway PC (xem GatewayActivation). "none" = không yêu cầu (mặc định, giữ nguyên hành vi cũ).
     /// <summary>"none" | "online" (server gắn máy khi enroll bằng QR) | "offline" (file giấy phép theo ID máy, không cần mạng).</summary>
     public string LicenseMode { get; set; } = "none";

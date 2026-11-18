@@ -41,7 +41,26 @@ public sealed partial class MainForm : Form, IGatewayApp
     bool _localUnlocked;
     static bool _carryLocal;
     /// <summary>Hộp thoại/nút sửa cấu hình gọi trước khi sửa: chưa OTP thì hiện màn hình OTP; false = bị từ chối.</summary>
-    public bool RequireEdit() => EnsureUnlockedAsync().GetAwaiter().GetResult();   // EnsureUnlockedAsync không có await: hoàn tất đồng bộ
+    /// <summary>
+    /// Cổng SỬA cấu hình (danh sách thiết bị, đổi mật khẩu, cài đặt cloud…). Luôn phải nhập mật khẩu dù đã mở khoá để xem/điều khiển; nhập đúng thì có
+    /// "phiên sửa" CỐ ĐỊNH 5 phút (không gia hạn khi thao tác), hết hạn phải nhập lại. Khoá gateway (tay hoặc tự khoá) thu hồi phiên ngay —
+    /// người lạ ngồi vào máy lúc chủ vắng không sửa được. false = bị từ chối.
+    /// </summary>
+    public bool RequireEdit()
+    {
+        if (_testMode || _noAuth) return true;
+        if (EditActive) return true;
+        _editUntil = DateTime.MinValue;
+        if (!PromptCredentialAsync("Nhập mật khẩu gateway để sửa cấu hình (có hiệu lực 5 phút)").GetAwaiter().GetResult()) return false;   // hộp thoại modal: hoàn tất đồng bộ
+        _editUntil = DateTime.UtcNow + EditLife; _editWarned = false;
+        Toast("Đã xác nhận mật khẩu. Được sửa cấu hình trong 5 phút, hết hạn phải nhập lại.");
+        return true;
+    }
+    static readonly TimeSpan EditLife = TimeSpan.FromMinutes(5);
+    DateTime _editUntil = DateTime.MinValue;
+    bool _editWarned = true;
+    bool EditActive => DateTime.UtcNow < _editUntil;
+    void EndEditSession() { _editUntil = DateTime.MinValue; }
     // Gateway khởi động là TỰ CHẠY NỀN và nối server bằng khoá riêng của máy. Login/OTP chỉ cần khi: đăng ký lần đầu, hoặc chỉnh sửa cấu hình.
 
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
@@ -138,6 +157,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     }
 
     void SaveCfg() => ConfigStore.Save(SettingsPath, _cfg);
+    public void SaveConfig() { try { SaveCfg(); } catch (IOException) { /* không quan trọng */ } }
 
     // ------------------------------------------------------------------ dựng giao diện
     public MainForm()
@@ -213,6 +233,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         AutoLock.Install();
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
+        StartHistory();
         if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng
         {
             _login = _carry.Login; _loginAt = _carry.At; _localUnlocked = _carryLocal; var t = _carry.Toast; _carry = default; _carryLocal = false;
@@ -245,6 +266,12 @@ public sealed partial class MainForm : Form, IGatewayApp
     async Task<bool> EnsureUnlockedAsync(string why = "Xác nhận trên webapp để chỉnh sửa cấu hình gateway")
     {
         if (Unlocked) return true;
+        return await PromptCredentialAsync(why);
+    }
+
+    /// <summary>Hỏi mật khẩu gateway (đã đặt) hoặc đăng nhập webapp (chưa đặt / quên mật khẩu). Luôn hỏi, không xét đã mở khoá hay chưa.</summary>
+    async Task<bool> PromptCredentialAsync(string why)
+    {
         if (_prompting) return false;
         _prompting = true;
         try
@@ -300,7 +327,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Khoá ngay rồi mở màn hình đăng nhập.</summary>
     void LockNow(string toast)
     {
-        _localUnlocked = false; _login = null; _loginAt = DateTime.MinValue;
+        _localUnlocked = false; _login = null; _loginAt = DateTime.MinValue; EndEditSession();
         SyncLockScreen();
         Toast(toast);
         BeginInvoke(async () => await ShowLoginAsync());
@@ -385,7 +412,19 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         if (_login != null && (_noAuth || DateTime.UtcNow - _loginAt < TokenLife)) return _login;
         _login = null; _loginAt = DateTime.MinValue;
-        return await EnsureUnlockedAsync("Đăng nhập webapp để kết nối gateway với server") ? _login : null;
+        if (_noAuth) return _login;
+        // Mở khoá bằng mật khẩu cục bộ KHÔNG có phiên webapp (token): đăng ký/đổi tài khoản vẫn cần đăng nhập webapp thật → hỏi thẳng, không nhờ EnsureUnlockedAsync (nó trả true ngay vì đã mở khoá)
+        if (_prompting) return null;
+        _prompting = true;
+        try
+        {
+            using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Đăng nhập webapp", "Đăng nhập tài khoản webapp để kết nối gateway với server");
+            if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return null;
+            _login = f.Result; _loginAt = DateTime.UtcNow;
+            Toast($"Đã đăng nhập ({f.Result.User}).");
+            return _login;
+        }
+        finally { _prompting = false; }
     }
 
     /// <summary>Màn hình đăng nhập lúc mở app. Huỷ → chạy ở chế độ chỉ xem (vẫn offline được).</summary>
@@ -493,7 +532,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             if (!doc.RootElement.TryGetProperty("d", out var d) || d.ValueKind != JsonValueKind.Object) return;
             foreach (var c in d.EnumerateObject())
                 foreach (var f in c.Value.EnumerateObject())
-                    if (f.Value.TryGetDouble(out var v)) { var k = UiMetaStore.Key(c.Name, f.Name); _values[k] = v; _history.Add(k, v); }
+                    if (f.Value.TryGetDouble(out var v)) { var k = UiMetaStore.Key(c.Name, f.Name); _values[k] = v; _history.Add(k, v); _hdb?.Record(c.Name, f.Name, v, CloudSyncedOrNotNeeded()); }
         }
         catch (JsonException) { /* bỏ qua gói hỏng */ }
     }
@@ -505,7 +544,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         // Mọi việc đổi cấu hình/kết nối cloud cần một lần duyệt còn hiệu lực trên webapp (đọc danh sách giải pháp thì không)
         if (action == "migrate") { var ok = await MigrateAsync(); if (ok) { await StopAsync(); await StartAsync(); } return (ok, ok ? "Đã chuyển gateway sang PC này." : "Chưa chuyển gateway."); }   // tự đăng nhập chủ tài khoản bên trong
-        if (!await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
+        if (!RequireEdit()) return (false, "Cần nhập mật khẩu gateway để thực hiện.");
         if (action == "password") { OfferLocalPassword(_cfg.LocalAdminHash.Length > 0); return (true, ""); }
         return action switch
         {
@@ -585,6 +624,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             var mqttId = kit.MqttId ?? (kit.TopicBase is { } tb && tb.StartsWith(Contract.GwPrefix + "/") ? tb[(Contract.GwPrefix.Length + 1)..] : null);
             if (!Contract.IsMqttId(mqttId)) throw new InvalidOperationException("server không cấp id MQTT hợp lệ");
             _cfg.MqttId = mqttId!;
+            if (kit.RetentionDays is >= 0) _cfg.CloudRetentionDays = kit.RetentionDays.Value;   // bù dữ liệu offline chỉ trong thời hạn lưu của gói
             if (kit.TelemetryMinMs is > 0) { _cfg.CloudTelemetryMinMs = kit.TelemetryMinMs.Value; _cfg.CloudTelemetryFastMs = kit.TelemetryMinMs.Value; }   // gói giới hạn tần suất: tự gửi chậm, không chờ server bỏ bớt
             if (kit.Mqtt != null)
             {
@@ -678,6 +718,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             var kit = await RefreshKitAsync(http);
             if (kit != null) ApplySkin(kit);
             if (!string.IsNullOrEmpty(kit?.CmdKey) && kit!.CmdKey != _cfg.CloudCmdKey) { _cfg.CloudCmdKey = kit.CmdKey; try { SaveCfg(); } catch (IOException) { } }   // server đổi khoá ký: nhận qua HTTPS có chữ ký
+            if (kit?.RetentionDays is >= 0 && kit.RetentionDays != _cfg.CloudRetentionDays) { _cfg.CloudRetentionDays = kit.RetentionDays.Value; try { SaveCfg(); } catch (IOException) { } }   // đổi gói trên server → thời hạn bù dữ liệu offline cập nhật theo
             if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
             {
                 _cfg.CloudSendData = cl;
@@ -694,6 +735,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         if (IsDisposed || Disposing) return;   // cửa sổ cũ đã đóng (dựng lại khi đổi UI)
         PollClaimed();
+        if (!_editWarned && !EditActive) { _editWarned = true; Toast("Phiên sửa cấu hình đã hết hạn (5 phút). Muốn sửa tiếp phải nhập lại mật khẩu."); }
         UpdateTick();
         BackupTick();
         _log.Flush();

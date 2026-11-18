@@ -46,6 +46,7 @@ export function resolveTelemetryMessage(_db, { payloadBuf }) {
   if (norm.d) canonical.d = norm.d;
   if (norm.r) canonical.r = norm.r;
   if (data.ts != null) canonical.ts = data.ts;
+  if (data.bf === 1 || data.bf === true) canonical.bf = 1;   // gói bù dữ liệu lúc gateway offline (xem mqttIngest)
 
   return {
     ok: true,

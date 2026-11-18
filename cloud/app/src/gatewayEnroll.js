@@ -7,6 +7,7 @@
  */
 import { recordGatewayClient } from './gatewayUpdate.js';
 import { shardOf } from './shards.js';
+import { effectiveDays, defaultDays } from './retention.js';
 import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
   decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit, getHardwareDeviceQr,
@@ -219,6 +220,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     claimed: Boolean(hw.claimed_by),
     // Gateway tự gửi chậm theo gói của chủ (ms giữa hai bản telemetry; 0 = không giới hạn). Chưa có chủ → mức gói miễn phí.
     telemetryMinMs: telemetryMinMsFor(db, hw),
+    // Số ngày cloud lưu data theo gói của chủ (0 = không giới hạn): gateway chỉ bù dữ liệu offline trong khoảng này (server cũng chặn)
+    retentionDays: retentionDaysFor(db, hw),
     mqttId,
     // Khoá công khai của server: gateway kiểm chữ ký lệnh cloud (cmdSign.js) → không cần OTP riêng để nhận lệnh đã qua step-up
     cmdKey: cmdPublicKey(),
@@ -260,6 +263,15 @@ function telemetryMinMsFor(db, hw) {
     const owner = hw.claimed_by ? db.prepare('SELECT * FROM users WHERE id = ?').get(hw.claimed_by) : null;
     return owner ? planTelemetryMinMs(owner) : FREE_TELEMETRY_MIN_MS;
   } catch { return FREE_TELEMETRY_MIN_MS; }
+}
+
+/** Số ngày lưu theo gói của chủ gateway (0 = không giới hạn; chưa có chủ → mặc định). */
+function retentionDaysFor(db, hw) {
+  try {
+    const owner = hw.claimed_by ? db.prepare('SELECT * FROM users WHERE id = ?').get(hw.claimed_by) : null;
+    const d = owner ? effectiveDays(owner) : defaultDays();
+    return Number.isFinite(d) ? d : 0;
+  } catch { return defaultDays(); }
 }
 
 export function enrollGateway(db, body = {}, opts = {}) {

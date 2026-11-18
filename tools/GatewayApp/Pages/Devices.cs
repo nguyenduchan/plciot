@@ -49,6 +49,9 @@ sealed class PreviewApp : IGatewayApp
     public string HwText => "";
     public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
+    public void SaveConfig() { }
+    public (long Total, long Unsent, long Oldest) HistoryStats() => (0, 0, 0);
+    public Task<long> ExportHistoryAsync(string path, string format, long fromMs, long toMs) => Task.FromResult(0L);
     public bool RequireEdit() => true;   // chỉ để xem trước hộp thoại: không có gì để bảo vệ
 }
 
@@ -186,6 +189,7 @@ sealed class DeviceDialog : Form
             del.Click += (_, _) =>
             {
                 if (!ConfirmDelete(_app, this, edit)) return;
+                if (!_app.RequireEdit()) return;
                 Remove(_app, edit); Deleted = true;
                 DialogResult = DialogResult.OK; Close();
             };
@@ -438,6 +442,7 @@ sealed class DeviceDialog : Form
         // ô bảng đang gõ dở (chưa Enter) phải được chốt trước khi đọc, nếu không giá trị mới (vd. thanh ghi D) bị bỏ sót và giữ giá trị cũ
         _g.EndEdit();
         var rx = new Regex("^[A-Za-z0-9_-]{1,48}$");
+        if (!_app.RequireEdit()) return;   // hộp thoại có thể mở quá 5 phút: kiểm tra lại phiên sửa ngay lúc lưu
         var child = _child.Text.Trim();
         if (!rx.IsMatch(child))   // mã gõ có dấu/ký tự lạ (vd. "Bồn nước 1"): tự bỏ dấu thay vì từ chối
         {
@@ -601,6 +606,7 @@ sealed class DevicesPage : UserControl
         var c = SelectedChild(); if (c == null) { _app.Toast("Chọn một dòng của thiết bị cần xoá.", true); return; }
         if (!_app.RequireEdit()) return;
         if (!DeviceDialog.ConfirmDelete(_app, FindForm(), c)) return;
+        if (!_app.RequireEdit()) return;   // hộp xác nhận có thể mở lâu: kiểm tra lại phiên sửa trước khi xoá
         DeviceDialog.Remove(_app, c);
         Refill(); await _app.ApplyAsync($"Đã xoá thiết bị {c}");
     }

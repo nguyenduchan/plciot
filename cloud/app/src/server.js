@@ -10,7 +10,7 @@ import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
 import { startBundleSync, syncBundles } from './bundleSync.js';
 import { registryItems, detectFolders, ignoredFolders, addItem, updateItem, removeItem, solutionVersion } from './solutions.js';
 import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
-import { queryTelemetry, queryEvents, historyStats } from './historyStore.js';
+import { queryTelemetry, queryTelemetryRows, queryEvents, historyStats } from './historyStore.js';
 import {
   configure, mountAuthentication, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit,
   purgeExpiredAudit, createAppSession, signToken,
@@ -339,6 +339,50 @@ app.get('/api/history/telemetry', requireAuth, (req, res) => {
     done: samples.length < Math.min(Math.max(1, limit | 0), 10000),
     ...retentionInfo(req.user),
   });
+});
+
+/** Xuất dữ liệu: CSV (mở bằng Excel) hoặc JSON, dạng dài: thời gian · thiết bị · field · giá trị · nguồn (live | bu). Trong thời hạn lưu của gói. */
+app.get('/api/history/export', requireAuth, (req, res) => {
+  let site = req.user.notify_site;
+  let device = req.user.notify_device;
+  // Chọn gateway (site + gw) trong số gateway của CHÍNH tài khoản: thiết bị mặc định, gateway đã gắn (hardware_devices.claimed_by) hoặc có thiết bị con (user_devices). Không cho xuất gateway của người khác.
+  const qSite = String(req.query.site || '').trim();
+  const qGw = String(req.query.gw || '').trim();
+  if (qSite && qGw && !(qSite === site && qGw === device)) {
+    const mine = db.prepare('SELECT 1 FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ? LIMIT 1').get(req.user.id, qSite, qGw)
+      || db.prepare('SELECT 1 FROM hardware_devices WHERE claimed_by = ? AND site = ? AND device = ? LIMIT 1').get(req.user.id, qSite, qGw);
+    if (!mine) return res.status(403).json({ error: 'gateway_not_yours' });
+    site = qSite; device = qGw;
+  }
+  if (!userScopes(req.user).includes('telemetry')) return res.status(403).json({ error: 'scope_denied' });
+  const until = Number(req.query.until || Date.now());
+  const since = Math.max(Number(req.query.since || 0), retentionFloor(req.user));
+  if (!Number.isFinite(since) || !Number.isFinite(until)) return res.status(400).json({ error: 'bad_range' });
+  const fmtQ = String(req.query.format || 'csv').toLowerCase();
+  const fmt = ['json', 'tsv'].includes(fmtQ) ? fmtQ : 'csv';   // csv | tsv (txt, cột cách nhau bằng Tab) | json
+  const rows = queryTelemetryRows(db, { site, device, since, until, limit: Math.min(Number(req.query.limit || 200000), 500000) });
+  const flat = [];
+  for (const r of rows) {
+    let d; try { d = JSON.parse(r.payload).d; } catch { continue; }
+    if (!d || typeof d !== 'object') continue;
+    for (const [child, fields] of Object.entries(d)) {
+      if (!fields || typeof fields !== 'object') continue;
+      for (const [field, v] of Object.entries(fields)) flat.push({ ts: r.ts, child, field, v, src: r.src === 'bf' ? 'bu' : 'live' });
+    }
+  }
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (fmt === 'json') {
+    res.setHeader('Content-Disposition', `attachment; filename="plciot-${stamp}.json"`);
+    return res.json({ site, device, rows: flat.map((x) => ({ t: x.ts, device: x.child, field: x.field, value: x.v, source: x.src })) });
+  }
+  const tsv = fmt === 'tsv';
+  const sep = tsv ? '\t' : ',';
+  const esc = tsv ? (s) => String(s).replace(/[\t\r\n]/g, ' ') : (s) => { s = String(s); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [['time_utc', 'epoch_ms', 'device', 'field', 'value', 'source'].join(sep)];
+  for (const x of flat) lines.push([new Date(x.ts).toISOString(), x.ts, esc(x.child), esc(x.field), x.v, x.src].join(sep));
+  res.setHeader('Content-Type', tsv ? 'text/plain; charset=utf-8' : 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="plciot-${stamp}.${tsv ? 'txt' : 'csv'}"`);
+  res.send('\uFEFF' + lines.join('\r\n') + '\r\n');
 });
 
 app.get('/api/history/events', requireAuth, (req, res) => {

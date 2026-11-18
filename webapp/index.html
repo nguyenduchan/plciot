@@ -163,6 +163,24 @@
           <p class="muted">Cần giúp đỡ kỹ thuật, báo lỗi hoặc có thắc mắc? Chat trực tiếp với quản trị viên, kèm ảnh chụp màn hình nếu cần. <b>Dùng được ở mọi gói, không cần nâng cấp.</b></p>
           <div class="row"><button type="button" class="primary" id="support-open">Chat hỗ trợ</button></div>
         </div>
+        <div class="panel form" id="export-panel" style="margin-top:12px">
+          
+            <h2>Xuất dữ liệu lịch sử</h2>
+            <p class="muted">Tải dữ liệu đã lưu trên máy chủ về máy: mỗi dòng là một giá trị (thời gian · thiết bị · field · giá trị · nguồn live/bù). Chỉ gồm khoảng thời gian nằm trong thời hạn lưu của gói.</p>
+            <div class="row" style="flex-wrap:wrap;gap:8px">
+              <select id="exp-gw" class="fit" style="flex:1 1 100%" aria-label="Gateway"></select>
+              <label class="fit" style="flex:1 1 140px">Từ <input type="date" id="exp-from" style="width:100%"></label>
+              <label class="fit" style="flex:1 1 140px">Đến <input type="date" id="exp-to" style="width:100%"></label>
+              <select id="exp-fmt" class="fit" style="flex:1 1 100%" aria-label="Định dạng">
+                <option value="csv">CSV (mở bằng Excel)</option>
+                <option value="tsv">Văn bản (.txt, cột cách nhau bằng Tab)</option>
+                <option value="json">JSON</option>
+              </select>
+              <button type="button" id="exp-go" class="primary fit" style="flex:1 1 100%">Tải về</button>
+            </div>
+            <p class="muted" id="exp-msg"></p>
+          
+        </div>
         <div class="panel form" id="acct" style="margin-top:12px" hidden>
           <h2>Tài khoản &amp; bảo mật</h2>
           <div id="acct-sum" class="muted">Đang tải…</div>
@@ -383,6 +401,7 @@
 <script src="support.js?v=18"></script>
 <script src="plan.js?v=20261115c"></script>
 <script src="settings-tabs.js?v=20261115b"></script>
+<script src="export-data.js?v=20261118a"></script>
 <script src="sol-multi.js?v=5"></script>
 <script src="devices.js?v=20261117b"></script>
 <script src="app.js?v=20261117b"></script>

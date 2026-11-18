@@ -34,7 +34,7 @@ sealed class CloudPage : UserControl
     public CloudPage(IGatewayApp app)
     {
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
-        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 510 };
+        var card = new Card { Title = "Cloud / webapp", Sub = "tuỳ chọn — hệ thống không có Internet cứ để tắt", Dock = DockStyle.Top, Height = 700 };
         var row = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = Color.Transparent };
         _sync.Location = new Point(0, 9);
         var lbl = new Label { Text = "Đồng bộ lên cloud để xem và điều khiển từ điện thoại", ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = true, Location = new Point(62, 12), BackColor = Color.Transparent };
@@ -66,7 +66,57 @@ sealed class CloudPage : UserControl
         lockBox.SelectedIndex = Math.Max(0, Array.IndexOf(AutoLock.Choices, AutoLock.Minutes));
         lockBox.SelectedIndexChanged += (_, _) => { AutoLock.Minutes = AutoLock.Choices[lockBox.SelectedIndex]; _app.Toast(AutoLock.Minutes == 0 ? "Tắt tự khoá." : $"Sẽ tự khoá sau {AutoLock.Minutes} phút không thao tác."); };
         lockRow.Controls.AddRange(new Control[] { lockLbl, lockBox });
-        card.Controls.Add(_info); card.Controls.Add(lockRow); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
+        // Lịch sử giá trị trong SQLite của gateway + bù dữ liệu lên cloud sau khi offline (xem LocalHistoryDb)
+        var histRow = new Panel { Dock = DockStyle.Top, Height = 172, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
+        var hLbl = Skin.Lbl("Lưu lịch sử trên gateway"); hLbl.Location = new Point(0, 14);
+        var days = new NumericUpDown { Minimum = 0, Maximum = 3650, Value = Math.Clamp(app.Config.LocalHistoryDays, 0, 3650), Width = 80, Location = new Point(210, 10) };
+        var dLbl = new Label { Text = "ngày (0 = không giới hạn)", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Normal, Location = new Point(300, 14), BackColor = Color.Transparent };
+        var iLbl = Skin.Lbl("Chu kỳ ghi một mẫu"); iLbl.Location = new Point(0, 50);
+        var every = new NumericUpDown { Minimum = 1, Maximum = 3600, Value = Math.Clamp(app.Config.LocalHistoryIntervalSec, 1, 3600), Width = 80, Location = new Point(210, 46) };
+        var eLbl = new Label { Text = "giây", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Normal, Location = new Point(300, 50), BackColor = Color.Transparent };
+        var hInfo = new Label { UseMnemonic = false, AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Normal, Location = new Point(0, 86), BackColor = Color.Transparent };
+        var hGuard = false;
+        void SaveHist()
+        {
+            if (hGuard) return;
+            if (!app.RequireEdit()) { hGuard = true; days.Value = Math.Clamp(app.Config.LocalHistoryDays, 0, 3650); every.Value = Math.Clamp(app.Config.LocalHistoryIntervalSec, 1, 3600); hGuard = false; return; }
+            app.Config.LocalHistoryDays = (int)days.Value; app.Config.LocalHistoryIntervalSec = (int)every.Value;
+            app.SaveConfig();
+            app.Toast(app.Config.LocalHistoryDays == 0 ? "Lịch sử giữ không giới hạn (tuỳ dung lượng ổ đĩa)." : $"Lịch sử giữ {app.Config.LocalHistoryDays} ngày.");
+        }
+        days.ValueChanged += (_, _) => SaveHist(); every.ValueChanged += (_, _) => SaveHist();
+        void ShowHist()
+        {
+            var (total, unsent, oldest) = app.HistoryStats();
+            var plan = app.Config.CloudRetentionDays == 0 ? "không giới hạn" : $"{app.Config.CloudRetentionDays} ngày";
+            hInfo.Text = $"Đã lưu {total:N0} mẫu" + (oldest > 0 ? $" từ {DateTimeOffset.FromUnixTimeMilliseconds(oldest).LocalDateTime:dd/MM/yyyy HH:mm}" : "") + $" · chờ gửi cloud {unsent:N0}" + Environment.NewLine + $"Mất kết nối thì dữ liệu giữ trên máy; nối lại sẽ tự gửi bù đúng thời điểm, tối đa theo gói cloud ({plan}).";
+        }
+        ShowHist();
+        var hTimer = new System.Windows.Forms.Timer { Interval = 5000 }; hTimer.Tick += (_, _) => ShowHist(); hTimer.Start();
+        Disposed += (_, _) => hTimer.Dispose();
+        // Xuất dữ liệu ra CSV (mở bằng Excel): chọn khoảng ngày
+        var xLbl = Skin.Lbl("Xuất dữ liệu"); xLbl.Location = new Point(0, 130);
+        var from = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 110, Location = new Point(210, 126), Value = DateTime.Today.AddDays(-7) };
+        var toLbl = new Label { Text = "đến", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Normal, Location = new Point(328, 130), BackColor = Color.Transparent };
+        var to = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 110, Location = new Point(360, 126), Value = DateTime.Today };
+        var fmt = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, Location = new Point(490, 126) };
+        foreach (var f in LocalHistoryDb.ExportFormats) fmt.Items.Add(f.Label);
+        fmt.SelectedIndex = 0;
+        var exp = new FlatButton { Caption = "Xuất…", Width = 100, Location = new Point(650, 124) };
+        exp.Click += async (_, _) =>
+        {
+            var f = LocalHistoryDb.ExportFormats[Math.Max(0, fmt.SelectedIndex)];
+            using var dlg = new SaveFileDialog { Filter = $"{f.Label}|*.{f.Ext}", FileName = $"lichsu-{DateTime.Now:yyyyMMdd}.{f.Ext}", DefaultExt = f.Ext };
+            if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+            var a = new DateTimeOffset(from.Value.Date).ToUnixTimeMilliseconds();
+            var b = new DateTimeOffset(to.Value.Date.AddDays(1)).ToUnixTimeMilliseconds();
+            exp.Enabled = false;
+            try { var n = await app.ExportHistoryAsync(dlg.FileName, f.Id, a, b); app.Toast($"Đã xuất {n:N0} dòng ra {Path.GetFileName(dlg.FileName)}."); }
+            catch (Exception ex) { app.Toast("Xuất lỗi: " + ex.Message, true); }
+            finally { exp.Enabled = true; }
+        };
+        histRow.Controls.AddRange(new Control[] { hLbl, days, dLbl, iLbl, every, eLbl, hInfo, xLbl, from, toLbl, to, fmt, exp });
+        card.Controls.Add(_info); card.Controls.Add(histRow); card.Controls.Add(lockRow); card.Controls.Add(solRow); card.Controls.Add(buttons2); card.Controls.Add(buttons); card.Controls.Add(row);
         Controls.Add(card);
         Refresh2();
         ShowSolution();

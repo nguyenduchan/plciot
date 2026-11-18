@@ -25,6 +25,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repo
 
+New-Item -ItemType Directory -Force (Join-Path $repo 'releases') | Out-Null   # releases/ bị gitignore: PC mới chưa có thì tạo trước khi kiểm tra
 $paths = @('cloud', 'webapp', 'solutions', 'packages/security', 'releases')
 foreach ($p in $paths) {
   if (-not (Test-Path (Join-Path $repo $p))) { throw "Thiếu thư mục: $p" }

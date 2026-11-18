@@ -1,6 +1,7 @@
 import { shardCount, shardUrls } from './shards.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
+import { evaluateBackfill } from './backfill.js';
 import { purgeByPlanAsync, defaultDays, thinOldTelemetryAsync } from './retention.js';
 import { noteTelemetry } from './plcProof.js';
 import { parseTopic, ingestTopicFilters, DEFAULT_TENANT } from './contract.js';
@@ -171,6 +172,13 @@ export function startMqttIngest(db) {
       // Tem chưa có user (chưa claim): chỉ nhận config/status, bỏ telemetry/history
       if ((kind === 'telemetry' || kind === 'history') && isUnclaimedGateway(db, site, device)) {
         return;   // im lặng: không ghi deny mỗi gói (gateway cũ vẫn có thể gửi)
+      }
+
+      if (kind === 'telemetry' && verdict.resolved?.canonical?.bf) {
+        // Gói BÙ dữ liệu offline: đường riêng, không lẫn live (xem backfill.js)
+        const bf = evaluateBackfill(db, { site, device, canonical: verdict.resolved.canonical, now, gapMs: Math.max(minInterval, ownerPlanMinMs(db, site, device)) });
+        if (bf.ok) insert(bf.row);
+        return;
       }
 
       if (kind === 'telemetry') {
