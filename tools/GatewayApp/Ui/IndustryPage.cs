@@ -274,6 +274,50 @@ sealed class IndustryPage : UserControl
         return l;
     }
 
+    /// <summary>Kiểm thử: các chỉ số được khối nào đó trong giao diện dùng mà CHƯA có số (để chắc dữ liệu thử lấp đủ mọi widget).</summary>
+    internal List<string> UnfilledMetrics()
+    {
+        Tick();
+        var used = new HashSet<string>();
+        void Walk(JsonElement e)
+        {
+            switch (e.ValueKind)
+            {
+                case JsonValueKind.String: if (e.GetString() is { } v && _m.ContainsKey(v)) used.Add(v); break;
+                case JsonValueKind.Array: foreach (var x in e.EnumerateArray()) Walk(x); break;
+                case JsonValueKind.Object: foreach (var p in e.EnumerateObject()) Walk(p.Value); break;
+            }
+        }
+        foreach (var (_, _, blocks) in _tabs) Walk(blocks);
+        var miss = used.Where(id => Val(id) == null).OrderBy(x => x).ToList();
+        // ô theo TỪNG thiết bị: mỗi thiết bị liệt kê phải có số cho chỉ số chính + phụ
+        foreach (var (_, _, blocks) in _tabs)
+            foreach (var b in blocks.EnumerateArray())
+            {
+                var ids = new List<string>();
+                switch (Str(b, "type"))
+                {
+                    case "tiles": ids.Add(Str(b, "main")); ids.AddRange(Items(b, "subs")); break;
+                    case "andon": ids.Add(Str(b, "state")); if (b.TryGetProperty("value", out var v)) ids.Add(v.GetString() ?? ""); break;
+                    case "line": ids.Add(Str(b, "state")); if (b.TryGetProperty("sub", out var sb)) ids.Add(sb.GetString() ?? ""); break;
+                    default: continue;
+                }
+                var ms = ids.Where(i => _m.ContainsKey(i)).Select(i => _m[i]).ToArray();
+                foreach (var dev in DevIds(b, ms))
+                    foreach (var m in ms) if (Own(_devs[dev], m) == null) miss.Add($"{dev}.{m.Id}");
+                if (Str(b, "type") is "plan") { }
+            }
+        // bản đồ / mặt bằng: thiết bị đặt trên sơ đồ phải có dữ liệu
+        foreach (var (_, _, blocks) in _tabs)
+            foreach (var b in blocks.EnumerateArray())
+            {
+                if (Str(b, "type") == "plan" && b.TryGetProperty("markers", out var mk) && _m.TryGetValue(Str(b, "main"), out var mm))
+                    foreach (var k in mk.EnumerateArray()) { var d = Str(k, "dev"); if (!_devs.TryGetValue(d, out var o) || Own(o, mm) == null) miss.Add($"marker:{d}"); }
+                if (Str(b, "type") == "map" && !_trail.Values.Any(t => t.Count > 0)) miss.Add("map:lat/lon");
+            }
+        return miss.Distinct().ToList();
+    }
+
     float MissingBanner(Graphics g, float x, float y, float w)
     {
         if (_devs.Count == 0 || !_spec.TryGetProperty("required", out var req)) return y;
@@ -285,13 +329,14 @@ sealed class IndustryPage : UserControl
             else if (_m.TryGetValue(s, out var m) && Val(s) == null) miss.Add($"{m.Label} ({string.Join("/", m.Keys.Select(k => k.Key))})");
         }
         if (miss.Count == 0) return y;
-        var text = "▲ Thiếu dữ liệu bắt buộc: " + string.Join(", ", miss) + "\n" + Str(_spec, "why");
-        var rc = new RectangleF(x, y, w, 56);
+        var text = "▲ Chưa nhận được đủ dữ liệu để theo dõi an toàn: " + string.Join(", ", miss) + "\n" + Str(_spec, "why") + " Hãy thêm thiết bị đo tương ứng ở mục Thiết bị và đặt đúng tên field.";
+        var bh = Math.Max(56f, g.MeasureString(text, Theme.Small, (int)(w - 20)).Height + 14);   // cao theo nội dung, không bị cắt chữ
+        var rc = new RectangleF(x, y, w, bh);
         using var path = Theme.Round(rc, 8); using var br = new SolidBrush(Theme.Mix(Theme.Panel, Theme.Yellow, 0.14)); using var pen = new Pen(Theme.Yellow);
         g.FillPath(br, path); g.DrawPath(pen, path);
         using var tb = new SolidBrush(Theme.Text);
-        g.DrawString(text, Theme.Small, tb, new RectangleF(x + 10, y + 6, w - 20, 48));
-        return y + 66;
+        g.DrawString(text, Theme.Small, tb, new RectangleF(x + 10, y + 7, w - 20, bh - 10));
+        return y + bh + 10;
     }
 
     void Card(Graphics g, RectangleF r, Color? edge = null, string side = "")

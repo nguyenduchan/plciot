@@ -415,8 +415,8 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     if (!(S.required || []).length || !devs.size) return '';
     const miss = missingReq();
     if (!miss.length) return '';
-    return `<div class="ireq"><b>▲ Thiếu dữ liệu bắt buộc từ gateway</b><ul>${miss.map((x) => `<li>${esc(x.label)} <code>${esc(x.key)}</code></li>`).join('')}</ul>`
-      + `<small>${esc(S.why || '')} Khai báo các field này ở gateway (file gateway/setup.json của giải pháp).</small></div>`;
+    return `<div class="ireq"><b>▲ Chưa nhận được đủ dữ liệu để theo dõi an toàn</b><p>Chưa có số liệu của:</p><ul>${miss.map((x) => `<li>${esc(x.label)} <code>${esc(x.key)}</code></li>`).join('')}</ul>`
+      + `<small>${esc(S.why || '')} Bạn cần <b>thêm thiết bị đo tương ứng</b> vào gateway (mục <b>Thiết bị</b>) và đặt đúng tên như trong ngoặc. Cần hỗ trợ cài đặt thì liên hệ nhà cung cấp.</small></div>`;
   }
   function reqList() {
     const req = S.required || [];

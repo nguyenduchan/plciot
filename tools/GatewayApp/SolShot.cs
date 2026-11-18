@@ -45,7 +45,8 @@ public sealed partial class MainForm
             ip.DrawToBitmap(bmp, new Rectangle(0, 0, ip.Width, ip.Height));
             bmp.Save(Path.Combine(dir, "page.png"));
         }
-        File.WriteAllText(Path.Combine(dir, "state.txt"), $"running={Running} toast={LastToast.Text}");
+        var miss = FindAll<IndustryPage>(this).FirstOrDefault()?.UnfilledMetrics() ?? new List<string>();
+        File.WriteAllText(Path.Combine(dir, "state.txt"), $"running={Running} missing={miss.Count} [{string.Join(",", miss)}] toast={LastToast.Text}");
         Close();
     }
 }
