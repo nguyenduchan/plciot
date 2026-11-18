@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Bồn bể xăng dầu & hóa chất",
- "icon": "fuel",
+ "icon": "level",
  "style": "sharp",
  "metrics": [
   {

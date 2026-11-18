@@ -10,6 +10,10 @@ static class SolutionHost
     public static string Name { get; set; } = "";
     /// <summary>Tên hiện ở tiêu đề cửa sổ và thanh bên (rỗng = giữ chữ cũ).</summary>
     public static string Title { get; set; } = "";
+    /// <summary>Mã icon vector của giải pháp (icons.json, vd. "flame" cho lò hơi). Rỗng = icon trang chính mặc định.</summary>
+    public static string Icon { get; set; } = "";
+    /// <summary>Tiêu đề đầy đủ của giải pháp (thanh trên cửa sổ khi giao diện giải pháp gộp vào trang chính).</summary>
+    public static string Heading { get; set; } = "";
     /// <summary>Trang bổ sung chèn ngay sau "Tổng quan".</summary>
     public static Func<IGatewayApp, (string Icon, string Name, Control Page)>? ExtraPage { get; set; }
     /// <summary>

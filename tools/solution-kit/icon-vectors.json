@@ -1,0 +1,2755 @@
+[
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "m³/h",
+"keys": [
+"flow_m3h",
+"flow"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "pressure",
+"label": "Áp suất",
+"unit": "bar",
+"keys": [
+"pressure_bar",
+"pressure"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "level",
+"label": "Mức bể chứa",
+"unit": "%",
+"keys": [
+"level_pct",
+"level"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "chlorine",
+"label": "Clo dư",
+"unit": "mg/L",
+"keys": [
+"cl_mgl",
+"chlorine"
+]
+},
+"icon": "chem"
+},
+{
+"m": {
+"id": "turbidity",
+"label": "Độ đục",
+"unit": "NTU",
+"keys": [
+"ntu",
+"turbidity"
+]
+},
+"icon": "turbidity"
+},
+{
+"m": {
+"id": "ph",
+"label": "pH",
+"keys": [
+"ph"
+]
+},
+"icon": "ph"
+},
+{
+"m": {
+"id": "total",
+"label": "Tổng sản lượng",
+"unit": "m³",
+"keys": [
+"total_m3"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "pump_kw",
+"label": "Công suất bơm",
+"unit": "kW",
+"keys": [
+"pump_kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwhm3",
+"label": "Điện năng riêng",
+"unit": "kWh/m³"
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "p1",
+"label": "Bơm 1",
+"keys": [
+"pump1_run"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "p2",
+"label": "Bơm 2",
+"keys": [
+"pump2_run"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "fault",
+"label": "Sự cố",
+"keys": [
+"fault"
+],
+"map": {
+"0": "Không",
+"1": "Lỗi"
+}
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm KK",
+"unit": "%",
+"keys": [
+"hum_pct",
+"hum"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "soil",
+"label": "Độ ẩm đất",
+"unit": "%",
+"keys": [
+"soil_pct",
+"soil"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "light",
+"label": "Ánh sáng",
+"unit": "lux",
+"keys": [
+"light_lux",
+"lux"
+]
+},
+"icon": "light"
+},
+{
+"m": {
+"id": "co2",
+"label": "CO₂",
+"unit": "ppm",
+"keys": [
+"co2_ppm",
+"co2"
+]
+},
+"icon": "gas"
+},
+{
+"m": {
+"id": "ec",
+"label": "EC",
+"unit": "mS/cm",
+"keys": [
+"ec"
+]
+},
+"icon": "chem"
+},
+{
+"m": {
+"id": "ph",
+"label": "pH dung dịch",
+"keys": [
+"ph"
+]
+},
+"icon": "ph"
+},
+{
+"m": {
+"id": "water",
+"label": "Nước đã tưới",
+"unit": "L",
+"keys": [
+"water_l"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "fan",
+"label": "Quạt",
+"keys": [
+"fan"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "fan"
+},
+{
+"m": {
+"id": "mist",
+"label": "Phun sương",
+"keys": [
+"mist"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "pump",
+"label": "Bơm tưới",
+"keys": [
+"pump"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "shade",
+"label": "Lưới che",
+"keys": [
+"shade"
+],
+"map": {
+"0": "Mở",
+"1": "Đóng"
+}
+},
+"icon": "light"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ kho",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm",
+"unit": "%",
+"keys": [
+"hum_pct",
+"hum"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "margin",
+"label": "Dự phòng tới ngưỡng -15°C",
+"unit": "°C"
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "door",
+"label": "Cửa",
+"keys": [
+"door"
+],
+"map": {
+"0": "Đóng",
+"1": "MỞ"
+}
+},
+"icon": "door"
+},
+{
+"m": {
+"id": "comp",
+"label": "Máy nén",
+"keys": [
+"comp"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "compressor"
+},
+{
+"m": {
+"id": "defrost",
+"label": "Xả đá",
+"keys": [
+"defrost"
+],
+"map": {
+"0": "Không",
+"1": "Đang xả đá"
+}
+},
+"icon": "snow"
+},
+{
+"m": {
+"id": "power",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"power_kw",
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện năng",
+"unit": "kWh",
+"keys": [
+"kwh"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "alarm",
+"label": "Báo động",
+"keys": [
+"alarm"
+],
+"map": {
+"0": "Bình thường",
+"1": "BÁO ĐỘNG"
+}
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "sp",
+"label": "Cài đặt",
+"unit": "°C",
+"keys": [
+"setpoint",
+"sp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "delta",
+"label": "Lệch so với cài đặt",
+"unit": "°C"
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm",
+"unit": "%",
+"keys": [
+"hum_pct",
+"hum"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "co2",
+"label": "CO₂",
+"unit": "ppm",
+"keys": [
+"co2_ppm",
+"co2"
+]
+},
+"icon": "gas"
+},
+{
+"m": {
+"id": "fan",
+"label": "Quạt",
+"keys": [
+"fan"
+],
+"map": {
+"0": "Tắt",
+"1": "Thấp",
+"2": "Vừa",
+"3": "Cao"
+}
+},
+"icon": "fan"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw",
+"power_kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện năng",
+"unit": "kWh",
+"keys": [
+"kwh"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "cop",
+"label": "COP",
+"keys": [
+"cop"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "oat",
+"label": "Ngoài trời",
+"unit": "°C",
+"keys": [
+"oat"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "oee",
+"label": "OEE",
+"unit": "%",
+"keys": [
+"oee"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "avail",
+"label": "Sẵn sàng",
+"unit": "%",
+"keys": [
+"avail"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "perf",
+"label": "Hiệu suất",
+"unit": "%",
+"keys": [
+"perf"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "qual",
+"label": "Chất lượng",
+"unit": "%",
+"keys": [
+"qual"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "count",
+"label": "Sản lượng ca",
+"unit": "sp",
+"keys": [
+"count"
+]
+},
+"icon": "box"
+},
+{
+"m": {
+"id": "reject",
+"label": "Phế phẩm",
+"unit": "sp",
+"keys": [
+"reject"
+]
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "scrap",
+"label": "Tỷ lệ phế phẩm",
+"unit": "%"
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "speed",
+"label": "Tốc độ",
+"unit": "sp/ph",
+"keys": [
+"speed"
+]
+},
+"icon": "speed"
+},
+{
+"m": {
+"id": "state",
+"label": "Trạng thái",
+"keys": [
+"state"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy",
+"2": "LỖI",
+"3": "Chờ"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "down",
+"label": "Dừng máy",
+"unit": "phút",
+"keys": [
+"down"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "v1",
+"label": "Điện áp L1",
+"unit": "V",
+"keys": [
+"v_l1",
+"v1",
+"ua"
+]
+},
+"icon": "voltage"
+},
+{
+"m": {
+"id": "v2",
+"label": "Điện áp L2",
+"unit": "V",
+"keys": [
+"v_l2",
+"v2",
+"ub"
+]
+},
+"icon": "voltage"
+},
+{
+"m": {
+"id": "v3",
+"label": "Điện áp L3",
+"unit": "V",
+"keys": [
+"v_l3",
+"v3",
+"uc"
+]
+},
+"icon": "voltage"
+},
+{
+"m": {
+"id": "i1",
+"label": "Dòng L1",
+"unit": "A",
+"keys": [
+"i_l1",
+"i1",
+"ia"
+]
+},
+"icon": "current"
+},
+{
+"m": {
+"id": "i2",
+"label": "Dòng L2",
+"unit": "A",
+"keys": [
+"i_l2",
+"i2",
+"ib"
+]
+},
+"icon": "current"
+},
+{
+"m": {
+"id": "i3",
+"label": "Dòng L3",
+"unit": "A",
+"keys": [
+"i_l3",
+"i3",
+"ic"
+]
+},
+"icon": "current"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất P",
+"unit": "kW",
+"keys": [
+"kw",
+"p_kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kvar",
+"label": "Phản kháng Q",
+"unit": "kVAr",
+"keys": [
+"kvar",
+"q_kvar"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kva",
+"label": "Biểu kiến S",
+"unit": "kVA"
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "pf",
+"label": "Hệ số công suất",
+"keys": [
+"pf",
+"cosphi"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "hz",
+"label": "Tần số",
+"unit": "Hz",
+"keys": [
+"hz",
+"freq"
+]
+},
+"icon": "freq"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện năng",
+"unit": "kWh",
+"keys": [
+"kwh",
+"e_total"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "state",
+"label": "Trạng thái",
+"keys": [
+"state"
+],
+"map": {
+"0": "Rảnh",
+"1": "Đang sạc",
+"2": "LỖI",
+"3": "Đã cắm"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện sạc hôm nay",
+"unit": "kWh",
+"keys": [
+"kwh_today",
+"kwh"
+]
+},
+"icon": "plug"
+},
+{
+"m": {
+"id": "soc",
+"label": "SOC xe",
+"unit": "%",
+"keys": [
+"soc"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "sessions",
+"label": "Phiên sạc",
+"keys": [
+"sessions"
+]
+},
+"icon": "plug"
+},
+{
+"m": {
+"id": "rev",
+"label": "Doanh thu",
+"unit": "k₫",
+"keys": [
+"rev_k",
+"rev"
+]
+},
+"icon": "money"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ trụ",
+"unit": "°C",
+"keys": [
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "busy",
+"label": "Trụ đang sạc",
+"keys": [
+"state"
+]
+},
+"icon": "plug"
+},
+{
+"m": {
+"id": "do",
+"label": "Oxy hòa tan",
+"unit": "mg/L",
+"keys": [
+"do_mgl",
+"do"
+]
+},
+"icon": "oxygen"
+},
+{
+"m": {
+"id": "ph",
+"label": "pH",
+"keys": [
+"ph"
+]
+},
+"icon": "ph"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "sal",
+"label": "Độ mặn",
+"unit": "‰",
+"keys": [
+"sal"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "nh3",
+"label": "NH₃",
+"unit": "mg/L",
+"keys": [
+"nh3"
+]
+},
+"icon": "chem"
+},
+{
+"m": {
+"id": "level",
+"label": "Mực nước",
+"unit": "cm",
+"keys": [
+"level_cm"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "aer",
+"label": "Quạt nước",
+"keys": [
+"aerator"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "fan"
+},
+{
+"m": {
+"id": "feed",
+"label": "Thức ăn hôm nay",
+"unit": "kg",
+"keys": [
+"feed_kg"
+]
+},
+"icon": "weight"
+},
+{
+"m": {
+"id": "level",
+"label": "Mức bồn",
+"unit": "%",
+"keys": [
+"level_pct",
+"level"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "vol",
+"label": "Tồn kho",
+"unit": "L",
+"keys": [
+"volume_l",
+"vol"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "press",
+"label": "Áp suất",
+"unit": "bar",
+"keys": [
+"press_bar",
+"press"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "L/ph",
+"keys": [
+"flow_lpm",
+"flow"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "leak",
+"label": "Rò rỉ",
+"keys": [
+"leak"
+],
+"map": {
+"0": "Không",
+"1": "RÒ RỈ"
+}
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "valve",
+"label": "Van xuất",
+"keys": [
+"valve"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "dim",
+"label": "Độ sáng",
+"unit": "%",
+"keys": [
+"dim_pct",
+"dim"
+]
+},
+"icon": "bulb"
+},
+{
+"m": {
+"id": "lux",
+"label": "Ánh sáng tự nhiên",
+"unit": "lux",
+"keys": [
+"lux"
+]
+},
+"icon": "light"
+},
+{
+"m": {
+"id": "on",
+"label": "Đèn đang bật",
+"unit": "đèn",
+"keys": [
+"lamps_on"
+]
+},
+"icon": "bulb"
+},
+{
+"m": {
+"id": "lamps",
+"label": "Tổng số đèn",
+"unit": "đèn",
+"keys": [
+"lamps"
+]
+},
+"icon": "bulb"
+},
+{
+"m": {
+"id": "fault",
+"label": "Đèn lỗi",
+"unit": "đèn",
+"keys": [
+"lamps_fault"
+]
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện năng",
+"unit": "kWh",
+"keys": [
+"kwh"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "saved",
+"label": "Tiết kiệm",
+"unit": "%",
+"keys": [
+"saved_pct"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "aqi",
+"label": "Chỉ số AQI",
+"keys": [
+"aqi"
+]
+},
+"icon": "dust"
+},
+{
+"m": {
+"id": "pm25",
+"label": "Bụi PM2.5",
+"unit": "µg/m³",
+"keys": [
+"pm25",
+"pm2_5"
+]
+},
+"icon": "dust"
+},
+{
+"m": {
+"id": "pm10",
+"label": "Bụi PM10",
+"unit": "µg/m³",
+"keys": [
+"pm10"
+]
+},
+"icon": "dust"
+},
+{
+"m": {
+"id": "co2",
+"label": "CO₂",
+"unit": "ppm",
+"keys": [
+"co2"
+]
+},
+"icon": "gas"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm",
+"unit": "%",
+"keys": [
+"hum_pct",
+"hum"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "noise",
+"label": "Tiếng ồn",
+"unit": "dB",
+"keys": [
+"noise_db",
+"noise"
+]
+},
+"icon": "noise"
+},
+{
+"m": {
+"id": "uv",
+"label": "Chỉ số UV",
+"keys": [
+"uv"
+]
+},
+"icon": "light"
+},
+{
+"m": {
+"id": "pressure",
+"label": "Áp suất",
+"unit": "bar",
+"keys": [
+"pressure_bar",
+"pressure"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "m³/ph",
+"keys": [
+"flow_m3min",
+"flow"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "load",
+"label": "Tải",
+"unit": "%",
+"keys": [
+"load_pct"
+]
+},
+"icon": "weight"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ đầu nén",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "run",
+"label": "Trạng thái",
+"keys": [
+"run"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy tải",
+"2": "Không tải",
+"3": "LỖI"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "sp",
+"label": "Công suất riêng",
+"unit": "kW/(m³/ph)",
+"keys": [
+"sp"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "hours",
+"label": "Giờ chạy",
+"unit": "h",
+"keys": [
+"hours"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "dew",
+"label": "Điểm sương",
+"unit": "°C",
+"keys": [
+"dewpoint"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c",
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm",
+"unit": "%",
+"keys": [
+"hum_pct",
+"hum"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "gas",
+"label": "Khí gas",
+"unit": "ppm",
+"keys": [
+"gas_ppm",
+"gas"
+]
+},
+"icon": "gas"
+},
+{
+"m": {
+"id": "smoke",
+"label": "Khói",
+"keys": [
+"smoke"
+],
+"map": {
+"0": "Bình thường",
+"1": "CÓ KHÓI"
+}
+},
+"icon": "gas"
+},
+{
+"m": {
+"id": "door",
+"label": "Cửa",
+"keys": [
+"door"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "door"
+},
+{
+"m": {
+"id": "power",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "la",
+"label": "Bồn A",
+"unit": "%",
+"keys": [
+"lvl_a"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "lb",
+"label": "Bồn B",
+"unit": "%",
+"keys": [
+"lvl_b"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "lc",
+"label": "Bồn thành phẩm",
+"unit": "%",
+"keys": [
+"lvl_c"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ bình",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "press",
+"label": "Áp suất",
+"unit": "bar",
+"keys": [
+"press_bar"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "L/ph",
+"keys": [
+"flow_lpm"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "p1",
+"label": "Bơm A",
+"keys": [
+"pump_a"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "p2",
+"label": "Bơm B",
+"keys": [
+"pump_b"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "v1",
+"label": "Van A",
+"keys": [
+"valve_a"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "v2",
+"label": "Van B",
+"keys": [
+"valve_b"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "v3",
+"label": "Van xả",
+"keys": [
+"valve_out"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "batch",
+"label": "Mẻ hôm nay",
+"unit": "mẻ",
+"keys": [
+"batch"
+]
+},
+"icon": "count"
+},
+{
+"m": {
+"id": "z1",
+"label": "Tưới vùng 1",
+"keys": [
+"zone1"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "z2",
+"label": "Tưới vùng 2",
+"keys": [
+"zone2"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "lamp",
+"label": "Đèn sân",
+"keys": [
+"lamp"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "bulb"
+},
+{
+"m": {
+"id": "pond",
+"label": "Bơm hồ",
+"keys": [
+"pond"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "water",
+"label": "Nước hôm nay",
+"unit": "L",
+"keys": [
+"water_l"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện hôm nay",
+"unit": "kWh",
+"keys": [
+"kwh"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "floor",
+"label": "Tầng",
+"keys": [
+"floor"
+]
+},
+"icon": "elevator"
+},
+{
+"m": {
+"id": "door",
+"label": "Cửa",
+"keys": [
+"door"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "door"
+},
+{
+"m": {
+"id": "load",
+"label": "Tải",
+"unit": "%",
+"keys": [
+"load"
+]
+},
+"icon": "weight"
+},
+{
+"m": {
+"id": "trips",
+"label": "Chuyến hôm nay",
+"keys": [
+"trips"
+]
+},
+"icon": "count"
+},
+{
+"m": {
+"id": "fault",
+"label": "Sự cố",
+"keys": [
+"fault"
+],
+"map": {
+"0": "Không",
+"1": "Lỗi"
+}
+},
+"icon": "warn"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "speed",
+"label": "Tốc độ",
+"unit": "km/h",
+"keys": [
+"speed"
+]
+},
+"icon": "speed"
+},
+{
+"m": {
+"id": "state",
+"label": "Trạng thái",
+"keys": [
+"state"
+],
+"map": {
+"0": "Đỗ",
+"1": "Đang chạy",
+"2": "Quá tốc độ",
+"3": "Cảnh báo"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "fuel",
+"label": "Nhiên liệu",
+"unit": "%",
+"keys": [
+"fuel"
+]
+},
+"icon": "fuel"
+},
+{
+"m": {
+"id": "odo",
+"label": "Quãng đường",
+"unit": "km",
+"keys": [
+"odo"
+]
+},
+"icon": "route"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ động cơ",
+"unit": "°C",
+"keys": [
+"temp"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "moving",
+"label": "Xe đang chạy",
+"unit": "xe",
+"keys": [
+"state"
+]
+},
+"icon": "truck"
+},
+{
+"m": {
+"id": "state",
+"label": "Trạng thái máy",
+"keys": [
+"state"
+],
+"map": {
+"0": "Dừng",
+"1": "Đang gia công",
+"2": "LỖI",
+"3": "Chờ vật liệu"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "parts",
+"label": "Chi tiết hôm nay",
+"unit": "cái",
+"keys": [
+"parts"
+]
+},
+"icon": "box"
+},
+{
+"m": {
+"id": "plan",
+"label": "Kế hoạch ca",
+"unit": "cái",
+"keys": [
+"plan"
+]
+},
+"icon": "target"
+},
+{
+"m": {
+"id": "cycle",
+"label": "Chu kỳ",
+"unit": "s",
+"keys": [
+"cycle_s"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "spindle",
+"label": "Tốc độ trục",
+"unit": "rpm",
+"keys": [
+"rpm"
+]
+},
+"icon": "speed"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ trục",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "run_h",
+"label": "Giờ chạy hôm nay",
+"unit": "h",
+"keys": [
+"run_h"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "state",
+"label": "Trạng thái",
+"keys": [
+"state"
+],
+"map": {
+"0": "DỪNG",
+"1": "ĐANG CHẠY",
+"2": "LỖI",
+"3": "CHỜ"
+}
+},
+"icon": "run"
+},
+{
+"m": {
+"id": "count",
+"label": "Sản lượng",
+"unit": "sp",
+"keys": [
+"count"
+]
+},
+"icon": "box"
+},
+{
+"m": {
+"id": "plan",
+"label": "Kế hoạch",
+"unit": "sp",
+"keys": [
+"plan"
+]
+},
+"icon": "target"
+},
+{
+"m": {
+"id": "good",
+"label": "Đạt",
+"unit": "sp",
+"keys": [
+"good"
+]
+},
+"icon": "box"
+},
+{
+"m": {
+"id": "takt",
+"label": "Takt time",
+"unit": "s",
+"keys": [
+"takt"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "attain",
+"label": "Đạt kế hoạch",
+"unit": "%"
+},
+"icon": "target"
+},
+{
+"m": {
+"id": "down",
+"label": "Dừng lâu nhất",
+"unit": "phút",
+"keys": [
+"down_min"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "wl",
+"label": "Mức nước",
+"unit": "%",
+"keys": [
+"water_lvl"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "press",
+"label": "Áp suất hơi",
+"unit": "bar",
+"keys": [
+"press_bar"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ hơi",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "flame",
+"label": "Ngọn lửa",
+"keys": [
+"flame"
+],
+"map": {
+"0": "Tắt",
+"1": "Cháy"
+}
+},
+"icon": "flame"
+},
+{
+"m": {
+"id": "pump",
+"label": "Bơm cấp nước",
+"keys": [
+"pump"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "feedv",
+"label": "Van cấp",
+"keys": [
+"feed_v"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "steamv",
+"label": "Van hơi",
+"keys": [
+"steam_v"
+],
+"map": {
+"0": "Đóng",
+"1": "Mở"
+}
+},
+"icon": "valve"
+},
+{
+"m": {
+"id": "fuel",
+"label": "Nhiên liệu",
+"unit": "%",
+"keys": [
+"fuel"
+]
+},
+"icon": "fuel"
+},
+{
+"m": {
+"id": "steam",
+"label": "Sản lượng hơi",
+"unit": "kg/h",
+"keys": [
+"steam_kgh"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "eff",
+"label": "Hiệu suất",
+"unit": "%",
+"keys": [
+"eff"
+]
+},
+"icon": "eff"
+},
+{
+"m": {
+"id": "src",
+"label": "Nguồn đang cấp",
+"keys": [
+"source"
+],
+"map": {
+"0": "Điện lưới",
+"1": "MÁY PHÁT",
+"2": "MẤT ĐIỆN"
+}
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "run",
+"label": "Máy phát",
+"keys": [
+"run"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "generator"
+},
+{
+"m": {
+"id": "rpm",
+"label": "Vòng quay",
+"unit": "rpm",
+"keys": [
+"rpm"
+]
+},
+"icon": "speed"
+},
+{
+"m": {
+"id": "volt",
+"label": "Điện áp",
+"unit": "V",
+"keys": [
+"volt"
+]
+},
+"icon": "voltage"
+},
+{
+"m": {
+"id": "hz",
+"label": "Tần số",
+"unit": "Hz",
+"keys": [
+"hz"
+]
+},
+"icon": "freq"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "load",
+"label": "Tải",
+"unit": "%",
+"keys": [
+"load_pct"
+]
+},
+"icon": "weight"
+},
+{
+"m": {
+"id": "fuel",
+"label": "Nhiên liệu",
+"unit": "%",
+"keys": [
+"fuel"
+]
+},
+"icon": "fuel"
+},
+{
+"m": {
+"id": "oil",
+"label": "Áp dầu",
+"unit": "bar",
+"keys": [
+"oil_bar"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "cool",
+"label": "Nhiệt độ nước làm mát",
+"unit": "°C",
+"keys": [
+"coolant"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hours",
+"label": "Giờ chạy",
+"unit": "h",
+"keys": [
+"hours"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "batt",
+"label": "Ắc quy khởi động",
+"unit": "V",
+"keys": [
+"batt_v"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "mains",
+"label": "Điện lưới",
+"keys": [
+"mains"
+],
+"map": {
+"0": "MẤT LƯỚI",
+"1": "Có lưới"
+}
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "gen",
+"label": "Máy phát",
+"keys": [
+"gen"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "generator"
+},
+{
+"m": {
+"id": "batt",
+"label": "Pin dự phòng",
+"unit": "%",
+"keys": [
+"batt_pct"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "battv",
+"label": "Điện áp DC",
+"unit": "V",
+"keys": [
+"batt_v"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "hrs",
+"label": "Dự phòng còn",
+"unit": "giờ",
+"keys": [
+"backup_h"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ tủ",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "door",
+"label": "Cửa tủ",
+"keys": [
+"door"
+],
+"map": {
+"0": "Đóng",
+"1": "MỞ"
+}
+},
+"icon": "door"
+},
+{
+"m": {
+"id": "load",
+"label": "Tải DC",
+"unit": "A",
+"keys": [
+"load_a"
+]
+},
+"icon": "current"
+},
+{
+"m": {
+"id": "rssi",
+"label": "Sóng 4G",
+"unit": "dBm",
+"keys": [
+"rssi"
+]
+},
+"icon": "signal"
+},
+{
+"m": {
+"id": "rain",
+"label": "Mưa hôm nay",
+"unit": "mm",
+"keys": [
+"rain_mm"
+]
+},
+"icon": "rain"
+},
+{
+"m": {
+"id": "rate",
+"label": "Cường độ mưa",
+"unit": "mm/h",
+"keys": [
+"rain_rate"
+]
+},
+"icon": "rain"
+},
+{
+"m": {
+"id": "level",
+"label": "Mực nước sông",
+"unit": "cm",
+"keys": [
+"river_cm"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "ws",
+"label": "Tốc độ gió",
+"unit": "m/s",
+"keys": [
+"wind_ms"
+]
+},
+"icon": "wind"
+},
+{
+"m": {
+"id": "wd",
+"label": "Hướng gió",
+"unit": "°",
+"keys": [
+"wind_deg"
+]
+},
+"icon": "compass"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm",
+"unit": "%",
+"keys": [
+"hum_pct"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "pres",
+"label": "Khí áp",
+"unit": "hPa",
+"keys": [
+"pres_hpa"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "bat",
+"label": "Pin trạm",
+"unit": "V",
+"keys": [
+"batt_v"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "eq",
+"label": "Bể điều hòa",
+"unit": "%",
+"keys": [
+"lvl_eq"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "do",
+"label": "DO bể hiếu khí",
+"unit": "mg/L",
+"keys": [
+"do_mgl"
+]
+},
+"icon": "oxygen"
+},
+{
+"m": {
+"id": "sludge",
+"label": "Bùn bể lắng",
+"unit": "%",
+"keys": [
+"sludge"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "ph",
+"label": "pH nước ra",
+"keys": [
+"ph_out"
+]
+},
+"icon": "ph"
+},
+{
+"m": {
+"id": "cod",
+"label": "COD nước ra",
+"unit": "mg/L",
+"keys": [
+"cod_out"
+]
+},
+"icon": "chem"
+},
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "m³/h",
+"keys": [
+"flow"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "pump",
+"label": "Bơm nước thải",
+"keys": [
+"pump"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "blower",
+"label": "Máy thổi khí",
+"keys": [
+"blower"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "fan"
+},
+{
+"m": {
+"id": "kwh",
+"label": "Điện hôm nay",
+"unit": "kWh",
+"keys": [
+"kwh"
+]
+},
+"icon": "energy"
+},
+{
+"m": {
+"id": "temp",
+"label": "Nhiệt độ buồng",
+"unit": "°C",
+"keys": [
+"temp_c"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "sp",
+"label": "Nhiệt độ cài đặt",
+"unit": "°C",
+"keys": [
+"setpoint"
+]
+},
+"icon": "temp"
+},
+{
+"m": {
+"id": "hum",
+"label": "Độ ẩm buồng",
+"unit": "%",
+"keys": [
+"hum_pct"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "moist",
+"label": "Độ ẩm sản phẩm",
+"unit": "%",
+"keys": [
+"moisture"
+]
+},
+"icon": "humidity"
+},
+{
+"m": {
+"id": "fan",
+"label": "Quạt",
+"keys": [
+"fan"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "fan"
+},
+{
+"m": {
+"id": "heater",
+"label": "Gia nhiệt",
+"keys": [
+"heater"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "flame"
+},
+{
+"m": {
+"id": "door",
+"label": "Cửa",
+"keys": [
+"door"
+],
+"map": {
+"0": "Đóng",
+"1": "MỞ"
+}
+},
+"icon": "door"
+},
+{
+"m": {
+"id": "el",
+"label": "Đã sấy",
+"unit": "phút",
+"keys": [
+"elapsed"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "tot",
+"label": "Thời gian mẻ",
+"unit": "phút",
+"keys": [
+"total_min"
+]
+},
+"icon": "clock"
+},
+{
+"m": {
+"id": "kw",
+"label": "Công suất",
+"unit": "kW",
+"keys": [
+"kw"
+]
+},
+"icon": "power"
+},
+{
+"m": {
+"id": "lvl",
+"label": "Mức bể",
+"unit": "%",
+"keys": [
+"level_pct"
+]
+},
+"icon": "level"
+},
+{
+"m": {
+"id": "pump",
+"label": "Bơm",
+"keys": [
+"pump"
+],
+"map": {
+"0": "Dừng",
+"1": "Chạy"
+}
+},
+"icon": "pump"
+},
+{
+"m": {
+"id": "batt",
+"label": "Pin",
+"unit": "%",
+"keys": [
+"batt_pct"
+]
+},
+"icon": "battery"
+},
+{
+"m": {
+"id": "pv",
+"label": "Pin mặt trời",
+"unit": "W",
+"keys": [
+"pv_w"
+]
+},
+"icon": "light"
+},
+{
+"m": {
+"id": "flow",
+"label": "Lưu lượng",
+"unit": "m³/h",
+"keys": [
+"flow"
+]
+},
+"icon": "flow"
+},
+{
+"m": {
+"id": "press",
+"label": "Áp suất",
+"unit": "bar",
+"keys": [
+"press_bar"
+]
+},
+"icon": "pressure"
+},
+{
+"m": {
+"id": "vol",
+"label": "Nước hôm nay",
+"unit": "m³",
+"keys": [
+"vol_m3"
+]
+},
+"icon": "drop"
+},
+{
+"m": {
+"id": "dry",
+"label": "Bơm chạy khô",
+"keys": [
+"dry"
+],
+"map": {
+"0": "Bình thường",
+"1": "CHẠY KHÔ"
+}
+},
+"icon": "warn"
+}
+]

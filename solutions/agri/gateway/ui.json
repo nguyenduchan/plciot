@@ -3,6 +3,7 @@
  "title": "Nông nghiệp nhà kính",
  "short": "Nhà kính",
  "glyph": "❦",
+ "icon": "leaf",
  "palette": {
   "bg": "#0c1a0e",
   "card": "#142a17",

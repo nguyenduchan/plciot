@@ -161,8 +161,10 @@
     let html = alt ? alt() : DEVICE[id]();
     return html.replace('class="ic ', `class="ic ${opt.on ? 'on ' : ''}`).replace('<svg ', `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}`);
   }
-  /** Icon nhỏ cho một giá trị theo khoá field (level → giọt nước, temp → nhiệt kế…). */
-  function value(key, kind) {
+  /** Icon nhỏ cho một giá trị: bộ ĐẠI LƯỢNG ĐO dùng chung với gateway (metric-icons.js — theo đơn vị, nhãn, khoá: °C → nhiệt kế, bar → đồng hồ áp, %RH → giọt ẩm…);
+   *  thiếu bộ đó thì đoán theo khoá field bằng icon thiết bị như cũ. */
+  function value(key, kind, unit, label) {
+    if (window.PlcQIcons) return window.PlcQIcons.svg(window.PlcQIcons.forField(key, unit, label, kind));
     const k = String(key || '');
     const hit = VALUE.find(([re]) => re.test(k));
     const name = hit ? hit[1] : (kind === 'slider' ? 'gauge' : kind === 'toggle' ? 'power' : 'sensor');

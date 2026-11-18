@@ -42,7 +42,10 @@ sealed class DeviceCard : Card
         Title = string.IsNullOrWhiteSpace(dm?.Title) ? child : dm!.Title;
         var paused = fields.Any(f => !f.Enabled);
         Sub = paused ? "⏸ tạm dừng (bật lại ở trang Thiết bị)" : Title != child ? child : $"{fields.Count} field";
-        Icon = string.IsNullOrEmpty(dm?.Icon) ? (DeviceTemplate.Find(dm?.Template ?? "")?.Icon ?? "") : dm!.Icon;
+        // icon vector theo loại thiết bị (cùng bộ với webapp); chưa khai loại thì đoán theo mã thiết bị (tank1 → bồn, pump2 → bơm…)
+        var guess = dm == null || (string.IsNullOrEmpty(dm.Icon) && string.IsNullOrEmpty(dm.Template))
+            ? DeviceTemplate.All.FirstOrDefault(t => t.Id != "custom" && System.Text.RegularExpressions.Regex.IsMatch(child, "^(" + t.Id + "|" + t.IdPrefix + @")\d*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))?.Id : null;
+        Icon = Icons.ForDevice(dm?.Icon, guess ?? dm?.Template);
         Accent = DeviceStyle.Resolve(dm?.Color);
         if (edit != null)
         {
@@ -62,24 +65,25 @@ sealed class DeviceCard : Card
             {
                 case "tank":
                 {
-                    var t = new TankView { Label = title, Unit = unit, Min = min, Max = max, Margin = new Padding(2), Low = rs.Low ?? 15, High = rs.High ?? 92 };
+                    var t = new TankView { Label = title, Unit = unit, Min = min, Max = max, Margin = new Padding(2), Low = rs.Low ?? 15, High = rs.High ?? 92, IconId = IconData.ForField(p.Field, unit, title, kind) };
                     t.Click += (_, _) => select(key);
                     ctl = t; set = v => t.Value = v ?? double.NaN; break;
                 }
                 case "gauge":
                 {
-                    var gg = new ArcGauge { Label = title, Unit = unit, Min = min, Max = max, Margin = new Padding(2) };
+                    var gg = new ArcGauge { Label = title, Unit = unit, Min = min, Max = max, Margin = new Padding(2), IconId = IconData.ForField(p.Field, unit, title, kind) };
                     gg.Click += (_, _) => select(key);
                     ctl = gg; set = v => gg.Value = v ?? double.NaN; break;
                 }
                 case "toggle":
                 {
                     var row = new Panel { Size = new Size(316, 40), Margin = new Padding(2), BackColor = Color.Transparent };
-                    var lbl = new Label { Text = title, ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = false, Bounds = new Rectangle(4, 0, 150, 40), TextAlign = ContentAlignment.MiddleLeft };
+                    var ico = new IconView { IconId = IconData.ForField(p.Field, unit, title, kind), Location = new Point(4, 11) };
+                    var lbl = new Label { Text = title, ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = false, Bounds = new Rectangle(28, 0, 128, 40), TextAlign = ContentAlignment.MiddleLeft };
                     var stt = new Label { Text = "—", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Bounds = new Rectangle(154, 0, 92, 40), TextAlign = ContentAlignment.MiddleRight };
                     var sw = new ToggleSwitch { Location = new Point(250, 7) };
                     string onT = rs.OnText, offT = rs.OffText;
-                    void Txt() { stt.Text = sw.On ? onT : offT; stt.ForeColor = sw.On ? Theme.Green : Theme.Muted; }
+                    void Txt() { stt.Text = sw.On ? onT : offT; stt.ForeColor = sw.On ? Theme.Green : Theme.Muted; ico.Tint = sw.On ? Theme.Green : Theme.Muted; ico.Invalidate(); }
                     sw.Toggled += _ => Txt();
                     var pc = p; var ch = child;
                     sw.Toggled += async on =>
@@ -88,13 +92,14 @@ sealed class DeviceCard : Card
                         if (err != null) { app.Toast($"Lệnh {ch}.{pc.Field} bị từ chối: {err}", true); sw.On = !on; }
                     };
                     lbl.Click += (_, _) => select(key);
-                    row.Controls.Add(lbl); row.Controls.Add(stt); row.Controls.Add(sw);
+                    row.Controls.Add(ico); row.Controls.Add(lbl); row.Controls.Add(stt); row.Controls.Add(sw);
                     ctl = row; set = v => { if (v.HasValue) { sw.On = v.Value >= 1; Txt(); } }; break;
                 }
                 case "slider":
                 {
                     var row = new Panel { Size = new Size(316, 62), Margin = new Padding(2), BackColor = Color.Transparent };
-                    var lbl = new Label { Text = title, ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = false, Bounds = new Rectangle(4, 0, 200, 26), TextAlign = ContentAlignment.MiddleLeft };
+                    var sico = new IconView { IconId = IconData.ForField(p.Field, unit, title, kind), Location = new Point(4, 4), Tint = Theme.Accent };
+                    var lbl = new Label { Text = title, ForeColor = Theme.Text, Font = Theme.Normal, AutoSize = false, Bounds = new Rectangle(28, 0, 176, 26), TextAlign = ContentAlignment.MiddleLeft };
                     var val = new Label { Text = "—", ForeColor = Theme.Accent, Font = Theme.Semi, AutoSize = false, Bounds = new Rectangle(204, 0, 108, 26), TextAlign = ContentAlignment.MiddleRight };
                     var sl = new SliderBar { Min = min, Max = max, Step = Math.Max(0.1, (max - min) / 100 >= 1 ? 1 : 0.1), Bounds = new Rectangle(0, 28, 316, 30) };
                     var pc = p; var ch = child; var u = unit;
@@ -106,12 +111,12 @@ sealed class DeviceCard : Card
                         else app.Toast($"Đã gửi {ch}.{pc.Field} = {Theme.Num(v)} {u}".TrimEnd());
                     };
                     lbl.Click += (_, _) => select(key);
-                    row.Controls.AddRange(new Control[] { lbl, val, sl });
+                    row.Controls.AddRange(new Control[] { sico, lbl, val, sl });
                     ctl = row; set = v => { if (v.HasValue) { sl.Value = v.Value; val.Text = Theme.Num(v.Value) + " " + u; } }; break;
                 }
                 default:
                 {
-                    var k = new KpiBox { Label = title, Unit = unit, Margin = new Padding(2) };
+                    var k = new KpiBox { Label = title, Unit = unit, Margin = new Padding(2), IconId = IconData.ForField(p.Field, unit, title, kind) };
                     k.Click += (_, _) => select(key);
                     ctl = k; set = v => k.Value = v ?? double.NaN; break;
                 }
@@ -151,7 +156,8 @@ sealed class DashboardPage : UserControl
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
         var lay = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, BackColor = Theme.Bg };
         lay.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        lay.RowStyles.Add(new RowStyle(SizeType.Absolute, 300));
+        lay.RowStyles.Add(new RowStyle(SizeType.Absolute, SolutionHost.ExtraPage != null ? 250 : 300));   // có giao diện giải pháp: biểu đồ thấp hơn, nhường chỗ cho sơ đồ
+        Skin.DarkScroll(_flow);
         lay.Controls.Add(_flow, 0, 0);
         _chartCard.Controls.Add(_chart);
         foreach (var (txt, sec) in new[] { ("6 giờ", 21600), ("1 giờ", 3600), ("5 phút", 300) })

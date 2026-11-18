@@ -3,6 +3,7 @@
  "title": "Trạm viễn thông độc lập",
  "short": "Trạm BTS",
  "glyph": "⌁",
+ "icon": "tower",
  "palette": {
   "bg": "#070f24",
   "card": "#0e1b3d",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Trạm viễn thông độc lập",
-  "icon": "cloud",
+  "icon": "tower",
   "style": "glass",
   "metrics": [
    {

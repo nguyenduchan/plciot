@@ -23,4 +23,8 @@ Webapp và gateway ở hai thư mục riêng; giải pháp có thể chỉ có m
 3. Admin → tab **Giải pháp** tự có mục (mã = tên thư mục, làm mới mỗi 20 giây). Tab chỉ để đổi tên, ẩn, hoặc thêm mục tên khác trỏ cùng thư mục.
 4. Gán cho người dùng ở tab **Người dùng**, hoặc chọn khi phát mã ghép cặp gateway (gateway + webapp của người quét QR dùng cùng giải pháp).
 
+## Icon (webapp + gateway dùng chung)
+
+Nguồn duy nhất `tools/solution-kit/icons.json`: bộ icon đại lượng đo (nét 24×24) + luật chọn icon theo đơn vị / nhãn / khoá field (°C → nhiệt kế, bar → đồng hồ áp, %RH → giọt ẩm, Chạy/Dừng của bơm → bơm…). `gen.py` sinh `webapp/metric-icons.js` (gộp cả vào `industry-engine.js`) và `tools/GatewayApp/Ui/IconData.g.cs`; icon thiết bị của gateway lấy nguyên từ `webapp/icons.js`. Chỉ số có thể đặt `"icon": "<mã>"` để chọn tay. Sửa luật xong chạy lại `gen.py`, rồi kiểm tra: `node tools/solution-kit/test-icons.js` và `dotnet test tools/GatewayApp.Tests`. Xem thử webapp không cần đăng nhập: `tools/solution-kit/ind-preview.html?id=<giải pháp>`; gateway: `GatewayApp.exe --iconsheet icons.png`, `--demo --solshot THƯ_MỤC`.
+
 Chi tiết: `docs/SOLUTIONS.md`.

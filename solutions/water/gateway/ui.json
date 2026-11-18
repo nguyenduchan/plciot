@@ -3,6 +3,7 @@
  "title": "Cấp nước & trạm bơm",
  "short": "Cấp nước",
  "glyph": "≈",
+ "icon": "drop",
  "palette": {
   "bg": "#071c26",
   "card": "#0d2f3f",

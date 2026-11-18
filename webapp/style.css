@@ -507,6 +507,7 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dev-card.is-off .dev-ic { color: var(--muted, #8b98a5); background: color-mix(in srgb, var(--muted, #8b98a5) 14%, transparent); }
 .wic { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: 5px; color: var(--acc, #3b82f6); opacity: .9; font-size: 16px; }
 .wic .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+.wic .qi { width: 16px; height: 16px; display: block; }   /* icon đại lượng đo (metric-icons.js) */
 .ic [class^="ic-"], .ic [class*=" ic-"] { transform-box: fill-box; transform-origin: center; }
 .ic-flow { stroke-dasharray: 3.5 4.5; }
 .ic-wave { }

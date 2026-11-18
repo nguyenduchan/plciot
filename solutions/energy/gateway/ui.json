@@ -3,6 +3,7 @@
  "title": "Giám sát điện năng 3 pha",
  "short": "Điện 3 pha",
  "glyph": "⚡",
+ "icon": "bolt",
  "palette": {
   "bg": "#15110a",
   "card": "#221c0d",

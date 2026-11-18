@@ -3,6 +3,7 @@
  "title": "Trạm khí tượng & thủy văn",
  "short": "Khí tượng",
  "glyph": "☂",
+ "icon": "rain",
  "palette": {
   "bg": "#061520",
   "card": "#0c2638",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Trạm khí tượng & thủy văn",
-  "icon": "wind",
+  "icon": "rain",
   "style": "soft",
   "metrics": [
    {

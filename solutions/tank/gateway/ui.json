@@ -3,6 +3,7 @@
  "title": "Bồn bể xăng dầu & hóa chất",
  "short": "Bồn bể",
  "glyph": "▮",
+ "icon": "level",
  "palette": {
   "bg": "#17100b",
   "card": "#26190f",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Bồn bể xăng dầu & hóa chất",
-  "icon": "fuel",
+  "icon": "level",
   "style": "sharp",
   "metrics": [
    {

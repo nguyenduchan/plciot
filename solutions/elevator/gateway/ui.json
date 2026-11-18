@@ -3,6 +3,7 @@
  "title": "Thang máy & tòa nhà",
  "short": "Thang máy",
  "glyph": "⇅",
+ "icon": "elevator",
  "palette": {
   "bg": "#0c1017",
   "card": "#171e29",

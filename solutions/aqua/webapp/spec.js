@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Nuôi trồng thủy sản",
- "icon": "wave",
+ "icon": "fish",
  "style": "soft",
  "metrics": [
   {

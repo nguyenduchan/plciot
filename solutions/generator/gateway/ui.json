@@ -3,6 +3,7 @@
  "title": "Máy phát điện & ATS",
  "short": "Máy phát",
  "glyph": "⚡",
+ "icon": "generator",
  "palette": {
   "bg": "#14100a",
   "card": "#221b0c",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Máy phát điện & ATS",
-  "icon": "bolt",
+  "icon": "generator",
   "style": "dense",
   "metrics": [
    {

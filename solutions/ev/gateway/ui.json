@@ -3,6 +3,7 @@
  "title": "Trạm sạc xe điện",
  "short": "Sạc xe điện",
  "glyph": "⏻",
+ "icon": "plug",
  "palette": {
   "bg": "#120a26",
   "card": "#201440",

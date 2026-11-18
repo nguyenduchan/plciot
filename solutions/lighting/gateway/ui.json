@@ -3,6 +3,7 @@
  "title": "Chiếu sáng thông minh",
  "short": "Chiếu sáng",
  "glyph": "☼",
+ "icon": "bulb",
  "palette": {
   "bg": "#0a1022",
   "card": "#121c3c",

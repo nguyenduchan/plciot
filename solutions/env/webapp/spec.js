@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Quan trắc môi trường",
- "icon": "cloud",
+ "icon": "wind",
  "style": "glass",
  "metrics": [
   {

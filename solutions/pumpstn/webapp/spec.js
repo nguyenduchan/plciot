@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Trạm bơm độc lập (pin mặt trời)",
- "icon": "drop",
+ "icon": "pump",
  "style": "soft",
  "metrics": [
   {

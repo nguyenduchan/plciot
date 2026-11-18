@@ -13,6 +13,8 @@ static class Program
     static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        var sheet = Array.IndexOf(args, "--iconsheet");
+        if (sheet >= 0 && sheet + 1 < args.Length) { MainForm.IconSheet(args[sheet + 1]); return; }
         var first = true;
         // Đổi giải pháp (kiểu giao diện) lúc đang chạy: dựng lại cửa sổ NGAY trong cùng tiến trình với bảng màu/trang mới
         // (không phải mở lại app). Trạng thái OTP được giữ để không bắt nhập lại.
@@ -35,6 +37,8 @@ static class Program
                 if (fr >= 0 && fr + 1 < args.Length) form.Shown += async (_, _) => await form.FreshTestAsync(args[fr + 1]);
                 var st = Array.IndexOf(args, "--slottest");
                 if (st >= 0 && st + 1 < args.Length) form.Shown += async (_, _) => await form.SlotTestAsync(args[st + 1]);
+                var ss = Array.IndexOf(args, "--solshot");
+                if (ss >= 0 && ss + 1 < args.Length) form.Shown += async (_, _) => await form.SolShotAsync(args[ss + 1]);
                 var m = Array.IndexOf(args, "--edittest");
                 if (m >= 0 && m + 1 < args.Length) form.Shown += async (_, _) => await form.EditTestAsync(args[m + 1]);
             }

@@ -28,6 +28,17 @@ static class Skin
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int SetWindowTheme(IntPtr hwnd, string? app, string? idList);
+
+    /// <summary>Thanh cuộn tối (kiểu Explorer chế độ tối của Windows 10/11) cho khung cuộn khi bảng màu nền tối.</summary>
+    public static void DarkScroll(Control c)
+    {
+        if (Theme.Bg.GetBrightness() > 0.45f) return;
+        void Apply() { try { SetWindowTheme(c.Handle, "DarkMode_Explorer", null); } catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { } }
+        if (c.IsHandleCreated) Apply(); else c.HandleCreated += (_, _) => Apply();
+    }
+
     public static Label Lbl(string text, bool muted = true) => new()
     {
         Text = text, AutoSize = true, ForeColor = muted ? Theme.Muted : Theme.Text, Font = Theme.Normal, BackColor = Color.Transparent, Anchor = AnchorStyles.Left,

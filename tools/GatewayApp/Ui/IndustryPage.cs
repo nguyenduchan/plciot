@@ -19,6 +19,7 @@ sealed class IndustryPage : UserControl
         public int? Dec; public double Min, Max = 100; public bool HasRange;
         public double? Lo, LoLo, Hi, HiHi;
         public Dictionary<string, string>? Map, Lv;
+        public string Icon = "chart";   // icon đại lượng đo (cùng luật với webapp: IconData.ForMetric)
     }
 
     readonly IGatewayApp _app;
@@ -39,17 +40,17 @@ sealed class IndustryPage : UserControl
     /// liền nhau, không có thanh tab; cao theo nội dung (trang chính cuộn), không tự cuộn.
     /// </summary>
     public bool Merged { get; set; }
-    readonly List<(string Label, JsonElement Blocks)> _tabs = new();
+    readonly List<(string Label, string Icon, JsonElement Blocks)> _tabs = new();
     readonly List<(RectangleF R, int Idx)> _tabRects = new();
     DateTime _lastHist = DateTime.MinValue;
 
     public IndustryPage(IGatewayApp app, string specJson)
     {
         _app = app; _spec = JsonDocument.Parse(specJson).RootElement.Clone();
-        BackColor = Theme.Bg; DoubleBuffered = true; ResizeRedraw = true; AutoScroll = true;
+        BackColor = Theme.Bg; DoubleBuffered = true; ResizeRedraw = true; AutoScroll = true; Skin.DarkScroll(this);
         foreach (var mj in _spec.GetProperty("metrics").EnumerateArray()) { var m = ParseMetric(mj); _m[m.Id] = m; }
-        _tabs.Add(("Tổng quan", _spec.GetProperty("overview")));
-        foreach (var t in _spec.GetProperty("tabs").EnumerateArray()) _tabs.Add((Str(t, "label"), t.GetProperty("blocks")));
+        _tabs.Add(("Tổng quan", Str(_spec, "icon", "grid"), _spec.GetProperty("overview")));
+        foreach (var t in _spec.GetProperty("tabs").EnumerateArray()) _tabs.Add((Str(t, "label"), Str(t, "icon", "chart"), t.GetProperty("blocks")));
         _t.Tick += (_, _) => { Tick(); Invalidate(); };
         _t.Start();
         Disposed += (_, _) => _t.Dispose();
@@ -73,6 +74,8 @@ sealed class IndustryPage : UserControl
         if (j.TryGetProperty("th", out var th)) { m.Lo = Dbl(th, "lo"); m.LoLo = Dbl(th, "loLo"); m.Hi = Dbl(th, "hi"); m.HiHi = Dbl(th, "hiHi"); }
         if (j.TryGetProperty("map", out var mp)) m.Map = mp.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
         if (j.TryGetProperty("lv", out var lv)) m.Lv = lv.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
+        m.Icon = j.TryGetProperty("icon", out var ic) && ic.ValueKind == JsonValueKind.String && Icons.Has(ic.GetString()) ? ic.GetString()!
+            : IconData.ForMetric(m.Id, m.Label, m.Unit, m.Keys.Select(k => k.Key), m.Map?.Values);
         return m;
     }
 
@@ -206,8 +209,8 @@ sealed class IndustryPage : UserControl
     {
         if (v == null) return "—";
         if (m.Map != null) return m.Map.TryGetValue(((long)Math.Round(v.Value)).ToString(), out var s) ? s : v.Value.ToString("0");
-        if (m.Dec != null) return v.Value.ToString("F" + m.Dec);
-        return Theme.Num(v.Value);
+        if (m.Dec != null) return Group(v.Value.ToString("F" + m.Dec));
+        return Group(Theme.Num(v.Value));
     }
 
     Color Lc(string lv) => lv switch { "ok" => Theme.Green, "warn" => Theme.Yellow, "bad" => Theme.Red, "off" => Theme.Muted, _ => Theme.Accent };
@@ -225,14 +228,28 @@ sealed class IndustryPage : UserControl
         base.OnPaint(e);
         var g = e.Graphics; Theme.Quality(g);
         g.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y);
-        var pad = 20f; var w = Math.Max(300, ClientSize.Width - pad * 2 - (VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
-        float y = pad;
-        // tiêu đề + chip trạng thái
-        using (var tb = new SolidBrush(Theme.Text)) g.DrawString(Str(_spec, "heading", Str(_spec, "title")), Theme.Big, tb, pad, y);
+        var pad = Merged ? 2f : 20f; var w = Math.Max(300, ClientSize.Width - pad * 2 - (VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+        float y = Merged ? 4f : pad;
         var act = Active();
-        var st = _devs.Count == 0 ? ("▲ Chưa có dữ liệu", Theme.Yellow) : _demoShown ? ("● Dữ liệu mẫu (--demo)", Theme.Teal) : act.Count > 0 ? ($"▲ {act.Count} cảnh báo", Theme.Yellow) : ("● Đang nhận dữ liệu", Theme.Green);
-        using (var sb = new SolidBrush(st.Item2)) { var sz = g.MeasureString(st.Item1, Theme.Normal); g.DrawString(st.Item1, Theme.Normal, sb, pad + w - sz.Width, y + 10); }
-        y += 46;
+        var st = _devs.Count == 0 ? ("Chưa có dữ liệu", Theme.Yellow) : _demoShown ? ("Dữ liệu mẫu (--demo)", Theme.Teal) : act.Count > 0 ? ($"{act.Count} cảnh báo", Theme.Yellow) : ("Đang nhận dữ liệu", Theme.Green);
+        if (!Merged)
+        {
+            // tiêu đề có icon giải pháp (gộp vào trang chính thì tiêu đề nằm ở thanh trên của cửa sổ)
+            Icons.Badge(g, Str(_spec, "icon", "chart"), new RectangleF(pad, y + 2, 38, 38), Theme.Accent, 10);
+            using (var tb = new SolidBrush(Theme.Text)) g.DrawString(Str(_spec, "heading", Str(_spec, "title")), Theme.Big, tb, pad + 48, y);
+        }
+        // chip trạng thái: chấm màu + chữ, số thiết bị đang gửi dữ liệu
+        {
+            var txt = st.Item1 + (_devs.Count > 0 ? $"  ·  {_devs.Count} thiết bị" : "");
+            var sz = g.MeasureString(txt, Theme.Small);
+            var r = Merged ? new RectangleF(pad, y, sz.Width + 34, 26) : new RectangleF(pad + w - sz.Width - 34, y + 8, sz.Width + 34, 26);
+            using (var path = Theme.Round(r, 13)) using (var br = new SolidBrush(Color.FromArgb(34, st.Item2))) using (var pen = new Pen(Color.FromArgb(110, st.Item2))) { g.FillPath(br, path); g.DrawPath(pen, path); }
+            var pulse = (float)(0.5 + 0.5 * Math.Sin((DateTime.Now - _t0).TotalSeconds * 3));
+            using (var halo = new SolidBrush(Color.FromArgb((int)(70 * pulse), st.Item2))) g.FillEllipse(halo, r.X + 7, r.Y + 6, 14, 14);
+            using (var dot = new SolidBrush(st.Item2)) g.FillEllipse(dot, r.X + 10, r.Y + 9, 8, 8);
+            using var tb = new SolidBrush(Theme.Text); g.DrawString(txt, Theme.Small, tb, r.X + 24, r.Y + 5);
+        }
+        y += Merged ? 38 : 50;
         if (!Merged)
         {
             // thanh tab
@@ -247,17 +264,21 @@ sealed class IndustryPage : UserControl
             y += 40;
         }
         y = MissingBanner(g, pad, y, w);
-        // Gộp: mọi tab liền nhau (mỗi tab sau "Tổng quan" có tiêu đề nhóm); không gộp: chỉ tab đang chọn
+        // Gộp: mọi tab liền nhau (mỗi tab sau "Tổng quan" có tiêu đề nhóm); không gộp: chỉ tab đang chọn.
+        // Khi gộp, khối trùng hệt khối đã vẽ (vd. "Cảnh báo" có ở cả tổng quan lẫn tab An toàn) chỉ vẽ một lần.
+        var seen = new HashSet<string>();
         for (var ti = Merged ? 0 : _tab; ti < (Merged ? _tabs.Count : _tab + 1); ti++)
         {
-            if (Merged && ti > 0)
-            { using var hb = new SolidBrush(Theme.Text); g.DrawString(_tabs[ti].Label, Theme.Semi, hb, pad, y); y += 28; }
-            foreach (var b in _tabs[ti].Blocks.EnumerateArray())
+            var blocks = _tabs[ti].Blocks.EnumerateArray().Where(b => !Merged || seen.Add(Str(b, "type") == "alarms" ? "alarms" : b.GetRawText())).ToList();
+            if (blocks.Count == 0) continue;
+            if (Merged && ti > 0) y = Section(g, _tabs[ti].Label, _tabs[ti].Icon, pad, y, w);
+            foreach (var b in blocks)
             {
-                if (b.TryGetProperty("title", out var tt) && tt.ValueKind == JsonValueKind.String)
-                { using var mb = new SolidBrush(Theme.Muted); g.DrawString((tt.GetString() ?? "").ToUpperInvariant(), Theme.Small, mb, pad, y); y += 20; }
+                var title = Str(b, "title");
+                if (title.Length > 0 && Str(b, "type") != "trend")
+                { using var mb = new SolidBrush(Theme.Muted); g.DrawString(title.ToUpperInvariant(), Theme.Small, mb, pad + 2, y); y += 20; }
                 var h = Block(g, b, pad, y, w);
-                y += h + 18;
+                if (h > 0) y += h + 16; else if (title.Length > 0 && Str(b, "type") != "trend") y -= 20;
             }
         }
         y += pad;
@@ -265,6 +286,21 @@ sealed class IndustryPage : UserControl
         if (Merged) { if (Height != need.Height) BeginInvoke(() => Height = need.Height); }   // cao theo nội dung, trang chính cuộn
         else if (AutoScrollMinSize.Height != need.Height) BeginInvoke(() => AutoScrollMinSize = need);
     }
+
+    /// <summary>Tiêu đề nhóm (một tab của giải pháp khi gộp vào trang chính): icon + chữ + vạch mảnh.</summary>
+    float Section(Graphics g, string label, string icon, float x, float y, float w)
+    {
+        y += 6;
+        Icons.Draw(g, icon, new RectangleF(x, y + 1, 20, 20), Theme.Accent);
+        using (var hb = new SolidBrush(Theme.Text)) g.DrawString(label, Theme.Title, hb, x + 28, y);
+        var tw = g.MeasureString(label, Theme.Title).Width;
+        using (var pen = new Pen(Color.FromArgb(150, Theme.Border))) g.DrawLine(pen, x + 36 + tw, y + 12, x + w, y + 12);
+        return y + 34;
+    }
+
+    /// <summary>Số đẹp cho chỉ số: ≥ 10 000 có dấu cách hàng nghìn (27 650).</summary>
+    static string Group(string t) => t.Length > 4 && double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) && Math.Abs(d) >= 10000 && !t.Contains('.')
+        ? d.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(",", " ") : t;
 
     List<(Metric M, double? V, string Lv)> Active()
     {
@@ -333,88 +369,141 @@ sealed class IndustryPage : UserControl
 
     IEnumerable<string> Items(JsonElement b, string k = "items") => b.TryGetProperty(k, out var a) && a.ValueKind == JsonValueKind.Array ? a.EnumerateArray().Select(v => v.GetString() ?? "") : Enumerable.Empty<string>();
 
-    float Kpis(Graphics g, JsonElement b, float x, float y, float w)
+    static readonly StringFormat NoWrap = new() { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+    static readonly StringFormat Center = new() { Alignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+
+    /// <summary>Màu nhấn của một chỉ số: vàng/đỏ khi vượt ngưỡng, xám khi tắt, còn lại màu chủ đề (không tô xanh lá tràn lan).</summary>
+    Color Tone(string lv) => lv is "warn" or "bad" or "off" ? Lc(lv) : Theme.Accent;
+
+    /// <summary>Icon nhỏ + nhãn, căn giữa trong khung rộng cw.</summary>
+    void IconLabel(Graphics g, string icon, string label, float x, float y, float cw, Color ic)
     {
-        var ids = Items(b).ToList(); var cols = w >= 720 ? 4 : 2; var cw = (w - (cols - 1) * 10) / cols; var rows = (ids.Count + cols - 1) / cols;
-        for (var i = 0; i < ids.Count; i++)
-        {
-            var m = M(ids[i]); var v = Val(ids[i]); var lv = LevelOf(m, v); var r = new RectangleF(x + (i % cols) * (cw + 10), y + (i / cols) * 74, cw, 64);
-            Card(g, r, string.IsNullOrEmpty(lv) ? null : Lc(lv));
-            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
-            g.DrawString(m.Label, Theme.Small, mb, r.X + 14, r.Y + 8);
-            var t = Text(m, v); g.DrawString(t, Theme.Big, tb, r.X + 12, r.Y + 24);
-            if (m.Unit.Length > 0) g.DrawString(m.Unit, Theme.Small, mb, r.X + 14 + g.MeasureString(t, Theme.Big).Width, r.Y + 40);
-        }
-        return rows * 74 - 10;
+        var lw = Math.Min(g.MeasureString(label, Theme.Small).Width, cw - 30); var total = 20 + lw; var sx = x + (cw - total) / 2;
+        Icons.Draw(g, icon, new RectangleF(sx, y + 1, 15, 15), ic);
+        using var mb = new SolidBrush(Theme.Muted); g.DrawString(label, Theme.Small, mb, new RectangleF(sx + 20, y, lw + 4, 18), NoWrap);
     }
 
-    void Arc(Graphics g, RectangleF r, Metric m, double? v, float stroke = 9)
+    float Kpis(Graphics g, JsonElement b, float x, float y, float w)
+    {
+        var ids = Items(b).ToList(); if (ids.Count == 0) return 0;
+        var cols = Math.Min(w >= 720 ? 4 : 2, ids.Count); var cw = (w - (cols - 1) * 12) / cols; var rows = (ids.Count + cols - 1) / cols; const float h = 78;
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var m = M(ids[i]); var v = Val(ids[i]); var lv = LevelOf(m, v); var col = Tone(lv);
+            var r = new RectangleF(x + (i % cols) * (cw + 12), y + (i / cols) * (h + 12), cw, h);
+            Card(g, r, lv is "warn" or "bad" ? col : null);
+            Icons.Badge(g, m.Icon, new RectangleF(r.Right - 46, r.Y + 13, 34, 34), col, 10);
+            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
+            g.DrawString(m.Label, Theme.Small, mb, new RectangleF(r.X + 14, r.Y + 11, r.Width - 68, 18), NoWrap);
+            var t = Text(m, v); g.DrawString(t, Theme.Big, tb, r.X + 10, r.Y + 31);
+            if (m.Unit.Length > 0) g.DrawString(m.Unit, Theme.Small, mb, r.X + 8 + g.MeasureString(t, Theme.Big).Width, r.Y + 47);
+        }
+        return rows * (h + 12) - 12;
+    }
+
+    void Arc(Graphics g, RectangleF r, Metric m, double? v, float stroke = 9, bool ends = false)
     {
         var f = v == null ? 0f : (float)Math.Clamp((v.Value - m.Min) / ((m.Max - m.Min) == 0 ? 1 : m.Max - m.Min), 0, 1);
         var rr = new RectangleF(r.X + stroke, r.Y + stroke, r.Width - stroke * 2, r.Height - stroke * 2);
-        using (var pen = new Pen(Theme.Border, stroke) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(pen, rr, 144, 252);
-        if (v != null) using (var pen = new Pen(Lc(string.IsNullOrEmpty(LevelOf(m, v)) ? "" : LevelOf(m, v)), stroke) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(pen, rr, 144, Math.Max(2f, 252 * f));
+        using (var pen = new Pen(Theme.Mix(Theme.Panel, Theme.Border, 0.9), stroke) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(pen, rr, 144, 252);
+        var lv = LevelOf(m, v);
+        // vạch ngưỡng trên cung (vàng = cảnh báo, đỏ = nguy hiểm)
+        void Tick(double? t, Color c)
+        {
+            if (t == null || m.Max <= m.Min) return; var a = (144 + 252 * Math.Clamp((t.Value - m.Min) / (m.Max - m.Min), 0, 1)) * Math.PI / 180;
+            float cx = rr.X + rr.Width / 2, cy = rr.Y + rr.Height / 2, ro = rr.Width / 2 + stroke * 0.75f, ri = rr.Width / 2 - stroke * 0.75f;
+            using var p = new Pen(c, 2); g.DrawLine(p, cx + ri * (float)Math.Cos(a), cy + ri * (float)Math.Sin(a), cx + ro * (float)Math.Cos(a), cy + ro * (float)Math.Sin(a));
+        }
+        if (v != null)
+        {
+            var col = lv == "" ? Theme.Accent : Lc(lv);
+            using var pen = new Pen(col, stroke) { StartCap = LineCap.Round, EndCap = LineCap.Round }; g.DrawArc(pen, rr, 144, Math.Max(2f, 252 * f));
+        }
+        Tick(m.Hi, Theme.Yellow); Tick(m.Lo, Theme.Yellow); Tick(m.HiHi, Theme.Red); Tick(m.LoLo, Theme.Red);
         using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted);
         var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        g.DrawString(Text(m, v), r.Width > 130 ? Theme.Huge : Theme.Big, tb, new RectangleF(r.X, r.Y + r.Height / 2 - 18, r.Width, 32), sf);
+        var big = r.Width > 130 ? Theme.Huge : r.Width > 80 ? Theme.Big : Theme.Semi;
+        g.DrawString(Text(m, v), big, tb, new RectangleF(r.X - 10, r.Y + r.Height / 2 - 20, r.Width + 20, 36), sf);
         g.DrawString(m.Unit, Theme.Small, mb, new RectangleF(r.X, r.Y + r.Height / 2 + 12, r.Width, 18), sf);
+        if (ends && m.HasRange)
+        {
+            g.DrawString(Theme.Num(m.Min), Theme.Small, mb, new RectangleF(r.X, r.Bottom - 22, r.Width / 2 - 10, 16), new StringFormat { Alignment = StringAlignment.Center });
+            g.DrawString(Theme.Num(m.Max), Theme.Small, mb, new RectangleF(r.X + r.Width / 2 + 10, r.Bottom - 22, r.Width / 2 - 10, 16), new StringFormat { Alignment = StringAlignment.Center });
+        }
     }
 
     float Gauges(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var ids = Items(b).ToList(); var n = Math.Max(1, ids.Count); var cw = (w - (n - 1) * 10) / n; var h = Math.Min(190f, cw);
-        for (var i = 0; i < ids.Count; i++)
+        var ids = Items(b).ToList(); if (ids.Count == 0) return 0;
+        var n = ids.Count; var cw = (w - (n - 1) * 12) / n; var gs = Math.Min(156f, cw - 30); var h = gs + 40;
+        for (var i = 0; i < n; i++)
         {
-            var r = new RectangleF(x + i * (cw + 10), y, cw, h + 26); Card(g, r);
-            var m = M(ids[i]); Arc(g, new RectangleF(r.X + (cw - h) / 2 + 6, r.Y + 6, h - 12, h - 12), m, Val(ids[i]));
-            using var mb = new SolidBrush(Theme.Muted); var sf = new StringFormat { Alignment = StringAlignment.Center };
-            g.DrawString(m.Label, Theme.Small, mb, new RectangleF(r.X, r.Bottom - 24, r.Width, 20), sf);
+            var r = new RectangleF(x + i * (cw + 12), y, cw, h); Card(g, r);
+            var m = M(ids[i]); var v = Val(ids[i]);
+            Arc(g, new RectangleF(r.X + (cw - gs) / 2, r.Y + 10, gs, gs), m, v, gs > 120 ? 10 : 8, true);
+            IconLabel(g, m.Icon, m.Label, r.X, r.Bottom - 30, cw, Tone(LevelOf(m, v)));
         }
-        return h + 26;
+        return h;
     }
 
     float Ring(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var main = M(b.GetProperty("main").GetString()!); var subs = Items(b, "subs").ToList(); var h = 190f;
-        var r = new RectangleF(x, y, w, h + 10); Card(g, r);
-        Arc(g, new RectangleF(x + 14, y + 8, h - 6, h - 6), main, Val(main.Id), 12);
-        using var mb = new SolidBrush(Theme.Muted); g.DrawString(main.Label, Theme.Semi, mb, x + 14 + (h - 6) / 2 - 24, y + h - 6);
-        var cw = (w - h - 30) / Math.Max(1, subs.Count);
+        var main = M(b.GetProperty("main").GetString()!); var subs = Items(b, "subs").ToList(); const float ms = 158; const float h = ms + 46;
+        Card(g, new RectangleF(x, y, w, h));
+        Arc(g, new RectangleF(x + 22, y + 12, ms, ms), main, Val(main.Id), 13);
+        IconLabel(g, main.Icon, main.Label, x + 22, y + ms + 16, ms, Theme.Accent);
+        var sx = x + ms + 56;
+        using (var sep = new Pen(Theme.Border)) g.DrawLine(sep, sx - 18, y + 22, sx - 18, y + h - 22);
+        var n = Math.Max(1, subs.Count); var cw = (x + w - 16 - sx) / n; var ss = Math.Min(cw - 26, 124f);
         for (var i = 0; i < subs.Count; i++)
         {
-            var m = M(subs[i]); var rc = new RectangleF(x + h + 16 + i * cw, y + 30, cw - 6, Math.Min(cw - 6, 120));
-            Arc(g, rc, m, Val(subs[i]), 7); g.DrawString(m.Label, Theme.Small, mb, rc.X + 4, rc.Bottom + 2);
+            var m = M(subs[i]); var v = Val(subs[i]);
+            var rc = new RectangleF(sx + i * cw + (cw - ss) / 2, y + 12 + (ms - ss) / 2, ss, ss);
+            Arc(g, rc, m, v, 8);
+            IconLabel(g, m.Icon, m.Label, sx + i * cw, y + ms + 16, cw, Tone(LevelOf(m, v)));
         }
-        return h + 10;
+        return h;
     }
 
     float Bars(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var ids = Items(b).ToList(); var h = ids.Count * 30 + 16; Card(g, new RectangleF(x, y, w, h));
+        var ids = Items(b).ToList(); if (ids.Count == 0) return 0; const float rh = 36; var h = ids.Count * rh + 16;
+        Card(g, new RectangleF(x, y, w, h));
+        var lw = ids.Max(id => g.MeasureString(M(id).Label, Theme.Small).Width);
+        var bx = x + Math.Max(w * 0.2f, 46 + lw + 12); var bw = x + w - 120 - bx;
         for (var i = 0; i < ids.Count; i++)
         {
-            var m = M(ids[i]); var v = Val(ids[i]); var ry = y + 12 + i * 30; var lv = LevelOf(m, v);
+            var m = M(ids[i]); var v = Val(ids[i]); var ry = y + 8 + i * rh; var lv = LevelOf(m, v); var col = lv == "" ? Theme.Accent : Lc(lv);
             var f = v == null ? 0f : (float)Math.Clamp((v.Value - m.Min) / ((m.Max - m.Min) == 0 ? 1 : m.Max - m.Min), 0, 1);
-            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text); using var trk = new SolidBrush(Theme.Border); using var fill = new SolidBrush(Lc(lv));
-            g.DrawString(m.Label, Theme.Small, mb, x + 14, ry + 2);
-            var bx = x + w * 0.26f; var bw = w * 0.5f; g.FillRectangle(trk, bx, ry + 6, bw, 9); g.FillRectangle(fill, bx, ry + 6, bw * f, 9);
-            g.DrawString($"{Text(m, v)} {m.Unit}".Trim(), Theme.Normal, tb, bx + bw + 12, ry);
+            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
+            Icons.Draw(g, m.Icon, new RectangleF(x + 16, ry + 9, 18, 18), Tone(lv));
+            g.DrawString(m.Label, Theme.Small, mb, new RectangleF(x + 42, ry + 10, bx - x - 50, 18), NoWrap);
+            var track = new RectangleF(bx, ry + 13, bw, 10);
+            using (var tp = Theme.Round(track, 5)) using (var tbr = new SolidBrush(Theme.Mix(Theme.Panel, Theme.Border, 0.8))) g.FillPath(tbr, tp);
+            if (f > 0.005) using (var fp = Theme.Round(new RectangleF(bx, ry + 13, Math.Max(10, bw * f), 10), 5)) using (var fb = new SolidBrush(col)) g.FillPath(fb, fp);
+            void Mark(double? t, Color c) { if (t == null || m.Max <= m.Min) return; var tx = bx + bw * (float)Math.Clamp((t.Value - m.Min) / (m.Max - m.Min), 0, 1); using var p = new Pen(c, 2); g.DrawLine(p, tx, ry + 9, tx, ry + 27); }
+            Mark(m.Hi, Theme.Yellow); Mark(m.Lo, Theme.Yellow); Mark(m.HiHi, Theme.Red); Mark(m.LoLo, Theme.Red);
+            var s = $"{Text(m, v)} {m.Unit}".Trim(); g.DrawString(s, Theme.Semi, tb, x + w - 14 - g.MeasureString(s, Theme.Semi).Width, ry + 7);
         }
         return h;
     }
 
     float States(Graphics g, JsonElement b, float x, float y, float w)
     {
-        float cx = x, cy = y; const float h = 30;
+        float cx = x, cy = y; const float h = 34;
         foreach (var id in Items(b))
         {
-            var m = M(id); var v = Val(id); var lv = m.Lv != null ? LevelOf(m, v) : (v is > 0 ? "ok" : "off");
-            var s = $"{m.Label}: {Text(m, v)}"; var sz = g.MeasureString(s, Theme.Small); var cw = sz.Width + 34;
-            if (cx + cw > x + w) { cx = x; cy += h + 6; }
-            var r = new RectangleF(cx, cy, cw, h); using var path = Theme.Round(r, 15); using var br = new SolidBrush(Theme.Panel); using var pen = new Pen(Theme.Border);
-            g.FillPath(br, path); g.DrawPath(pen, path);
-            using var dot = new SolidBrush(Lc(lv)); g.FillEllipse(dot, r.X + 10, r.Y + 10, 10, 10);
-            using var tb = new SolidBrush(Theme.Text); g.DrawString(s, Theme.Small, tb, r.X + 26, r.Y + 7);
+            var m = M(id); var v = Val(id); var lv = m.Lv != null ? LevelOf(m, v) : (v is > 0 ? "ok" : "off"); var col = lv == "" ? Theme.Accent : Lc(lv);
+            var lab = m.Label; var val = Text(m, v);
+            var w1 = g.MeasureString(lab, Theme.Small).Width; var w2 = g.MeasureString(val, Theme.Semi).Width; var cw = 38 + w1 + w2 + 6;
+            if (cx + cw > x + w && cx > x) { cx = x; cy += h + 8; }
+            var r = new RectangleF(cx, cy, cw, h);
+            using (var path = Theme.Round(r, h / 2))
+            using (var br = new SolidBrush(lv == "off" ? Theme.Panel : Theme.Mix(Theme.Panel, col, 0.12)))
+            using (var pen = new Pen(lv == "off" ? Theme.Border : Theme.Mix(Theme.Border, col, 0.45))) { g.FillPath(br, path); g.DrawPath(pen, path); }
+            Icons.Draw(g, m.Icon, new RectangleF(r.X + 11, r.Y + 8, 18, 18), col);
+            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(lv == "off" ? Theme.Muted : Theme.Text);
+            g.DrawString(lab, Theme.Small, mb, r.X + 34, r.Y + 9); g.DrawString(val, Theme.Semi, tb, r.X + 34 + w1, r.Y + 7);
             cx += cw + 8;
         }
         return cy + h - y;
@@ -425,76 +514,152 @@ sealed class IndustryPage : UserControl
         var main = M(b.GetProperty("main").GetString()!); var subs = Items(b, "subs").Select(M).ToList();
         var ids = DevIds(b, subs.Prepend(main).ToArray());
         if (ids.Count == 0) return 0;
-        var cols = w >= 760 ? 3 : 2; var cw = (w - (cols - 1) * 10) / cols; const float h = 118;
+        var cols = w >= 760 ? 3 : 2; var cw = (w - (cols - 1) * 12) / cols; const float h = 124;
         for (var i = 0; i < ids.Count; i++)
         {
-            var r = new RectangleF(x + (i % cols) * (cw + 10), y + (i / cols) * (h + 10), cw, h); var o = _devs[ids[i]];
-            var v = Own(o, main); var lv = LevelOf(main, v); Card(g, r, string.IsNullOrEmpty(lv) ? null : Lc(lv), "top");
+            var r = new RectangleF(x + (i % cols) * (cw + 12), y + (i / cols) * (h + 12), cw, h); var o = _devs[ids[i]];
+            var v = Own(o, main); var lv = LevelOf(main, v); var col = Tone(lv);
+            Card(g, r, lv is "warn" or "bad" ? col : null, "top");
+            Icons.Badge(g, main.Icon, new RectangleF(r.Right - 44, r.Y + 12, 32, 32), col, 9);
             using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
-            g.DrawString(TitleOf(ids[i]), Theme.Semi, tb, r.X + 12, r.Y + 10);
+            g.DrawString(TitleOf(ids[i]), Theme.Semi, tb, new RectangleF(r.X + 14, r.Y + 12, r.Width - 66, 20), NoWrap);
             var t = Text(main, v); g.DrawString(t, Theme.Big, tb, r.X + 10, r.Y + 32);
-            g.DrawString(main.Unit, Theme.Small, mb, r.X + 14 + g.MeasureString(t, Theme.Big).Width, r.Y + 50);
-            g.DrawString(main.Label, Theme.Small, mb, r.X + 12, r.Y + 68);
-            var line = string.Join("  ", subs.Select(s => $"{s.Label} {Text(s, Own(o, s))}{(s.Unit.Length > 0 ? " " + s.Unit : "")}"));
-            g.DrawString(line, Theme.Small, mb, new RectangleF(r.X + 12, r.Y + 88, r.Width - 20, 28));
+            var tw = g.MeasureString(t, Theme.Big).Width;
+            g.DrawString($"{main.Unit}  {main.Label}".Trim(), Theme.Small, mb, r.X + 8 + tw, r.Y + 48);
+            // chỉ số phụ: icon (nói lên đại lượng) + số, xếp ngang, xuống dòng khi hết chỗ
+            float sx = r.X + 14, sy = r.Y + 82;
+            foreach (var s in subs)
+            {
+                var sv = Own(o, s); var txt = $"{Text(s, sv)}{(s.Unit.Length > 0 ? " " + s.Unit : "")}"; var slv = LevelOf(s, sv);
+                var sw = 20 + g.MeasureString(txt, Theme.Small).Width + 10;
+                if (sx + sw > r.Right - 10 && sx > r.X + 14) { sx = r.X + 14; sy += 20; if (sy > r.Bottom - 16) break; }
+                Icons.Draw(g, s.Icon, new RectangleF(sx, sy + 1, 15, 15), slv is "warn" or "bad" ? Lc(slv) : Theme.Muted);
+                using var vb = new SolidBrush(slv is "warn" or "bad" ? Lc(slv) : Theme.Text); g.DrawString(txt, Theme.Small, vb, sx + 18, sy);
+                sx += sw;
+            }
         }
-        return ((ids.Count + cols - 1) / cols) * (h + 10) - 10;
+        return ((ids.Count + cols - 1) / cols) * (h + 12) - 12;
     }
 
+    /// <summary>Bồn kính: chất lỏng màu chủ đề (vàng/đỏ khi vượt ngưỡng), mặt sóng, vạch chia, số ở giữa.</summary>
     void TankAt(Graphics g, RectangleF r, Metric m, double? v, string label)
     {
         var f = v == null ? 0f : (float)Math.Clamp((v.Value - m.Min) / ((m.Max - m.Min) == 0 ? 1 : m.Max - m.Min), 0, 1);
-        var lv = LevelOf(m, v);
-        var body = new RectangleF(r.X + r.Width * 0.18f, r.Y, r.Width * 0.64f, r.Height - 22);
-        using (var path = Theme.Round(body, 8)) using (var br = new SolidBrush(Theme.Panel2)) using (var pen = new Pen(Theme.Border, 2)) { g.FillPath(br, path); g.SetClip(path); using var fb = new SolidBrush(Color.FromArgb(215, Lc(lv))); g.FillRectangle(fb, body.X, body.Bottom - body.Height * f, body.Width, body.Height * f + 1); g.ResetClip(); g.DrawPath(pen, path); }
-        using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted); var sf = new StringFormat { Alignment = StringAlignment.Center };
-        g.DrawString($"{Text(m, v)} {m.Unit}".Trim(), Theme.Semi, tb, new RectangleF(body.X - 10, body.Y + body.Height / 2 - 10, body.Width + 20, 20), sf);
-        g.DrawString(label, Theme.Small, mb, new RectangleF(r.X, r.Bottom - 18, r.Width, 18), sf);
+        var lv = LevelOf(m, v); var liquid = lv is "warn" or "bad" ? Lc(lv) : Theme.Accent;
+        var bw = Math.Min(r.Width * 0.62f, 96); var body = new RectangleF(r.X + (r.Width - bw) / 2, r.Y, bw, r.Height - 24);
+        using (var path = Theme.Round(body, 10))
+        {
+            using (var br = new SolidBrush(Theme.Panel2)) g.FillPath(br, path);
+            if (f > 0.002)
+            {
+                var st = g.Save(); g.SetClip(path);
+                var top = body.Bottom - body.Height * f; var ph = (float)((DateTime.Now - _t0).TotalSeconds * 2.2);
+                using var wave = new GraphicsPath(); var pts = new List<PointF> { new(body.Left - 2, body.Bottom + 2) };
+                for (var xx = body.Left - 2; xx <= body.Right + 2; xx += 3) pts.Add(new PointF(xx, top + (float)Math.Sin(xx / 9.0 + ph) * 2f));
+                pts.Add(new PointF(body.Right + 2, body.Bottom + 2)); wave.AddPolygon(pts.ToArray());
+                using (var lb = new LinearGradientBrush(new RectangleF(body.X, top - 3, body.Width, body.Bottom - top + 6), Color.FromArgb(225, liquid), Color.FromArgb(150, Theme.Mix(liquid, Color.Black, 0.45)), 90f)) g.FillPath(lb, wave);
+                g.Restore(st);
+            }
+            using (var hl = new Pen(Color.FromArgb(40, 255, 255, 255), 3)) g.DrawLine(hl, body.X + 8, body.Y + 10, body.X + 8, body.Bottom - 10);
+            using (var tk = new Pen(Color.FromArgb(90, Theme.Muted))) for (var i = 1; i < 4; i++) g.DrawLine(tk, body.Right - 12, body.Y + body.Height * i / 4, body.Right - 5, body.Y + body.Height * i / 4);
+            using var pen = new Pen(lv is "warn" or "bad" ? Lc(lv) : Theme.Border, 2); g.DrawPath(pen, path);
+        }
+        using var tb = new SolidBrush(Color.White); using var sh = new SolidBrush(Color.FromArgb(120, 0, 0, 0)); using var mb = new SolidBrush(Theme.Muted);
+        var txt = $"{Text(m, v)} {m.Unit}".Trim(); var tr = new RectangleF(body.X - 10, body.Y + body.Height / 2 - 10, body.Width + 20, 22);
+        g.DrawString(txt, Theme.Semi, sh, new RectangleF(tr.X + 1, tr.Y + 1, tr.Width, tr.Height), Center); g.DrawString(txt, Theme.Semi, tb, tr, Center);
+        g.DrawString(label, Theme.Small, mb, new RectangleF(r.X - 6, r.Bottom - 19, r.Width + 12, 18), Center);
     }
 
     float Tanks(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var perDev = Str(b, "type") == "tanks"; const float h = 150;
+        var perDev = Str(b, "type") == "tanks"; const float h = 170;
         var list = new List<(Metric M, double? V, string L)>();
         if (perDev) { var m = M(b.GetProperty("main").GetString()!); foreach (var id in DevIds(b, m)) list.Add((m, Own(_devs[id], m), TitleOf(id))); }
         else foreach (var id in Items(b)) list.Add((M(id), Val(id), M(id).Label));
-        var cw = Math.Min(130f, w / Math.Max(1, list.Count)); var total = cw * list.Count; var sx = x + (w - total) / 2;
-        Card(g, new RectangleF(x, y, w, h + 20));
-        for (var i = 0; i < list.Count; i++) TankAt(g, new RectangleF(sx + i * cw + 4, y + 10, cw - 8, h), list[i].M, list[i].V, list[i].L);
-        return h + 20;
+        if (list.Count == 0) return 0;
+        if (list.Count == 1 && w > 520)
+        {
+            // một bồn: bồn bên trái, bên phải là số lớn + trạng thái + ngưỡng (không để thẻ rộng trống trơn)
+            var (m1, v1, l1) = list[0]; var lv = LevelOf(m1, v1);
+            Card(g, new RectangleF(x, y, w, h + 24));
+            TankAt(g, new RectangleF(x + 30, y + 14, 150, h), m1, v1, "");
+            float tx = x + 220, ty = y + 26;
+            using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
+            Icons.Draw(g, m1.Icon, new RectangleF(tx, ty + 1, 18, 18), Theme.Accent); g.DrawString(l1, Theme.Title, tb, tx + 26, ty);
+            var t = Text(m1, v1); g.DrawString(t, Theme.Huge, tb, tx - 4, ty + 28);
+            g.DrawString(m1.Unit, Theme.Normal, mb, tx + g.MeasureString(t, Theme.Huge).Width - 8, ty + 50);
+            var (stTxt, stCol) = lv switch { "bad" => ("Nguy hiểm", Theme.Red), "warn" => (v1 != null && m1.Lo != null && v1 <= m1.Lo ? "Mức thấp" : "Mức cao", Theme.Yellow), "" => ("—", Theme.Muted), _ => ("Bình thường", Theme.Green) };
+            var pr = new RectangleF(tx, ty + 88, g.MeasureString(stTxt, Theme.Small).Width + 20, 22);
+            using (var pp = Theme.Round(pr, 11)) using (var pb = new SolidBrush(Color.FromArgb(46, stCol))) g.FillPath(pb, pp);
+            using (var sb = new SolidBrush(stCol)) g.DrawString(stTxt, Theme.Small, sb, pr.X + 10, pr.Y + 3);
+            var th = new List<string>();
+            if (m1.LoLo != null) th.Add($"rất thấp ≤ {Theme.Num(m1.LoLo.Value)}"); if (m1.Lo != null) th.Add($"thấp ≤ {Theme.Num(m1.Lo.Value)}");
+            if (m1.Hi != null) th.Add($"cao ≥ {Theme.Num(m1.Hi.Value)}"); if (m1.HiHi != null) th.Add($"rất cao ≥ {Theme.Num(m1.HiHi.Value)}");
+            if (th.Count > 0) g.DrawString("Ngưỡng: " + string.Join("  ·  ", th) + (m1.Unit.Length > 0 ? " " + m1.Unit : ""), Theme.Small, mb, tx, ty + 122);
+            return h + 24;
+        }
+        var cw = Math.Min(150f, (w - 20) / list.Count); var total = cw * list.Count; var sx = x + (w - total) / 2;
+        Card(g, new RectangleF(x, y, w, h + 24));
+        for (var i = 0; i < list.Count; i++) TankAt(g, new RectangleF(sx + i * cw + 6, y + 14, cw - 12, h), list[i].M, list[i].V, list[i].L);
+        return h + 24;
     }
 
     float Trend(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var id = Str(b, "metric"); var m = M(id); const float h = 96; Card(g, new RectangleF(x, y, w, h));
-        using var tb = new SolidBrush(Theme.Text); using var ab = new SolidBrush(Theme.Accent); using var mb = new SolidBrush(Theme.Muted);
-        g.DrawString(Str(b, "title", m.Label), Theme.Semi, tb, x + 12, y + 8);
-        var cur = $"{Text(m, Val(id))} {m.Unit}".Trim(); g.DrawString(cur, Theme.Semi, ab, x + w - g.MeasureString(cur, Theme.Semi).Width - 12, y + 8);
+        var id = Str(b, "metric"); var m = M(id); const float h = 138; Card(g, new RectangleF(x, y, w, h));
+        using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted);
+        var v = Val(id); var lv = LevelOf(m, v); var col = lv is "warn" or "bad" ? Lc(lv) : Theme.Accent;
+        Icons.Badge(g, m.Icon, new RectangleF(x + 12, y + 10, 28, 28), Theme.Accent, 8);
+        g.DrawString(Str(b, "title", m.Label), Theme.Semi, tb, x + 48, y + 14);
+        var cur = $"{Text(m, v)} {m.Unit}".Trim();
+        using (var cb = new SolidBrush(col)) g.DrawString(cur, Theme.Title, cb, x + w - g.MeasureString(cur, Theme.Title).Width - 12, y + 12);
+        var plot = new RectangleF(x + 14, y + 48, w - 28, h - 48 - 22);
         if (_hist.TryGetValue(id, out var hs) && hs.Count > 1)
         {
-            var lo = hs.Min(); var hi = hs.Max(); var span = hi - lo == 0 ? 1 : hi - lo; var px = x + 12; var pw = w - 24;
-            var pts = hs.Select((v, i) => new PointF(px + pw * i / (90f - 1), y + h - 14 - (float)((v - lo) / span) * (h - 50))).ToArray();
-            var shift = pw - pw * (hs.Count - 1) / (90f - 1); for (var i = 0; i < pts.Length; i++) pts[i].X += shift;
-            using var pen = new Pen(Theme.Accent, 2); g.DrawLines(pen, pts);
-            g.DrawString($"min {Theme.Num(lo)}   max {Theme.Num(hi)}", Theme.Small, mb, x + 12, y + h - 18);
+            var lo = hs.Min(); var hi = hs.Max(); var pad = Math.Max((hi - lo) * 0.15, Math.Abs(hi) * 0.002 + 1e-6); lo -= pad; hi += pad;
+            using (var grid = new Pen(Color.FromArgb(55, Theme.Border)) { DashStyle = DashStyle.Dot })
+                for (var i = 0; i <= 2; i++) g.DrawLine(grid, plot.X, plot.Y + plot.Height * i / 2, plot.Right, plot.Y + plot.Height * i / 2);
+            var slots = Math.Max(hs.Count, 30) - 1;
+            var pts = hs.Select((q, i) => new PointF(plot.Right - plot.Width * (hs.Count - 1 - i) / slots, plot.Bottom - (float)((q - lo) / (hi - lo)) * plot.Height)).ToArray();
+            using (var area = new GraphicsPath())
+            {
+                area.AddLines(pts); area.AddLine(pts[^1], new PointF(pts[^1].X, plot.Bottom)); area.AddLine(new PointF(pts[^1].X, plot.Bottom), new PointF(pts[0].X, plot.Bottom)); area.CloseFigure();
+                using var ab = new LinearGradientBrush(new RectangleF(plot.X, plot.Y - 1, plot.Width, plot.Height + 2), Color.FromArgb(80, col), Color.FromArgb(0, col), 90f); g.FillPath(ab, area);
+            }
+            using (var pen = new Pen(col, 2) { LineJoin = LineJoin.Round }) g.DrawLines(pen, pts);
+            using (var halo = new SolidBrush(Color.FromArgb(60, col))) g.FillEllipse(halo, pts[^1].X - 7, pts[^1].Y - 7, 14, 14);
+            using (var dot = new SolidBrush(col)) g.FillEllipse(dot, pts[^1].X - 3.5f, pts[^1].Y - 3.5f, 7, 7);
+            g.DrawString($"thấp {Theme.Num(hs.Min())}   cao {Theme.Num(hs.Max())}   ·   {hs.Count * 2 / 60.0:0.#} phút gần nhất", Theme.Small, mb, x + 14, y + h - 20);
         }
-        else g.DrawString("Chờ dữ liệu…", Theme.Small, mb, x + 12, y + 40);
+        else g.DrawString("Đang gom dữ liệu cho biểu đồ…", Theme.Small, mb, plot.X, plot.Y + plot.Height / 2 - 8);
         return h;
     }
 
     float Alarms(Graphics g, float x, float y, float w)
     {
-        var act = Active(); var rows = Math.Max(1, act.Count);
-        Card(g, new RectangleF(x, y, w, rows * 28 + 14));
-        if (act.Count == 0) { using var b = new SolidBrush(Theme.Green); g.DrawString("● Mọi chỉ số trong giới hạn an toàn.", Theme.Normal, b, x + 14, y + 10); }
+        var act = Active(); var rows = Math.Max(1, act.Count); const float rh = 34; var h = rows * rh + 12;
+        Card(g, new RectangleF(x, y, w, h), act.Count == 0 ? null : act.Any(a => a.Lv == "bad") ? Theme.Red : Theme.Yellow);
+        if (act.Count == 0)
+        {
+            Icons.Draw(g, "check", new RectangleF(x + 16, y + 13, 20, 20), Theme.Green);
+            using var b = new SolidBrush(Theme.Green); g.DrawString("Mọi chỉ số trong giới hạn an toàn", Theme.Normal, b, x + 44, y + 13);
+            return h;
+        }
         for (var i = 0; i < act.Count; i++)
         {
-            using var dot = new SolidBrush(Lc(act[i].Lv)); using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted);
-            g.FillEllipse(dot, x + 14, y + 14 + i * 28, 10, 10);
-            g.DrawString($"{act[i].M.Label}  {Text(act[i].M, act[i].V)} {act[i].M.Unit}".Trim(), Theme.Normal, tb, x + 32, y + 9 + i * 28);
-            var s = act[i].Lv == "bad" ? "Nguy hiểm" : "Cảnh báo"; g.DrawString(s, Theme.Small, mb, x + w - g.MeasureString(s, Theme.Small).Width - 14, y + 11 + i * 28);
+            var ry = y + 6 + i * rh; var col = Lc(act[i].Lv);
+            Icons.Draw(g, act[i].Lv == "bad" ? "warn" : act[i].M.Icon, new RectangleF(x + 16, ry + 7, 20, 20), col);
+            using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted);
+            g.DrawString(act[i].M.Label, Theme.Normal, tb, x + 44, ry + 7);
+            var lw = g.MeasureString(act[i].M.Label, Theme.Normal).Width;
+            using (var vb = new SolidBrush(col)) g.DrawString($"{Text(act[i].M, act[i].V)} {act[i].M.Unit}".Trim(), Theme.Semi, vb, x + 48 + lw, ry + 7);
+            var s = act[i].Lv == "bad" ? "Nguy hiểm" : "Cảnh báo"; var sw = g.MeasureString(s, Theme.Small).Width + 18;
+            var pr = new RectangleF(x + w - sw - 14, ry + 6, sw, 22);
+            using (var pp = Theme.Round(pr, 11)) using (var pb = new SolidBrush(Color.FromArgb(46, col))) g.FillPath(pb, pp);
+            using (var sb = new SolidBrush(col)) g.DrawString(s, Theme.Small, sb, pr.X + 9, pr.Y + 3);
+            if (i < act.Count - 1) using (var sep = new Pen(Color.FromArgb(90, Theme.Border))) g.DrawLine(sep, x + 44, ry + rh, x + w - 14, ry + rh);
         }
-        return rows * 28 + 14;
+        return h;
     }
 
     float Andon(Graphics g, JsonElement b, float x, float y, float w)
@@ -547,23 +712,34 @@ sealed class IndustryPage : UserControl
         return h;
     }
 
+    /// <summary>Tỉ lệ vẽ sơ đồ theo toạ độ spec: vừa bề ngang nhưng không cao quá maxH (sơ đồ rộng không phóng to quá cỡ), căn giữa.</summary>
+    static (float S, float Ox, float H) Fit(double W, double H, float x, float w, float maxH)
+    {
+        var s = (float)Math.Min((w - 24) / W, maxH / H); var pw = (float)(W * s);
+        return (s, x + (w - pw) / 2, (float)(H * s));
+    }
+
     float Plan(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var W = Dbl(b, "w") ?? 100; var H = Dbl(b, "h") ?? 60; var s = (float)(w / W); var h = (float)(H * s); var main = M(Str(b, "main"));
-        using (var path = Theme.Round(new RectangleF(x, y, w, h), 8)) using (var br = new SolidBrush(Theme.Panel)) using (var pen = new Pen(Theme.Border)) { g.FillPath(br, path); g.DrawPath(pen, path); }
+        var W = Dbl(b, "w") ?? 100; var H = Dbl(b, "h") ?? 60; var (s, ox, ph) = Fit(W, H, x, w, 360); var h = ph + 20; var main = M(Str(b, "main"));
+        Card(g, new RectangleF(x, y, w, h)); var oy = y + 10;
         foreach (var r in b.GetProperty("rooms").EnumerateArray())
         {
-            var rc = new RectangleF(x + (float)(Dbl(r, "x") ?? 0) * s, y + (float)(Dbl(r, "y") ?? 0) * s, (float)(Dbl(r, "w") ?? 0) * s, (float)(Dbl(r, "h") ?? 0) * s);
-            using var fb = new SolidBrush(Theme.Panel2); using var pen = new Pen(Theme.Border); using var mb = new SolidBrush(Theme.Muted);
-            g.FillRectangle(fb, rc); g.DrawRectangle(pen, rc.X, rc.Y, rc.Width, rc.Height); g.DrawString(Str(r, "label"), Theme.Small, mb, rc.X + 6, rc.Y + 4);
+            var rc = new RectangleF(ox + (float)(Dbl(r, "x") ?? 0) * s, oy + (float)(Dbl(r, "y") ?? 0) * s, (float)(Dbl(r, "w") ?? 0) * s, (float)(Dbl(r, "h") ?? 0) * s);
+            using var path = Theme.Round(rc, 6); using var fb = new SolidBrush(Theme.Panel2); using var pen = new Pen(Theme.Border); using var mb = new SolidBrush(Theme.Muted);
+            g.FillPath(fb, path); g.DrawPath(pen, path); g.DrawString(Str(r, "label"), Theme.Small, mb, rc.X + 8, rc.Y + 6);
         }
+        var blink = (float)(0.5 + 0.5 * Math.Sin((DateTime.Now - _t0).TotalSeconds * 4));
         foreach (var mk in b.GetProperty("markers").EnumerateArray())
         {
-            var id = Str(mk, "dev"); var cx = x + (float)(Dbl(mk, "x") ?? 0) * s; var cy = y + (float)(Dbl(mk, "y") ?? 0) * s;
-            double? v = _devs.TryGetValue(id, out var o) ? Own(o, main) : null; var lv = LevelOf(main, v); using var c = new SolidBrush(v == null ? Theme.Muted : Lc(lv));
-            g.FillEllipse(c, cx - 15, cy - 15, 30, 30); using var wb = new SolidBrush(Color.White); var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString(Text(main, v), Theme.Small, wb, new RectangleF(cx - 18, cy - 9, 36, 18), sf);
-            using var tb = new SolidBrush(Theme.Text); g.DrawString(Str(mk, "label", TitleOf(id)), Theme.Small, tb, new RectangleF(cx - 50, cy + 16, 100, 18), sf);
+            var id = Str(mk, "dev"); var cx = ox + (float)(Dbl(mk, "x") ?? 0) * s; var cy = oy + (float)(Dbl(mk, "y") ?? 0) * s;
+            double? v = _devs.TryGetValue(id, out var o) ? Own(o, main) : null; var lv = LevelOf(main, v); var col = v == null ? Theme.Muted : lv == "" ? Theme.Accent : Lc(lv);
+            if (lv is "warn" or "bad") using (var halo = new SolidBrush(Color.FromArgb((int)(40 + 60 * blink), col))) g.FillEllipse(halo, cx - 26, cy - 26, 52, 52);
+            using (var c = new SolidBrush(col)) g.FillEllipse(c, cx - 19, cy - 19, 38, 38);
+            using (var ring = new Pen(Color.FromArgb(90, 255, 255, 255), 2)) g.DrawEllipse(ring, cx - 19, cy - 19, 38, 38);
+            using var wb = new SolidBrush(Color.White); var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(Text(main, v), Theme.Semi, wb, new RectangleF(cx - 26, cy - 10, 52, 20), sf);
+            using var tb = new SolidBrush(Theme.Text); g.DrawString(Str(mk, "label", TitleOf(id)), Theme.Small, tb, new RectangleF(cx - 60, cy + 22, 120, 18), Center);
         }
         return h;
     }
@@ -594,19 +770,37 @@ sealed class IndustryPage : UserControl
 
     float Elevator(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var N = (int)(Dbl(b, "floors") ?? 10); var fm = Str(b, "floor", "floor").ToLowerInvariant(); var ids = DevIds(b, new Metric { Id = fm, Keys = { (fm, 1) } }); const float sh = 200; float h = sh + 74;
+        var N = Math.Max(2, (int)(Dbl(b, "floors") ?? 10)); var fm = Str(b, "floor", "floor").ToLowerInvariant(); var dm = Str(b, "door", "door").ToLowerInvariant();
+        var lm = Str(b, "load").ToLowerInvariant(); var flt = Str(b, "fault").ToLowerInvariant();
+        var ids = DevIds(b, new Metric { Id = fm, Keys = { (fm, 1) } }); if (ids.Count == 0) return 0;
+        const float sh = 250; var top = y + 16; var bot = top + sh; const float car = 30; var h = sh + 82;
+        float FloorY(double f) => bot - car / 2 - 2 - (float)((Math.Clamp(f, 1, N) - 1) / (N - 1)) * (sh - car - 4);   // tâm cabin ở tầng f
         Card(g, new RectangleF(x, y, w, h)); using var mb = new SolidBrush(Theme.Muted); using var tb = new SolidBrush(Theme.Text);
-        for (var i = 0; i < N; i++) g.DrawString((i + 1).ToString(), Theme.Small, mb, x + 12, y + 12 + (sh - 16) * (1 - (float)i / (N - 1)) - 6);
-        var cw = Math.Min(130f, (w - 60) / Math.Max(1, ids.Count));
-        for (var i = 0; i < ids.Count; i++)
+        using (var gl = new Pen(Color.FromArgb(45, Theme.Border)) { DashStyle = DashStyle.Dot })
+            for (var i = 1; i <= N; i++) { var fy = FloorY(i); g.DrawString(i.ToString(), Theme.Small, mb, new RectangleF(x + 8, fy - 8, 28, 16), new StringFormat { Alignment = StringAlignment.Far }); g.DrawLine(gl, x + 42, fy, x + w - 14, fy); }
+        var n = ids.Count; var avail = w - 70; var cw = Math.Min(170f, avail / n); var sx = x + 52 + (avail - cw * n) / 2;
+        for (var i = 0; i < n; i++)
         {
-            var o = _devs[ids[i]]; var f = o.TryGetValue(fm, out var fv) ? fv : 1; var door = o.TryGetValue(Str(b, "door", "door").ToLowerInvariant(), out var dv) && dv > 0;
-            var shaft = new RectangleF(x + 50 + i * cw, y + 12, cw - 24, sh); using (var pen = new Pen(Theme.Border, 2)) g.DrawRectangle(pen, shaft.X, shaft.Y, shaft.Width, shaft.Height);
-            var pos = (float)(Math.Clamp(f, 1, N) - 1) / (N - 1); using var cab = new SolidBrush(door ? Theme.Green : Theme.Accent);
-            g.FillRectangle(cab, shaft.X + 6, shaft.Bottom - 30 - (shaft.Height - 30) * pos, shaft.Width - 12, 28);
-            var sf = new StringFormat { Alignment = StringAlignment.Center };
-            g.DrawString(TitleOf(ids[i]), Theme.Small, tb, new RectangleF(shaft.X - 10, shaft.Bottom + 6, shaft.Width + 20, 16), sf);
-            g.DrawString($"Tầng {Math.Round(f)} · {(door ? "cửa mở" : "cửa đóng")}", Theme.Small, mb, new RectangleF(shaft.X - 12, shaft.Bottom + 24, shaft.Width + 24, 16), sf);
+            var o = _devs[ids[i]]; var f = o.TryGetValue(fm, out var fv) ? fv : 1; var door = o.TryGetValue(dm, out var dv) && dv > 0;
+            var bad = flt.Length > 0 && o.TryGetValue(flt, out var fl) && fl > 0;
+            var shaft = new RectangleF(sx + i * cw + 14, top, cw - 28, sh);
+            using (var sp = Theme.Round(shaft, 6)) using (var sb = new SolidBrush(Color.FromArgb(120, Theme.Panel2))) using (var pen = new Pen(Theme.Border, 1.5f)) { g.FillPath(sb, sp); g.DrawPath(pen, sp); }
+            var col = bad ? Theme.Red : door ? Theme.Green : Theme.Accent;
+            var cr = new RectangleF(shaft.X + 5, FloorY(f) - car / 2, shaft.Width - 10, car);
+            using (var cp = Theme.Round(cr, 4)) using (var cb = new SolidBrush(col)) g.FillPath(cb, cp);
+            // cửa cabin: hai cánh, mở thì tách ra
+            var gap = door ? cr.Width * 0.28f : 1.5f; using (var dp = new Pen(Color.FromArgb(150, 0, 0, 0), 1.5f)) { g.DrawLine(dp, cr.X + cr.Width / 2 - gap / 2, cr.Y + 4, cr.X + cr.Width / 2 - gap / 2, cr.Bottom - 4); g.DrawLine(dp, cr.X + cr.Width / 2 + gap / 2, cr.Y + 4, cr.X + cr.Width / 2 + gap / 2, cr.Bottom - 4); }
+            if (door) using (var inner = new SolidBrush(Color.FromArgb(110, 0, 0, 0))) g.FillRectangle(inner, cr.X + cr.Width / 2 - gap / 2 + 1, cr.Y + 4, gap - 2, cr.Height - 8);
+            using (var wb = new SolidBrush(Color.White)) g.DrawString(Math.Round(f).ToString(), Theme.Small, wb, new RectangleF(cr.X, cr.Y - 17, cr.Width, 16), Center);
+            g.DrawString(TitleOf(ids[i]), Theme.Semi, tb, new RectangleF(sx + i * cw, bot + 8, cw, 20), Center);
+            var info = $"Tầng {Math.Round(f)} · {(bad ? "sự cố" : door ? "cửa mở" : "cửa đóng")}";
+            using (var ib = new SolidBrush(bad ? Theme.Red : Theme.Muted)) g.DrawString(info, Theme.Small, ib, new RectangleF(sx + i * cw, bot + 30, cw, 18), Center);
+            if (lm.Length > 0 && o.TryGetValue(lm, out var lv))
+            {
+                var lr = new RectangleF(sx + i * cw + 22, bot + 52, cw - 44, 6); var lf = (float)Math.Clamp(lv / 100, 0, 1);
+                using (var tp = Theme.Round(lr, 3)) using (var tbr = new SolidBrush(Theme.Mix(Theme.Panel, Theme.Border, 0.8))) g.FillPath(tbr, tp);
+                if (lf > 0.02) using (var fp = Theme.Round(new RectangleF(lr.X, lr.Y, lr.Width * lf, lr.Height), 3)) using (var fb = new SolidBrush(lf > 0.9 ? Theme.Yellow : Theme.Accent)) g.FillPath(fb, fp);
+            }
         }
         return h;
     }
@@ -625,30 +819,78 @@ sealed class IndustryPage : UserControl
 
     float Pid(Graphics g, JsonElement b, float x, float y, float w)
     {
-        var W = Dbl(b, "w") ?? 120; var H = Dbl(b, "h") ?? 70; var s = (float)(w / W); var h = (float)(H * s); Card(g, new RectangleF(x, y, w, h));
-        PointF P(double px, double py) => new(x + (float)px * s, y + (float)py * s);
+        var W = Dbl(b, "w") ?? 120; var H = Dbl(b, "h") ?? 70; var (s, ox, ph) = Fit(W, H, x, w, 380); var h = ph + 24; var oy = y + 12;
+        Card(g, new RectangleF(x, y, w, h));
+        PointF P(double px, double py) => new(ox + (float)px * s, oy + (float)py * s);
+        var t = (DateTime.Now - _t0).TotalSeconds; var pipeW = Math.Clamp(1.5f * s, 6f, 12f);
         foreach (var p in b.GetProperty("pipes").EnumerateArray())
         {
             var pts = p.GetProperty("pts").EnumerateArray().Select(q => P(q[0].GetDouble(), q[1].GetDouble())).ToArray(); var on = !p.TryGetProperty("on", out var oj) || (Val(oj.GetString()!) ?? 0) > 0;
-            using var pen = new Pen(Theme.Border, 6 * s / 2.6f) { LineJoin = LineJoin.Round }; g.DrawLines(pen, pts);
-            if (on) using (var fp = new Pen(Theme.Accent, 3) { DashStyle = DashStyle.Dash, DashOffset = (float)((DateTime.Now - _t0).TotalSeconds * 3) % 6 }) g.DrawLines(fp, pts);
+            using (var pen = new Pen(Theme.Mix(Theme.Panel, Theme.Border, 1.0), pipeW) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawLines(pen, pts);
+            using (var inner = new Pen(Theme.Mix(Theme.Panel2, on ? Theme.Accent : Theme.Panel, on ? 0.25 : 0.0), pipeW - 3) { LineJoin = LineJoin.Round }) g.DrawLines(inner, pts);
+            if (on) using (var fp = new Pen(Theme.Accent, 2.5f) { DashPattern = new[] { 2.2f, 2.2f }, DashOffset = -(float)(t * 2.5 % 4.4) }) g.DrawLines(fp, pts);
         }
-        using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted); var sf = new StringFormat { Alignment = StringAlignment.Center };
+        using var tb = new SolidBrush(Theme.Text); using var mb = new SolidBrush(Theme.Muted);
         foreach (var n in b.GetProperty("nodes").EnumerateArray())
         {
-            var kind = Str(n, "kind"); var m = n.TryGetProperty("metric", out var mj) ? M(mj.GetString()!) : null; var v = m != null ? Val(m.Id) : null; var lv = m != null ? LevelOf(m, v) : ""; var col = Lc(lv);
+            var kind = Str(n, "kind"); var m = n.TryGetProperty("metric", out var mj) ? M(mj.GetString()!) : null; var v = m != null ? Val(m.Id) : null; var lv = m != null ? LevelOf(m, v) : "";
+            var alert = lv is "warn" or "bad"; var col = alert ? Lc(lv) : Theme.Accent;
             var cx = (float)(Dbl(n, "x") ?? 0); var cy = (float)(Dbl(n, "y") ?? 0); var label = Str(n, "label");
             if (kind is "tank" or "vessel")
             {
                 var nw = (float)(Dbl(n, "w") ?? 16) * s; var nh = (float)(Dbl(n, "h") ?? 20) * s; var r = new RectangleF(P(cx, 0).X - nw / 2, P(0, cy).Y, nw, nh);
-                var f = kind == "tank" && m != null && v != null ? (float)Math.Clamp((v.Value - m.Min) / ((m.Max - m.Min) == 0 ? 1 : m.Max - m.Min), 0, 1) : 0.55f;
-                using var br = new SolidBrush(Theme.Panel2); using var pen = new Pen(col, 2); g.FillRectangle(br, r); using var fb = new SolidBrush(Color.FromArgb(190, col)); g.FillRectangle(fb, r.X + 2, r.Bottom - r.Height * f, r.Width - 4, r.Height * f - 1); g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
-                if (m != null) g.DrawString($"{Text(m, v)} {m.Unit}".Trim(), Theme.Small, tb, new RectangleF(r.X - 10, r.Y + r.Height / 2 - 8, r.Width + 20, 16), sf);
-                g.DrawString(label, Theme.Small, mb, new RectangleF(r.X - 20, r.Bottom + 2, r.Width + 40, 16), sf);
+                using var path = Theme.Round(r, kind == "vessel" ? Math.Min(nw, nh) * 0.32f : Math.Min(10, nw / 5));
+                using (var br = new SolidBrush(Theme.Panel2)) g.FillPath(br, path);
+                var st = g.Save(); g.SetClip(path);
+                if (kind == "tank" && m != null && v != null)
+                {
+                    var f = (float)Math.Clamp((v.Value - m.Min) / ((m.Max - m.Min) == 0 ? 1 : m.Max - m.Min), 0, 1); var top = r.Bottom - r.Height * f;
+                    using var wave = new GraphicsPath(); var pts = new List<PointF> { new(r.Left - 2, r.Bottom + 2) };
+                    for (var xx = r.Left - 2; xx <= r.Right + 2; xx += 3) pts.Add(new PointF(xx, top + (float)Math.Sin(xx / 9.0 + t * 2.2) * 1.8f));
+                    pts.Add(new PointF(r.Right + 2, r.Bottom + 2)); wave.AddPolygon(pts.ToArray());
+                    using var lb = new LinearGradientBrush(new RectangleF(r.X, top - 3, r.Width, r.Bottom - top + 6), Color.FromArgb(220, col), Color.FromArgb(140, Theme.Mix(col, Color.Black, 0.45)), 90f); g.FillPath(lb, wave);
+                }
+                else using (var vb = new LinearGradientBrush(r, Theme.Mix(Theme.Panel2, col, 0.18), Theme.Mix(Theme.Panel2, col, 0.42), 90f)) g.FillRectangle(vb, r);
+                g.Restore(st);
+                using (var hl = new Pen(Color.FromArgb(36, 255, 255, 255), 3)) g.DrawLine(hl, r.X + 7, r.Y + 10, r.X + 7, r.Bottom - 10);
+                using (var pen = new Pen(alert ? col : Theme.Mix(Theme.Border, Theme.Accent, 0.35), 2)) g.DrawPath(pen, path);
+                if (m != null)
+                {
+                    var txt = $"{Text(m, v)} {m.Unit}".Trim(); var tr = new RectangleF(r.X - 14, r.Y + r.Height / 2 - 10, r.Width + 28, 22);
+                    using var shb = new SolidBrush(Color.FromArgb(130, 0, 0, 0)); g.DrawString(txt, Theme.Semi, shb, new RectangleF(tr.X + 1, tr.Y + 1, tr.Width, tr.Height), Center);
+                    using var wb = new SolidBrush(Color.White); g.DrawString(txt, Theme.Semi, wb, tr, Center);
+                }
+                g.DrawString(label, Theme.Small, mb, new RectangleF(r.X - 30, r.Bottom + 4, r.Width + 60, 16), Center);
             }
-            else if (kind == "pump") { var c = P(cx, cy); var run = (v ?? 0) > 0; using var br = new SolidBrush(Theme.Panel2); using var pen = new Pen(run ? Theme.Green : Theme.Muted, 2); g.FillEllipse(br, c.X - 13, c.Y - 13, 26, 26); g.DrawEllipse(pen, c.X - 13, c.Y - 13, 26, 26); using var ib = new SolidBrush(Theme.Accent); g.FillPolygon(ib, new[] { new PointF(c.X, c.Y - 8), new PointF(c.X + 7, c.Y + 5), new PointF(c.X - 7, c.Y + 5) }); g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 40, c.Y + 15, 80, 16), sf); }
-            else if (kind == "valve") { var c = P(cx, cy); var open = (v ?? 0) > 0; using var vb = new SolidBrush(open ? Theme.Green : Theme.Red); g.FillPolygon(vb, new[] { new PointF(c.X - 9, c.Y - 8), new PointF(c.X + 9, c.Y + 8), new PointF(c.X + 9, c.Y - 8), new PointF(c.X - 9, c.Y + 8) }); g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 40, c.Y + 12, 80, 16), sf); }
-            else { var c = P(cx, cy); var r = new RectangleF(c.X - 30, c.Y - 11, 60, 22); using var br = new SolidBrush(Theme.Panel2); using var pen = new Pen(col, 1.5f); g.FillRectangle(br, r); g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height); if (m != null) g.DrawString($"{Text(m, v)} {m.Unit}".Trim(), Theme.Small, tb, r, new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center }); g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 40, c.Y + 12, 80, 16), sf); }
+            else if (kind == "pump")
+            {
+                var c = P(cx, cy); var run = (v ?? 0) > 0; var rr = Math.Clamp(2.6f * s, 13f, 20f); var pc = run ? Theme.Green : Theme.Muted;
+                using (var br = new SolidBrush(Theme.Panel2)) g.FillEllipse(br, c.X - rr, c.Y - rr, rr * 2, rr * 2);
+                using (var pen = new Pen(pc, 2.2f)) g.DrawEllipse(pen, c.X - rr, c.Y - rr, rr * 2, rr * 2);
+                // cánh bơm quay khi chạy
+                var st = g.Save(); g.TranslateTransform(c.X, c.Y); if (run) g.RotateTransform((float)(t * 240 % 360));
+                using (var ib = new SolidBrush(pc)) for (var k = 0; k < 3; k++) { g.RotateTransform(120); g.FillPolygon(ib, new[] { new PointF(0, -rr * 0.72f), new PointF(rr * 0.28f, -rr * 0.1f), new PointF(-rr * 0.28f, -rr * 0.1f) }); }
+                g.Restore(st);
+                using (var hub = new SolidBrush(Theme.Panel)) g.FillEllipse(hub, c.X - 3, c.Y - 3, 6, 6);
+                g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 50, c.Y + rr + 3, 100, 16), Center);
+            }
+            else if (kind == "valve")
+            {
+                var c = P(cx, cy); var open = (v ?? 0) > 0; var vs = Math.Clamp(2.2f * s, 8f, 13f); var vc = open ? Theme.Green : Theme.Red;
+                using (var vb = new SolidBrush(Theme.Mix(Theme.Panel2, vc, 0.55))) g.FillPolygon(vb, new[] { new PointF(c.X - vs, c.Y - vs * 0.8f), new PointF(c.X + vs, c.Y + vs * 0.8f), new PointF(c.X + vs, c.Y - vs * 0.8f), new PointF(c.X - vs, c.Y + vs * 0.8f) });
+                using (var vp = new Pen(vc, 2) { LineJoin = LineJoin.Round }) { g.DrawPolygon(vp, new[] { new PointF(c.X - vs, c.Y - vs * 0.8f), new PointF(c.X + vs, c.Y + vs * 0.8f), new PointF(c.X + vs, c.Y - vs * 0.8f), new PointF(c.X - vs, c.Y + vs * 0.8f) }); g.DrawLine(vp, c.X, c.Y, c.X, c.Y - vs * 1.5f); g.DrawLine(vp, c.X - vs * 0.6f, c.Y - vs * 1.5f, c.X + vs * 0.6f, c.Y - vs * 1.5f); }
+                g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 50, c.Y + vs + 4, 100, 16), Center);
+            }
+            else
+            {
+                // cảm biến / chỉ số: ô có icon đại lượng + số
+                var c = P(cx, cy); var txt = m != null ? $"{Text(m, v)} {m.Unit}".Trim() : label; var tw = g.MeasureString(txt, Theme.Semi).Width;
+                var r = new RectangleF(c.X - (tw + 30) / 2, c.Y - 13, tw + 30, 26);
+                using (var path = Theme.Round(r, 7)) using (var br = new SolidBrush(Theme.Panel2)) using (var pen = new Pen(alert ? col : Theme.Mix(Theme.Border, Theme.Accent, 0.35), 1.5f)) { g.FillPath(br, path); g.DrawPath(pen, path); }
+                if (m != null) Icons.Draw(g, m.Icon, new RectangleF(r.X + 7, r.Y + 5, 16, 16), alert ? col : Theme.Accent);
+                g.DrawString(txt, Theme.Semi, tb, r.X + 24, r.Y + 3);
+                if (m != null) g.DrawString(label, Theme.Small, mb, new RectangleF(c.X - 60, r.Bottom + 3, 120, 16), Center);
+            }
         }
         return h;
     }

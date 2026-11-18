@@ -3,6 +3,7 @@
  "title": "Mặt bằng nhà máy",
  "short": "Mặt bằng",
  "glyph": "▦",
+ "icon": "map",
  "palette": {
   "bg": "#07121c",
   "card": "#0e2234",

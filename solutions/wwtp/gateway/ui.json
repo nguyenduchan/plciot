@@ -3,6 +3,7 @@
  "title": "Trạm xử lý nước thải",
  "short": "Nước thải",
  "glyph": "≈",
+ "icon": "wave",
  "palette": {
   "bg": "#06180f",
   "card": "#0c2a1d",

@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Quy trình pha chế (P&ID)",
- "icon": "pipe",
+ "icon": "process",
  "style": "sharp",
  "metrics": [
   {

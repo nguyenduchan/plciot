@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Trạm khí tượng & thủy văn",
- "icon": "wind",
+ "icon": "rain",
  "style": "soft",
  "metrics": [
   {

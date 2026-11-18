@@ -10,6 +10,7 @@ sys.path.insert(0, here)
 from specs import SPECS  # noqa: E402
 from specs_extra import SPECS as EXTRA  # noqa: E402
 from requirements import REQ  # noqa: E402
+import icons_gen  # noqa: E402
 
 ALL = SPECS + EXTRA
 only = set(sys.argv[1:])
@@ -78,11 +79,17 @@ def ui_json(spec, runtime):
     """Giao diện của giải pháp dạng DỮ LIỆU cho gateway (server gửi trong kit): GatewayApp dùng chung một bản, chỉ nhận cấu hình này."""
     name, glyph = SHORT[spec['id']]
     d = spec['palette']['dark']
-    return {'id': spec['id'], 'title': spec['title'], 'short': name, 'glyph': glyph,
+    return {'id': spec['id'], 'title': spec['title'], 'short': name, 'glyph': glyph, 'icon': spec.get('icon', 'chart'),   # glyph: gateway bản cũ; icon: mã icon vector (icons.json)
             'palette': {k: d[k] for k in ('bg', 'card', 'fg', 'mut', 'line', 'acc')}, 'spec': runtime}
 
 
-engine_js = open(os.path.join(here, 'expr.js'), encoding='utf-8').read() + '\n' + open(os.path.join(here, 'industry.js'), encoding='utf-8').read()   # bộ tính công thức + engine
+# bộ icon dùng chung (icons.json + webapp/icons.js) → webapp/metric-icons.js + GatewayApp/Ui/IconData.g.cs + vector kiểm tra
+metric_js = icons_gen.metric_icons_js()
+write(os.path.join(repo, 'webapp', 'metric-icons.js'), metric_js)
+write(os.path.join(repo, 'tools', 'GatewayApp', 'Ui', 'IconData.g.cs'), icons_gen.icon_data_cs())
+write(os.path.join(here, 'icon-vectors.json'), json.dumps(icons_gen.vectors(ALL), ensure_ascii=False, indent=0) + '\n')
+
+engine_js = open(os.path.join(here, 'expr.js'), encoding='utf-8').read() + '\n' + metric_js + open(os.path.join(here, 'industry.js'), encoding='utf-8').read()   # bộ tính công thức + icon + engine
 engine_css = open(os.path.join(here, 'industry.css'), encoding='utf-8').read()
 shell = os.path.join(root, '..', 'webapp')   # engine + CSS dùng chung cho mọi giải pháp: MỘT bản ở shell
 write(os.path.join(shell, 'industry-engine.js'), engine_js)

@@ -3,6 +3,7 @@
  "title": "Quản lý đội xe GPS",
  "short": "Đội xe",
  "glyph": "➤",
+ "icon": "truck",
  "palette": {
   "bg": "#051920",
   "card": "#0b2a35",

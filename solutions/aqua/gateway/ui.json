@@ -3,6 +3,7 @@
  "title": "Nuôi trồng thủy sản",
  "short": "Thủy sản",
  "glyph": "≈",
+ "icon": "fish",
  "palette": {
   "bg": "#06162a",
   "card": "#0b2a47",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Nuôi trồng thủy sản",
-  "icon": "wave",
+  "icon": "fish",
   "style": "soft",
   "metrics": [
    {

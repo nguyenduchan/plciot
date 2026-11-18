@@ -56,7 +56,7 @@
   }
 
   /** Icon nhỏ mô tả giá trị (mức nước → giọt nước, nhiệt độ → nhiệt kế…). */
-  const wic = (w) => (window.PlcIcons ? `<span class="wic" aria-hidden="true">${window.PlcIcons.value(w.bind || w.id, w.kind)}</span>` : '');
+  const wic = (w) => (window.PlcIcons ? `<span class="wic" aria-hidden="true">${window.PlcIcons.value(w.bind || w.id, w.kind, w.unit, w.label)}</span>` : '');
 
   /** Icon của thiết bị theo danh mục chuẩn: mã icon gateway gửi → loại → tên/mã thiết bị (loại chung chung như dynamic không lấn át tên). */
   const GENERIC_TYPE = /^(dynamic|generic|iot-hub|custom|device)$/i;

@@ -3,6 +3,7 @@
  "title": "Kho lạnh & chuỗi lạnh",
  "short": "Kho lạnh",
  "glyph": "❄",
+ "icon": "snow",
  "palette": {
   "bg": "#06161d",
   "card": "#0c2630",

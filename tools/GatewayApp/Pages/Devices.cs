@@ -21,9 +21,7 @@ sealed class TemplateTile : Painted
         using var path = Theme.Round(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), 9);
         using (var b = new SolidBrush(Selected ? Color.FromArgb(40, Theme.Accent) : _hot ? Theme.Panel2 : Theme.Panel)) g.FillPath(b, path);
         using (var p = new Pen(Selected ? Theme.Accent : Theme.Border, Selected ? 1.6f : 1f)) g.DrawPath(p, path);
-        var ic = new RectangleF(10, 9, 40, 40);
-        using (var ip = Theme.Round(ic, 9)) { using var b = new SolidBrush(Color.FromArgb(50, Theme.Teal)); g.FillPath(b, ip); }
-        TextRenderer.DrawText(g, Tpl.Icon, new Font("Segoe UI Symbol", 13f), Rectangle.Round(ic), Theme.Teal, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        Icons.Badge(g, Icons.ForDevice(Tpl.Id, Tpl.Id), new RectangleF(10, 9, 40, 40), Selected ? Theme.Accent : Theme.Teal, 9, 50, device: true);   // icon vector giống webapp
         TextRenderer.DrawText(g, Tpl.Name, Theme.Semi, new Rectangle(60, 8, Width - 66, 22), Theme.Text, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         TextRenderer.DrawText(g, Tpl.Desc, Theme.Small, new Rectangle(60, 31, Width - 66, 20), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
@@ -142,7 +140,19 @@ sealed class DeviceDialog : Form
         top.Controls.Add(Skin.Lbl("Mã thiết bị (child)")); _child.Dock = DockStyle.Fill; _child.Margin = new Padding(0, 6, 12, 6); top.Controls.Add(_child);
         top.Controls.Add(Skin.Lbl("Tên hiển thị")); _title.Dock = DockStyle.Fill; _title.Margin = new Padding(0, 6, 0, 6); top.Controls.Add(_title);
         Skin.Input(_icon); Skin.Input(_color);
-        _icon.Items.Add("Theo loại thiết bị"); foreach (var t in IconChoices) _icon.Items.Add($"{t.Icon}   {t.Name}");
+        _icon.Items.Add("Theo loại thiết bị"); foreach (var t in IconChoices) _icon.Items.Add(t.Name);
+        // mỗi mục vẽ icon vector thật (giống thẻ thiết bị và webapp) thay cho ký tự Unicode
+        _icon.DrawMode = DrawMode.OwnerDrawFixed; _icon.ItemHeight = 24;
+        _icon.DrawItem += (_, e) =>
+        {
+            if (e.Index < 0) return;
+            var sel = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
+            using (var bg = new SolidBrush(sel ? Theme.Mix(Theme.Panel2, Theme.Accent, 0.35) : Theme.Panel2)) e.Graphics.FillRectangle(bg, e.Bounds);
+            Theme.Quality(e.Graphics);
+            var id = e.Index == 0 ? "gear" : IconChoices[e.Index - 1].Id;
+            Icons.Draw(e.Graphics, Icons.ForDevice(id, id), new RectangleF(e.Bounds.X + 6, e.Bounds.Y + 3, e.Bounds.Height - 6, e.Bounds.Height - 6), e.Index == 0 ? Theme.Muted : Theme.Teal, null, true);
+            TextRenderer.DrawText(e.Graphics, _icon.Items[e.Index]?.ToString() ?? "", Theme.Normal, new Rectangle(e.Bounds.X + e.Bounds.Height + 8, e.Bounds.Y, e.Bounds.Width - e.Bounds.Height - 10, e.Bounds.Height), Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        };
         _color.Items.AddRange(DeviceStyle.ColorNames); _icon.SelectedIndex = 0; _color.SelectedIndex = 0;
         top.Controls.Add(Skin.Lbl("Biểu tượng thẻ")); _icon.Dock = DockStyle.Fill; _icon.Margin = new Padding(0, 6, 12, 6); top.Controls.Add(_icon);
         top.Controls.Add(Skin.Lbl("Màu nhấn")); _color.Dock = DockStyle.Fill; _color.Margin = new Padding(0, 6, 0, 6); top.Controls.Add(_color);

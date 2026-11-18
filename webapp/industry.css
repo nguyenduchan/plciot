@@ -4,8 +4,17 @@ button.primary{color:#fff}
 nav button[data-tab="conv"],nav button[data-tab="ctrl"],nav button[data-tab="rep"]{display:none}
 #ind-card{grid-column:1/-1;background:linear-gradient(160deg,var(--card),var(--accbg));border:var(--bw) solid var(--line);border-radius:var(--rad);padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
 #ind-card h2{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:8px}
-.ind-ic{display:inline-flex;width:26px;height:26px;border-radius:50%;background:var(--acc);align-items:center;justify-content:center}
-.ind-ic svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ind-ic{display:inline-flex;width:30px;height:30px;border-radius:9px;background:linear-gradient(140deg,color-mix(in srgb,var(--acc) 82%,#fff),color-mix(in srgb,var(--acc) 78%,#000));color:#fff;align-items:center;justify-content:center;box-shadow:0 2px 8px color-mix(in srgb,var(--acc) 35%,transparent)}
+.ind-ic svg{width:18px;height:18px;stroke-width:2}
+/* icon đại lượng đo (metric-icons.js): nét theo currentColor */
+svg.qi{flex:none}.itr-h svg.qi,.igw svg.qi,.irg svg.qi,.ib-r svg.qi,.it-s svg.qi{display:inline-block;width:15px;height:15px}.qi-in{width:15px;height:15px;vertical-align:-3px;margin-right:5px;color:var(--mut)}
+.ik{position:relative}.ik-ic{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accbg);color:var(--acc)}
+.ik-ic svg{width:18px;height:18px}.ik.warn .ik-ic{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}.ik.bad .ik-ic{color:var(--bad);background:color-mix(in srgb,var(--bad) 16%,transparent)}
+.ik-ic+span{padding-right:34px}
+.ichip .qi-st{width:16px;height:16px;color:var(--mut)}.ichip.ok .qi-st{color:var(--ok)}.ichip.warn .qi-st{color:var(--warn)}.ichip.bad .qi-st{color:var(--bad)}
+.it-v .it-ic{width:22px;height:22px;vertical-align:-2px;margin-right:6px;color:var(--acc)}.it.warn .it-v .it-ic{color:var(--warn)}.it.bad .it-v .it-ic{color:var(--bad)}
+.it-s span.warn b{color:var(--warn)}.it-s span.bad b{color:var(--bad)}
+.ial svg.qi{width:18px;height:18px;color:var(--ok)}.ial.warn svg.qi{color:var(--warn)}.ial.bad svg.qi{color:var(--bad)}
 #ind-card .st{margin-left:auto;font-size:12px;font-weight:600;color:var(--mut)}
 #ind-card .st.live{color:var(--ok)}#ind-card .st.warn{color:var(--warn)}#ind-card .st.stale{color:var(--bad)}
 .ib-blk{margin-top:12px}.ib-blk>h3,.ib-sub{margin:0 0 6px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);font-weight:700}
@@ -77,7 +86,7 @@ nav button[data-tab="conv"],nav button[data-tab="ctrl"],nav button[data-tab="rep
 .dv-list{display:grid;gap:10px;margin-top:10px}@media (min-width:900px){.dv-list{grid-template-columns:repeat(2,1fr)}}
 .dv{background:var(--card);border:var(--bw) solid var(--line);border-radius:var(--rad);padding:10px 12px}.dv.bad{border-color:var(--bad)}
 .dv-h{display:flex;align-items:center;gap:10px}.dv-h small{display:block;color:var(--mut);font-size:12px}
-.dv-i svg{width:26px;height:26px;fill:none;stroke:var(--acc);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dv-i{color:var(--acc)}.dv-i svg{width:28px;height:28px}
 .dv-s{margin-left:auto;font-size:12px;font-weight:600;white-space:nowrap}.dv-s.on{color:var(--ok)}.dv-s.off{color:var(--mut)}.dv-s.bad{color:var(--bad)}
 /* kiểu dáng */
 html[data-ind=sharp]{--rad:4px;--bw:1.5px;--num:ui-monospace,Consolas,monospace}
@@ -91,13 +100,13 @@ html[data-ind=soft]{--shadow:0 2px 10px rgba(0,0,0,.07)}
 #ind-card,#ind-card *{min-width:0}
 #ind-card{overflow:hidden}
 /* mặt bằng */
-.plan{width:100%;display:block}.pl-bg{fill:var(--card);stroke:var(--line);stroke-width:.4}
+.plan{width:100%;display:block;max-height:380px}.pl-bg{fill:var(--card);stroke:var(--line);stroke-width:.4}
 .pl-room{fill:var(--accbg);stroke:var(--line);stroke-width:.4}.pl-lbl{fill:var(--mut);font:2.6px system-ui}
 .pl-m circle{fill:var(--mut);stroke:var(--card);stroke-width:.6}.pl-m.ok circle{fill:var(--ok)}.pl-m.warn circle{fill:var(--warn)}.pl-m.bad circle{fill:var(--bad)}
 .pl-v{fill:#fff;font:700 2.2px system-ui}.pl-t{fill:var(--fg);font:2.3px system-ui;paint-order:stroke;stroke:var(--card);stroke-width:.6}.pl-m.offl{opacity:.4}
 .pl-m.bad circle{animation:plb 1s ease-in-out infinite}@keyframes plb{50%{r:4.4}}
 /* P&ID */
-.pid{width:100%;display:block}.pd-pipe{fill:none;stroke:var(--line);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.pid{width:100%;display:block;max-height:400px}.pd-pipe{fill:none;stroke:var(--line);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
 .pd-flow{fill:none;stroke-width:1.2;stroke-dasharray:3 3;animation:pdf 1s linear infinite;stroke-linejoin:round}@keyframes pdf{to{stroke-dashoffset:-6}}
 .pd-body{fill:var(--card);stroke:var(--line);stroke-width:.6}.pd-n.ok .pd-body{stroke:var(--ok)}.pd-n.warn .pd-body{stroke:var(--warn)}.pd-n.bad .pd-body{stroke:var(--bad)}
 .pd-fill{fill:var(--acc);opacity:.7}.pd-n.warn .pd-fill{fill:var(--warn)}.pd-n.bad .pd-fill{fill:var(--bad)}

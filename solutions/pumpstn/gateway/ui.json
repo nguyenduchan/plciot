@@ -3,6 +3,7 @@
  "title": "Trạm bơm độc lập (pin mặt trời)",
  "short": "Trạm bơm",
  "glyph": "≈",
+ "icon": "pump",
  "palette": {
   "bg": "#061a1f",
   "card": "#0b2c34",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Trạm bơm độc lập (pin mặt trời)",
-  "icon": "drop",
+  "icon": "pump",
   "style": "soft",
   "metrics": [
    {

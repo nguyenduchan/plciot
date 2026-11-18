@@ -46,10 +46,14 @@ class Card : Panel
             var x0 = 14;
             if (_icon.Length > 0)
             {
-                var ic = new RectangleF(12, 6, 28, 28);
-                using (var ip = Theme.Round(ic, 7)) { using var ib = new SolidBrush(Color.FromArgb(55, _accent)); g.FillPath(ib, ip); }
-                TextRenderer.DrawText(g, _icon, new Font("Segoe UI Symbol", 11f), Rectangle.Round(ic), _accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                x0 = 48;
+                var ic = new RectangleF(11, 5, 30, 30);
+                if (Icons.Has(_icon)) Icons.Badge(g, _icon, ic, _accent, 8, 50, device: true);   // icon vector giống webapp
+                else
+                {
+                    using (var ip = Theme.Round(ic, 7)) { using var ib = new SolidBrush(Color.FromArgb(55, _accent)); g.FillPath(ib, ip); }
+                    TextRenderer.DrawText(g, _icon, new Font("Segoe UI Symbol", 11f), Rectangle.Round(ic), _accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                }
+                x0 = 50;
                 using var bar = new SolidBrush(_accent); g.FillRectangle(bar, 1, 14, 3, 12);
             }
             TextRenderer.DrawText(g, _title, Theme.Title, new Point(x0, 9), Theme.Text, TextFormatFlags.NoPadding);
@@ -178,6 +182,8 @@ sealed class ArcGauge : Painted
     public string Unit { get; set; } = "";
     public string Label { get; set; } = "";
     public Color? Fixed { get; set; }
+    /// <summary>Icon đại lượng đo (IconData.ForField) vẽ cạnh nhãn.</summary>
+    public string IconId { get; set; } = "";
     public ArcGauge() { Size = new Size(150, 140); Cursor = Cursors.Hand; }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -197,8 +203,31 @@ sealed class ArcGauge : Painted
         var txt = has ? Theme.Num(_v) : "—";
         TextRenderer.DrawText(g, txt, Theme.Big, new Rectangle(0, (int)rect.Y + (int)(s * .28), Width, 36), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
         TextRenderer.DrawText(g, Unit, Theme.Small, new Rectangle(0, (int)rect.Y + (int)(s * .28) + 34, Width, 18), Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(g, Label, Theme.Normal, new Rectangle(0, Height - 24, Width, 22), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        Widget.Label(g, this, Label, IconId);
     }
+}
+
+/// <summary>Dòng nhãn dưới widget: icon đại lượng đo + chữ, căn giữa.</summary>
+static class Widget
+{
+    public static void Label(Graphics g, Control c, string label, string icon)
+    {
+        var fl = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter;
+        if (string.IsNullOrEmpty(icon)) { TextRenderer.DrawText(g, label, Theme.Normal, new Rectangle(0, c.Height - 24, c.Width, 22), Theme.Text, fl | TextFormatFlags.HorizontalCenter); return; }
+        var tw = Math.Min(TextRenderer.MeasureText(g, label, Theme.Normal, new Size(9999, 30), TextFormatFlags.NoPadding).Width, c.Width - 26);
+        var x = (c.Width - tw - 21) / 2;
+        Icons.Draw(g, icon, new RectangleF(x, c.Height - 21, 16, 16), Theme.Muted);
+        TextRenderer.DrawText(g, label, Theme.Normal, new Rectangle(x + 21, c.Height - 24, tw + 2, 22), Theme.Text, fl);
+    }
+}
+
+/// <summary>Icon nhỏ đứng riêng (dòng công tắc / thanh trượt của thẻ thiết bị).</summary>
+sealed class IconView : Painted
+{
+    public string IconId { get; set; } = "";
+    public Color? Tint { get; set; }
+    public IconView() { Size = new Size(18, 18); }
+    protected override void OnPaint(PaintEventArgs e) { Theme.Quality(e.Graphics); Icons.Draw(e.Graphics, IconId, new RectangleF(1, 1, Width - 2, Height - 2), Tint ?? Theme.Muted); }
 }
 
 /// <summary>Bồn nước có sóng; đổi màu khi quá thấp / quá cao.</summary>
@@ -214,6 +243,7 @@ sealed class TankView : Painted
     public string Label { get; set; } = "";
     public double Low { get; set; } = 15;
     public double High { get; set; } = 92;
+    public string IconId { get; set; } = "";
 
     public TankView()
     {
@@ -263,7 +293,7 @@ sealed class TankView : Painted
             var st = _v <= Low ? "Mức thấp" : _v >= High ? "Mức cao" : "Bình thường";
             TextRenderer.DrawText(g, st, Theme.Small, new Rectangle((int)tank.Left, (int)tank.Bottom - 22, (int)tank.Width, 18), Color.FromArgb(230, 255, 255, 255), TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
         }
-        TextRenderer.DrawText(g, Label, Theme.Normal, new Rectangle(0, Height - 24, Width, 22), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        Widget.Label(g, this, Label, IconId);
     }
 }
 
@@ -274,14 +304,16 @@ sealed class KpiBox : Painted
     public double Value { get => _v; set { if (Equals(_v, value)) return; _v = value; Invalidate(); } }
     public string Unit { get; set; } = "";
     public string Label { get; set; } = "";
+    public string IconId { get; set; } = "";
     public KpiBox() { Size = new Size(150, 140); Cursor = Cursors.Hand; }
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics; Theme.Quality(g);
         var txt = double.IsNaN(_v) ? "—" : Theme.Num(_v);
-        TextRenderer.DrawText(g, txt, Theme.Huge, new Rectangle(0, 28, Width, 48), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(g, Unit, Theme.Small, new Rectangle(0, 78, Width, 18), Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(g, Label, Theme.Normal, new Rectangle(0, Height - 24, Width, 22), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        if (IconId.Length > 0) { using var halo = new SolidBrush(Color.FromArgb(34, Theme.Accent)); g.FillEllipse(halo, Width / 2f - 16, 2, 32, 32); Icons.Draw(g, IconId, new RectangleF(Width / 2f - 10, 8, 20, 20), Theme.Accent); }
+        TextRenderer.DrawText(g, txt, Theme.Huge, new Rectangle(0, 40, Width, 48), Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, Unit, Theme.Small, new Rectangle(0, 88, Width, 18), Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+        Widget.Label(g, this, Label, "");
     }
 }
 
@@ -414,7 +446,28 @@ sealed class NavButton : Painted
             g.FillPath(b, path);
         }
         if (Selected) using (var b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, 0, 10, 3, Height - 20);
-        TextRenderer.DrawText(g, Icon, new Font("Segoe UI Symbol", 12f), new Rectangle(20, 0, 30, Height), Selected ? Theme.Accent : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(g, Caption, Theme.Semi, new Rectangle(54, 0, Width - 54, Height), Selected ? Color.White : Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        if (Icons.Has(Icon)) Icons.Draw(g, Icon, new RectangleF(22, Height / 2f - 10, 20, 20), Selected ? Theme.Accent : Theme.Muted);
+        else TextRenderer.DrawText(g, Icon, new Font("Segoe UI Symbol", 12f), new Rectangle(20, 0, 30, Height), Selected ? Theme.Accent : Theme.Muted, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, Caption, Theme.Semi, new Rectangle(54, 0, Width - 54, Height), Selected ? Color.White : Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+    }
+}
+
+/// <summary>Đầu thanh bên: ô icon của giải pháp + tên + dòng phụ.</summary>
+sealed class Brand : Painted
+{
+    public string IconId { get; set; } = "grid";
+    public string Title { get; set; } = "Gateway";
+    public string Sub { get; set; } = "";
+    static readonly Font BigFont = new("Segoe UI Semibold", 13.5f), SubFont = new("Segoe UI", 7.5f);
+    public Brand() { Dock = DockStyle.Top; Height = 78; }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics; Theme.Quality(g); g.Clear(Theme.Side);
+        var r = new RectangleF(18, 18, 40, 40);
+        using (var path = Theme.Round(r, 11)) using (var b = new LinearGradientBrush(r, Theme.Mix(Theme.Accent, Color.White, 0.15), Theme.Mix(Theme.Accent, Color.Black, 0.3), 60f)) g.FillPath(b, path);
+        Icons.Draw(g, IconId, new RectangleF(r.X + 9, r.Y + 9, 22, 22), Color.White, 2f);
+        var tf = TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+        TextRenderer.DrawText(g, Title, BigFont, new Rectangle(68, 17, Width - 74, 26), Theme.Text, tf);
+        TextRenderer.DrawText(g, Sub, SubFont, new Rectangle(69, 43, Width - 74, 16), Theme.Muted, tf);
     }
 }

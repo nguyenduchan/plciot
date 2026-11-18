@@ -3,6 +3,7 @@
  "title": "Khí nén & máy nén",
  "short": "Khí nén",
  "glyph": "⚙",
+ "icon": "compressor",
  "palette": {
   "bg": "#0b1018",
   "card": "#151d2a",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Khí nén & máy nén",
-  "icon": "gear",
+  "icon": "compressor",
   "style": "dense",
   "metrics": [
    {

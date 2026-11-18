@@ -3,6 +3,7 @@
  "title": "Lịch vận hành thiết bị",
  "short": "Lịch",
  "glyph": "◷",
+ "icon": "calendar",
  "palette": {
   "bg": "#120a26",
   "card": "#201442",

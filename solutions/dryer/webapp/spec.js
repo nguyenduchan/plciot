@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Lò sấy & kho sấy",
- "icon": "thermo",
+ "icon": "dryer",
  "style": "soft",
  "metrics": [
   {

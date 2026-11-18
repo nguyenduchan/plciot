@@ -3,6 +3,7 @@
  "title": "Quan trắc môi trường",
  "short": "Môi trường",
  "glyph": "☁",
+ "icon": "wind",
  "palette": {
   "bg": "#0f170a",
   "card": "#1a2810",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Quan trắc môi trường",
-  "icon": "cloud",
+  "icon": "wind",
   "style": "glass",
   "metrics": [
    {

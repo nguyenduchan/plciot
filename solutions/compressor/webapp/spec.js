@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Khí nén & máy nén",
- "icon": "gear",
+ "icon": "compressor",
  "style": "dense",
  "metrics": [
   {

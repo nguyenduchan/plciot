@@ -27,7 +27,7 @@ static class SkinStore
     public static void Reload()
     {
         if (_defaults is { } d) { Theme.Bg = d.Bg; Theme.Side = d.Side; Theme.Panel = d.Panel; Theme.Panel2 = d.Panel2; Theme.Border = d.Border; Theme.Text = d.Text; Theme.Muted = d.Muted; Theme.Accent = d.Accent; Theme.Teal = d.Teal; }
-        SolutionHost.Name = ""; SolutionHost.Title = ""; SolutionHost.ExtraPage = null; SolutionHost.Slots.Clear();
+        SolutionHost.Name = ""; SolutionHost.Title = ""; SolutionHost.Icon = ""; SolutionHost.Heading = ""; SolutionHost.ExtraPage = null; SolutionHost.Slots.Clear();
         Boot();
     }
 
@@ -48,7 +48,8 @@ static class SkinStore
             Theme.Text = Hex(pal, "fg", Theme.Text); Theme.Muted = Hex(pal, "mut", Theme.Muted); Theme.Accent = acc; Theme.Teal = Theme.Mix(acc, Color.White, 0.25);
             var id = root.TryGetProperty("id", out var i) ? i.GetString() ?? "" : "";
             var name = root.TryGetProperty("short", out var s) ? s.GetString() ?? id : id;
-            var glyph = root.TryGetProperty("glyph", out var g) ? g.GetString() ?? "▦" : "▦";
+            // icon vector (icons.json); ui.json cũ chỉ có "glyph" → dùng icon trong spec
+            var icon = root.TryGetProperty("icon", out var ic) && Icons.Has(ic.GetString()) ? ic.GetString()! : spec.TryGetProperty("icon", out var si) && Icons.Has(si.GetString()) ? si.GetString()! : "grid";
             var specJson = spec.GetRawText();
             // ô sơ đồ: chỉ số đọc trực tiếp từ field (bỏ chỉ số suy diễn bằng công thức — không gắn field vào được)
             SolutionHost.Slots.Clear();
@@ -61,8 +62,9 @@ static class SkinStore
                     if (keys.Length == 0) continue;
                     SolutionHost.Slots.Add((m.TryGetProperty("label", out var l) ? l.GetString() ?? mid : mid, m.TryGetProperty("unit", out var u) ? u.GetString() ?? "" : "", keys));
                 }
-            SolutionHost.Name = id; SolutionHost.Title = name;
-            SolutionHost.ExtraPage = app => (glyph, name, new IndustryPage(app, specJson) { Dock = DockStyle.Fill });
+            SolutionHost.Name = id; SolutionHost.Title = name; SolutionHost.Icon = icon;
+            SolutionHost.Heading = spec.TryGetProperty("heading", out var hd) && hd.GetString() is { Length: > 0 } h1 ? h1 : root.TryGetProperty("title", out var tt) ? tt.GetString() ?? name : name;
+            SolutionHost.ExtraPage = app => (icon, name, new IndustryPage(app, specJson) { Dock = DockStyle.Fill });
         }
         catch (Exception e) when (e is IOException or JsonException or KeyNotFoundException or InvalidOperationException) { /* file hỏng → bản cơ bản */ }
     }

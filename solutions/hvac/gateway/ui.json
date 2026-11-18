@@ -3,6 +3,7 @@
  "title": "Tòa nhà & điều hòa HVAC",
  "short": "Tòa nhà",
  "glyph": "⌂",
+ "icon": "building",
  "palette": {
   "bg": "#071a18",
   "card": "#0e2a27",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Tòa nhà & điều hòa HVAC",
-  "icon": "home",
+  "icon": "building",
   "style": "glass",
   "metrics": [
    {

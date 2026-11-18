@@ -3,6 +3,7 @@
  "title": "Sản xuất & OEE",
  "short": "OEE",
  "glyph": "⚙",
+ "icon": "factory",
  "palette": {
   "bg": "#0e0d26",
   "card": "#18173b",

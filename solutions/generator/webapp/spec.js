@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Máy phát điện & ATS",
- "icon": "bolt",
+ "icon": "generator",
  "style": "dense",
  "metrics": [
   {

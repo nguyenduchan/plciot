@@ -24,7 +24,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest", "--autodemo" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest", "--slottest" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -48,7 +48,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly Panel _side = new() { Dock = DockStyle.Left, Width = 210, BackColor = Theme.Side };
     readonly Panel _head = new() { Dock = DockStyle.Top, Height = 62, BackColor = Theme.Bg };
     readonly Panel _body = new() { Dock = DockStyle.Fill, BackColor = Theme.Bg };
-    readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent };
+    readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent, UseMnemonic = false };   // "&" trong tên giải pháp (P&ID, Cấp nước & trạm bơm) là chữ thường
     readonly StatusChip _chipPlc = new(), _chipCloud = new(), _chipMode = new();
     readonly FlatButton _demoBtn = new() { Caption = "Demo: tắt", Width = 110 };
     /// <summary>Trạng thái khoá luôn hiện ở đầu trang: người vận hành biết ngay có sửa/điều khiển được không, và khoá lại khi rời máy.</summary>
@@ -157,11 +157,11 @@ public sealed partial class MainForm : Form, IGatewayApp
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
-        var logo = new Label { Text = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", ForeColor = Theme.Text, Font = new Font("Segoe UI Semibold", 17f), AutoSize = false, Dock = DockStyle.Top, Height = 62, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0), BackColor = Theme.Side };
-        var sub = new Label { Text = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ", ForeColor = Theme.Muted, Font = new Font("Segoe UI", 7.5f), AutoSize = false, Dock = DockStyle.Top, Height = 20, Padding = new Padding(22, 0, 0, 0), BackColor = Theme.Side };
+        // đầu thanh bên: icon giải pháp (vector, giống webapp) + tên + phiên bản
+        var brand = new Brand { Title = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", IconId = SolutionHost.Icon.Length > 0 ? SolutionHost.Icon : "grid", Sub = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ" };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("▦", "Tổng quan", _dash), ("⚙", "Thiết bị", _devices), ("☁", "Cloud", _cloud), ("☰", "Nhật ký", _log),
+            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("list", "Nhật ký", _log),
         };   // tool Admin đã gộp vào đây: không còn trang "Kết nối admin" (không mở cổng cho tool ngoài)
         if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log).ToArray();   // bản khách: chỉ xem + điều khiển
         if (SolutionHost.ExtraPage is { } extra)   // MỘT gateway = MỘT loại UI: giao diện giải pháp GỘP vào trang chính (một mục, không tách "Tổng quan" riêng)
@@ -174,12 +174,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         foreach (var (icon, name, page) in items)
         {
             var b = new NavButton { Icon = icon, Caption = name };
-            var p = page; var n = name;
+            var p = page; var n = page == _dash && SolutionHost.Heading.Length > 0 ? SolutionHost.Heading : name;   // trang giải pháp: thanh trên hiện tên đầy đủ
             b.Click += (_, _) => Show(p);
             _pages.Add((b, page, n)); page.Visible = false; _body.Controls.Add(page);
         }
         for (var i = _pages.Count - 1; i >= 0; i--) _side.Controls.Add(_pages[i].Btn);
-        _side.Controls.Add(sub); _side.Controls.Add(logo);
+        _side.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Theme.Side });
+        _side.Controls.Add(brand);
         var ver = new Label { Text = "C# thuần · không cần Internet", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(20, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side };
         _side.Controls.Add(ver);
 

@@ -145,7 +145,7 @@ SPECS.append({
 
 # ---------------------------------------------------------------- 4. HVAC / Tòa nhà
 SPECS.append({
-    'id': 'hvac', 'title': 'Tòa nhà & điều hòa HVAC', 'icon': 'home', 'style': 'glass', 'themeColor': '#0f766e',
+    'id': 'hvac', 'title': 'Tòa nhà & điều hòa HVAC', 'icon': 'building', 'style': 'glass', 'themeColor': '#0f766e',
     'palette': pal(['#e6f3f1', '#ffffff', '#10302d', '#52726e', '#c2dbd7', '#0f766e'], ['#071a18', '#0e2a27', '#e2f5f2', '#8fb8b2', '#1d4a45', '#2dd4bf']),
     'metrics': [
         m('temp', 'Nhiệt độ', '°C', ['temp_c', 'temp'], agg='avg', dec=1, min=15, max=35, th=th(19, 16, 27, 30)),
@@ -292,7 +292,7 @@ SPECS.append({
 
 # ---------------------------------------------------------------- 8. Thủy sản
 SPECS.append({
-    'id': 'aqua', 'title': 'Nuôi trồng thủy sản', 'icon': 'wave', 'style': 'soft', 'themeColor': '#0369a1',
+    'id': 'aqua', 'title': 'Nuôi trồng thủy sản', 'icon': 'fish', 'style': 'soft', 'themeColor': '#0369a1',
     'palette': pal(['#e1f0fb', '#ffffff', '#0a2a45', '#4f6f8a', '#bcd6ea', '#0369a1'], ['#06162a', '#0b2a47', '#e0f0ff', '#88aed0', '#1a4468', '#5eead4']),
     'metrics': [
         m('do', 'Oxy hòa tan', 'mg/L', ['do_mgl', 'do'], agg='min', dec=1, min=0, max=12, th=th(4.5, 3)),
@@ -325,7 +325,7 @@ SPECS.append({
 
 # ---------------------------------------------------------------- 9. Bồn bể xăng dầu / hóa chất
 SPECS.append({
-    'id': 'tank', 'title': 'Bồn bể xăng dầu & hóa chất', 'icon': 'fuel', 'style': 'sharp', 'themeColor': '#c2410c',
+    'id': 'tank', 'title': 'Bồn bể xăng dầu & hóa chất', 'icon': 'level', 'style': 'sharp', 'themeColor': '#c2410c',
     'palette': pal(['#f4e9e1', '#ffffff', '#2b1708', '#765c48', '#e0cbbb', '#c2410c'], ['#17100b', '#26190f', '#fbeee3', '#c2a58c', '#46301f', '#fb923c']),
     'metrics': [
         m('level', 'Mức bồn', '%', ['level_pct', 'level'], agg='avg', dec=0, min=0, max=100, th=th(15, 8, 90, 95)),
@@ -388,7 +388,7 @@ SPECS.append({
 
 # ---------------------------------------------------------------- 11. Quan trắc môi trường
 SPECS.append({
-    'id': 'env', 'title': 'Quan trắc môi trường', 'icon': 'cloud', 'style': 'glass', 'themeColor': '#4d7c0f',
+    'id': 'env', 'title': 'Quan trắc môi trường', 'icon': 'wind', 'style': 'glass', 'themeColor': '#4d7c0f',
     'palette': pal(['#edf3e2', '#ffffff', '#1c2a0a', '#5f7340', '#d3deb8', '#4d7c0f'], ['#0f170a', '#1a2810', '#eaf5d8', '#a3b97e', '#2f4420', '#a3e635']),
     'metrics': [
         m('aqi', 'Chỉ số AQI', '', ['aqi'], agg='max', dec=0, min=0, max=300, th=th(None, None, 100, 150)),
@@ -421,7 +421,7 @@ SPECS.append({
 
 # ---------------------------------------------------------------- 12. Khí nén
 SPECS.append({
-    'id': 'compressor', 'title': 'Khí nén & máy nén', 'icon': 'gear', 'style': 'dense', 'themeColor': '#334155',
+    'id': 'compressor', 'title': 'Khí nén & máy nén', 'icon': 'compressor', 'style': 'dense', 'themeColor': '#334155',
     'palette': pal(['#e6eaf0', '#ffffff', '#141c28', '#566377', '#c5ced9', '#334155'], ['#0b1018', '#151d2a', '#e4eaf3', '#94a3b8', '#283548', '#38bdf8']),
     'metrics': [
         m('pressure', 'Áp suất', 'bar', ['pressure_bar', 'pressure'], agg='avg', dec=1, min=0, max=12, th=th(5.5, 4.5, 8.5, 9.5)),

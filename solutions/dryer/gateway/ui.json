@@ -3,6 +3,7 @@
  "title": "Lò sấy & kho sấy",
  "short": "Lò sấy",
  "glyph": "♨",
+ "icon": "dryer",
  "palette": {
   "bg": "#170c06",
   "card": "#2a170c",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Lò sấy & kho sấy",
-  "icon": "thermo",
+  "icon": "dryer",
   "style": "soft",
   "metrics": [
    {

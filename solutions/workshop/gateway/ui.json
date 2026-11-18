@@ -3,6 +3,7 @@
  "title": "Xưởng gia công cơ khí",
  "short": "Xưởng",
  "glyph": "⚙",
+ "icon": "gear",
  "palette": {
   "bg": "#16100a",
   "card": "#241a0e",

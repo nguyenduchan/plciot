@@ -1,7 +1,7 @@
 /* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */
 window.INDUSTRY = {
  "title": "Trạm viễn thông độc lập",
- "icon": "cloud",
+ "icon": "tower",
  "style": "glass",
  "metrics": [
   {

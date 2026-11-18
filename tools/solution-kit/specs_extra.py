@@ -46,7 +46,7 @@ SPECS.append({
 
 # ============================================================ P&ID: QUY TRÌNH PHA CHẾ
 SPECS.append({
-    'id': 'process', 'title': 'Quy trình pha chế (P&ID)', 'icon': 'pipe', 'style': 'sharp', 'themeColor': '#0f766e',
+    'id': 'process', 'title': 'Quy trình pha chế (P&ID)', 'icon': 'process', 'style': 'sharp', 'themeColor': '#0f766e',
     'palette': pal(['#e3f1ee', '#ffffff', '#0c2c28', '#4d6e69', '#bfd9d4', '#0f766e'], ['#071a18', '#0d2a27', '#e0f5f1', '#88b3ac', '#1b4640', '#2dd4bf']),
     'metrics': [
         m('la', 'Bồn A', '%', ['lvl_a'], agg='avg', dec=0, min=0, max=100, th=th(15, 8)), m('lb', 'Bồn B', '%', ['lvl_b'], agg='avg', dec=0, min=0, max=100, th=th(15, 8)),
@@ -169,7 +169,7 @@ SPECS.append({
 
 # ============================================================ BẢNG ANDON
 SPECS.append({
-    'id': 'andon', 'title': 'Bảng Andon sản xuất', 'icon': 'bell', 'style': 'sharp', 'themeColor': '#16a34a',
+    'id': 'andon', 'title': 'Bảng Andon sản xuất', 'icon': 'andon', 'style': 'sharp', 'themeColor': '#16a34a',
     'palette': pal(['#e6efe6', '#ffffff', '#102014', '#506a54', '#c3d6c5', '#15803d'], ['#050b07', '#0f1d13', '#e8f6ea', '#8fb394', '#1f3a25', '#4ade80']),
     'metrics': [
         m('state', 'Trạng thái', '', ['state'], agg='max', map={'0': 'DỪNG', '1': 'ĐANG CHẠY', '2': 'LỖI', '3': 'CHỜ'}, lv={'0': 'off', '1': 'ok', '2': 'bad', '3': 'warn'}),
@@ -195,7 +195,7 @@ SPECS.append({
 
 # ============================================================ LÒ HƠI
 SPECS.append({
-    'id': 'boiler', 'title': 'Lò hơi công nghiệp', 'icon': 'pipe', 'style': 'sharp', 'themeColor': '#b91c1c',
+    'id': 'boiler', 'title': 'Lò hơi công nghiệp', 'icon': 'flame', 'style': 'sharp', 'themeColor': '#b91c1c',
     'palette': pal(['#f6e4e2', '#ffffff', '#2d0f0c', '#795551', '#e5c6c3', '#b91c1c'], ['#170a09', '#2a1210', '#fde8e6', '#c8a09b', '#472320', '#fb7185']),
     'metrics': [
         m('wl', 'Mức nước', '%', ['water_lvl'], agg='avg', dec=0, min=0, max=100, th=th(35, 25, 85, 92)),
@@ -225,7 +225,7 @@ SPECS.append({
 
 # ============================================================ MÁY PHÁT ĐIỆN / ATS
 SPECS.append({
-    'id': 'generator', 'title': 'Máy phát điện & ATS', 'icon': 'bolt', 'style': 'dense', 'themeColor': '#ca8a04',
+    'id': 'generator', 'title': 'Máy phát điện & ATS', 'icon': 'generator', 'style': 'dense', 'themeColor': '#ca8a04',
     'palette': pal(['#f5efd9', '#fffdf3', '#2a2208', '#6e6232', '#e1d6a3', '#a16207'], ['#14100a', '#221b0c', '#fbf1cf', '#c2b178', '#403714', '#fbbf24']),
     'metrics': [
         m('src', 'Nguồn đang cấp', '', ['source'], agg='max', map={'0': 'Điện lưới', '1': 'MÁY PHÁT', '2': 'MẤT ĐIỆN'}, lv={'0': 'ok', '1': 'warn', '2': 'bad'}),
@@ -251,7 +251,7 @@ SPECS.append({
 
 # ============================================================ TRẠM VIỄN THÔNG / BTS ĐỘC LẬP
 SPECS.append({
-    'id': 'bts', 'title': 'Trạm viễn thông độc lập', 'icon': 'cloud', 'style': 'glass', 'themeColor': '#1d4ed8',
+    'id': 'bts', 'title': 'Trạm viễn thông độc lập', 'icon': 'tower', 'style': 'glass', 'themeColor': '#1d4ed8',
     'palette': pal(['#e5ecfa', '#ffffff', '#0e1d44', '#52628c', '#c3d0ee', '#1d4ed8'], ['#070f24', '#0e1b3d', '#e4ebff', '#8ea0d0', '#1d3266', '#60a5fa']),
     'metrics': [
         m('mains', 'Điện lưới', '', ['mains'], agg='min', map={'0': 'MẤT LƯỚI', '1': 'Có lưới'}, lv={'0': 'bad', '1': 'ok'}), m('gen', 'Máy phát', '', ['gen'], **RUN),
@@ -277,7 +277,7 @@ SPECS.append({
 
 # ============================================================ TRẠM KHÍ TƯỢNG / THỦY VĂN
 SPECS.append({
-    'id': 'weather', 'title': 'Trạm khí tượng & thủy văn', 'icon': 'wind', 'style': 'soft', 'themeColor': '#0284c7',
+    'id': 'weather', 'title': 'Trạm khí tượng & thủy văn', 'icon': 'rain', 'style': 'soft', 'themeColor': '#0284c7',
     'palette': pal(['#e2f1fa', '#ffffff', '#0a2538', '#4c6a80', '#bcd7e8', '#0284c7'], ['#061520', '#0c2638', '#e0f2fd', '#86adc4', '#1a4260', '#38bdf8']),
     'metrics': [
         m('rain', 'Mưa hôm nay', 'mm', ['rain_mm'], agg='sum', dec=1), m('rate', 'Cường độ mưa', 'mm/h', ['rain_rate'], agg='max', dec=1, min=0, max=60, th=th(None, None, 20, 40)),
@@ -330,7 +330,7 @@ SPECS.append({
 
 # ============================================================ LÒ SẤY
 SPECS.append({
-    'id': 'dryer', 'title': 'Lò sấy & kho sấy', 'icon': 'thermo', 'style': 'soft', 'themeColor': '#c2410c',
+    'id': 'dryer', 'title': 'Lò sấy & kho sấy', 'icon': 'dryer', 'style': 'soft', 'themeColor': '#c2410c',
     'palette': pal(['#f7e7dc', '#ffffff', '#2d1308', '#7a5640', '#e8cbb9', '#c2410c'], ['#170c06', '#2a170c', '#fdeadc', '#c9a58d', '#47291a', '#fb923c']),
     'metrics': [
         m('temp', 'Nhiệt độ buồng', '°C', ['temp_c'], agg='avg', dec=0, min=20, max=120, th=th(None, None, 75, 85)), m('sp', 'Nhiệt độ cài đặt', '°C', ['setpoint'], agg='avg', dec=0),
@@ -353,7 +353,7 @@ SPECS.append({
 
 # ============================================================ TRẠM BƠM ĐỘC LẬP (PIN MẶT TRỜI)
 SPECS.append({
-    'id': 'pumpstn', 'title': 'Trạm bơm độc lập (pin mặt trời)', 'icon': 'drop', 'style': 'soft', 'themeColor': '#0891b2',
+    'id': 'pumpstn', 'title': 'Trạm bơm độc lập (pin mặt trời)', 'icon': 'pump', 'style': 'soft', 'themeColor': '#0891b2',
     'palette': pal(['#e1f3f6', '#ffffff', '#082c33', '#4a707a', '#bcdde4', '#0891b2'], ['#061a1f', '#0b2c34', '#dff6fa', '#86b5c0', '#194a57', '#22d3ee']),
     'metrics': [
         m('lvl', 'Mức bể', '%', ['level_pct'], agg='avg', dec=0, min=0, max=100, th=th(20, 10, 95, 98)), m('pump', 'Bơm', '', ['pump'], **RUN),

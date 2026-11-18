@@ -49,6 +49,10 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     if (m.expr) return calc(m, (x) => own(rec, x), (k) => num(rec.v[k]));
     for (const [k, mul] of keyList(m)) { const n = num(rec.v[k]); if (n != null) return n * mul; } return null;
   };
+  // Khối liệt kê THEO THIẾT BỊ chỉ gồm thiết bị có field GẮN vào khối đó (tên field trùng khoá chỉ số) — thiết bị khác của gateway
+  // (vd. động cơ phụ trong giải pháp thủy sản) không chen vào danh sách ao, nó hiện thành widget riêng ở khung thiết bị
+  const hasAny = (id, ms) => { const r = devs.get(id); return !!r && ms.some((m) => m && (m.expr ? own(r, m) != null : keyList(m).some(([k]) => k in r.v))); };
+  const idsFor = (b, ms) => [...devs.keys()].filter((id) => (!b.only || b.only.includes(id)) && (!ms.filter(Boolean).length || hasAny(id, ms)));
   function value(m, recs) {
     if (m.expr) return calc(m, (x) => value(x, recs), (k) => { let v = null; for (const r of recs) { const n = num(r.v[k]); if (n != null) v = n; } return v; });
     const xs = [];
@@ -120,11 +124,18 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   /* ------------------------------------------------------------------ khối giao diện */
   const unitOf = (m) => (m.unit ? `<small>${esc(m.unit)}</small>` : '');
   const mget = (id) => M[id] || { id, label: id };
+  // icon ĐẠI LƯỢNG ĐO (cùng luật với gateway C#, xem metric-icons.js): nhiệt kế cho °C, đồng hồ áp cho bar, giọt nước cho độ ẩm…
+  const QI = window.PlcQIcons;
+  const icOf = (m) => (m._ic ||= (m.icon && QI?.has(m.icon) ? m.icon : QI ? QI.forMetric(m) : 'chart'));
+  const qi = (m, cls) => (QI ? QI.svg(icOf(m), cls) : '');
+  const svgI = (n) => (QI ? QI.svg(QI.has(n) ? n : 'chart') : '');
+  // icon THIẾT BỊ (bộ icon nét của webapp, giống GatewayApp) cho danh sách thiết bị; không có bộ icon thì dùng icon giải pháp
+  const devIcon = (meta, id) => (window.PlcIcons?.device ? window.PlcIcons.device(window.PlcIcons.pick(meta?.icon, meta?.type, meta?.title, titleOf(id), id), { style: 'line' }) : svgI(S.icon));
 
   function bKpis(b) {
     return `<div class="ik-grid c${b.cols || 0}">` + b.items.map((id) => {
       const m = mget(id), v = val(id), lv = level(m, v);
-      return `<div class="ik ${lv}"><span>${esc(m.label)}</span><b>${esc(stateText(m, v))}</b> ${unitOf(m)}</div>`;
+      return `<div class="ik ${lv}"><i class="ik-ic">${qi(m)}</i><span>${esc(m.label)}</span><b>${esc(stateText(m, v))}</b> ${unitOf(m)}</div>`;
     }).join('') + '</div>';
   }
 
@@ -143,7 +154,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   function bGauges(b) {
     return `<div class="ig-grid c${Math.min(4, b.items.length)}">` + b.items.map((id) => {
       const m = mget(id);
-      return `<div class="igw">${gaugeSvg(m, val(id))}<span>${esc(m.label)}</span></div>`;
+      return `<div class="igw">${gaugeSvg(m, val(id))}<span>${qi(m, 'qi-in')}${esc(m.label)}</span></div>`;
     }).join('') + '</div>';
   }
 
@@ -164,21 +175,21 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   // mỗi thiết bị một bồn (bồn xăng dầu, bể nước…)
   function bTanks(b) {
     const m = mget(b.main);
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [m]);
     return `<div class="itk-grid">` + ids.map((id) => tankSvg(m, own(devs.get(id), m), titleOf(id))).join('') + '</div>';
   }
 
   function bState(b) {
     return `<div class="ist">` + b.items.map((id) => {
       const m = mget(id), v = val(id), lv = v == null ? '' : (m.lv ? stateLevel(m, v) : (num(v) > 0 ? 'ok' : 'off'));
-      return `<span class="ichip ${lv}"><i></i>${esc(m.label)}: <b>${esc(stateText(m, v))}</b></span>`;
+      return `<span class="ichip ${lv}">${qi(m, 'qi-st')}${esc(m.label)}: <b>${esc(stateText(m, v))}</b></span>`;
     }).join('') + '</div>';
   }
 
   function bBars(b) {
     return `<div class="ib">` + b.items.map((id) => {
       const m = mget(id), v = val(id), min = m.min ?? 0, max = m.max ?? 100, f = v == null ? 0 : Math.max(0, Math.min(1, (v - min) / (max - min || 1)));
-      return `<div class="ib-r ${level(m, v)}"><span>${esc(m.label)}</span><div class="ib-t"><div style="width:${(f * 100).toFixed(1)}%"></div></div><div class="ib-v"><b>${esc(stateText(m, v))}</b> ${unitOf(m)}</div></div>`;
+      return `<div class="ib-r ${level(m, v)}"><span>${qi(m, 'qi-in')}${esc(m.label)}</span><div class="ib-t"><div style="width:${(f * 100).toFixed(1)}%"></div></div><div class="ib-v"><b>${esc(stateText(m, v))}</b> ${unitOf(m)}</div></div>`;
     }).join('') + '</div>';
   }
 
@@ -193,7 +204,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
       path = 'M' + pts.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L');
       area = path + `L${pts[pts.length - 1][0].toFixed(1)} ${H}L${pts[0][0].toFixed(1)} ${H}z`;
     }
-    return `<div class="itr"><div class="itr-h"><b>${esc(b.title || m.label)}</b><span>${esc(stateText(m, val(b.metric)))} ${esc(m.unit || '')}</span></div>`
+    return `<div class="itr"><div class="itr-h"><b>${qi(m, 'qi-in')}${esc(b.title || m.label)}</b><span>${esc(stateText(m, val(b.metric)))} ${esc(m.unit || '')}</span></div>`
       + `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path class="ar" d="${area}"/><path class="ln" d="${path}"/></svg>`
       + `<div class="itr-f"><span>${lo == null ? '' : 'min ' + fmt(lo, m.dec)}</span><span>${hi == null ? 'Chờ dữ liệu…' : 'max ' + fmt(hi, m.dec)}</span></div></div>`;
   }
@@ -205,21 +216,22 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   }
   function bTiles(b) {
     const main = mget(b.main), subs = (b.subs || []).map(mget);
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [main, ...subs]);
     if (!ids.length) return '<p class="muted">Chưa có thiết bị. Thêm thiết bị bằng mã QR ở tab Thiết bị.</p>';
     return `<div class="it-grid">` + ids.map((id) => {
       const r = devs.get(id), v = own(r, main), lv = main.lv ? stateLevel(main, v) : level(main, v);
       const off = !demo && Date.now() - r.ts > STALE_MS;
       return `<div class="it ${off ? 'offl' : lv}"><div class="it-h"><b>${esc(titleOf(id))}</b><i></i></div>`
-        + `<div class="it-v">${esc(stateText(main, v))} ${unitOf(main)}</div><div class="it-l">${esc(main.label)}</div>`
-        + (subs.length ? '<div class="it-s">' + subs.map((s) => { const sv = own(r, s); return `<span>${esc(s.label)} <b>${esc(stateText(s, sv))}</b>${s.unit ? ' ' + esc(s.unit) : ''}</span>`; }).join('') + '</div>' : '')
+        + `<div class="it-v">${qi(main, 'it-ic')}${esc(stateText(main, v))} ${unitOf(main)}</div><div class="it-l">${esc(main.label)}</div>`
+        // chỉ số phụ: icon nói lên đại lượng (nhãn đầy đủ khi rê chuột) + số — gọn trên điện thoại, giống GatewayApp
+        + (subs.length ? '<div class="it-s">' + subs.map((s) => { const sv = own(r, s); return `<span class="${level(s, sv)}" title="${esc(s.label)}">${qi(s, 'qi-in')}<b>${esc(stateText(s, sv))}</b>${s.unit ? ' ' + esc(s.unit) : ''}</span>`; }).join('') + '</div>' : '')
         + '</div>';
     }).join('') + '</div>';
   }
 
   // dây chuyền: các trạm nối tiếp bằng mũi tên chạy, màu theo trạng thái
   function bLine(b) {
-    const st = mget(b.state), ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const st = mget(b.state), ids = idsFor(b, [st]);
     if (!ids.length) return '';
     return `<div class="il">` + ids.map((id, i) => {
       const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off';
@@ -231,14 +243,14 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   // vòng lớn (OEE…) + các vòng phụ
   function bRing(b) {
     const m = mget(b.main);
-    return `<div class="irg"><div class="irg-m">${gaugeSvg(m, val(b.main))}<span>${esc(m.label)}</span></div>`
-      + `<div class="irg-s">` + (b.subs || []).map((id) => `<div>${gaugeSvg(mget(id), val(id), true)}<span>${esc(mget(id).label)}</span></div>`).join('') + '</div></div>';
+    return `<div class="irg"><div class="irg-m">${gaugeSvg(m, val(b.main))}<span>${qi(m, 'qi-in')}${esc(m.label)}</span></div>`
+      + `<div class="irg-s">` + (b.subs || []).map((id) => `<div>${gaugeSvg(mget(id), val(id), true)}<span>${qi(mget(id), 'qi-in')}${esc(mget(id).label)}</span></div>`).join('') + '</div></div>';
   }
 
   function bAlarms() {
     const act = active();
-    if (!act.length) return '<div class="ial ok"><i></i>Mọi chỉ số trong giới hạn an toàn.</div>';
-    return '<div class="ial-l">' + act.map((x) => `<div class="ial ${x.lv}"><i></i><b>${esc(x.m.label)}</b> ${esc(stateText(x.m, x.v))} ${esc(x.m.unit || '')}<small>${x.lv === 'bad' ? 'Nguy hiểm' : 'Cảnh báo'}</small></div>`).join('') + '</div>';
+    if (!act.length) return `<div class="ial ok">${svgI('check')}Mọi chỉ số trong giới hạn an toàn.</div>`;
+    return '<div class="ial-l">' + act.map((x) => `<div class="ial ${x.lv}">${x.lv === 'bad' ? svgI('warn') : qi(x.m)}<b>${esc(x.m.label)}</b> ${esc(stateText(x.m, x.v))} ${esc(x.m.unit || '')}<small>${x.lv === 'bad' ? 'Nguy hiểm' : 'Cảnh báo'}</small></div>`).join('') + '</div>';
   }
 
 
@@ -309,7 +321,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
 
   /* ---------------- thang máy: giếng thang, cabin theo tầng, chiều đi, cửa, tải */
   function bElevator(b) {
-    const N = b.floors || 10, fm = b.floor || 'floor', ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const N = b.floors || 10, fm = b.floor || 'floor', ids = idsFor(b, [{ id: fm }]);
     if (!ids.length) return '<p class="muted">Chưa có thang máy nào gửi dữ liệu.</p>';
     const ruler = Array.from({ length: N }, (_, i) => `<span style="bottom:${(i / (N - 1)) * 100}%">${i + 1}</span>`).join('');
     return `<div class="iel"><div class="iel-r"><div class="iel-shaft">${ruler}</div></div>` + ids.map((id) => {
@@ -354,7 +366,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   /* ---------------- bảng Andon: ô lớn theo trạng thái từng máy/chuyền (nhìn từ xa), nhấp nháy khi lỗi */
   function bAndon(b) {
     const st = mget(b.state), vm = b.value ? mget(b.value) : null;
-    const ids = [...devs.keys()].filter((id) => !b.only || b.only.includes(id));
+    const ids = idsFor(b, [st, vm]);
     if (!ids.length) return '<p class="muted">Chưa có máy nào gửi dữ liệu.</p>';
     return `<div class="iad">` + ids.map((id) => {
       const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off', off = !demo && Date.now() - r.ts > STALE_MS;
@@ -418,17 +430,6 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   }
 
   /* ------------------------------------------------------------------ tổng quan */
-  const ICON = {
-    bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-    bell: '<path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 004 0"/>', chart: '<path d="M4 20V4M4 20h16M8 16v-5M13 16V8M18 16v-9"/>',
-    drop: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>', leaf: '<path d="M5 19C5 9 11 4 20 4c0 9-5 15-15 15zM5 19l8-8"/>',
-    snow: '<path d="M12 2v20M4 6l16 12M20 6L4 18"/>', home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>', gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
-    car: '<path d="M5 16V11l2-5h10l2 5v5M3 16h18M7 19v-3M17 19v-3"/>', thermo: '<path d="M10 14V5a2 2 0 014 0v9a4 4 0 11-4 0z"/>', factory: '<path d="M3 21V10l6 4V10l6 4V6h6v15z"/>',
-    wave: '<path d="M2 12c3-6 5 6 8 0s5 6 8 0 3 3 4 0"/>', fuel: '<path d="M4 21V5a2 2 0 012-2h6a2 2 0 012 2v16M14 11h3a2 2 0 012 2v4a1.5 1.5 0 003 0V9l-3-3M4 21h10M7 8h4"/>',
-    map: '<path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2zM9 3v16M15 5v16"/>', elevator: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M12 3v18M9 9l-1.5-2L6 9M16 7l1.5 2L19 7"/>', calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', pipe: '<path d="M3 8h6v8h6V8h6M3 8v8M21 8v8"/>', truck: '<path d="M2 6h11v10H2zM13 9h5l3 3v4h-8M6 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z"/>',
-    bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/>', cloud: '<path d="M7 18a5 5 0 010-10 6 6 0 0111 1 4 4 0 010 9z"/>', plug: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 01-12 0zM12 18v4"/>', wind: '<path d="M3 8h11a3 3 0 10-3-3M3 12h16a3 3 0 11-3 3M3 16h8"/>',
-  };
-  const svgI = (n) => `<svg viewBox="0 0 24 24">${ICON[n] || ICON.chart}</svg>`;
 
   const card = document.createElement('div');
   card.id = 'ind-card';
@@ -436,7 +437,9 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   dash.insertBefore(card, (!HL && document.getElementById('gw-tabs')?.nextSibling) || dash.firstChild);   // dưới thanh tab gateway (nếu có)
 
   function drawOverview() {
-    $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview);
+    // MỘT gateway = MỘT giao diện, GỘP trong một mục (giống GatewayApp): mọi tab của giải pháp vẽ liền dưới phần tổng quan, không tách tab riêng
+    $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview)
+      + (S.tabs || []).map((t) => `<h3 class="ib-sub" style="margin-top:18px">${esc(t.title || t.label)}</h3>${renderBlocks(t.blocks)}`).join('');
     const st = $('#ind-st'), fresh = lastTs && Date.now() - lastTs < STALE_MS * 2, n = active().length;
     st.textContent = !lastTs ? 'Chờ dữ liệu…' : !fresh ? '▲ Mất liên lạc' : n ? `▲ ${n} cảnh báo` : '● Trực tuyến';
     st.className = 'st ' + (!lastTs ? '' : !fresh ? 'stale' : n ? 'warn' : 'live');
@@ -454,7 +457,6 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     nav.insertBefore(b, setBtn); btns[id] = b;
     b.onclick = () => showMine(id);
   };
-  for (const t of S.tabs || []) { mkTab(t.id, `<div class="panel"><h2>${esc(t.title || t.label)}</h2><div id="ind-t-${esc(t.id)}"></div></div>`); mkBtn(t.id, t.label, t.icon); }
   mkTab('devs', '<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Thiết bị</h2><button id="dv-add" class="primary fit">＋ Thêm thiết bị</button></div><div id="dv-sum" class="ik-grid c3"></div><div id="dv-list" class="dv-list"></div><div id="dv-req"></div></div>');
   mkBtn('devs', 'Thiết bị', 'device');
   mkTab('alm', '<div class="panel"><h2>Cảnh báo</h2><div id="alm-act"></div><h3 class="ib-sub">Nhật ký (phiên này)</h3><div id="alm-log"></div></div>');
@@ -478,7 +480,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
         const m = LABEL[k]; const n = num(x) * (m ? keyList(m).find(([kk]) => kk === k)[1] : 1);
         return `<div class="ik ${m ? level(m, n) : ''}"><span>${esc(m?.label || k)}</span><b>${esc(m ? stateText(m, n) : fmt(n))}</b> ${m ? unitOf(m) : ''}</div>`;
       }).join('');
-      return `<div class="dv${faults || lvBad ? ' bad' : ''}"><div class="dv-h"><span class="dv-i">${svgI(S.icon)}</span><div><b>${esc(meta?.title || titleOf(id))}</b><small><code>${esc(id)}</code></small></div>`
+      return `<div class="dv${faults || lvBad ? ' bad' : ''}"><div class="dv-h"><span class="dv-i">${devIcon(meta, id)}</span><div><b>${esc(meta?.title || titleOf(id))}</b><small><code>${esc(id)}</code></small></div>`
         + `<span class="dv-s ${faults || lvBad ? 'bad' : on ? 'on' : 'off'}">${faults || lvBad ? '▲ Cảnh báo' : on ? '● Trực tuyến' : '■ Chưa có dữ liệu'}</span></div>${items ? `<div class="ik-grid">${items}</div>` : ''}</div>`;
     });
     $('#dv-sum').innerHTML = `<div class="ik"><span>Thiết bị</span><b>${ids.size}</b></div><div class="ik ok"><span>Trực tuyến</span><b>${online}</b></div><div class="ik ${bad ? 'bad' : ''}"><span>Cảnh báo</span><b>${bad}</b></div>`;
@@ -515,6 +517,19 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   // ẩn các tab của bản cơ bản không dùng trong giải pháp này (CSS đã ẩn nút; ở đây ẩn thêm theo spec)
   const hidden = [];
   for (const t of S.hide || []) { const b = nav.querySelector(`button[data-tab="${t}"]`); if (b) { b.style.display = 'none'; hidden.push(b); } }
+  // MỘT gateway = MỘT giao diện trong MỘT mục (giống GatewayApp): mục trang chính mang tên giải pháp, không còn "Thiết bị"/"Tổng quan" trùng với tab Thiết bị
+  const dashSpan = HL ? null : nav.querySelector('button[data-tab="dash"] span');
+  const dashOrig = dashSpan?.textContent || '';
+  const solLabel = S.short || S.heading || S.title || '';
+  // Field đã có ô trong sơ đồ (tên trùng khoá của chỉ số đọc trực tiếp) → khung thiết bị không lặp lại thành widget (giống GatewayApp)
+  if (!HL) {
+    window.__indKeys = new Set((S.metrics || []).filter((m) => !m.expr).flatMap((m) => keyList(m).map(([k]) => k)));
+    document.dispatchEvent(new Event('plc-ind-keys'));
+  }
+  if (dashSpan && solLabel) {
+    window.__indDashLabel = solLabel; dashSpan.textContent = solLabel;
+    const tt = document.getElementById('title'); if (tt && nav.querySelector('button[data-tab="dash"]')?.classList.contains('on')) tt.textContent = solLabel;
+  }
 
   /* ------------------------------------------------------------------ nạp số liệu + chế độ chạy thử */
   function ingest(p) {
@@ -588,6 +603,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   const timer = setInterval(() => {
     try { demo = typeof cfg !== 'undefined' && cfg.demo === true; } catch { demo = false; }
     if (demo && !demoSeen) { demoSeen = true; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; prefill(); }
+    else if (!demo && demoSeen) { demoSeen = false; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; }   // rời chạy thử: bỏ thiết bị/số mẫu, không trộn với số thật
     if (demo) demoTick();
     sample(Date.now()); alarmScan(Date.now()); redraw();
   }, 1500);
@@ -603,6 +619,8 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     Object.values(MINE).forEach((e) => e.remove());
     Object.values(btns).forEach((e) => e.remove());
     hidden.forEach((e) => { e.style.display = ''; });
+    if (dashSpan) { window.__indDashLabel = null; dashSpan.textContent = dashOrig; }
+    if (!HL) { window.__indKeys = null; document.dispatchEvent(new Event('plc-ind-keys')); }
     if (!HL) delete document.documentElement.dataset.ind;
     document.dispatchEvent(new CustomEvent('plc-ind-unseen', { detail: { base: GW, n: ST.unseen } }));
   }

@@ -3,6 +3,7 @@
  "title": "Bảng Andon sản xuất",
  "short": "Andon",
  "glyph": "◉",
+ "icon": "andon",
  "palette": {
   "bg": "#050b07",
   "card": "#0f1d13",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Bảng Andon sản xuất",
-  "icon": "bell",
+  "icon": "andon",
   "style": "sharp",
   "metrics": [
    {

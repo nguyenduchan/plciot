@@ -3,6 +3,7 @@
  "title": "Quy trình pha chế (P&ID)",
  "short": "P&ID",
  "glyph": "⇄",
+ "icon": "process",
  "palette": {
   "bg": "#071a18",
   "card": "#0d2a27",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Quy trình pha chế (P&ID)",
-  "icon": "pipe",
+  "icon": "process",
   "style": "sharp",
   "metrics": [
    {

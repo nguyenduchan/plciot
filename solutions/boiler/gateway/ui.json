@@ -3,6 +3,7 @@
  "title": "Lò hơi công nghiệp",
  "short": "Lò hơi",
  "glyph": "♨",
+ "icon": "flame",
  "palette": {
   "bg": "#170a09",
   "card": "#2a1210",
@@ -13,7 +14,7 @@
  },
  "spec": {
   "title": "Lò hơi công nghiệp",
-  "icon": "pipe",
+  "icon": "flame",
   "style": "sharp",
   "metrics": [
    {
