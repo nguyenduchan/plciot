@@ -11,6 +11,13 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        var rt = Array.IndexOf(args, "--rollbacktest");
+        if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
+        if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet" }.Any(args.Contains);
+        if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
+        var ut = Array.IndexOf(args, "--updatetest");
+        if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
         ApplicationConfiguration.Initialize();
         var sheet = Array.IndexOf(args, "--iconsheet");
         if (sheet >= 0 && sheet + 1 < args.Length) { MainForm.IconSheet(args[sheet + 1]); return; }
@@ -33,11 +40,42 @@ static class Program
                 if (st >= 0 && st + 1 < args.Length) form.Shown += async (_, _) => await form.SlotTestAsync(args[st + 1]);
                 var ss = Array.IndexOf(args, "--solshot");
                 if (ss >= 0 && ss + 1 < args.Length) form.Shown += async (_, _) => await form.SolShotAsync(args[ss + 1]);
+                var bt = Array.IndexOf(args, "--backuptest");
+                if (bt >= 0 && bt + 1 < args.Length) form.Shown += async (_, _) => await form.BackupTestAsync(args[bt + 1]);
                 var m = Array.IndexOf(args, "--edittest");
                 if (m >= 0 && m + 1 < args.Length) form.Shown += async (_, _) => await form.EditTestAsync(args[m + 1]);
             }
             first = false;
             Application.Run(form);
         }
+    }
+
+    /// <summary>
+    ///   GatewayApp.exe --updatetest KQ.txt   không giao diện: hỏi VPS bản mới → tải → kiểm sha256 → cài → tự mở lại (cũng với --updatetest). Ghi kết quả từng bước vào KQ.txt.
+    /// </summary>
+    static void UpdateTest(string result)
+    {
+        void Log(string t) => File.AppendAllText(result, $"{DateTime.Now:HH:mm:ss} v={AppUpdate.LocalVersion} {t}{Environment.NewLine}");
+        var server = GatewayApp.CloudPage.DefaultServer;
+        var info = AppUpdate.CheckAsync(server).GetAwaiter().GetResult();
+        if (info == null) { Log("up-to-date (không có bản mới)"); return; }
+        Log($"co ban moi {info.Version} ({info.Size} bytes) apiLevel={info.ApiLevel} breaking={info.Breaking}");
+        var (err, stage) = AppUpdate.DownloadAsync(server, info, _ => { }).GetAwaiter().GetResult();
+        if (err != null || stage == null) { Log("LOI tai: " + err); return; }
+        Log("da tai + kiem sha256, goi trinh cai");
+        // "bad": cố ý làm hỏng file chạy trong gói để thử đường tự quay về bản cũ của trình cài
+        var bad = Environment.GetCommandLineArgs().Contains("bad");
+        if (bad) File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(stage, Path.GetFileName(Environment.ProcessPath!)), true);   // exe hợp lệ nhưng thoát ngay = giả lập crash lúc khởi động
+        AppUpdate.LaunchInstaller(stage, info.Version, healthCheck: bad);
+    }
+
+    /// <summary>--rollbacktest KQ.txt: không giao diện; quay về bản trước (nếu có) rồi tự mở lại (lần mở lại không còn bản trước nên chỉ ghi kết quả).</summary>
+    static void RollbackTest(string result)
+    {
+        void Log(string t) => File.AppendAllText(result, $"{DateTime.Now:HH:mm:ss} v={AppUpdate.LocalVersion} {t}{Environment.NewLine}");
+        var prev = AppUpdate.PrevVersion;
+        if (prev == null) { Log("khong co ban truoc"); return; }
+        Log($"quay ve ban truoc {prev}");
+        AppUpdate.LaunchRollback(auto: false);
     }
 }

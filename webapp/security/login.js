@@ -85,15 +85,27 @@ async function hasBundle(session) {
   return caches.has(session.cacheName);
 }
 
-async function setActiveMeta(cacheName, userId, version) {
+/** Gói đang dùng + băm từng file (để lần cập nhật sau chỉ tải file đổi/mới, file không đổi chép từ cache cũ). */
+async function readActiveMeta() {
+  try {
+    const r = await (await caches.open('plc-meta')).match('/active');
+    return r ? await r.json() : null;
+  } catch { return null; }
+}
+
+async function setActiveMeta(cacheName, userId, version, files) {
   const meta = await caches.open('plc-meta');
-  await meta.put('/active', new Response(JSON.stringify({ cacheName, userId, version }), {
+  const hashes = {};
+  for (const f of files || []) if (f.hash) hashes[f.path] = f.hash;
+  await meta.put('/active', new Response(JSON.stringify({ cacheName, userId, version, hashes }), {
     headers: { 'Content-Type': 'application/json' },
   }));
 }
 
 async function putBundleFiles(token, files, cacheName, base) {
   const cache = await caches.open(cacheName);
+  const prev = await readActiveMeta();   // chỉ tái dùng file của CÙNG user
+  const prevCache = prev?.cacheName && prev.cacheName !== cacheName && prev.hashes && (await caches.has(prev.cacheName)) ? await caches.open(prev.cacheName) : null;
   const total = files.length || 1;
   let done = 0;
   const bar = $('#prog-bar');
@@ -104,6 +116,10 @@ async function putBundleFiles(token, files, cacheName, base) {
     const abs = new URL(f.path, location.origin).href;
     let stored = await cache.match(abs);
     if (stored && typeof f.size === 'number' && !/\.html?$/i.test(f.path) && (await stored.clone().arrayBuffer()).byteLength !== f.size) stored = null;   // bản đã lưu sai phiên bản → tải lại
+    if (!stored && prevCache && f.hash && prev.hashes[f.path] === f.hash) {   // file không đổi so với bản đang dùng → không tải lại
+      const old = await prevCache.match(abs);
+      if (old && (typeof f.size !== 'number' || /\.html?$/i.test(f.path) || (await old.clone().arrayBuffer()).byteLength === f.size)) { stored = old; await cache.put(abs, old.clone()); }
+    }
     if (!stored) {
       label.textContent = `Đang tải (${done + 1}/${files.length}): ${f.path}`;
       const url = `${base}/api/bundle/${f.path.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(f.hash || cacheName)}`;
@@ -150,7 +166,7 @@ async function finishLogin(data) {
   const cacheName = offlineOk ? cacheNameFor(data.userId, data.version) : null;
   if (offlineOk) {
     await putBundleFiles(data.token, data.files || [], cacheName, base);
-    await setActiveMeta(cacheName, data.userId, data.version);
+    await setActiveMeta(cacheName, data.userId, data.version, data.files);
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => k.startsWith('plc-') && k !== cacheName && k !== 'plc-meta')
       .map((k) => caches.delete(k)));

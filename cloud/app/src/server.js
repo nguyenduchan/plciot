@@ -41,6 +41,7 @@ import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
 import { contractInfo } from './contract.js';
 import { subscriptionInfo } from './entitlements.js';
 import { loginGateMiddleware } from './opsFlags.js';
+import { mountGatewayUpdate } from './gatewayUpdate.js';
 import { mountDebugTrace, debugTraceEnabled } from './debugTrace.js';
 
 const PORT = Number(process.env.PORT || 3080);
@@ -143,6 +144,8 @@ const { requireAuth, sensitiveStrict, reauth } = controlApi;
 mountAdminSite(app, { db, requireAuth, requireAdmin, jwtSecret: JWT_SECRET });
 const send = (res, result) => res.status(result.error ? result.status || 400 : 200).json(result);
 const ipOf = clientIp;
+
+mountGatewayUpdate(app, { releasesDir: path.resolve(process.env.RELEASES_DIR || path.join(DATA_DIR, '..', '..', '..', 'releases')) });
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, contract: contractInfo(), debugTrace: debugTraceEnabled(), appLockDisabled: String(process.env.APP_LOCK_DISABLED || "false").toLowerCase() === "true" });

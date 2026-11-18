@@ -23,7 +23,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -146,11 +146,22 @@ public sealed partial class MainForm : Form, IGatewayApp
         Width = 1400; Height = 860; MinimumSize = new Size(1100, 700); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; DoubleBuffered = true;
         _meta = new UiMetaStore(SettingsPath);
-        try { if (File.Exists(SettingsPath)) CopyFrom(ConfigStore.Load(SettingsPath)); } catch (Exception e) when (e is IOException or JsonException) { /* dùng mặc định */ }
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                var loaded = ConfigStore.Load(SettingsPath);
+                var migrated = ConfigMigrations.Run(loaded, SettingsPath);   // cấu hình của bản cũ → định dạng bản này (có sao lưu file gốc)
+                CopyFrom(loaded);
+                if (migrated) { try { SaveCfg(); } catch (IOException) { } }
+            }
+        }
+        catch (Exception e) when (e is IOException or JsonException) { ConfigMigrations.BackupUnreadable(SettingsPath); /* giữ bản gốc rồi dùng mặc định */ }
 
         _dash = new DashboardPage(this) { Dock = DockStyle.Fill, ReadOnly = !_editUi };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
+        _backupPage = new BackupPage(this) { Dock = DockStyle.Fill };
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
@@ -158,7 +169,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         var brand = new Brand { Title = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", IconId = SolutionHost.Icon.Length > 0 ? SolutionHost.Icon : "grid", Sub = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ" };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("list", "Nhật ký", _log),
+            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("💾", "Sao lưu", _backupPage), ("list", "Nhật ký", _log),
         };   // tool Admin đã gộp vào đây: không còn trang "Kết nối admin" (không mở cổng cho tool ngoài)
         if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log).ToArray();   // bản khách: chỉ xem + điều khiển
         if (SolutionHost.ExtraPage is { } extra)   // MỘT gateway = MỘT loại UI: giao diện giải pháp GỘP vào trang chính (một mục, không tách "Tổng quan" riêng)
@@ -184,8 +195,9 @@ public sealed partial class MainForm : Form, IGatewayApp
         // thanh trên
         _head.Controls.Add(_pageTitle);
         _qrIcon = new QrIcon(this, () => CloudPage.DefaultServer);
-        foreach (var c in new Control[] { _qrIcon, _lockBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _qrIcon, _updBtn, _rbBtn, _lockBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
         _lockBtn.Click += async (_, _) => await ToggleLockAsync();
+        InitUpdateButton();
         if (_testMode || _noAuth) _lockBtn.Visible = false;
         _head.Resize += (_, _) => LayoutHead();
 
@@ -222,9 +234,9 @@ public sealed partial class MainForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _qrIcon, _lockBtn, _chipMode, _chipCloud, _chipPlc })
+        foreach (var c in new Control[] { _qrIcon, _updBtn, _rbBtn, _lockBtn, _chipMode, _chipCloud, _chipPlc })
         {
-            if ((c == _qrIcon || c == _lockBtn) && !c.Visible) continue;
+            if ((c == _qrIcon || c == _lockBtn || c == _updBtn || c == _rbBtn) && !c.Visible) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : c == _qrIcon ? 11 : 14);
         }
     }
@@ -631,6 +643,10 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// </summary>
     async Task<GatewayProvisionKit?> RefreshKitAsync(HttpClient http)
     {
+        http.DefaultRequestHeaders.Remove("X-Gateway-Version"); http.DefaultRequestHeaders.Remove("X-Gateway-Api");   // server ghi lại bản/mức tương thích gateway đang chạy (bảng gateway_clients)
+        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Gateway-Version", AppUpdate.LocalVersion ?? "dev");
+        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Gateway-Api", AppUpdate.ApiLevel.ToString());
+        if (LastBackupAt is { } lb) { http.DefaultRequestHeaders.Remove("X-Gateway-Backup"); http.DefaultRequestHeaders.TryAddWithoutValidation("X-Gateway-Backup", new DateTimeOffset(lb).ToUnixTimeSeconds().ToString()); }
         var client = new GatewayEnrollClient(http);
         try { return await client.RefreshConfigAsync(_cfg.GatewayQr, Identity(), false, default); }
         catch (Exception ex) when (GatewayEnrollClient.IsStaleQr(ex))
@@ -678,6 +694,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         if (IsDisposed || Disposing) return;   // cửa sổ cũ đã đóng (dựng lại khi đổi UI)
         PollClaimed();
+        UpdateTick();
+        BackupTick();
         _log.Flush();
         var running = _host != null;
         var st = running ? _host!.Core.State.Status : "đã dừng";

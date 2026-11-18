@@ -91,6 +91,8 @@ public sealed class LocalUser
 
 public sealed class ScadaConfig
 {
+    /// <summary>Phiên bản định dạng file cấu hình (0 = file cũ chưa ghi). Ứng dụng nâng dần từng bước khi mở file của bản cũ (GatewayApp/ConfigMigrations.cs).</summary>
+    public int ConfigSchema { get; set; }
     public string Site { get; set; } = "factory1";
     public string Device { get; set; } = "plc01";
 

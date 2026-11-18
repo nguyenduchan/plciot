@@ -19,6 +19,7 @@ const caches = {
     };
   },
   async keys() { return [...stores.keys()]; },
+  async has(name) { return stores.has(name); },
   async delete(name) { return stores.delete(name); },
 };
 const context = vm.createContext({
@@ -39,7 +40,7 @@ const context = vm.createContext({
   setTimeout(callback) { callback(); },
   async fetch(url, options) {
     downloads.push({ url, token: options.headers.Authorization });
-    return new Response(url, { status: url.endsWith(failPath) ? 503 : 200 });
+    return new Response(url, { status: url.includes(failPath + '?') ? 503 : 200 });
   },
 });
 const source = readFileSync(new URL('../../../packages/security/client/login.js', import.meta.url), 'utf8');
@@ -59,7 +60,7 @@ assert.equal(JSON.parse(storage.get('session')).token, 'new-login-token');
 stores.get('plc-user-a-source-v1').delete(`${origin}/app.js`);
 await login(bundle);
 assert.equal(downloads.length, 4, 'Only the missing file is downloaded');
-assert.equal(downloads.at(-1).url, `${origin}/api/bundle/app.js`);
+assert.equal(downloads.at(-1).url, `${origin}/api/bundle/app.js?v=plc-user-a-source-v1`);
 
 const updated = { ...bundle, version: 'source-v2' };
 failPath = '/app.js';
@@ -106,4 +107,13 @@ await requestFile('/app.js');
 assert.equal(revalidations.length, beforeCachedApp, 'Unchanged app bundle stays cache-first');
 offline = true;
 assert.equal(await (await requestFile('/security/login.js')).text(), 'cached-auth', 'Offline auth shell can fall back to its bundle');
+// Cập nhật theo băm từng file: chỉ tải file đổi/mới, file không đổi chép từ cache cũ, file bị gỡ biến mất.
+const h1 = { userId: 'user-c', version: 'h1', token: 't', files: [{ path: 'a.js', hash: 'A1' }, { path: 'b.js', hash: 'B1' }, { path: 'old.js', hash: 'O1' }] };
+await login(h1);
+const beforeDelta = downloads.length;
+await login({ ...h1, version: 'h2', files: [{ path: 'a.js', hash: 'A1' }, { path: 'b.js', hash: 'B2' }, { path: 'new.js', hash: 'N1' }] });
+assert.deepEqual(downloads.slice(beforeDelta).map((d) => d.url.split('/api/bundle/')[1].split('?')[0]).sort(), ['b.js', 'new.js'], 'Chỉ tải file đổi hoặc mới');
+const deltaCache = await caches.open('plc-user-c-h2');
+assert.ok(await deltaCache.match(`${origin}/a.js`), 'File không đổi được chép sang bản mới');
+assert.ok(!(await deltaCache.match(`${origin}/old.js`)), 'File bị gỡ không còn trong bản mới');
 console.log('Bundle cache smoke passed');

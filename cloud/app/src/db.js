@@ -82,6 +82,21 @@ function migratePlatform(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id, enabled);
   `);
+  // Gateway nào đang chạy bản nào (header X-Gateway-Version/-Api khi gateway lấy cấu hình): biết khi nào MỌI gateway đã lên bản mới thì mới được bỏ hành vi tương thích cũ.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS gateway_clients (
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      version TEXT,
+      api_level INTEGER,
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      PRIMARY KEY (site, device)
+    );
+  `);
+  // v2: gateway báo thời điểm sao lưu gần nhất (X-Gateway-Backup, giây epoch) → admin thấy gateway lâu không sao lưu
+  const gcCols = db.prepare('PRAGMA table_info(gateway_clients)').all().map((c) => c.name);
+  if (!gcCols.includes('last_backup_at')) db.exec('ALTER TABLE gateway_clients ADD COLUMN last_backup_at INTEGER');
   ensureMqttIdColumn(db);   // id MQTT ngẫu nhiên của gateway (topic gw/<mqttId>/<kind>)
   // tenants tạo trước khi có cột gói → ALTER an toàn
   const tcols = db.prepare('PRAGMA table_info(tenants)').all().map((c) => c.name);
@@ -143,7 +158,19 @@ export function openDb(dataDir) {
     db.prepare("INSERT INTO tenants (id, name, profile, created_at) VALUES ('default', 'Default', 'conveyor-v1', ?)")
       .run(Date.now());
   }
+  stampSchemaVersion(db);
   return db;
+}
+
+/**
+ * Số phiên bản schema của DB (PRAGMA user_version). TĂNG 1 mỗi khi thêm migration mới (chỉ THÊM, xem CLAUDE.md).
+ * Chỉ để theo dõi + cảnh báo: migration vẫn tự kiểm "đã có chưa" nên chạy lại an toàn; DB mới hơn mã server (vd. lùi code) vẫn chạy được vì mọi thay đổi đều tương thích ngược.
+ */
+export const DB_SCHEMA_VERSION = 2;   // 2: gateway_clients.last_backup_at
+function stampSchemaVersion(db) {
+  const cur = Number(db.pragma('user_version', { simple: true })) || 0;
+  if (cur > DB_SCHEMA_VERSION) console.warn(`DB schema v${cur} mới hơn mã server (v${DB_SCHEMA_VERSION}): server chạy bản code cũ hơn DB — vẫn tương thích ngược, nhưng nên deploy lại bản mới.`);
+  else if (cur < DB_SCHEMA_VERSION) db.pragma(`user_version = ${DB_SCHEMA_VERSION}`);
 }
 
 export function findUserByUsername(db, username) {

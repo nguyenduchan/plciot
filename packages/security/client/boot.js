@@ -59,14 +59,28 @@
       const base = session.apiBase || location.origin;
       const files = me.files || [];
       const cacheName = `plc-${session.userId}-${me.version}`;
+      // Băm từng file: file không đổi so với bản đang dùng thì chép từ cache cũ; chỉ tải file mới/đổi (file bị gỡ tự rơi khỏi cache mới).
+      let prev = null, prevCache = null;
+      try {
+        const r = await (await caches.open('plc-meta')).match('/active');
+        prev = r ? await r.json() : null;
+        if (prev?.cacheName && prev.cacheName !== cacheName && prev.hashes && String(prev.userId) === String(session.userId) && await caches.has(prev.cacheName)) prevCache = await caches.open(prev.cacheName);
+      } catch {}
       await caches.delete(cacheName);
       const cache = await caches.open(cacheName);
       let idx = 0;   // tải song song vài tệp một lúc (68 tệp tuần tự qua đường hầm mất ~30 giây)
       const worker = async () => {
         while (idx < files.length) {
           const f = files[idx++];
-          const { buf, type } = await fetchBundleFile(base, session.token, f, me.version);
-          const stored = new Response(buf, { status: 200, headers: { 'Content-Type': type } });
+          let stored = null;
+          if (prevCache && f.hash && prev.hashes[f.path] === f.hash) {
+            const old = await prevCache.match(new URL(f.path, location.origin).href);
+            if (old && (typeof f.size !== 'number' || /\.html?$/i.test(f.path) || (await old.clone().arrayBuffer()).byteLength === f.size)) stored = old;
+          }
+          if (!stored) {
+            const { buf, type } = await fetchBundleFile(base, session.token, f, me.version);
+            stored = new Response(buf, { status: 200, headers: { 'Content-Type': type } });
+          }
           await cache.put(new URL(f.path, location.origin).href, stored.clone());
           if (f.path === 'index.html') {
             await cache.put(new URL('./', location.origin).href, stored.clone());
@@ -79,7 +93,9 @@
         if (!(await cache.match(new URL(f.path, location.origin).href))) throw new Error(`thiếu ${f.path}`);
       }
       const meta = await caches.open('plc-meta');
-      await meta.put('/active', new Response(JSON.stringify({ cacheName, userId: session.userId, version: me.version }), {
+      const hashes = {};
+      for (const f of files) if (f.hash) hashes[f.path] = f.hash;
+      await meta.put('/active', new Response(JSON.stringify({ cacheName, userId: session.userId, version: me.version, hashes }), {
         headers: { 'Content-Type': 'application/json' },
       }));
       localStorage.setItem('session', JSON.stringify({ ...next, cacheName }));

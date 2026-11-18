@@ -15,6 +15,9 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Chỉ lấy lớp API (không kéo cả giao diện WinForms) -->
-    <Compile Include="..\GatewayApp\Remote\RemoteApi.cs;..\GatewayApp\Remote\Login.cs;..\GatewayApp\Ui\Expr.cs;..\GatewayApp\Ui\IconRules.cs;..\GatewayApp\Ui\IconData.g.cs;..\GatewayApp\Ui\Vn.cs" LinkBase="Shared" />
+    <Compile Include="..\GatewayApp\Remote\RemoteApi.cs;..\GatewayApp\Remote\Login.cs;..\GatewayApp\Ui\Expr.cs;..\GatewayApp\Ui\IconRules.cs;..\GatewayApp\Ui\IconData.g.cs;..\GatewayApp\Ui\Vn.cs;..\GatewayApp\ConfigMigrations.cs;..\GatewayApp\Backup\BackupService.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\scada\src\Plciot.Scada.Core\Plciot.Scada.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -17,17 +17,25 @@ param(
   [string] $RemotePath = $(if ($env:PLCIOT_VPS_PATH) { $env:PLCIOT_VPS_PATH } else { '/root/plciot' }),
   [string] $Service = '',
   [switch] $Build,
-  [switch] $WhatIf
+  [switch] $WhatIf,
+  [switch] $SkipGateway   # bỏ bước build GatewayApp (nút Cập nhật của gateway)
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repo
 
-$paths = @('cloud', 'webapp', 'solutions', 'packages/security')
+$paths = @('cloud', 'webapp', 'solutions', 'packages/security', 'releases')
 foreach ($p in $paths) {
   if (-not (Test-Path (Join-Path $repo $p))) { throw "Thiếu thư mục: $p" }
 }
+
+if (-not $SkipGateway -and -not $WhatIf) {
+  # Gateway tự hỏi VPS có bản mới không: build ở máy lập trình rồi đẩy kèm (releases/gateway/manifest.json + zip).
+  try { & (Join-Path $PSScriptRoot 'publish-gateway.ps1') }
+  catch { Write-Warning "Bo qua build gateway: $($_.Exception.Message) (dung -SkipGateway de tat buoc nay)" }
+}
+New-Item -ItemType Directory -Force (Join-Path $repo 'releases\gateway') | Out-Null
 
 $excludes = @(
   '--exclude=cloud/.env',
@@ -88,6 +96,20 @@ rm -f /tmp/plciot-sync.tgz /tmp/plciot-sync.sh
   & ssh -o BatchMode=yes $Target 'bash /tmp/plciot-sync.sh' 2>&1 | ForEach-Object { "$_" }
   $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE -ne 0) { throw "ssh update that bai ($LASTEXITCODE)" }
+  # Kiểm sau deploy: server phải phát đúng bản gateway vừa đẩy lên (cùng/ cao hơn apiLevel). Sai → bản gateway mới cần server mới: chạy lại với -Build.
+  $manFile = Join-Path $repo 'releases\gateway\manifest.json'
+  if ((Test-Path $manFile) -and -not $Service) {
+    $want = Get-Content $manFile -Raw | ConvertFrom-Json
+    $got = $null
+    for ($i = 0; $i -lt 8 -and -not $got; $i++) {
+      Start-Sleep -Seconds 3
+      $raw = & ssh -o BatchMode=yes $Target 'curl -s http://127.0.0.1:3080/api/gateway/update' 2>$null
+      try { $got = $raw | ConvertFrom-Json } catch { $got = $null }
+    }
+    if (-not $got -or -not $got.version) { Write-Warning "Server khong tra ban gateway ($raw). Neu bao server_outdated: ban gateway can server moi hon -> chay lai voi -Build." }
+    elseif ($got.version -ne $want.version) { Write-Warning "Server dang phat gateway $($got.version), khac ban vua build $($want.version)." }
+    else { Write-Host "==> Gateway $($got.version) (apiLevel $($got.apiLevel), server $($got.serverApiLevel)) san sang de cap nhat." }
+  }
   Write-Host '==> Xong.'
 }
 finally {

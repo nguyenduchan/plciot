@@ -5,6 +5,7 @@
  * POST /api/v1/gateway/enroll  → mqtt + topics + pack (+ password)
  * POST /api/v1/gateway/config  → pack/topics/configRev
  */
+import { recordGatewayClient } from './gatewayUpdate.js';
 import { shardOf } from './shards.js';
 import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
 import {
@@ -402,6 +403,7 @@ export function mountGatewayEnroll(app, { db } = {}) {
         detail: `${r.site}/${r.device}`,
       });
     }
+    if (!r.error) recordGatewayClient(db, r.site, r.device, req.headers);
     send(res, r);
   });
 
@@ -422,6 +424,7 @@ export function mountGatewayEnroll(app, { db } = {}) {
       kind: 'config',
       onFail: auditEnrollFail,
     });
+    if (!r.error) recordGatewayClient(db, r.site, r.device, req.headers);
     send(res, r);
   });
 }

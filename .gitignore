@@ -34,3 +34,6 @@ cloud/app/data/backups/
 
 # Khoá riêng ký lệnh cloud → gateway (tự sinh trong DATA_DIR) — không bao giờ commit
 cloud/app/data/*.pem
+
+# Bản GatewayApp build sẵn (sinh bởi cloud/scripts/publish-gateway.ps1, đẩy lên VPS bằng sync-vps)
+releases/
