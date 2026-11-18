@@ -464,7 +464,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (_host != null) return;
         _meta.Persist = !_demo;
         if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
-        var err = _cfg.Validate();
+        var err = _cfg.Validate(driverSupplied: _demo);   // demo dùng PLC giả trong chương trình → không cần địa chỉ PLC; cấu hình thật vẫn kiểm tra đủ
         if (err != null) { Toast("Cấu hình chưa hợp lệ: " + err, true); return; }
         try { SaveCfg(); } catch (IOException) { }
         try

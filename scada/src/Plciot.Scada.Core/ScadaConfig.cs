@@ -291,7 +291,11 @@ public sealed class ScadaConfig
         return null;
     }
 
-    public string? Validate()
+    /// <param name="driverSupplied">
+    /// true khi app chủ tự cấp driver thay cho kết nối theo cấu hình (vd. PLC giả của chế độ Demo trong GatewayApp):
+    /// khi đó không cần địa chỉ PLC / OPC UA endpoint. Cấu hình thật (driver tạo từ cấu hình) luôn gọi với false.
+    /// </param>
+    public string? Validate(bool driverSupplied = false)
     {
         var safe = new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_-]{1,48}$");
         if (!safe.IsMatch(Site) || !safe.IsMatch(Device)) return "Site/Device chỉ gồm chữ, số, '_' và '-'.";
@@ -305,7 +309,7 @@ public sealed class ScadaConfig
         }
         if (LocalPort is < 1 or > 65535) return "Cổng broker nội bộ không hợp lệ.";
         if (WebActive && (WebPort is < 1 or > 65535 || WebPort == LocalPort)) return "Cổng web không hợp lệ hoặc trùng cổng broker.";
-        var bound = PackBound;
+        var bound = PackBound || driverSupplied;   // Pack đã gán giao thức hoặc driver do app cấp: nguồn chung không cần địa chỉ
         if (!bound && Source is not (PlcSource.Gateway or PlcSource.OpcUa) && string.IsNullOrWhiteSpace(PlcHost)) return "Thiếu địa chỉ PLC.";
         if (!bound && Source == PlcSource.OpcUa && string.IsNullOrWhiteSpace(OpcUaEndpoint)) return "Thiếu OPC UA endpoint.";
         if (ModbusServerEnabled && (ModbusServerPort is < 1 or > 65535)) return "Cổng Modbus server không hợp lệ.";

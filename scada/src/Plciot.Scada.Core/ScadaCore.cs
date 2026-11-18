@@ -28,9 +28,11 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     int _fails;
 
     /// <param name="pool">Chỉ dùng khi Pack có field đã gán giao thức: bộ driver theo field (mặc định tạo từ cấu hình; truyền vào để thử nghiệm).</param>
-    public ScadaCore(ScadaConfig cfg, IRegisterDriver? driver, PackDriverPool? pool = null)
+    /// <param name="driverSupplied">true khi <paramref name="driver"/> do app chủ tự cấp (vd. PLC giả của Demo), không tạo từ cấu hình → không cần địa chỉ PLC. Xem <see cref="ScadaConfig.Validate"/>.</param>
+    public ScadaCore(ScadaConfig cfg, IRegisterDriver? driver, PackDriverPool? pool = null, bool driverSupplied = false)
     {
-        var err = cfg.Validate();
+        if (driverSupplied && driver == null) throw new ArgumentException("driverSupplied cần một driver.", nameof(driver));
+        var err = cfg.Validate(driverSupplied);
         if (err != null) throw new ArgumentException(err);
         _cfg = cfg;
         // Pack đã gán giao thức → đọc/ghi theo từng field qua pool; nguồn chung (driver) bị bỏ qua

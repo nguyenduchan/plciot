@@ -43,7 +43,8 @@ public sealed class ScadaHost : IAsyncDisposable
     public ScadaHost(ScadaConfig cfg, IRegisterDriver? driverOverride = null)
     {
         _cfg = cfg;
-        Core = new ScadaCore(cfg, driverOverride ?? (cfg.PackBound ? null : DriverFactory.Create(cfg)));
+        // driverOverride (vd. PLC giả của Demo) thay cho kết nối theo cấu hình → không bắt địa chỉ PLC; driver tạo từ cấu hình thì kiểm tra đủ
+        Core = new ScadaCore(cfg, driverOverride ?? (cfg.PackBound ? null : DriverFactory.Create(cfg)), driverSupplied: driverOverride != null);
         _bridge = new CloudBridge(cfg);
         Core.Log += l => Log?.Invoke(l);
         _bridge.Log += Core.Emit;
