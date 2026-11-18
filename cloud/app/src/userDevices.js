@@ -269,7 +269,9 @@ export async function addDeviceFromQr(db, user, { qr, ip, deviceId }) {
     u = claimed.user || db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
-  const result = addFromHardwareRow(db, u, hw);
+  // QR của GATEWAY: thiết bị con thuộc đúng gateway đó (hw.device). Không dùng notify_device của gateway chính, nếu không quét lại tem của gateway
+  // thứ hai/ba (đã tự đăng ký) sẽ chuyển hết thiết bị con của nó về gateway chính và webapp chỉ còn một tab.
+  const result = addFromHardwareRow(db, isGateway ? { ...u, notify_site: hw.site, notify_device: String(hw.device) } : u, hw);
   if (result.error) return result;
   audit(db, 'user_device_added', {
     userId: u.id, ip, detail: `${verified.site}/${verified.device} +${result.added.length}`,
