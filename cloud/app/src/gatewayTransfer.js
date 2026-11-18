@@ -15,7 +15,7 @@
  */
 import crypto from 'node:crypto';
 import { audit, clientIp, getHardwareDeviceQr, rateLimit } from '@plciot/security';
-import { reassignPairing, userGatewayCount, USER_MAX_GATEWAYS } from './gatewayPairing.js';
+import { reassignPairing, userGatewayCount, userGatewayLimit } from './gatewayPairing.js';
 import { addDeviceFromQr, removeGateway } from './userDevices.js';
 import { notifyGateway } from './gatewayNotify.js';
 import { pushToUser } from './webPush.js';
@@ -91,7 +91,7 @@ export async function completeTransfer(db, id, { reason = 'approved', ip } = {})
   if (!pairing) return cancel('gateway_changed');
   const to = userById(db, t.to_user);
   if (!alive(to)) return cancel('new_owner_gone');
-  if (userGatewayCount(db, to.id) >= USER_MAX_GATEWAYS) return cancel('too_many_gateways');
+  if (userGatewayCount(db, to.id) >= userGatewayLimit(to)) return cancel('too_many_gateways');
   // Đánh dấu trước (chống chạy đôi giữa duyệt tay và bộ quét hết hạn)
   if (!db.prepare("UPDATE gateway_transfers SET status = 'done', decided_at = ? WHERE id = ? AND status = 'pending'").run(Date.now(), id).changes) return { error: 'not_found', status: 404 };
 

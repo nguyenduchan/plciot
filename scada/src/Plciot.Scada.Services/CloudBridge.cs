@@ -167,12 +167,22 @@ public sealed class CloudBridge : IAsyncDisposable
         _ = SendAsync(topic, payload, retain, CancellationToken.None);
     }
 
-    /// <summary>Dữ liệu đổi → chỉ cần cách nhau CloudTelemetryFastMs; không đổi → nhịp tim CloudTelemetryMinMs; vừa có lệnh điều khiển → gửi ngay.</summary>
+    long _liveUntil;   // Stopwatch ticks: tới lúc này có người đang xem webapp → gửi nhanh
+    /// <summary>Server báo có người đang xem webapp: gửi nhanh trong <paramref name="ttlSec"/> giây (mỗi lần báo gia hạn). Hết hạn → về tốc độ lưu.</summary>
+    public void SetLive(int ttlSec)
+    {
+        ttlSec = Math.Clamp(ttlSec, 5, 600);
+        var was = IsLive;
+        Interlocked.Exchange(ref _liveUntil, Stopwatch.GetTimestamp() + (long)ttlSec * Stopwatch.Frequency);
+        if (!was) Log?.Invoke("Có người xem webapp — gửi dữ liệu nhanh");
+    }
+    public bool IsLive => Stopwatch.GetTimestamp() < Interlocked.Read(ref _liveUntil);
+
+    /// <summary>Khoảng cách tối thiểu giữa hai lần gửi: xem <see cref="TelemetryGate"/> (có người xem → tần suất gửi; không ai xem → tần suất lưu; vừa có lệnh → ngay). Không xét dữ liệu đổi hay không.</summary>
     double RequiredGapMs(string topic, byte[] payload)
     {
-        if (Stopwatch.GetTimestamp() < Interlocked.Read(ref _expediteUntil)) return 0;
-        var changed = !_lastSent.TryGetValue(topic, out var prev) || !prev.AsSpan().SequenceEqual(payload);
-        return changed ? Math.Min(_cfg.CloudTelemetryFastMs, _cfg.CloudTelemetryMinMs) : _cfg.CloudTelemetryMinMs;
+        return TelemetryGate.GapMs(Stopwatch.GetTimestamp() < Interlocked.Read(ref _expediteUntil), IsLive,
+            _cfg.CloudIdleTelemetryMs, _cfg.CloudTelemetryMinMs);
     }
 
     /// <summary>Sau lệnh điều khiển: trong <paramref name="ms"/> tới, telemetry (trạng thái mới của PLC) được gửi lên ngay.</summary>

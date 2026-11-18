@@ -14,10 +14,10 @@ import { specFor, parseUserKeys } from './childControl.js';
 import { clientIp } from '@plciot/security';
 import { mqttIdFor, gatewaysOfUser } from './mqttIds.js';
 import { rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
-import { planWidgetLimit, effectivePlan } from './entitlements.js';
+import { planWidgetLimit, planDeviceLimit, effectivePlan, planTitle } from './entitlements.js';
 
 /** Thông tin gói để dựng dashboard (giới hạn widget). */
-const planOf = (u) => ({ widgetLimit: planWidgetLimit(u), planId: effectivePlan(u).id, planLabel: effectivePlan(u).label });
+const planOf = (u) => ({ widgetLimit: planWidgetLimit(u), deviceLimit: planDeviceLimit(u), planId: effectivePlan(u).id, planLabel: effectivePlan(u).id ? planTitle(effectivePlan(u).id) : effectivePlan(u).label });
 import { notifyGateway } from './gatewayNotify.js';
 import { DEFAULT_TENANT } from './contract.js';
 import { rateLimit } from '@plciot/security';

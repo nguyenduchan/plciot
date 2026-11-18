@@ -188,6 +188,7 @@ public sealed class ScadaHost : IAsyncDisposable
         {
             // Tín hiệu hệ thống từ server (không phải lệnh điều khiển PLC): bật/tắt gửi data theo tem có user hay chưa
             if (sys == "claimed") { _cfg.CloudSendData = true; Core.Emit("Server báo tem đã có user — bắt đầu gửi data lên cloud"); }
+            else if (sys == "live") _bridge.SetLive(TtlOf(payload));   // có người đang xem webapp → gửi nhanh trong ttl giây
             else if (sys == "unclaimed") { _cfg.CloudSendData = false; Core.Emit("Server báo tem không còn user — ngừng gửi data, chỉ đồng bộ setting"); }
             return;
         }
@@ -245,6 +246,16 @@ public sealed class ScadaHost : IAsyncDisposable
     }
 
     /// <summary>Chống phát lại: id đã thấy → "replayed_cmd"; "ts" quá cũ/quá mới so với CmdMaxAgeSec → "stale_cmd"; còn lại null.</summary>
+    static int TtlOf(byte[] payload)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty("ttl", out var t) && t.TryGetInt32(out var v) ? v : 60;
+        }
+        catch (System.Text.Json.JsonException) { return 60; }
+    }
+
     static string? SysOf(byte[] payload)
     {
         try

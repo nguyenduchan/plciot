@@ -23,6 +23,8 @@ RUN npm install --omit=dev
 
 COPY cloud/app/src ./src
 COPY cloud/app/scripts ./scripts
+# Cấu hình gói mặc định (plans.json); bản chạy thật nằm ở /app/data/plans.json (volume), nếu có thì được ưu tiên
+COPY cloud/app/config ./config
 
 ENV PORT=3080
 ENV DATA_DIR=/app/data

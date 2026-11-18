@@ -185,6 +185,8 @@ public sealed class GatewayProvisionKit
     public int? TelemetryMinMs { get; set; }
     /// <summary>Số ngày cloud lưu data theo gói của chủ (0 = không giới hạn); null = server cũ.</summary>
     public int? RetentionDays { get; set; }
+    /// <summary>Chu kỳ lưu (ms) theo gói: tốc độ gửi khi không ai xem webapp. null/0 = server cũ, luôn gửi nhanh.</summary>
+    public int? StoreEveryMs { get; set; }
     /// <summary>Id MQTT ngẫu nhiên server cấp (16 hex); topic = gw/&lt;MqttId&gt;/&lt;kind&gt;.</summary>
     public string? MqttId { get; set; }
     /// <summary>Khoá công khai (SPKI base64url) của server để kiểm chữ ký lệnh cloud. Null = server cũ.</summary>

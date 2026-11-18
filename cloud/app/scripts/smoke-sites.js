@@ -80,6 +80,18 @@ r = await call('POST', '/api/site/claim/start', c, { site: 'plantNew', device: '
 ok(r.status === 410 && r.body.error === 'use_device_qr_claim', 'claim vật lý đã bỏ: dùng QR tem (xem smoke-device-claim)');
 const d = mk('member_d', 'operator', 'plantNew');
 
+/* ---- giới hạn nhân viên theo gói: DK10 tối đa 2 (tính cả lời mời đang chờ) ---- */
+{
+  const f = mk('owner_free', 'operator', 'plantFree');
+  const mkMember = (n) => { const id = mk(n, 'operator', 'plantFree'); return id; };
+  mkMember('free_m1');
+  let q = await call('POST', '/api/site/invites', f, { role: 'operator' });
+  ok(q.status === 200, 'DK10: nhân viên thứ 2 (1 thành viên + 1 lời mời) vẫn mời được');
+  q = await call('POST', '/api/site/invites', f, { role: 'operator' });
+  ok(q.status === 403 && q.body.error === 'member_limit' && q.body.limit === 2, 'DK10: vượt 2 nhân viên bị chặn (member_limit)');
+}
+db.prepare("UPDATE users SET sub_plan = 'pro', remote_control = 1, retention_days = 365 WHERE username = 'owner_c'").run();   // DK100: 20 nhân viên
+
 /* ---- mời thành viên bằng mã mời (token), không cần SĐT/email ---- */
 r = await call('POST', '/api/site/invites', c, { role: 'operator' });
 ok(r.status === 200 && r.body.id && r.body.code && r.body.url.includes('invite='), 'chủ site tạo mã mời (token + liên kết)');

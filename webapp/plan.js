@@ -20,6 +20,7 @@
       const r = await fetch(`${session.apiBase || location.origin}/api/support/prices?days=${days}`, { headers: { Authorization: `Bearer ${session.token}` } });
       if (!r.ok) return;
       const j = await r.json(); prices = j.prices; priceWidgets = j.widgets;
+      if (Array.isArray(j.plans) && j.plans.length) PLANS = j.plans.map(toUiPlan);
       renderTable();
       window.dispatchEvent(new Event('plan-prices'));
     } catch { /* không có giá: vẫn hiện bảng gói */ }
@@ -31,22 +32,28 @@
     if (q.kind === 'free') return '<small class="price">Giá: <b>miễn phí</b></small>';
     if (!q.eligible) return `<small class="price off">${esc(q.reason || 'Không phù hợp với lựa chọn hiện tại.')}</small>`;
     if (q.kind === 'one_time') return `<small class="price">Giá: <b>${vnd(q.total)}</b> trả một lần cho ${q.years} năm${priceWidgets ? ` (${priceWidgets} widget` : ''}${q.equivalentPerMonth ? `, ≈ ${vnd(q.equivalentPerMonth)}/tháng)` : priceWidgets ? ')' : ''}</small>`;
-    return `<small class="price">Giá: <b>${vnd(q.total)}/tháng</b>${priceWidgets ? ` cho ${priceWidgets} widget` : ''} · ${vnd(q.perWidget)}/widget</small>`;
+    return `<small class="price">Giá: <b>${vnd(q.total)}/tháng</b>${q.perYear ? ` · trả cả năm ${vnd(q.perYear)}` : ''}</small>`;
   }
 
-  const PLANS = [
-    { id: 'free', name: 'Miễn phí', widgets: 'tối đa 5 widget', retention: 'lịch sử 1 mẫu/2 giây, lưu 1 ngày', fit: 'Dùng thử, 1 trạm bơm nhỏ', ctl: true },
-    { id: 'monitor', name: 'Cơ bản', widgets: 'tối đa 30 widget', retention: 'lịch sử 1 mẫu/10 giây, lưu 7 ngày', fit: 'Trạm bơm, xưởng nhỏ', ctl: true },
-    { id: 'pro', name: 'Nâng cao', widgets: 'tối đa 100 widget', retention: 'lịch sử 1 mẫu/10 giây, lưu 30 ngày', fit: 'Xưởng vừa, nhiều trạm bơm, cần xem lại cả tháng', ctl: true },
-    { id: 'factory', name: 'Nhà máy / partner', widgets: 'tối đa 300 widget', retention: 'lịch sử chi tiết 30 ngày, sau đó lưu 1 mẫu/5 phút đủ 10 năm; đăng ký một lần cho 10 năm', fit: 'Hệ thống lớn, cần lưu dài hạn', ctl: true },
-  ];
+  // Danh sách gói đọc từ SERVER (cloud/app/config/plans.json) — không có số liệu gói trong app. name = "DK30 · Khởi đầu (Starter)": luôn kèm MÃ GÓI.
+  let PLANS = [];
+  const fmtMs = (ms) => (!ms ? '' : ms >= 60000 ? `${Math.round(ms / 60000)} phút` : `${Math.round(ms / 1000)} giây`);
+  function toUiPlan(p) {
+    const keep = p.unlimited ? 'đủ 10 năm' : `${p.retentionDays} ngày`;
+    return {
+      id: p.id, code: p.code, label: p.label, name: p.title || `${p.code} · ${p.label}`, desc: p.description, fit: p.audience, ctl: true,
+      widgets: `${p.gateways != null ? p.gateways + ' gateway · ' : ''}tối đa ${p.devices != null ? p.devices : '∞'} thiết bị`,
+      retention: `lưu lịch sử ${keep}${p.storeEveryMs ? `, ghi mỗi ${fmtMs(p.storeEveryMs)}` : ''}${p.exportDays ? `, xuất báo cáo ${p.exportDays} ngày gần nhất` : ', xuất báo cáo không giới hạn'}`,
+      isFree: p.isFree,
+    };
+  }
 
   function reasonText(code) {
     if (code === 'widget_locked') {
       const lim = plan?.widgetLimit ?? sub?.widgetLimit ?? 5;
       const cnt = plan?.widgetCount;
       const lk = plan?.locked;
-      return `Gói ${esc(plan?.label || sub?.planLabel || 'Miễn phí')} chỉ dùng được ${lim} widget.${cnt != null ? ` Tài khoản đang có ${cnt} widget nên ${lk} widget cuối bị làm mờ, không cập nhật dữ liệu và không điều khiển được.` : ' Các widget vượt giới hạn bị làm mờ, không cập nhật dữ liệu và không điều khiển được.'}`;
+      return `Gói ${esc(plan?.label || sub?.planTitle || sub?.planLabel || 'Miễn phí')} chỉ dùng được ${plan?.deviceLimit != null ? plan.deviceLimit + ' thiết bị' : lim + ' widget'}.${cnt != null ? ` Tài khoản đang có ${cnt} widget nên ${lk} widget cuối bị làm mờ, không cập nhật dữ liệu và không điều khiển được.` : ' Các widget vượt giới hạn bị làm mờ, không cập nhật dữ liệu và không điều khiển được.'}`;
     }
     return esc(window.ErrText ? window.ErrText(code) : code);
   }
@@ -97,11 +104,10 @@
     if (!host) return;
     const cur = sub?.plan;
     host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để chọn</span>'}
-      <small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small>${priceLine(p.id)}<small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
+      <small>${esc(p.desc || '')}</small><small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small>${priceLine(p.id)}<small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
     let box = document.getElementById('plan-days-box');
     if (!box) { box = document.createElement('div'); box.id = 'plan-days-box'; host.insertAdjacentElement('afterend', box); }
-    box.innerHTML = `<label>Thời gian lưu lịch sử (gói Cơ bản / Nâng cao)<select id="plan-days">${DAYS.map((d) => `<option value="${d}"${d === days ? ' selected' : ''}>${d} ngày</option>`).join('')}</select></label>
-      <p class="help">Giá chỉ để tham khảo, chưa phải đơn đặt hàng. Gói chỉ được kích hoạt sau khi bạn chat với quản trị viên và được xác nhận.</p>`;
+    box.innerHTML = '<p class="help">Mã gói (DK10, DK30…) là số thiết bị tối đa của gói — dùng mã này khi trao đổi với quản trị viên. Giá chỉ để tham khảo, chưa phải đơn đặt hàng; gói chỉ được kích hoạt sau khi bạn chat với quản trị viên và được xác nhận.</p>';
     window.dispatchEvent(new Event('plan-table-rendered'));
   }
 
@@ -127,9 +133,9 @@
   });
   window.PlanUi = {
     show, goUpgrade, update, copyRequest,
-    plans: PLANS,
+    get plans() { return PLANS; },
     current: () => sub?.plan || 'free',
-    currentLabel: () => sub?.planLabel || 'Miễn phí',
+    currentLabel: () => sub?.planTitle || sub?.planLabel || 'Miễn phí',
     username: () => username,
     selectedDays: () => days,
     setDays: (d) => { if (DAYS.includes(Number(d)) && Number(d) !== days) { days = Number(d); loadPrices(); } },

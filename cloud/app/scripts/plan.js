@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Gói đăng ký theo username (chỉ username).
- *   node scripts/plan.js grant <username> <monitor|pro|factory> [date|never]
+ *   node scripts/plan.js grant <username> <DK20|DK30|DK100|DK300|free|plus|monitor|pro|factory> [date|never]
  */
 import path from 'path';
 import { openDb, findUserByUsername } from '../src/db.js';
@@ -10,7 +10,7 @@ import { grantPlan, listPlans } from '../src/entitlements.js';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const [cmd, username, plan, until] = process.argv.slice(2);
 if (cmd !== 'grant' || !username || !plan) {
-  console.error('Usage: node scripts/plan.js grant <username> <monitor|pro|factory> [YYYY-MM-DD|never]');
+  console.error('Usage: node scripts/plan.js grant <username> <DK10|DK20|DK30|DK100|DK300|…> [YYYY-MM-DD|never]');
   process.exit(1);
 }
 const db = openDb(DATA_DIR);

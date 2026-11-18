@@ -624,6 +624,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             var mqttId = kit.MqttId ?? (kit.TopicBase is { } tb && tb.StartsWith(Contract.GwPrefix + "/") ? tb[(Contract.GwPrefix.Length + 1)..] : null);
             if (!Contract.IsMqttId(mqttId)) throw new InvalidOperationException("server không cấp id MQTT hợp lệ");
             _cfg.MqttId = mqttId!;
+            if (kit.StoreEveryMs is >= 0) _cfg.CloudIdleTelemetryMs = kit.StoreEveryMs.Value;   // không ai xem webapp: gửi bằng tốc độ lưu của gói
             if (kit.RetentionDays is >= 0) _cfg.CloudRetentionDays = kit.RetentionDays.Value;   // bù dữ liệu offline chỉ trong thời hạn lưu của gói
             if (kit.TelemetryMinMs is > 0) { _cfg.CloudTelemetryMinMs = kit.TelemetryMinMs.Value; _cfg.CloudTelemetryFastMs = kit.TelemetryMinMs.Value; }   // gói giới hạn tần suất: tự gửi chậm, không chờ server bỏ bớt
             if (kit.Mqtt != null)
@@ -718,6 +719,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             var kit = await RefreshKitAsync(http);
             if (kit != null) ApplySkin(kit);
             if (!string.IsNullOrEmpty(kit?.CmdKey) && kit!.CmdKey != _cfg.CloudCmdKey) { _cfg.CloudCmdKey = kit.CmdKey; try { SaveCfg(); } catch (IOException) { } }   // server đổi khoá ký: nhận qua HTTPS có chữ ký
+            if (kit?.StoreEveryMs is >= 0 && kit.StoreEveryMs != _cfg.CloudIdleTelemetryMs) { _cfg.CloudIdleTelemetryMs = kit.StoreEveryMs.Value; try { SaveCfg(); } catch (IOException) { } }   // đổi gói: tốc độ gửi khi không ai xem đổi theo
             if (kit?.RetentionDays is >= 0 && kit.RetentionDays != _cfg.CloudRetentionDays) { _cfg.CloudRetentionDays = kit.RetentionDays.Value; try { SaveCfg(); } catch (IOException) { } }   // đổi gói trên server → thời hạn bù dữ liệu offline cập nhật theo
             if (kit?.Claimed is bool cl && cl != _cfg.CloudSendData)
             {

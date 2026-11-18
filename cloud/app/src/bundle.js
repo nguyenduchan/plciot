@@ -30,17 +30,22 @@ function walk(dir, base, out) {
     const st = fs.statSync(full);
     const rel = path.relative(base, full).replace(/\\/g, '/');
     if (st.isDirectory()) walk(full, base, out);
-    else if (st.isFile()) out.push({ path: rel, full, size: st.size });
+    else if (st.isFile()) out.push({ path: rel, full, size: st.size, mtimeMs: st.mtimeMs });
   }
 }
 
+/** Băm từng file được nhớ theo (đường dẫn, mtime, kích thước): kiểm tra bản webapp mới mỗi lần tải lại trang chỉ tốn một lần stat/file, file nào đổi mới đọc + băm lại. */
+const hashCache = new Map();   // full -> { mtimeMs, size, hash }
 export function listBundleFiles(bundleRoot) {
   if (!fs.existsSync(bundleRoot)) return [];
   const files = [];
   walk(bundleRoot, bundleRoot, files);
-  return files.map(({ path: p, full, size }) => {
-    const buf = fs.readFileSync(full);
-    const hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16);
+  if (hashCache.size > 20_000) hashCache.clear();
+  return files.map(({ path: p, full, size, mtimeMs }) => {
+    const c = hashCache.get(full);
+    if (c && c.mtimeMs === mtimeMs && c.size === size) return { path: p, size, hash: c.hash };
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').slice(0, 16);
+    hashCache.set(full, { mtimeMs, size, hash });
     return { path: p, size, hash };
   }).sort((a, b) => a.path.localeCompare(b.path));
 }

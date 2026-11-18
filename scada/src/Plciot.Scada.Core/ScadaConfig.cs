@@ -187,6 +187,8 @@ public sealed class ScadaConfig
     public int CloudTelemetryMinMs { get; set; } = 1000;
     /// <summary>Telemetry ĐỔI được gửi ngay, cách nhau tối thiểu khoảng này (chống dồn; server ingest giới hạn ~120 tin/phút/thiết bị).</summary>
     public int CloudTelemetryFastMs { get; set; } = 300;
+    /// <summary>Tốc độ gửi telemetry (ms) khi KHÔNG ai xem webapp = chu kỳ lưu của gói (server báo lúc đăng ký). Có người xem (server báo sys:live) thì gửi nhanh theo CloudTelemetryMinMs. 0 = tắt (luôn gửi nhanh như cũ).</summary>
+    public int CloudIdleTelemetryMs { get; set; }
     /// <summary>Lưu lịch sử giá trị trong SQLite của gateway (history.db): số ngày giữ. 0 = không giới hạn.</summary>
     public int LocalHistoryDays { get; set; } = 30;
     /// <summary>Chu kỳ ghi một mẫu vào lịch sử cục bộ (giây), mỗi field.</summary>

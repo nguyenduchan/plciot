@@ -10,6 +10,7 @@ import { audit, countAudit } from '@plciot/security';
 import { provisionUserMqtt } from './mqttProvision.js';
 import { notifyOwner } from './accountSecurity.js';
 import { plcSnapshot } from './plcProof.js';
+import { planMemberLimit } from './entitlements.js';
 
 const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 const DAY = 86_400_000;
@@ -97,6 +98,13 @@ export async function createInvite(db, owner, { role, ip }) {
   const me = getUser(db, owner.id);
   const r = INVITE_ROLES.includes(role) ? role : 'operator';
   if (countAudit(db, me.id, 'site_invite', Date.now() - DAY) >= 20) return { error: 'rate_limited', status: 429 };
+  // Số nhân viên tối đa theo gói (DK10: 2, DK20: 3, DK30: 5, DK100: 20, DK300: 50), tính cả lời mời đang chờ
+  const memberLimit = planMemberLimit(me);
+  if (memberLimit != null) {
+    const have = db.prepare('SELECT COUNT(*) AS n FROM users WHERE notify_site = ? AND notify_device = ? AND disabled = 0 AND id != ?').get(me.notify_site, me.notify_device, me.id).n;
+    const pending = db.prepare("SELECT COUNT(*) AS n FROM site_invites WHERE site = ? AND device = ? AND status = 'pending' AND expires_at > ?").get(me.notify_site, me.notify_device, Date.now()).n;
+    if (have + pending >= memberLimit) return { error: 'member_limit', status: 403, limit: memberLimit };
+  }
   const id = crypto.randomBytes(8).toString('hex');
   const token = crypto.randomBytes(12).toString('base64url');
   const now = Date.now();

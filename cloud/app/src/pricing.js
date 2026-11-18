@@ -40,7 +40,7 @@ const round = (n, step) => Math.ceil(n / step) * step;
 /** Số dòng DB một widget chiếm ở trạng thái ổn định (lịch sử chi tiết + phần gộp thưa dài hạn nếu có). */
 export function rowsPerWidget(plan) {
   const hotDays = plan.retention === 'default' ? defaultDays() : plan.retention === 0 ? (plan.hotDays || 30) : plan.retention;
-  const hotMs = Math.max(1000, Number(plan.telemetryMinMs) || 1000);
+  const hotMs = Math.max(1000, Number(plan.storeEveryMs) || Number(plan.telemetryMinMs) || 1000);   // chu kỳ LƯU vào DB quyết định số dòng
   let rows = (hotDays * DAY) / hotMs;
   if (plan.retention === 0 && plan.coldSampleMs) {
     const coldDays = PRICING.years() * 365 - hotDays;
@@ -65,14 +65,12 @@ export function quoteForPlan(planId, widgets) {
   const n = Math.max(0, Math.floor(Number(widgets) || 0));
   const floor = costFloor(plan);
   const base = { plan: planId, label: plan.label, widgets: n, widgetCap: plan.widgets ?? null, overCap: plan.widgets != null && n > plan.widgets, floorPerWidgetMonth: Math.round(floor.perWidgetMonth), storageMbPerWidget: Math.round(floor.bytesPerWidget / 1048576) };
-  if (planId === 'free') return { ...base, kind: 'free', total: 0, note: 'Miễn phí (tối đa 5 widget).' };
-  if (planId === 'monitor') {
-    const total = PRICING.basicMonth();
-    return { ...base, kind: 'monthly', total, perMonth: total, perYear: total * 12, note: `Trọn gói ${total.toLocaleString('vi-VN')}đ/tháng, tối đa ${plan.widgets} widget.` };
-  }
-  if (planId === 'pro') {
-    const total = Math.max(PRICING.proMinMonth(), round(PRICING.proPerWidgetMonth() * n, 1000));
-    return { ...base, kind: 'monthly', total, perMonth: total, perYear: total * 12, note: `${PRICING.proPerWidgetMonth().toLocaleString('vi-VN')}đ/widget/tháng, tối thiểu ${PRICING.proMinMonth().toLocaleString('vi-VN')}đ/tháng.` };
+  base.code = plan.code;
+  if (plan.priceVndMonth === 0) return { ...base, kind: 'free', total: 0, note: `${plan.code}: miễn phí, ${plan.gateways} gateway, tối đa ${plan.devices} thiết bị.` };
+  // Gói theo tháng (DK20 / DK30 / DK100): TRỌN GÓI theo bảng gói (PLAN_CATALOG.priceVndMonth), không tính theo widget; trả cả năm giảm 2 tháng
+  if (plan.priceVndMonth > 0 && !plan.oneTime10y) {
+    const total = plan.priceVndMonth;
+    return { ...base, kind: 'monthly', total, perMonth: total, perYear: total * 10, note: `${plan.code}: trọn gói ${total.toLocaleString('vi-VN')}đ/tháng (trả cả năm: ${(total * 10).toLocaleString('vi-VN')}đ), ${plan.gateways} gateway, tối đa ${plan.devices} thiết bị.` };
   }
   // Trả một lần cho 10 năm: 3 × chi phí vận hành 10 năm của mỗi widget
   const perWidget = round(floor.perWidgetYears * PRICING.multiplier(), 10000);
@@ -110,18 +108,17 @@ export function priceByDays(planId, widgets, days) {
   const d = Math.min(3650, Math.max(1, Math.floor(Number(days) || 30)));
   const out = { plan: planId, label: plan.label, widgetCap: plan.widgets ?? null, widgets: n, days: d, eligible: true, reason: null };
   if (plan.widgets != null && n > plan.widgets) { out.eligible = false; out.reason = `Gói này tối đa ${plan.widgets} widget (bạn đang có ${n}).`; }
-  if (planId === 'free') return { ...out, kind: 'free', days: 1, total: 0, note: 'Miễn phí, lưu lịch sử 1 ngày.' };
-  if (planId === 'factory') {
-    const q = quoteForPlan('factory', n);
+  out.code = plan.code;
+  if (plan.priceVndMonth === 0) return { ...out, kind: 'free', days: plan.retention, total: 0, note: `${plan.code}: miễn phí, lưu lịch sử ${plan.retention} ngày.` };
+  if (plan.oneTime10y) {
+    const q = quoteForPlan(planId, n);
     return { ...out, kind: 'one_time', days: null, perWidget: q.perWidget, total: q.total, years: q.years, equivalentPerMonth: q.equivalentPerMonth, note: `Trả một lần cho ${q.years} năm; chi tiết 30 ngày, sau đó lưu thưa đủ ${q.years} năm.` };
   }
-  const maxDays = planId === 'monitor' ? PRICING.basicMaxDays() : PRICING.proMaxDays();
-  if (d > maxDays) { out.eligible = false; out.reason = `Gói này lưu tối đa ${maxDays} ngày.`; }
-  const floor = costFloor({ retention: d, telemetryMinMs: plan.telemetryMinMs });
-  const perWidget = round(floor.perWidgetMonth * PRICING.multiplier() + PRICING.feePerWidgetMonth(), PRICING.stepMonth());
-  const min = planId === 'monitor' ? PRICING.basicMonth() : PRICING.proMinMonth();
-  const total = Math.max(min, perWidget * n);
-  return { ...out, kind: 'monthly', perWidget, minMonth: min, total, perYear: total * 12, note: `${perWidget.toLocaleString('vi-VN')}đ/widget/tháng, tối thiểu ${min.toLocaleString('vi-VN')}đ/tháng.` };
+  // Gói theo tháng: giá TRỌN GÓI cố định theo bảng gói; số ngày chọn không được vượt thời hạn lưu của gói
+  const maxDays = plan.retention;
+  if (d > maxDays) { out.eligible = false; out.reason = `Gói ${plan.code} lưu tối đa ${maxDays} ngày.`; }
+  const total = plan.priceVndMonth || 0;
+  return { ...out, kind: 'monthly', total, perYear: total * 10, minMonth: total, note: `${plan.code}: trọn gói ${total.toLocaleString('vi-VN')}đ/tháng, lưu ${plan.retention} ngày, tối đa ${plan.devices} thiết bị.` };
 }
 
 export function pricesByDays(widgets, days) {

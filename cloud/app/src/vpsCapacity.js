@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { effectivePlan } from './entitlements.js';
+import { effectivePlan, freePlan } from './entitlements.js';
 import { costFloor, PRICING } from './pricing.js';
 import { PLAN_CATALOG } from './entitlements.js';
 import { listUserDevices } from './userDevices.js';
@@ -31,7 +31,7 @@ function widgetsByPlan(db) {
   for (const u of db.prepare('SELECT * FROM users WHERE disabled = 0').all()) {
     let w = 0;
     try { w = applyWidgetLimit(listUserDevices(db, u).map(deviceToUiNode), null).total; } catch { w = 0; }
-    const id = effectivePlan(u).id || 'free';
+    const id = effectivePlan(u).id || freePlan().id;
     const b = out[id] || (out[id] = { users: 0, widgets: 0 });
     b.users++; b.widgets += w;
   }

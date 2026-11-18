@@ -58,6 +58,22 @@ export function syncBundles(db, { dataDir, shellDir }, { force = false } = {}) {
   return { version, updated };
 }
 
+/**
+ * Gọi khi người dùng tải lại / mở webapp (/api/me): so mã nguồn webapp hiện tại với bundle của họ NGAY (không chờ chu kỳ quét), dựng lại nếu khác.
+ * Nhờ vậy sau khi sync webapp lên VPS, tải lại trang là thấy bản mới (client so version rồi tải lại các file đổi).
+ * Trả user đã cập nhật (version mới) hoặc user cũ nếu không cần/không làm được.
+ */
+export function ensureUserBundleFresh(db, user, opts) {
+  try {
+    if (!user?.folder_path) return user;
+    const r = refreshUserBundle(db, user, opts);
+    return r && r.version !== user.version ? { ...user, version: r.version } : user;
+  } catch (e) {
+    console.warn('ensureUserBundleFresh', e.message);
+    return user;
+  }
+}
+
 export function startBundleSync(db, opts, everyMs = Math.max(2000, Number(process.env.BUNDLE_SYNC_MS) || 5000)) {
   if (String(process.env.BUNDLE_AUTOSYNC || 'true').toLowerCase() === 'false') return;
   const run = () => { try { syncBundles(db, opts); } catch (e) { console.error('bundle sync', e.message); } };

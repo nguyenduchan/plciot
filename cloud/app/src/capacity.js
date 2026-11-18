@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
-import { FREE_TELEMETRY_MIN_MS } from './entitlements.js';
+import { freeTelemetryMinMs } from './entitlements.js';
 import { defaultDays } from './retention.js';
 
 const MB = 1024 * 1024;
@@ -22,7 +22,7 @@ function memAvailableMb() {
 
 /** Dung lượng DB ghi mỗi ngày cho 1 gateway gói miễn phí (MB). */
 export function mbPerGatewayDay() {
-  const rowsPerDay = 86_400_000 / Math.max(FREE_TELEMETRY_MIN_MS, 200);
+  const rowsPerDay = 86_400_000 / Math.max(freeTelemetryMinMs(), 200);
   return (rowsPerDay * BYTES_PER_ROW) / MB;
 }
 

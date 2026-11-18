@@ -173,9 +173,9 @@ try {
   check('plan: /unread báo gói đang chờ', (await req(APP, 'GET', '/api/support/unread', null, ctok)).j?.pendingPlan === 'monitor');
   check('plan: gói không hợp lệ bị bỏ qua (không lưu gợi ý)', (await req(APP, 'POST', '/api/support/messages', { body: 'x', plan: 'hack' }, ctok)).status === 200);
   const th = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}`, null, token);
-  check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 4);
+  check('plan: admin thấy gói người dùng xin tư vấn', th.j?.requestedPlan === 'monitor' && th.j.plans?.length === 7 && th.j.plans.some((p) => p.code === 'DK30'));
   const Q = th.j?.quotes;
-  check('giá: Cơ bản trọn gói/tháng, Nâng cao có mức tối thiểu', Q?.monitor?.kind === 'monthly' && Q.monitor.total === 99000 && Q.pro.kind === 'monthly' && Q.pro.total >= 199000 && Q.free.total === 0);
+  check('giá: DK30/DK100 trọn gói theo tháng (bảng gói), DK10 miễn phí', Q?.monitor?.kind === 'monthly' && Q.monitor.total === 199000 && Q.pro.kind === 'monthly' && Q.pro.total === 799000 && Q.free.total === 0);
   check('giá: Nhà máy trả một lần 10 năm = 3 × chi phí vận hành (đĩa ~313 MiB/widget)', Q?.factory?.kind === 'one_time' && Q.factory.years === 10 && Q.factory.perWidget >= 1900000 && Q.factory.perWidget <= 2100000 && Q.factory.total === Q.factory.perWidget * Q.factory.widgets && Q.factory.storageMbPerWidget >= 300 && Q.factory.storageMbPerWidget <= 340);
   check('giá: người dùng không thấy giá qua API của mình', !JSON.stringify((await req(APP, 'GET', '/api/support/unread', null, ctok)).j).includes('perWidget'));
   check('plan: gói sai bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'nope' }, token)).status === 400);
@@ -185,7 +185,7 @@ try {
   const ap = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/approve`, { plan: 'monitor' }, token);
   check('plan: admin đồng ý → gói được gán', ap.status === 200 && ap.j?.subscription?.plan === 'monitor');
   check('chờ: đồng ý xong thì hết chờ', !db.prepare('SELECT 1 FROM support_requests WHERE user_id=?').get(cust.id));
-  check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Cơ bản/.test(m.body)));
+  check('plan: người dùng nhận tin xác nhận', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /đồng ý/.test(m.body) && /Khởi đầu/.test(m.body)));
   const dc = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/decline`, { reason: 'Chưa nhận được chuyển khoản' }, token);
   check('plan: admin từ chối', dc.status === 200);
   check('plan: người dùng nhận tin từ chối kèm lý do', (await req(APP, 'GET', '/api/support/messages', null, ctok)).j?.messages?.some((m) => m.from === 'admin' && /chưa thể chuyển gói/.test(m.body) && /Chưa nhận được chuyển khoản/.test(m.body)));
@@ -199,7 +199,7 @@ try {
   const acc = await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro', days: 90 }, ctok);
   check('nâng cấp: bấm Đồng ý → yêu cầu vào kênh nâng cấp', acc.status === 200 && db.prepare("SELECT channel, plan_hint, body FROM support_messages WHERE id=?").get(acc.j.id)?.channel === 'upgrade');
   const accMsg = db.prepare('SELECT body FROM support_messages WHERE id=?').get(acc.j.id)?.body || '';
-  check('nâng cấp: tin do máy chủ soạn có gói, số ngày, giá tham khảo', /ĐỒNG Ý/.test(accMsg) && /Nâng cao/.test(accMsg) && /90 ngày/.test(accMsg) && /Giá tham khảo/.test(accMsg), accMsg);
+  check('nâng cấp: tin do máy chủ soạn có gói, số ngày, giá tham khảo', /ĐỒNG Ý/.test(accMsg) && /Doanh nghiệp/.test(accMsg) && /90 ngày/.test(accMsg) && /Giá tham khảo/.test(accMsg), accMsg);
   const unr = await req(APP, 'GET', '/api/support/unread', null, ctok);
   check('nâng cấp: /unread báo gói chờ + số ngày', unr.j?.pendingPlan === 'pro' && unr.j?.pendingDays === 90);
   check('nâng cấp: gửi trùng bị báo đã đăng ký', (await req(APP, 'POST', '/api/support/upgrade/respond', { decision: 'accept', plan: 'pro', days: 90 }, ctok)).status === 409);
@@ -223,13 +223,13 @@ try {
   const noCfg = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro', days: 30 }, token);
   check('thanh toán: chưa cấu hình ngân hàng → không gửi cho khách', noCfg.status === 409 && noCfg.j?.error === 'payment_not_configured' && db.prepare('SELECT COUNT(*) AS n FROM support_messages WHERE user_id=?').get(cust.id).n === before);
   const prev = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/payment-guide?plan=pro&days=30`, null, token);
-  check('thanh toán: xem trước có gói, số tiền, nội dung chuyển khoản', prev.status === 200 && /gói "Nâng cao"/.test(prev.j?.text) && /đ\/tháng/.test(prev.j.text) && /Nội dung chuyển khoản: other Nâng cao/.test(prev.j.text) && prev.j.configured === false);
+  check('thanh toán: xem trước có gói, số tiền, nội dung chuyển khoản', prev.status === 200 && /gói "Doanh nghiệp/.test(prev.j?.text) && /đ\/tháng/.test(prev.j.text) && /Nội dung chuyển khoản: other Doanh nghiệp/.test(prev.j.text) && prev.j.configured === false);
   check('thanh toán: gói lạ bị từ chối', (await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'hack' }, token)).status === 400);
   check('thanh toán: người dùng thường không gọi được', (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro' }, ctok)).status === 404 || (await req(APP, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'pro' }, ctok)).status === 403);
   const freeG = await req(ADMIN, 'POST', `/api/admin/support/threads/${cust.id}/payment-guide`, { plan: 'free' }, token);
   check('thanh toán: gói miễn phí gửi tin "không cần thanh toán"', freeG.status === 200 && db.prepare("SELECT body, channel FROM support_messages WHERE user_id=? AND from_admin=1 ORDER BY id DESC LIMIT 1").get(cust.id)?.channel === 'upgrade');
-  const pq = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=monitor&days=90`, null, token);
-  check('giá gợi ý cho admin: gói + số ngày + số widget; Cơ bản không quá 30 ngày', pq.status === 200 && pq.j?.kind === 'monthly' && pq.j.eligible === false && typeof pq.j.widgets === 'number' && pq.j.days === 90);
+  const pq = await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=monitor&days=365`, null, token);
+  check('giá gợi ý cho admin: gói + số ngày + số widget; DK30 không quá 120 ngày', pq.status === 200 && pq.j?.kind === 'monthly' && pq.j.eligible === false && typeof pq.j.widgets === 'number' && pq.j.days === 365);
   check('giá gợi ý: gói lạ bị từ chối, người dùng thường không gọi được', (await req(ADMIN, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=x`, null, token)).status === 400 && [403, 404].includes((await req(APP, 'GET', `/api/admin/support/threads/${cust.id}/price?plan=pro`, null, ctok)).status));
   // giới hạn số tin / người dùng (cũ nhất bị xoá, mới nhất còn)
   const ins = db.prepare('INSERT INTO support_messages (user_id, from_admin, body, ts) VALUES (?, 1, ?, ?)');

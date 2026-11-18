@@ -18,7 +18,7 @@ import { rateLimit, clientIp, audit } from '@plciot/security';
 import { quotesForWidgets, pricingAssumptions, pricesByDays, priceByDays, ALLOWED_DAYS } from './pricing.js';
 import { listUserDevices } from './userDevices.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
-import { subscriptionInfo, grantPlan, listPlans, planRank, PLAN_CATALOG, setRemoteControl } from './entitlements.js';
+import { subscriptionInfo, grantPlan, listPlans, publicPlans, planRank, PLAN_CATALOG, setRemoteControl } from './entitlements.js';
 import { retentionInfo } from './retention.js';
 
 const MAX_LEN = 1000;
@@ -274,7 +274,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const today = db.prepare("SELECT COUNT(*) AS n FROM support_messages WHERE user_id = ? AND from_admin = 0 AND ts > ?").get(uid, Date.now() - 86400_000).n;
     if (today >= DAILY_CAP) return res.status(429).json({ error: 'rate_limited' });
     const label = PLAN_CATALOG[planId].label;
-    const paid = planId === 'monitor' || planId === 'pro';
+    const paid = PLAN_CATALOG[planId]?.priceVndMonth > 0 && !PLAN_CATALOG[planId]?.oneTime10y;
     const dReq = Number(req.body?.days);
     const days = paid && ALLOWED_DAYS.includes(dReq) ? dReq : null;
     let widgets = 0;
@@ -347,7 +347,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
       pricing: pricingAssumptions(),
       expiresAt: subscriptionInfo(u)?.expiresAt ?? null,
       nextPlan: subscriptionInfo(u)?.nextPlan || null,
-      plans: listPlans().map((p) => ({ id: p.id, label: p.label })),
+      plans: listPlans().map((p) => ({ id: p.id, label: p.title, code: p.code })),
       messages: rows.map(view),
     });
   });
@@ -385,7 +385,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const days = Number(req.query.days) || 30;
     let widgets = 0;
     try { widgets = applyWidgetLimit(listUserDevices(db, req.user).map(deviceToUiNode), null).total; } catch { /* */ }
-    res.json({ days, allowedDays: ALLOWED_DAYS, widgets, prices: pricesByDays(widgets, days) });
+    res.json({ days, allowedDays: ALLOWED_DAYS, widgets, plans: publicPlans(), prices: pricesByDays(widgets, days) });
   });
 
   app.post('/api/admin/support/threads/:uid/profile', ...adminOnly, adminSendLimit, (req, res) => {
@@ -493,7 +493,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     const after = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
     const info = subscriptionInfo(after) || {};
     const extra = [
-      (planId === 'monitor' || planId === 'pro') && after.retention_days ? `lưu lịch sử ${after.retention_days} ngày` : null,
+      (PLAN_CATALOG[planId]?.priceVndMonth > 0 && !PLAN_CATALOG[planId]?.oneTime10y) && after.retention_days ? `lưu lịch sử ${after.retention_days} ngày` : null,
       info.expiresAt ? `dùng đến hết ngày ${fmt(info.expiresAt)}` : 'không giới hạn thời hạn',
     ].filter(Boolean).join(', ');
     say(uid, `Quản trị viên đã đồng ý và chuyển tài khoản của bạn sang gói "${PLAN_CATALOG[planId].label}" (${extra}). Bạn tải lại ứng dụng là dùng được ngay, không cần đăng nhập lại. Cần hỗ trợ thêm, bạn cứ nhắn tại đây.`);
@@ -509,7 +509,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     if (!u) return { status: 404, error: 'user_not_found' };
     if (!PLAN_CATALOG[planId]) return { status: 400, error: 'unknown_plan' };
     const label = PLAN_CATALOG[planId].label;
-    const paid = planId === 'monitor' || planId === 'pro';
+    const paid = PLAN_CATALOG[planId]?.priceVndMonth > 0 && !PLAN_CATALOG[planId]?.oneTime10y;
     const d = Number(daysRaw);
     const days = paid ? (ALLOWED_DAYS.includes(d) ? d : (u.retention_days || 30)) : null;
     let widgets = 0;
@@ -522,7 +522,7 @@ export function mountSupport(app, { db, requireAuth, requireAdmin }) {
     // Giá trị ví dụ (chứa "VÍ DỤ"/"EXAMPLE" hoặc số tài khoản toàn số 0) chỉ để xem trước, KHÔNG gửi cho khách thật
     const isExample = /v[ií]\s*d[uụ]|example/i.test(`${bank} ${holder}`) || /^0+$/.test(acc);
     const configured = Boolean(bank && acc && holder) && !isExample;
-    if (planId === 'free') return { ok: true, configured, amount: 0, text: `Gói "${label}" miễn phí, bạn không cần thanh toán gì. Nếu cần thêm thông tin, cứ nhắn tại đây.` };
+    if (PLAN_CATALOG[planId]?.priceVndMonth === 0) return { ok: true, configured, amount: 0, text: `Gói "${label}" miễn phí, bạn không cần thanh toán gì. Nếu cần thêm thông tin, cứ nhắn tại đây.` };
     let amountTxt = null;
     if (q?.eligible && q.kind === 'monthly') amountTxt = `${vnd(q.total)}/tháng (${widgets} widget${days ? `, lưu lịch sử ${days} ngày` : ''})`;
     else if (q?.eligible && q.kind === 'one_time') amountTxt = `${vnd(q.total)} trả một lần cho ${q.years} năm (${widgets} widget)`;

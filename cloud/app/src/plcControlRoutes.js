@@ -14,7 +14,7 @@ import { gatewaysOfUser } from './mqttIds.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
-import { mayRemoteControl, planWidgetLimit } from './entitlements.js';
+import { mayRemoteControl, planWidgetLimit, planDeviceLimit, takeRpcBudget } from './entitlements.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
 export function mountPlcControl(app, { db, requireAuth, security }) {
@@ -62,10 +62,13 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     }
     const cfg = configForUser(tu);
     if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
+    // Ngân sách lệnh theo gói (DK10: 60 lệnh/phút/tài khoản; cửa sổ trượt 60 giây)
+    const bud = takeRpcBudget(req.user);
+    if (!bud.ok) { res.setHeader('Retry-After', String(bud.retryAfterSec)); return out(res, 429, { error: 'rpc_limit', max: bud.max, retryAfterSec: bud.retryAfterSec }); }
     // {child,key,v}: nút của thiết bị con (bơm, relay…) theo widget của loại thiết bị; còn lại là ghi/đọc thanh ghi D
     // Giới hạn widget của gói tính trên TOÀN BỘ thiết bị (cùng thứ tự với dashboard) rồi mới lọc theo gateway đích
     const rows = req.body?.key != null ? listUserDevices(db, req.user) : [];
-    const limited = applyWidgetLimit(rows.map(deviceToUiNode), planWidgetLimit(req.user)).nodes;
+    const limited = applyWidgetLimit(rows.map(deviceToUiNode), planWidgetLimit(req.user), planDeviceLimit(req.user)).nodes;
     const v = req.body?.key != null
       ? validateChildCmd(req.body, limited.filter((_, i) => !gwSel || (rows[i].site === tu.notify_site && rows[i].gatewayDevice === tu.notify_device)))
       : validateCmd(req.body, cfg);

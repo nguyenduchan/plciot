@@ -12,7 +12,8 @@ import { isOpsOpen } from './opsFlags.js';
 import { audit } from '@plciot/security';
 import { noteStatusChange, dupConfig } from './dupDetect.js';
 import { applyGatewayConfig } from './gatewayConfig.js';
-import { planTelemetryMinMs } from './entitlements.js';
+import { planTelemetryMinMs, planStoreEveryMs } from './entitlements.js';
+import { createTeleAggregator } from './aggregate.js';
 import { evaluateStatusAlert, parseGatewayAlert, forwardGatewayAlert } from './pushAlerts.js';
 import { featureOn } from './serverProfile.js';
 
@@ -40,8 +41,13 @@ function ownerPlanMinMs(db, site, device) {
   const o = db.prepare('SELECT u.* FROM hardware_devices h JOIN users u ON u.id = h.claimed_by WHERE h.site = ? AND h.device = ?').get(site, device);
   const v = o ? planTelemetryMinMs(o) : 0;
   if (planMsCache.size > 5000) planMsCache.clear();
-  planMsCache.set(key, { v, at: now });
+  planMsCache.set(key, { v, at: now, store: o ? planStoreEveryMs(o) : 0 });
   return v;
+}
+/** Chu kỳ LƯU vào DB theo gói của chủ gateway (ms; 0 = lưu theo nhịp telemetry như cũ). Dùng chung cache với ownerPlanMinMs. */
+function ownerStoreEveryMs(db, site, device) {
+  ownerPlanMinMs(db, site, device);
+  return planMsCache.get(`${site}/${device}`)?.store || 0;
 }
 
 /**
@@ -98,6 +104,12 @@ export function startMqttIngest(db) {
     try { insertMany(rows); } catch (e) { console.error('ingest batch insert', e.message); }
   };
   const insert = (row) => { batchRows.push(row); if (!flushScheduled) { flushScheduled = true; setImmediate(flush); } };
+
+  // Đẩy các cửa sổ gộp đã kết thúc (cửa sổ cuối của gateway ngừng gửi vẫn được lưu)
+  const aggregator = createTeleAggregator();
+  setInterval(() => {
+    for (const r of aggregator.sweep(Date.now())) insert({ ts: r.ts, site: r.meta.site, device: r.meta.device, kind: 'telemetry', payload: r.payload, o: null, i: null, a: null, c: null, s: null });
+  }, 15_000).unref?.();
 
   setInterval(() => {
     const s = takeRejectStats();
@@ -197,6 +209,13 @@ export function startMqttIngest(db) {
         }
 
         const key = `${tenantId}/${site}/${device}`;
+        // Gói có chu kỳ lưu (miễn phí: 1 phút): gộp trung bình/nhỏ nhất/lớn nhất mỗi cửa sổ, chỉ lưu MỘT dòng; xem aggregate.js
+        const storeEvery = canonical.d ? ownerStoreEveryMs(db, site, device) : 0;
+        if (storeEvery > 0) {
+          const row = aggregator.add(key, now, canonical.d, storeEvery, { site, device });
+          if (row) insert({ ts: row.ts, site: row.meta.site, device: row.meta.device, kind: 'telemetry', payload: row.payload, o: null, i: null, a: null, c: null, s: null });
+          return;
+        }
         const gap = Math.max(minInterval, ownerPlanMinMs(db, site, device));
         if (gap > 0) {
           const prev = lastTeleStore.get(key) || 0;

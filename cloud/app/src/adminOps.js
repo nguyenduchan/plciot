@@ -14,7 +14,7 @@ import { syncBundles } from './bundleSync.js';
 import { ROLES, MONITOR_SCOPES } from './roles.js';
 import { findUserById } from './db.js';
 import {
-  listPlans, grantPlan, setRemoteControl, grantTenantPlan, subscriptionInfo, PLAN_CATALOG,
+  listPlans, grantPlan, setRemoteControl, grantTenantPlan, subscriptionInfo, PLAN_CATALOG, resolvePlanId,
 } from './entitlements.js';
 import {
   listTenants, getTenant, createTenant, rotateTenantKey, provisionDevice,
@@ -263,8 +263,9 @@ export function mountAdminOps(app, {
   });
 
   app.post('/api/admin/ops/tenants/:id/plan', ...writeGate, (req, res) => {
-    const { plan, expiresAt } = req.body || {};
-    if (!PLAN_CATALOG[plan]) return res.status(400).json({ error: 'unknown_plan' });
+    const { expiresAt } = req.body || {};
+    const plan = resolvePlanId((req.body || {}).plan);   // nhận mã khách (DK30) hoặc id nội bộ
+    if (!plan) return res.status(400).json({ error: 'unknown_plan' });
     const r = grantTenantPlan(db, req.params.id, plan, { expiresAt: expiresAt || 'never' });
     if (r.error) return res.status(r.status || 400).json(r);
     audit(db, 'tenant_subscription_grant', {
@@ -537,7 +538,7 @@ export function mountAdminOps(app, {
     const profiles = [...new Set(hardware.map((d) => d.profile).filter(Boolean))].sort();
     res.json({
       q, totals, users: users.slice(0, limit), gateways: gateways.slice(0, limit), moreUsers: Math.max(0, users.length - limit), moreGateways: Math.max(0, gateways.length - limit),
-      options: { roles: ROLES, scopes: MONITOR_SCOPES, plans: listPlans().map((p) => ({ id: p.id, label: p.label })), solutions: listSolutions(deployPaths.shellDir, 'webapp'), gatewaySolutions: listSolutions(deployPaths.shellDir, 'any'), profiles },
+      options: { roles: ROLES, scopes: MONITOR_SCOPES, plans: listPlans().map((p) => ({ id: p.id, label: p.title, code: p.code })), solutions: listSolutions(deployPaths.shellDir, 'webapp'), gatewaySolutions: listSolutions(deployPaths.shellDir, 'any'), profiles },
     });
   });
 

@@ -7,6 +7,7 @@
 import crypto from 'node:crypto';
 import { provisionHardwareDevice, parseHardwareId, deleteHardwareDevice, getHardwareDeviceQr, audit } from '@plciot/security';
 import { revokeDevice } from './tenants.js';
+import { planMaxGateways } from './entitlements.js';
 import { parsePubkey, verifyProof, pairMessage, ensureKeyColumns } from './gatewayKey.js';
 import { sanitizeConfig, applyGatewayConfig, MAX_CONFIG_BYTES } from './gatewayConfig.js';
 import { attachGatewayBundle, enrollGateway } from './gatewayEnroll.js';
@@ -127,6 +128,11 @@ export function submitPairing(db, body = {}, opts = {}) {
 }
 
 export const USER_MAX_GATEWAYS = Number(process.env.USER_MAX_GATEWAYS || 5);
+/** Số gateway tối đa của tài khoản theo GÓI (DK10: 1, DK20: 1, DK30: 3, DK100: 5, DK300: 20); gói không khai báo → USER_MAX_GATEWAYS. */
+export function userGatewayLimit(user) {
+  const g = planMaxGateways(user);
+  return g == null ? USER_MAX_GATEWAYS : g;
+}
 
 /**
  * Người dùng ĐÃ ĐĂNG NHẬP tự đăng ký gateway (không cần mã admin). Cổng vào là tài khoản (đã qua mật khẩu + TOTP):
@@ -142,7 +148,7 @@ export function registerForUser(db, user, body = {}) {
   const used = db.prepare(`SELECT COUNT(*) AS n FROM gateway_pairings p WHERE p.user_id = ? AND (
       p.status IN ('open','received')
       OR (p.status = 'approved' AND EXISTS (SELECT 1 FROM hardware_devices h WHERE h.site = p.site AND h.device = p.device)))`).get(user.id).n;
-  if (used >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
+  if (used >= userGatewayLimit(user)) return { error: 'too_many_gateways', status: 429, limit: userGatewayLimit(user) };
   const sol = '';   // giải pháp do quản trị viên gán sau (tab Gateway), không do gateway chọn lúc ghép
   // Chữ ký phủ `register|<userId>|<ts>`: chứng minh giữ khoá riêng và gắn với đúng tài khoản này (không phát lại sang tài khoản khác)
   const pk = parsePubkey(body.pubkey);
@@ -183,7 +189,7 @@ export function checkTransferRequest(db, user, body = {}) {
   const pk = parsePubkey(body.pubkey);
   if (!pk) return { error: 'invalid_pubkey', status: 400 };
   if (!verifyProof(body.pubkey, `register|${user.id}|${body.ts}`, body.sig, body.ts)) return { error: 'invalid_proof', status: 401 };
-  if (userGatewayCount(db, user.id) >= USER_MAX_GATEWAYS) return { error: 'too_many_gateways', status: 429 };
+  if (userGatewayCount(db, user.id) >= userGatewayLimit(user)) return { error: 'too_many_gateways', status: 429, limit: userGatewayLimit(user) };
   return { ok: true };
 }
 

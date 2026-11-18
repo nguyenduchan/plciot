@@ -23,7 +23,7 @@ const u = upsertUser(db, {
   username: 'ent_user', passwordHash: hashPassword('x'), folderPath: 's', version: '1',
 });
 ok(mayRemoteControl(u, { ip: '1.2.3.4' }).ok, 'chưa gán gói = gói miễn phí: có điều khiển');
-ok(subscriptionInfo(u).plan === 'free' && subscriptionInfo(u).widgetLimit === 5, 'gói miễn phí giới hạn 5 widget');
+ok(subscriptionInfo(u).plan === 'free' && subscriptionInfo(u).widgetLimit === 30 && subscriptionInfo(u).limits.devices === 10 && subscriptionInfo(u).planCode === 'DK10', 'gói miễn phí DK10: 10 thiết bị, 30 widget');
 const { applyWidgetLimit } = await import('../src/uiContract.js');
 const fakeNodes = Array.from({ length: 4 }, (_, i) => ({ id: String(i), widgets: [{ id: 'a' + i }, { id: 'b' + i }] }));
 const lim = applyWidgetLimit(fakeNodes, 5);
@@ -35,7 +35,7 @@ ok(grantPlan(db, u.id, 'monitor').ok, 'grant monitor');
 let fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);
 ok(subscriptionInfo(fresh).remoteControl === true, 'mọi gói đều có điều khiển (monitor)');
 ok(mayRemoteControl(fresh, { ip: '1.2.3.4' }).ok, 'monitor: điều khiển được');
-ok(subscriptionInfo(fresh).widgetLimit === 30, 'Cơ bản: tối đa 30 widget');
+ok(subscriptionInfo(fresh).widgetLimit === 90 && subscriptionInfo(fresh).limits.devices === 30 && subscriptionInfo(fresh).planCode === 'DK30', 'DK30: 30 thiết bị, 90 widget');
 
 ok(grantPlan(db, u.id, 'pro', { expiresAt: '2099-01-01' }).ok, 'grant pro');
 fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(u.id);

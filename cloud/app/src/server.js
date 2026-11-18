@@ -7,7 +7,7 @@ import mime from 'mime-types';
 import { openDb } from './db.js';
 import './securityAdapter.js';
 import { resolveBundleRoot, safeJoin, listBundleFiles } from './bundle.js';
-import { startBundleSync, syncBundles } from './bundleSync.js';
+import { startBundleSync, syncBundles, ensureUserBundleFresh } from './bundleSync.js';
 import { registryItems, detectFolders, ignoredFolders, addItem, updateItem, removeItem, solutionVersion } from './solutions.js';
 import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
 import { queryTelemetry, queryTelemetryRows, queryEvents, historyStats } from './historyStore.js';
@@ -39,7 +39,8 @@ import { mountGatewayEnroll } from './gatewayEnroll.js';
 import { mountGatewayLogin } from './gatewayLogin.js';
 import { expireUnusedTems, sweepPairings } from './gatewayPairing.js';
 import { contractInfo } from './contract.js';
-import { subscriptionInfo } from './entitlements.js';
+import { subscriptionInfo, planExportDays } from './entitlements.js';
+import { markViewing } from './viewing.js';
 import { loginGateMiddleware } from './opsFlags.js';
 import { mountGatewayUpdate } from './gatewayUpdate.js';
 import { mountDebugTrace, debugTraceEnabled } from './debugTrace.js';
@@ -171,6 +172,7 @@ app.get('/api/me', requireAuth, (req, res) => {
   if (!u.mqtt_user || !u.mqtt_pass) {
     try { u = provisionUserMqtt(db, u).user; } catch (e) { console.error('lazy mqtt provision', e.message); }
   }
+  u = ensureUserBundleFresh(db, u, { dataDir: DATA_DIR, shellDir: SHELL_DIR });   // tải lại trang = kiểm tra mã nguồn webapp ngay, khác thì dựng lại bundle
   res.json({
     userId: u.id,
     username: u.username,
@@ -341,6 +343,10 @@ app.get('/api/history/telemetry', requireAuth, (req, res) => {
   });
 });
 
+/** Nhịp "đang xem": webapp mở gửi mỗi ~20 giây → gateway của người dùng gửi nhanh; ngừng xem thì gateway quay về tốc độ lưu của gói. */
+const viewingLimit = rateLimit({ windowMs: 60_000, max: Number(process.env.RATE_LIMIT_VIEWING || 12), keyFn: (req) => `${clientIp(req)}:viewing:${req.user?.id || 'na'}` });
+app.post('/api/viewing', requireAuth, viewingLimit, (req, res) => res.json(markViewing(db, req.user)));
+
 /** Xuất dữ liệu: CSV (mở bằng Excel) hoặc JSON, dạng dài: thời gian · thiết bị · field · giá trị · nguồn (live | bu). Trong thời hạn lưu của gói. */
 app.get('/api/history/export', requireAuth, (req, res) => {
   let site = req.user.notify_site;
@@ -356,30 +362,34 @@ app.get('/api/history/export', requireAuth, (req, res) => {
   }
   if (!userScopes(req.user).includes('telemetry')) return res.status(403).json({ error: 'scope_denied' });
   const until = Number(req.query.until || Date.now());
-  const since = Math.max(Number(req.query.since || 0), retentionFloor(req.user));
+  // Gói miễn phí (DK10) chỉ xuất 7 ngày gần nhất; gói trả phí không giới hạn (vẫn trong thời hạn lưu)
+  const exportDays = planExportDays(req.user);
+  const exportFloor = exportDays == null ? 0 : Date.now() - exportDays * 86_400_000;
+  const since = Math.max(Number(req.query.since || 0), retentionFloor(req.user), exportFloor);
   if (!Number.isFinite(since) || !Number.isFinite(until)) return res.status(400).json({ error: 'bad_range' });
   const fmtQ = String(req.query.format || 'csv').toLowerCase();
   const fmt = ['json', 'tsv'].includes(fmtQ) ? fmtQ : 'csv';   // csv | tsv (txt, cột cách nhau bằng Tab) | json
   const rows = queryTelemetryRows(db, { site, device, since, until, limit: Math.min(Number(req.query.limit || 200000), 500000) });
   const flat = [];
   for (const r of rows) {
-    let d; try { d = JSON.parse(r.payload).d; } catch { continue; }
+    let pl; try { pl = JSON.parse(r.payload); } catch { continue; }
+    const d = pl.d;
     if (!d || typeof d !== 'object') continue;
     for (const [child, fields] of Object.entries(d)) {
       if (!fields || typeof fields !== 'object') continue;
-      for (const [field, v] of Object.entries(fields)) flat.push({ ts: r.ts, child, field, v, src: r.src === 'bf' ? 'bu' : 'live' });
+      for (const [field, v] of Object.entries(fields)) flat.push({ ts: r.ts, child, field, v, src: r.src === 'bf' ? 'bu' : 'live', mn: pl.agg?.mn?.[child]?.[field] ?? '', mx: pl.agg?.mx?.[child]?.[field] ?? '', n: pl.agg?.n ?? '' });
     }
   }
   const stamp = new Date().toISOString().slice(0, 10);
   if (fmt === 'json') {
     res.setHeader('Content-Disposition', `attachment; filename="plciot-${stamp}.json"`);
-    return res.json({ site, device, rows: flat.map((x) => ({ t: x.ts, device: x.child, field: x.field, value: x.v, source: x.src })) });
+    return res.json({ site, device, rows: flat.map((x) => ({ t: x.ts, device: x.child, field: x.field, value: x.v, min: x.mn === '' ? null : x.mn, max: x.mx === '' ? null : x.mx, samples: x.n === '' ? null : x.n, source: x.src })) });
   }
   const tsv = fmt === 'tsv';
   const sep = tsv ? '\t' : ',';
   const esc = tsv ? (s) => String(s).replace(/[\t\r\n]/g, ' ') : (s) => { s = String(s); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const lines = [['time_utc', 'epoch_ms', 'device', 'field', 'value', 'source'].join(sep)];
-  for (const x of flat) lines.push([new Date(x.ts).toISOString(), x.ts, esc(x.child), esc(x.field), x.v, x.src].join(sep));
+  const lines = [['time_utc', 'epoch_ms', 'device', 'field', 'value', 'min', 'max', 'samples', 'source'].join(sep)];
+  for (const x of flat) lines.push([new Date(x.ts).toISOString(), x.ts, esc(x.child), esc(x.field), x.v, x.mn, x.mx, x.n, x.src].join(sep));
   res.setHeader('Content-Type', tsv ? 'text/plain; charset=utf-8' : 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="plciot-${stamp}.${tsv ? 'txt' : 'csv'}"`);
   res.send('\uFEFF' + lines.join('\r\n') + '\r\n');

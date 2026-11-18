@@ -276,12 +276,14 @@ export function deviceToUiNode(row) {
 /**
  * Giới hạn số widget theo gói: widget thứ limit+1 trở đi bị khoá (locked) — webapp làm mờ, không cập nhật data, không điều khiển.
  * Trả về { nodes, total, locked }. limit null/undefined = không giới hạn.
+ * deviceLimit: số THIẾT BỊ tối đa của gói (DK10 = 10); thiết bị thứ deviceLimit+1 trở đi bị khoá toàn bộ widget (không chiếm hạn mức widget).
  */
-export function applyWidgetLimit(nodes, limit) {
+export function applyWidgetLimit(nodes, limit, deviceLimit = null) {
   let n = 0; let locked = 0;
-  const out = nodes.map((d) => ({
+  const out = nodes.map((d, di) => ({
     ...d,
     widgets: d.widgets.map((w) => {
+      if (deviceLimit != null && di >= deviceLimit) { n += 1; locked += 1; return { ...w, locked: true }; }
       n += 1;
       if (limit != null && n > limit) { locked += 1; return { ...w, locked: true }; }
       return w;
@@ -290,12 +292,12 @@ export function applyWidgetLimit(nodes, limit) {
   return { nodes: out, total: n, locked };
 }
 
-export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null, gateways = [], widgetLimit = null, planId = null, planLabel = null } = {}) {
+export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null, gateways = [], widgetLimit = null, deviceLimit = null, planId = null, planLabel = null } = {}) {
   const m = mode === 'pro' ? 'pro' : 'simple';
   const site = user?.notify_site || '';
   const gateway = user?.notify_device || '';
   const base = mqttId && /^[a-f0-9]{16}$/.test(mqttId) ? `gw/${mqttId}` : null;   // id MQTT ngẫu nhiên của gateway
-  const lim = applyWidgetLimit((devices || []).map(deviceToUiNode), widgetLimit);
+  const lim = applyWidgetLimit((devices || []).map(deviceToUiNode), widgetLimit, deviceLimit);
   const nodes = lim.nodes;
   const order = nodes.map((d) => d.id);
   return {
@@ -315,7 +317,7 @@ export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null
       topicAck: base ? `${base}/ack` : null,
     },
     devices: nodes,
-    plan: { id: planId, label: planLabel, widgetLimit, widgetCount: lim.total, locked: lim.locked },
+    plan: { id: planId, label: planLabel, widgetLimit, deviceLimit, widgetCount: lim.total, locked: lim.locked },
     gateways: (gateways || []).map((g) => ({ site: g.site, device: g.device, solution: g.solution || '', mqttId: g.mqttId || null, base: g.mqttId ? `gw/${g.mqttId}` : null })),
     layout: {
       simple: { columns: 2, order },

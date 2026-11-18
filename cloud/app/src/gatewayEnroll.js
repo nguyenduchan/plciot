@@ -8,7 +8,7 @@
 import { recordGatewayClient } from './gatewayUpdate.js';
 import { shardOf } from './shards.js';
 import { effectiveDays, defaultDays } from './retention.js';
-import { planTelemetryMinMs, FREE_TELEMETRY_MIN_MS } from './entitlements.js';
+import { planTelemetryMinMs, freeTelemetryMinMs, planStoreEveryMs, freePlan } from './entitlements.js';
 import {
   decodeClaimQr, bindGatewayHardware, parseHardwareId, verifyClaimSignature, hashClaimSecret, rateLimit, clientIp, audit, getHardwareDeviceQr,
 } from '@plciot/security';
@@ -220,6 +220,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     claimed: Boolean(hw.claimed_by),
     // Gateway tự gửi chậm theo gói của chủ (ms giữa hai bản telemetry; 0 = không giới hạn). Chưa có chủ → mức gói miễn phí.
     telemetryMinMs: telemetryMinMsFor(db, hw),
+    // Tốc độ gửi khi KHÔNG ai xem webapp = chu kỳ LƯU của gói (ms); có người xem thì gửi nhanh theo telemetryMinMs (server báo qua sys:'live')
+    storeEveryMs: storeEveryMsFor(db, hw),
     // Số ngày cloud lưu data theo gói của chủ (0 = không giới hạn): gateway chỉ bù dữ liệu offline trong khoảng này (server cũng chặn)
     retentionDays: retentionDaysFor(db, hw),
     mqttId,
@@ -257,12 +259,20 @@ function failsOf(key) {
 const noteEnrollFail = (key) => { const a = failsOf(key); a.push(Date.now()); enrollFails.set(key, a); if (enrollFails.size > 5000) enrollFails.delete(enrollFails.keys().next().value); };
 export function resetEnrollFails() { enrollFails.clear(); }
 
+/** Chu kỳ lưu (ms) theo gói của chủ gateway; gateway gửi bằng tốc độ này khi không ai xem webapp. */
+function storeEveryMsFor(db, hw) {
+  try {
+    const owner = hw.claimed_by ? db.prepare('SELECT * FROM users WHERE id = ?').get(hw.claimed_by) : null;
+    return owner ? planStoreEveryMs(owner) : Number(freePlan().storeEveryMs || 0);
+  } catch { return 0; }
+}
+
 /** Khoảng cách tối thiểu giữa hai bản telemetry theo gói của chủ gateway (chưa claim → gói miễn phí). */
 function telemetryMinMsFor(db, hw) {
   try {
     const owner = hw.claimed_by ? db.prepare('SELECT * FROM users WHERE id = ?').get(hw.claimed_by) : null;
-    return owner ? planTelemetryMinMs(owner) : FREE_TELEMETRY_MIN_MS;
-  } catch { return FREE_TELEMETRY_MIN_MS; }
+    return owner ? planTelemetryMinMs(owner) : freeTelemetryMinMs();
+  } catch { return freeTelemetryMinMs(); }
 }
 
 /** Số ngày lưu theo gói của chủ gateway (0 = không giới hạn; chưa có chủ → mặc định). */

@@ -103,7 +103,7 @@ function applySubscription(sub) {
   if (!sub) { panel.hidden = true; return; }
   panel.hidden = false;
   const exp = sub.expiresAt ? new Date(sub.expiresAt).toLocaleDateString() : 'không hết hạn';
-  info.textContent = `Gói ${sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có giám sát + điều khiển' : 'điều khiển đang bị tắt cho tài khoản này'}`
+  info.textContent = `Gói ${sub.planTitle || sub.planLabel || sub.plan} · ${sub.remoteControl ? 'có giám sát + điều khiển' : 'điều khiển đang bị tắt cho tài khoản này'}`
     + (sub.widgetLimit != null ? ` · tối đa ${sub.widgetLimit} widget` : ' · không giới hạn widget')
     + ` · hết hạn: ${exp}`
     + (sub.nextPlanLabel ? ` · sẽ chuyển sang gói “${sub.nextPlanLabel}” sau ngày hết hạn` : '')
