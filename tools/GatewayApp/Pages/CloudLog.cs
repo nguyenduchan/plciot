@@ -28,7 +28,14 @@ sealed class LogPage : UserControl
         Controls.Add(card); Controls.Add(bar);
     }
 
-    public void Add(string dir, string ch, string text) { lock (_pending) _pending.Add((DateTime.Now, dir, ch, text)); }
+    /// <summary>GATEWAYAPP_LOGFILE: ghi thêm mọi dòng nhật ký ra file (để kiểm thử/gỡ lỗi khi không nhìn được cửa sổ).</summary>
+    static readonly string? LogFile = Environment.GetEnvironmentVariable("GATEWAYAPP_LOGFILE") is { Length: > 0 } f ? f : null;
+
+    public void Add(string dir, string ch, string text)
+    {
+        lock (_pending) _pending.Add((DateTime.Now, dir, ch, text));
+        if (LogFile != null) { try { lock (_pending) File.AppendAllText(LogFile, $"{DateTime.Now:HH:mm:ss.fff}	{dir}	{ch}	{(text.Length > 400 ? text[..400] + "…" : text)}{Environment.NewLine}"); } catch (IOException) { } }
+    }
 
     public void Flush()
     {
