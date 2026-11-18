@@ -3,6 +3,7 @@
   "id": "facility",
   "title": "Mặt bằng nhà máy",
   "themeColor": "#0369a1",
+  "icon": "map",
   "inject": {
     "css": [
       "theme.css?v=1"

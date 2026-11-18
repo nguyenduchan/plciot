@@ -3,6 +3,7 @@
   "id": "factory",
   "title": "Sản xuất & OEE",
   "themeColor": "#3730a3",
+  "icon": "factory",
   "inject": {
     "css": [
       "theme.css?v=1"

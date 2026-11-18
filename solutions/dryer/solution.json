@@ -3,6 +3,7 @@
   "id": "dryer",
   "title": "Lò sấy & kho sấy",
   "themeColor": "#c2410c",
+  "icon": "dryer",
   "inject": {
     "css": [
       "theme.css?v=1"

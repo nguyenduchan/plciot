@@ -3,6 +3,7 @@
   "id": "workshop",
   "title": "Xưởng gia công cơ khí",
   "themeColor": "#b45309",
+  "icon": "gear",
   "inject": {
     "css": [
       "theme.css?v=1"

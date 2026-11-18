@@ -3,6 +3,7 @@
   "id": "generator",
   "title": "Máy phát điện & ATS",
   "themeColor": "#ca8a04",
+  "icon": "generator",
   "inject": {
     "css": [
       "theme.css?v=1"

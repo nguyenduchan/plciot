@@ -3,6 +3,7 @@
   "id": "agri",
   "title": "Nông nghiệp nhà kính",
   "themeColor": "#2f7d32",
+  "icon": "leaf",
   "inject": {
     "css": [
       "theme.css?v=1"

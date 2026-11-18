@@ -3,7 +3,7 @@
  * Chỉ admin; ghi cần reauth (caller gắn middleware).
  */
 import { cleanSolution, setGatewaySolution, allGatewaySolutions } from './gatewaySolution.js';
-import { isKnownSolution } from './solutions.js';
+import { isKnownSolution, solutionMeta } from './solutions.js';
 import { buildLicenseFile } from './gatewayKinds.js';
 import { publicUser, listSolutions } from './adminUsers.js';
 import { syncBundles } from './bundleSync.js';
@@ -476,6 +476,7 @@ export function mountAdminOps(app, {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
     const solTitle = new Map([...listSolutions(deployPaths.shellDir, 'webapp'), ...listSolutions(deployPaths.shellDir, 'gateway')].map((x) => [x.id, x.title]));
     const gsol = allGatewaySolutions(db);
+    const smeta = solutionMeta(deployPaths.shellDir);
     const hardware = listHardwareDevices(db);
     const mqttOf = db.prepare('SELECT mqtt_id, status FROM devices WHERE site = ? AND device = ? ORDER BY id DESC LIMIT 1');
     const cfgOf = db.prepare('SELECT rev, devices, updated_at FROM gateway_configs WHERE site = ? AND device = ?');
@@ -505,9 +506,10 @@ export function mountAdminOps(app, {
       let children = [];
       try { children = (cf ? JSON.parse(cf.devices) : []).map((c) => ({ id: c.id, name: c.name || '', fields: (c.fields || []).length })); } catch { /* bỏ qua */ }
       const sol = gsol.get(`${d.site}/${d.device}`) || '';
+      const sm = smeta.get(sol || 'basic');
       return {
         site: d.site, device: d.device, label: d.label || '', note: d.note || '', profile: d.profile || '',
-        solution: sol, solutionTitle: solTitle.get(sol) || (sol || 'Cơ bản'),
+        solution: sol, solutionTitle: solTitle.get(sol) || (sol || 'Cơ bản'), solutionIcon: sm?.icon || '', solutionColor: sm?.themeColor || '',
         claimed: d.claimed, claimedUsername: d.claimedUsername || '', activated: d.activated, activatedHw: d.activatedHw || '', createdAt: d.createdAt,
         mqttId: mq?.mqtt_id || '', mqttStatus: mq?.status || '',
         config: cf ? { rev: cf.rev, updatedAt: cf.updated_at, devices: children.length, fields: children.reduce((n, c) => n + c.fields, 0) } : null, children,
@@ -542,6 +544,7 @@ export function mountAdminOps(app, {
     const total = rows.length;
     if (limit) rows = rows.slice(offset, offset + limit);
     const gsol = allGatewaySolutions(db);
+    const smeta = solutionMeta(deployPaths.shellDir);   // trước đây thiếu: tab Gateway luôn hiện "Cơ bản" dù gateway đã chọn giải pháp
     const devices = rows.map((d) => {
       let mq = null; let cf = null;
       try { mq = mqttOf.get(d.site, d.device); } catch { /* bảng devices chưa có */ }
@@ -551,9 +554,10 @@ export function mountAdminOps(app, {
         const arr = cf ? JSON.parse(cf.devices) : [];
         children = arr.length; fields = arr.reduce((n, c) => n + (c.fields?.length || 0), 0);
       } catch { /* bỏ qua */ }
+      const sol = gsol.get(`${d.site}/${d.device}`) || ''; const sm = smeta.get(sol || 'basic');
       return {
         ...d,
-        solution: gsol.get(`${d.site}/${d.device}`) || '',
+        solution: sol, solutionTitle: sm?.title || sol || 'Cơ bản', solutionIcon: sm?.icon || '', solutionColor: sm?.themeColor || '',
         mqttId: mq?.mqtt_id || null,
         mqttStatus: mq?.status || null,
         config: cf ? { rev: cf.rev, devices: children, fields, updatedAt: cf.updated_at } : null,

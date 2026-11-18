@@ -3,6 +3,7 @@
   "id": "compressor",
   "title": "Khí nén & máy nén",
   "themeColor": "#334155",
+  "icon": "compressor",
   "inject": {
     "css": [
       "theme.css?v=1"

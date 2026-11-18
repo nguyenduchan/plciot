@@ -3,6 +3,7 @@
   "id": "coldchain",
   "title": "Kho lạnh & chuỗi lạnh",
   "themeColor": "#0e7490",
+  "icon": "snow",
   "inject": {
     "css": [
       "theme.css?v=1"

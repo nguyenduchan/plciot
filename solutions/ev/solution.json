@@ -3,6 +3,7 @@
   "id": "ev",
   "title": "Trạm sạc xe điện",
   "themeColor": "#6d28d9",
+  "icon": "plug",
   "inject": {
     "css": [
       "theme.css?v=1"

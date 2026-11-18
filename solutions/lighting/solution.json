@@ -3,6 +3,7 @@
   "id": "lighting",
   "title": "Chiếu sáng thông minh",
   "themeColor": "#1d4ed8",
+  "icon": "bulb",
   "inject": {
     "css": [
       "theme.css?v=1"

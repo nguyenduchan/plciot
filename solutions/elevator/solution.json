@@ -3,6 +3,7 @@
   "id": "elevator",
   "title": "Thang máy & tòa nhà",
   "themeColor": "#475569",
+  "icon": "elevator",
   "inject": {
     "css": [
       "theme.css?v=1"

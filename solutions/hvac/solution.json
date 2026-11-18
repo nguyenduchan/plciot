@@ -3,6 +3,7 @@
   "id": "hvac",
   "title": "Tòa nhà & điều hòa HVAC",
   "themeColor": "#0f766e",
+  "icon": "building",
   "inject": {
     "css": [
       "theme.css?v=1"

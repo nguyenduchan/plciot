@@ -107,7 +107,7 @@ for spec in ALL:
     runtime['required'] = req
     runtime['why'] = why
     write(os.path.join(d, 'solution.json'), json.dumps({
-        'kind': 'plciot-solution', 'id': sid, 'title': spec['title'], 'themeColor': spec['themeColor'],   # kind = DẤU NHẬN DIỆN để admin tự đồng bộ vào ô chọn
+        'kind': 'plciot-solution', 'id': sid, 'title': spec['title'], 'themeColor': spec['themeColor'], 'icon': spec.get('icon', 'chart'),   # kind = DẤU NHẬN DIỆN để admin tự đồng bộ vào ô chọn; icon = mã trong icons.json (admin, gateway)
         'inject': {'css': ['theme.css?v=1'], 'js': ['spec.js?v=1']},   # engine + industry.css dùng chung ở shell (webapp/industry-engine.js)
     }, ensure_ascii=False, indent=2) + '\n')
     write(os.path.join(web, 'spec.js'), '/* Cấu hình giao diện ngành (sinh bởi tools/solution-kit/gen.py từ specs.py) */\nwindow.INDUSTRY = '

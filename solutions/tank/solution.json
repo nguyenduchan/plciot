@@ -3,6 +3,7 @@
   "id": "tank",
   "title": "Bồn bể xăng dầu & hóa chất",
   "themeColor": "#c2410c",
+  "icon": "level",
   "inject": {
     "css": [
       "theme.css?v=1"

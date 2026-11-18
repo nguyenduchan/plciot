@@ -164,12 +164,19 @@
     try { return new Date(ts).toLocaleString('vi-VN'); } catch { return String(ts); }
   }
 
+  /* nhận diện giải pháp: icon (bộ icon chung, metric-icons.js) + màu chủ đề — gateway nào dùng giải pháp nào nhìn là biết */
+  const solIc = (icon) => (window.PlcQIcons ? window.PlcQIcons.svg(window.PlcQIcons.has(icon) ? icon : 'grid') : '');
+  const solColor = (c) => (/^#[0-9a-f]{3,8}$/i.test(c || '') ? c : '');
+  const solChip = (title, icon, color) => `<span class="sol-chip"${solColor(color) ? ` style="--c:${solColor(color)}"` : ''}><i>${solIc(icon || 'grid')}</i>${esc(title || 'Cơ bản')}</span>`;
+  const solBadge = (icon, color) => `<span class="sol-badge"${solColor(color) ? ` style="--c:${solColor(color)}"` : ''}>${solIc(icon || 'grid')}</span>`;
+
   function renderHw() {
     $('#hw-count').textContent = pg.hw.total; const nb = $('#at-gw-n'); if (nb) nb.textContent = pg.hw.total;
     renderPager('#hw-pager', pg.hw, loadHw);
     $('#hw-list').innerHTML = hwDevices.map((d) => `
       <div class="hw" data-site="${esc(d.site)}" data-device="${esc(d.device)}">
         <div><b>${esc(d.label || `${d.site}/${d.device}`)}</b>
+          <span title="Giải pháp (loại giao diện) do gateway chọn">${solChip(d.solutionTitle, d.solutionIcon, d.solutionColor)}</span>
           ${d.claimed ? '<span class="tag">đã gắn</span>' : '<span class="tag viewer">chưa gắn</span>'}
           ${d.activated ? `<span class="tag">đã kích hoạt${d.activations > 1 ? ` · ${d.activations} lần` : ''}</span>` : ''}
           <small><code>${esc(d.site)}</code> / <code>${esc(d.device)}</code>
@@ -179,8 +186,7 @@
             · tạo ${esc(fmtTs(d.createdAt))}</small>
           <small>${d.activatedHw ? `ID máy <code>${esc(d.activatedHw)}</code>` : 'chưa gắn máy'}
             ${d.mqttId ? ` · ID MQTT <code>${esc(d.mqttId)}</code>${d.mqttStatus && d.mqttStatus !== 'active' ? ` (${esc(d.mqttStatus)})` : ''}` : ''}
-            ${d.config ? ` · setting rev ${d.config.rev}: ${d.config.devices} thiết bị, ${d.config.fields} field · cập nhật ${esc(fmtTs(d.config.updatedAt))}` : ' · chưa có setting'}</small>
-          <small>Giải pháp (do gateway chọn): <b>${esc(d.solutionTitle || 'Cơ bản')}</b></small></div>
+            ${d.config ? ` · setting rev ${d.config.rev}: ${d.config.devices} thiết bị, ${d.config.fields} field · cập nhật ${esc(fmtTs(d.config.updatedAt))}` : ' · chưa có setting'}</small></div>
         <div class="acts">
           <button data-hw="qr">Xem / in QR</button>
           ${d.activated ? '<button data-hw="unbind">Gỡ máy đã gắn</button>' : ''}
@@ -430,14 +436,15 @@
     solView = await api('/api/admin/solutions');
     const nb = $('#at-sol-n'); if (nb) nb.textContent = solView.items.length + 1;
     const pt = (p) => `Webapp ${p?.webapp ? '✓' : '—'} · Gateway ${p?.gateway ? '✓' : '—'}`;
+    const ptc = (p) => `<span class="sol-parts"><span class="${p?.webapp ? '' : 'no'}">Webapp</span><span class="${p?.gateway ? '' : 'no'}">Gateway</span></span>`;
     const fo = (sel) => solView.folders.map((f) => `<option value="${esc(f.folder)}"${f.folder === sel ? ' selected' : ''}>${esc(f.folder)} — ${esc(f.title)} (${pt(f.parts)})</option>`).join('');
-    $('#sol-list').innerHTML = `<div class="u" style="padding:8px 0;border-bottom:1px solid var(--line)"><b>Cơ bản</b> <span class="help">(mã <code>basic</code> — luôn có, thư mục <code>webapp/</code>) ${solView.default === 'basic' ? '· mặc định' : ''}</span></div>`
+    $('#sol-list').innerHTML = `<div class="u" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="sol-head">${solBadge('grid', '')}<div><b>Cơ bản</b> <span class="help">(mã <code>basic</code> — luôn có, thư mục <code>webapp/</code>) ${solView.default === 'basic' ? '· mặc định' : ''}</span></div></div></div>`
       + solView.items.map((it) => `<div class="u sol" data-id="${esc(it.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:center">
-        <div><b>${esc(it.id)}</b>${solView.default === it.id ? ' <span class="tag">mặc định</span>' : ''}<div class="help" style="margin:0">${it.users} gateway${it.missing ? ' · <b style="color:#c0392b">thiếu thư mục</b>' : (it.version ? ' · v' + esc(it.version) : '') + ' · ' + pt(it.parts)}</div></div>
+        <div class="sol-head">${solBadge(it.icon, it.themeColor)}<div style="min-width:0"><b>${esc(it.id)}</b>${solView.default === it.id ? ' <span class="tag">mặc định</span>' : ''}<div class="help" style="margin:0">${it.users} gateway${it.missing ? ' · <b style="color:#c0392b">thiếu thư mục</b>' : (it.version ? ' · v' + esc(it.version) : '') + ptc(it.parts)}</div></div></div>
         <input data-f="title" value="${esc(it.title)}" maxlength="60" title="Tên hiển thị trong ô chọn">
         <select data-f="folder" title="Thư mục webapp">${fo(it.folder)}${it.missing ? `<option value="${esc(it.folder)}" selected>${esc(it.folder)} (mất)</option>` : ''}</select>
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-f="enabled"${it.enabled ? ' checked' : ''}> hiện trong ô chọn</label>
-        <button data-sa="del" class="fit">Xoá</button></div>`).join('');
+        <button data-sa="del" class="danger" style="width:auto;justify-self:end;padding:8px 16px">Xoá</button></div>`).join('');
     $('#sol-folder').innerHTML = fo('');
     const ig = (solView.ignored || []).map((f) => `${f.folder} (${f.reason})`);
     $('#sol-hint').textContent = (solView.folders.length ? 'Thư mục có dấu nhận diện (solution.json: "kind": "plciot-solution") tự có mục (mã = tên thư mục); webapp/ và gateway/ là hai thư mục riêng — thiếu phần nào thì mục không hiện ở ô chọn tương ứng. Danh sách tự cập nhật. “Thêm” chỉ để tạo thêm mục tên khác trỏ cùng thư mục.' : 'Chưa có thư mục giải pháp nào trong solutions/ trên server.') + (ig.length ? ` Bị bỏ qua: ${ig.join('; ')}.` : '');

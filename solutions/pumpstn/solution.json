@@ -3,6 +3,7 @@
   "id": "pumpstn",
   "title": "Trạm bơm độc lập (pin mặt trời)",
   "themeColor": "#0891b2",
+  "icon": "pump",
   "inject": {
     "css": [
       "theme.css?v=1"

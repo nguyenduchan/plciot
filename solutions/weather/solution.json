@@ -3,6 +3,7 @@
   "id": "weather",
   "title": "Trạm khí tượng & thủy văn",
   "themeColor": "#0284c7",
+  "icon": "rain",
   "inject": {
     "css": [
       "theme.css?v=1"

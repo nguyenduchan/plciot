@@ -3,6 +3,7 @@
   "id": "schedule",
   "title": "Lịch vận hành thiết bị",
   "themeColor": "#7c3aed",
+  "icon": "calendar",
   "inject": {
     "css": [
       "theme.css?v=1"

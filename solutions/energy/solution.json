@@ -3,6 +3,7 @@
   "id": "energy",
   "title": "Giám sát điện năng 3 pha",
   "themeColor": "#a16207",
+  "icon": "bolt",
   "inject": {
     "css": [
       "theme.css?v=1"

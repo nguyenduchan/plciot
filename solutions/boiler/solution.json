@@ -3,6 +3,7 @@
   "id": "boiler",
   "title": "Lò hơi công nghiệp",
   "themeColor": "#b91c1c",
+  "icon": "flame",
   "inject": {
     "css": [
       "theme.css?v=1"

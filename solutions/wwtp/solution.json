@@ -3,6 +3,7 @@
   "id": "wwtp",
   "title": "Trạm xử lý nước thải",
   "themeColor": "#0f766e",
+  "icon": "wave",
   "inject": {
     "css": [
       "theme.css?v=1"

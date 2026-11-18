@@ -269,7 +269,7 @@ sealed class IndustryPage : UserControl
         var seen = new HashSet<string>();
         for (var ti = Merged ? 0 : _tab; ti < (Merged ? _tabs.Count : _tab + 1); ti++)
         {
-            var blocks = _tabs[ti].Blocks.EnumerateArray().Where(b => !Merged || seen.Add(Str(b, "type") == "alarms" ? "alarms" : b.GetRawText())).ToList();
+            var blocks = _tabs[ti].Blocks.EnumerateArray().Where(b => !Merged || seen.Add(Str(b, "type") switch { "alarms" => "alarms", "trend" => "trend:" + Str(b, "metric"), _ => b.GetRawText() })).ToList();
             if (blocks.Count == 0) continue;
             if (Merged && ti > 0) y = Section(g, _tabs[ti].Label, _tabs[ti].Icon, pad, y, w);
             foreach (var b in blocks)

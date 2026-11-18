@@ -145,6 +145,7 @@ sealed class DashboardPage : UserControl
     readonly LineChart _chart = new() { Dock = DockStyle.Fill };
     readonly Panel _empty = new() { Size = new Size(640, 200), BackColor = Color.Transparent };
     readonly List<DeviceCard> _cards = new();
+    TableLayoutPanel _lay = null!;
     string _sig = "";
     string? _selected;
     int _window = 300;
@@ -154,7 +155,7 @@ sealed class DashboardPage : UserControl
     public DashboardPage(IGatewayApp app)
     {
         _app = app; BackColor = Theme.Bg; Padding = new Padding(18, 8, 18, 14);
-        var lay = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, BackColor = Theme.Bg };
+        var lay = _lay = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, BackColor = Theme.Bg };
         lay.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         lay.RowStyles.Add(new RowStyle(SizeType.Absolute, SolutionHost.ExtraPage != null ? 250 : 300));   // có giao diện giải pháp: biểu đồ thấp hơn, nhường chỗ cho sơ đồ
         Skin.DarkScroll(_flow);
@@ -250,6 +251,9 @@ sealed class DashboardPage : UserControl
         if (Signature() != _sig) Rebuild();
         foreach (var c in _cards) c.Tick(_app);
         _chartCard.Visible = _cards.Count > 0;
+        // không có thẻ thiết bị (mọi field đã nằm trong sơ đồ giải pháp): biểu đồ ẩn và nhường hết chỗ, không để khoảng trống
+        var ch = _cards.Count > 0 ? (SolutionHost.ExtraPage != null ? 250f : 300f) : 0f;
+        if (_lay.RowStyles[1].Height != ch) _lay.RowStyles[1].Height = ch;
         UpdateChart();
     }
 }

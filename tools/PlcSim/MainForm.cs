@@ -87,6 +87,7 @@ public sealed partial class MainForm : Form
         BuildLayout();
         BuildRegGrid();
         LoadSettings();
+        InitSolutions();
         UpdateSummary();
         RefreshStreams();
 
@@ -99,7 +100,7 @@ public sealed partial class MainForm : Form
         _uiTimer.Start(); _simTimer.Start();
         _model.Changed += OnModelChanged;
         FormClosing += async (_, _) => { SaveSettings(); await StopAsync(); };
-        if (Environment.GetCommandLineArgs().Contains("--autostart")) Shown += async (_, _) => await ToggleAsync();
+        if (Environment.GetCommandLineArgs().Contains("--autostart") && !Environment.GetCommandLineArgs().Contains("--gateway")) Shown += async (_, _) => await ToggleAsync();   // --gateway tự bật máy chủ trước khi mở gateway
     }
 
     // ------------------------------------------------------------------ giao diện
@@ -148,7 +149,7 @@ public sealed partial class MainForm : Form
         var logBox = new GroupBox { Text = "Nhật ký", Dock = DockStyle.Fill };
         logBox.Controls.Add(_log);
         split.Panel2.Controls.Add(logBox);
-        Controls.Add(split); Controls.Add(bar); Controls.Add(top);
+        Controls.Add(split); Controls.Add(bar); Controls.Add(top); Controls.Add(BuildSolutionBar());
     }
 
     void BuildRegGrid()
@@ -455,14 +456,26 @@ public sealed partial class MainForm : Form
         public Dictionary<string, ProtoCfg> Cfgs { get; set; } = new();
         /// <summary>Mỗi dòng: child, field, giá trị, D, hệ số, chế độ (tên enum), min, max, chu kỳ, bước, giao thức, quyền, thông số giao thức.</summary>
         public List<string[]> Fields { get; set; } = new();
+        /// <summary>settings.json: giải pháp đang mở lần trước ("" = tự cấu hình); hồ sơ profiles/&lt;id&gt;.json: chính giải pháp đó.</summary>
+        public string Solution { get; set; } = "";
     }
 
+    static readonly JsonSerializerOptions JsonOut = new() { WriteIndented = true };
+
+    static Saved? ReadSaved(string path)
+    {
+        try { return File.Exists(path) ? JsonSerializer.Deserialize<Saved>(File.ReadAllText(path)) : null; }
+        catch (Exception e) when (e is IOException or JsonException) { return null; }
+    }
+
+    /// <summary>Lưu hồ sơ đang mở (tự cấu hình → settings.json; giải pháp → profiles/&lt;id&gt;.json) và nhớ giải pháp đang mở trong settings.json.</summary>
     void SaveSettings()
     {
         try
         {
             var s = new Saved
             {
+                Solution = _solution,
                 Proto = _protoSel,
                 Cfgs = _cfg.ToDictionary(kv => kv.Key, kv => { var c = kv.Value.Clone(); c.Pass = ""; return c; }),
                 Fields = _model.Fields().Select(f =>
@@ -474,19 +487,39 @@ public sealed partial class MainForm : Form
                         (mt is { Kind: not null } m2 ? m2.Type : PlcModel.DataType.UInt16).ToString(), (mt?.WordSwap ?? false).ToString(), mt?.Group ?? "" };
                 }).ToList(),
             };
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
+            var path = ProfilePath(_solution);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOut));
+            if (_solution.Length > 0)   // giữ nguyên luồng tự khai báo trong settings.json, chỉ đổi con trỏ giải pháp
+            {
+                var b = ReadSaved(SettingsPath) ?? new Saved();
+                b.Solution = _solution;
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+                File.WriteAllText(SettingsPath, JsonSerializer.Serialize(b, JsonOut));
+            }
         }
-        catch (IOException) { /* không quan trọng */ }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* không quan trọng */ }
     }
 
+    /// <summary>Mở lại giải pháp đang thử lần trước (nếu có), không thì luồng tự khai báo trong settings.json.</summary>
     void LoadSettings()
+    {
+        if (ReadSaved(SettingsPath)?.Solution is { Length: > 0 } id && Sol(id) is { } sol)
+        {
+            _solution = id;
+            if (!LoadFrom(ProfilePath(id))) { try { ApplyRows(SolutionKit.Build(sol)); } catch (Exception e) when (e is IOException or JsonException or KeyNotFoundException or InvalidOperationException) { } }
+            return;
+        }
+        LoadFrom(SettingsPath);
+    }
+
+    /// <summary>Nạp một hồ sơ vào model. false = chưa có file / file hỏng.</summary>
+    bool LoadFrom(string path)
     {
         try
         {
-            if (!File.Exists(SettingsPath)) return;
-            var s = JsonSerializer.Deserialize<Saved>(File.ReadAllText(SettingsPath));
-            if (s == null) return;
+            var s = ReadSaved(path);
+            if (s == null) return false;
             _protoSel = Math.Clamp(s.Proto, 0, Protos.Length - 1);
             foreach (var (k, v) in s.Cfgs) if (Protos.Any(p => p.Kind == k) && v.Port is >= 1 and <= 65535) _cfg[k] = v;
             double D(string[] r, int i, double dflt) => r.Length > i && double.TryParse(r[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ? x : dflt;
@@ -507,7 +540,8 @@ public sealed partial class MainForm : Form
                 _model.MapField(f[0], f[1], da, sc);   // gắn lại sau khi có kiểu để ảnh D đúng số word
                 _model.SetField(f[0], f[1], v, "ui");
             }
+            return true;
         }
-        catch (Exception e) when (e is IOException or JsonException) { /* file hỏng: dùng mặc định rỗng */ }
+        catch (Exception e) when (e is IOException or JsonException) { return false; /* file hỏng: dùng mặc định rỗng */ }
     }
 }

@@ -3,6 +3,7 @@
   "id": "process",
   "title": "Quy trình pha chế (P&ID)",
   "themeColor": "#0f766e",
+  "icon": "process",
   "inject": {
     "css": [
       "theme.css?v=1"

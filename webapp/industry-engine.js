@@ -444,7 +444,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   function bElevator(b) {
     const N = b.floors || 10, fm = b.floor || 'floor', ids = idsFor(b, [{ id: fm }]);
     if (!ids.length) return '<p class="muted">Chưa có thang máy nào gửi dữ liệu.</p>';
-    const ruler = Array.from({ length: N }, (_, i) => `<span style="bottom:${(i / (N - 1)) * 100}%">${i + 1}</span>`).join('');
+    const ruler = Array.from({ length: N }, (_, i) => `<span style="bottom:calc((100% - 30px) * ${(i / (N - 1)).toFixed(3)} + 15px)">${i + 1}</span>`).join('');   // cùng công thức với tâm cabin
     return `<div class="iel"><div class="iel-r"><div class="iel-shaft">${ruler}</div></div>` + ids.map((id) => {
       const r = devs.get(id), f = num(r.v[fm]) ?? 1, prev = r.pf ?? f; r.pf = f;
       if (Math.abs(f - prev) > 0.01) { r.dir = f > prev ? 1 : -1; r.dirT = Date.now(); } else if (r.dirT == null || Date.now() - r.dirT > 4000) r.dir = 0;
@@ -559,8 +559,11 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
 
   function drawOverview() {
     // MỘT gateway = MỘT giao diện, GỘP trong một mục (giống GatewayApp): mọi tab của giải pháp vẽ liền dưới phần tổng quan, không tách tab riêng
-    $('#ind-body').innerHTML = reqBox() + renderBlocks(S.overview)
-      + (S.tabs || []).map((t) => `<h3 class="ib-sub" style="margin-top:18px">${esc(t.title || t.label)}</h3>${renderBlocks(t.blocks)}`).join('');
+    // khối trùng khi gộp (cảnh báo ở cả tổng quan lẫn tab An toàn, hai trend cùng một chỉ số…) chỉ vẽ một lần — giống GatewayApp
+    const seen = new Set();
+    const uniq = (bl) => (bl || []).filter((b) => { const k = b.type === 'alarms' ? 'alarms' : b.type === 'trend' ? 'trend:' + b.metric : JSON.stringify(b); return !seen.has(k) && seen.add(k); });
+    $('#ind-body').innerHTML = reqBox() + renderBlocks(uniq(S.overview))
+      + (S.tabs || []).map((t) => { const bl = uniq(t.blocks); return bl.length ? `<h3 class="ib-sub" style="margin-top:18px">${svgI(t.icon)}${esc(t.title || t.label)}</h3>${renderBlocks(bl)}` : ''; }).join('');
     const st = $('#ind-st'), fresh = lastTs && Date.now() - lastTs < STALE_MS * 2, n = active().length;
     st.textContent = !lastTs ? 'Chờ dữ liệu…' : !fresh ? '▲ Mất liên lạc' : n ? `▲ ${n} cảnh báo` : '● Trực tuyến';
     st.className = 'st ' + (!lastTs ? '' : !fresh ? 'stale' : n ? 'warn' : 'live');

@@ -3,6 +3,7 @@
   "id": "aqua",
   "title": "Nuôi trồng thủy sản",
   "themeColor": "#0369a1",
+  "icon": "fish",
   "inject": {
     "css": [
       "theme.css?v=1"

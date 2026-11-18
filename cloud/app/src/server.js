@@ -233,7 +233,7 @@ const solutionsView = () => {
   return {
     default: defaultSolution(),
     basicUsers: 0,
-    items: items.map((it) => { const f = folders.find((x) => x.folder === it.folder); return { ...it, parts: f?.parts || { webapp: false, gateway: false }, users: count(it.id), missing: !f, version: f?.parts.webapp ? solutionVersion(WEBAPP_SRC, it.folder) : '' }; }),
+    items: items.map((it) => { const f = folders.find((x) => x.folder === it.folder); return { ...it, icon: f?.icon || '', themeColor: f?.themeColor || '', parts: f?.parts || { webapp: false, gateway: false }, users: count(it.id), missing: !f, version: f?.parts.webapp ? solutionVersion(WEBAPP_SRC, it.folder) : '' }; }),
     folders: folders.map((f) => ({ ...f, registered: items.some((it) => it.folder === f.folder) })),
     ignored: ignoredFolders(WEBAPP_SRC),   // thư mục trông như giải pháp nhưng thiếu dấu nhận diện / phần nào
   };

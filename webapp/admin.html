@@ -52,6 +52,14 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 .adm-pane[hidden]{display:none!important}
 .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;font-size:13px}
 .pager button{width:auto}
+/* nhận diện giải pháp: icon (bộ icon chung metric-icons.js) trên nền màu chủ đề của giải pháp */
+.sol-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 3px;border-radius:99px;background:color-mix(in srgb,var(--c,var(--acc)) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c,var(--acc)) 35%,transparent);font-weight:600;font-size:12.5px;color:var(--fg);vertical-align:middle}
+.sol-chip i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--c,var(--acc));color:#fff;flex:none}
+.sol-chip i svg{width:13px;height:13px;stroke-width:2.2}
+.sol-head{display:flex;gap:10px;align-items:center;min-width:0}
+.sol-badge{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(140deg,color-mix(in srgb,var(--c,var(--acc)) 80%,#fff),color-mix(in srgb,var(--c,var(--acc)) 80%,#000));box-shadow:0 2px 8px color-mix(in srgb,var(--c,var(--acc)) 30%,transparent)}
+.sol-badge svg{width:21px;height:21px;stroke-width:2}
+.sol-parts{display:inline-flex;gap:4px;margin-left:4px}.sol-parts span{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--accbg);color:var(--acc)}.sol-parts span.no{background:#6b788522;color:var(--mut);text-decoration:line-through}
 </style>
 <script src="no-zoom.js?v=1"></script>
 </head>
@@ -146,7 +154,8 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
 <script src="security/security-client.js?v=20261114c"></script>
 <script src="control.js?v=20261114c"></script>
 <script src="admin-nav.js?v=20261117a"></script>
-<script src="admin.js?v=20261116b"></script>
+<script src="metric-icons.js?v=1"></script>
+<script src="admin.js?v=20261118a"></script>
 <script src="admin-find.js?v=3"></script>
 <script src="back-nav.js?v=1"></script>
 </body>

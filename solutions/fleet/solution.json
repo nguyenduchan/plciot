@@ -3,6 +3,7 @@
   "id": "fleet",
   "title": "Quản lý đội xe GPS",
   "themeColor": "#0e7490",
+  "icon": "truck",
   "inject": {
     "css": [
       "theme.css?v=1"

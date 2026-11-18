@@ -3,6 +3,7 @@
   "id": "andon",
   "title": "Bảng Andon sản xuất",
   "themeColor": "#16a34a",
+  "icon": "andon",
   "inject": {
     "css": [
       "theme.css?v=1"

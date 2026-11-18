@@ -3,6 +3,7 @@
   "id": "water",
   "title": "Cấp nước & trạm bơm",
   "themeColor": "#0a7ea4",
+  "icon": "drop",
   "inject": {
     "css": [
       "theme.css?v=1"

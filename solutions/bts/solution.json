@@ -3,6 +3,7 @@
   "id": "bts",
   "title": "Trạm viễn thông độc lập",
   "themeColor": "#1d4ed8",
+  "icon": "tower",
   "inject": {
     "css": [
       "theme.css?v=1"

@@ -69,7 +69,7 @@ export function detectFolders(shellDir) {
   let names = [];
   try { names = fs.readdirSync(solutionsRoot(shellDir)); } catch { /* chưa có thư mục solutions */ }
   return names.sort().filter((id) => ID_RE.test(id) && id !== BASIC && isMarked(shellDir, id))
-    .map((folder) => ({ folder, title: readMeta(shellDir, folder).title || folder, parts: partsOf(shellDir, folder) }))
+    .map((folder) => { const m = readMeta(shellDir, folder); return { folder, title: m.title || folder, icon: String(m.icon || ''), themeColor: String(m.themeColor || ''), parts: partsOf(shellDir, folder) }; })
     .filter((f) => f.parts.webapp || f.parts.gateway);
 }
 
@@ -158,6 +158,14 @@ export function folderOf(shellDir, id, part = 'webapp') {
 /** Thư mục giải pháp hiệu lực của user (id lạ hoặc thư mục mất → 'basic', không bao giờ làm hỏng tải trang). */
 export function solutionOf(shellDir, user) {
   return folderOf(shellDir, String(user?.solution || '').trim() || defaultSolution());
+}
+
+/** Mã giải pháp → { title, icon, themeColor } (icon: mã trong bộ icon chung tools/solution-kit/icons.json) để admin hiện đúng nhận diện từng giải pháp. */
+export function solutionMeta(shellDir) {
+  const folders = new Map(detectFolders(shellDir).map((f) => [f.folder, f]));
+  const out = new Map([[BASIC, { title: 'Cơ bản', icon: 'grid', themeColor: '' }]]);
+  for (const it of registryItems(shellDir)) { const f = folders.get(it.folder); out.set(it.id, { title: it.title, icon: f?.icon || '', themeColor: f?.themeColor || '' }); }
+  return out;
 }
 
 export const isKnownSolution = (shellDir, id, part = 'webapp') => id === BASIC || listSolutions(shellDir, part).some((s) => s.id === id);

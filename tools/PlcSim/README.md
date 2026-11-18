@@ -27,6 +27,15 @@ Tab **Lệnh nhận từ gateway / webapp**: mỗi lệnh ghi từ gateway/Modbu
 
 **Độ trễ** (đo trên VPS thật): giám sát PLC→webapp ≈ 0,2 s và điều khiển webapp→PLC ≈ 0,2 s khi gateway đặt `PollMs=200`, `CloudTelemetryFastMs=150` (mặc định `PollMs=1000` cho ≈ 0,5 s). Giữ `CloudTelemetryMinMs≥1000` để không vượt giới hạn ingest ~120 tin/phút.
 
+## Giải pháp (thử giao diện từng giải pháp)
+
+Thanh **Giải pháp** trên cùng: chọn cùng danh sách giải pháp như gateway (thư mục `solutions/`, tự tìm từ thư mục chạy; đổi bằng `PLCSIM_SOLUTIONS`).
+
+- Chọn một giải pháp lần đầu: PlcSim dựng đủ luồng dữ liệu mà giao diện giải pháp cần (`solutions/<id>/gateway/setup.json`), giá trị sinh theo bộ mẫu của spec (`ui.json` → sóng sin, bộ đếm tăng dần, trạng thái…); Modbus TCP, REAL từ D50, hệ số 1; field điều khiển được để đọc/ghi + giá trị cố định.
+- Mỗi giải pháp một **hồ sơ riêng** `profiles/<id>.json` cạnh `settings.json`: sửa luồng, giá trị, cổng… được lưu tự động; lần sau chọn lại (hoặc mở PlcSim) là thử tiếp đúng như lúc dừng. **↺ Nạp lại mẫu** dựng lại theo giải pháp. "Tự cấu hình" = luồng tự khai báo như trước.
+- **▶ Mở GatewayApp thử**: ghi cấu hình gateway riêng cho giải pháp ở `gateway/<id>/config.json` (Pack khớp đúng D của hồ sơ, kết nối Modbus TCP `127.0.0.1:<cổng>`, giao diện = `ui.json`), bật máy chủ nếu chưa chạy rồi mở GatewayApp (`GATEWAYAPP_SETTINGS` trỏ vào đó). Cấu hình gateway thật không bị đụng. Mặc định bỏ qua đăng nhập (`--noauth`, chỉ để thử giao diện); bỏ chọn để đăng nhập và nối cloud cho webapp — đăng ký được giữ trong hồ sơ gateway thử.
+- Tự động hoá: `PlcSim.exe --solution <id> --modbus-port <N> --gateway "--noauth --solshot <thư mục>" --exit-with-gateway`; chạy hết mọi giải pháp và chụp ảnh: `.\tools\solution-kit\plcsim-uitest.ps1`. `--uishot FILE.png` chụp cửa sổ PlcSim.
+
 ## Dữ liệu nhập
 
 Mặc định **rỗng**. Chỉ có giao thức qua Ethernet (chưa có RS232/RS485 và digital).
