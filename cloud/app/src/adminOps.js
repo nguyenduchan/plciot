@@ -627,7 +627,6 @@ export function mountAdminOps(app, {
   app.post('/api/admin/hardware/:site/:device/unbind', ...writeGate, (req, res) => {
     const r = releaseGatewayHardware(db, req.params);
     if (!r.error) audit(db, 'hardware_unbind', { userId: req.user.id, ip: clientIp(req), detail: `${req.params.site}/${req.params.device}` });
-    if (solutionResult && !r.error) return res.json({ ...(typeof r === 'object' ? r : {}), solutionResult });
     sendHw(res, r);
   });
 
@@ -700,6 +699,7 @@ export function mountAdminOps(app, {
         ensureMqttForHardware(db, { site, device, profile: row?.profile, rotate: false });
       } catch { /* mosquitto có thể offline lúc patch */ }
     }
+    if (solutionResult && !r.error) return res.json({ ...(typeof r === 'object' ? r : {}), solutionResult });
     sendHw(res, r);
   });
 
