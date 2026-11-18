@@ -487,7 +487,7 @@
     run(async () => {
       const r = await api(`/api/admin/hardware/${encodeURIComponent(site)}/${encodeURIComponent(device)}`, 'PATCH', { solution: want, confirm: typed });
       const need = r?.solutionResult?.required || [];
-      if (need.length) alert(`Đã đặt "${title}".\nGateway cần có các field: ${need.join(', ')}.\n${r.solutionResult.why || ''}`);
+      if (need.length) alert(`Đã đặt "${title}".\nGateway cần khai báo các field sau (tên field → ý nghĩa):\n${need.map((n) => `• ${n.fields.join(' / ')} → ${n.label}`).join('\n')}\n\n${r.solutionResult.why || ''}`);
       await loadHw();
     }, 'Đã đặt kiểu giao diện.').then(() => loadHw());   // lỗi (vd. gõ sai tên) thì vẽ lại ô chọn về giá trị thật trên server
   });

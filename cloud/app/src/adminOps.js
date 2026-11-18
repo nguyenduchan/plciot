@@ -464,6 +464,13 @@ export function mountAdminOps(app, {
   /* ---------- Thiết bị cứng (QR claim): chỉ device đã add mới được user quét ---------- */
   const sendHw = (res, r) => (r?.error ? res.status(r.status || 400).json(r) : res.json(r));
 
+  /** Field gateway PHẢI có theo spec giải pháp: mã chỉ số → tên field thật (metrics[].keys) kèm nhãn; "key:xxx" = field xxx. */
+  const requiredFields = (spec) => (spec?.required || []).map((r) => {
+    if (String(r).startsWith('key:')) { const k = String(r).slice(4); return { label: k, fields: [k] }; }
+    const m = (spec.metrics || []).find((x) => x.id === r);
+    const fields = (m?.keys || [r]).map((k) => (Array.isArray(k) ? k[0] : k));
+    return { label: m?.label || r, fields };
+  });
   /** Giải pháp gửi lên phải có trong ô chọn (basic/rỗng = cơ bản); sai → để PATCH báo invalid_solution. */
   const solutionParam = (v) => { const c = cleanSolution(v); return c === null || (c && !isKnownSolution(deployPaths.shellDir, c, 'any')) ? '!' : c; };
   /**
@@ -678,7 +685,7 @@ export function mountAdminOps(app, {
         if (hw0.claimedBy) pushToUser(db, hw0.claimedBy, { t: 'Kiểu giao diện gateway đã đổi', b: `${site}/${device}: nay hiển thị theo "${want || 'cơ bản'}" do nhà cung cấp đặt. Chỉ đổi cách hiển thị — việc điều khiển thiết bị vẫn chỉ do bạn thực hiện.`, tag: 'gw-ui', url: '/' }).catch(() => {});
       }
       const ui = want ? solutionUi(want) : null;
-      solutionResult = { solution: want, changed: r0.changed, required: ui?.spec?.required || [], why: ui?.spec?.why || '' };
+      solutionResult = { solution: want, changed: r0.changed, required: requiredFields(ui?.spec), why: ui?.spec?.why || '' };
     }
     if (uiMeta !== undefined) {
       const row = db.prepare('SELECT ui_meta FROM hardware_devices WHERE site = ? AND device = ?')
