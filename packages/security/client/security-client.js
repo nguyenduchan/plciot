@@ -10,7 +10,7 @@
  * Hợp đồng DOM (tuỳ chọn, thiếu phần tử nào thì phần đó bị bỏ qua):
  *   #ctl-banner                                   banner trạng thái bắt buộc bật yếu tố
  *   #ctl-sec, #ctl-state, #ctl-list, #ctl-pk-add, #ctl-totp-add, #ctl-totp-off, #ctl-lock, #ctl-review, #ctl-logout-all, #ctl-msg
- * Hợp đồng lưu trữ (localStorage): session {token, apiBase, demo}, ctl {token}, enroll {ticket, exp}, devReq, devId.
+ * Hợp đồng lưu trữ (localStorage): session {token, apiBase}, ctl {token}, enroll {ticket, exp}, devReq, devId.
  * Hợp đồng server: các route của mountSecurityRoutes (/api/control/*, /api/webauthn/*, /api/devices/*, /api/login/passkey/*).
  */
 (function () {
@@ -1483,7 +1483,7 @@
   async function renderBanner() {
     const el = $('#ctl-banner');
     const s = session();
-    if (!el || !s?.token || s.demo) return;
+    if (!el || !s?.token ) return;
     const st = await api('GET', '/api/control/status');
     if (!st.ok || !st.body.stepUp || !st.body.enroll?.needed) { el.hidden = true; return; }
     const e = st.body.enroll;
@@ -1518,7 +1518,7 @@
   async function settingsPanel() {
     const root = $('#ctl-sec');
     const s = session();
-    if (!root || !s?.token || s.demo) return;
+    if (!root || !s?.token ) return;
     root.hidden = false;
     const msg = (t, bad) => { const e = $('#ctl-msg'); e.textContent = t || ''; e.classList.toggle('err', Boolean(bad)); };
 

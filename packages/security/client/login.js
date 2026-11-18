@@ -73,7 +73,7 @@ function setError(codeOrMsg) {
 
 function setBusy(on) {
   loginBusy = on;
-  ['btn-register', 'tab-login', 'tab-register', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio', 'demo'].forEach((id) => {
+  ['btn-register', 'tab-login', 'tab-register', 'btn-invite', 'btn-passkey', 'btn-login', 'btn-next', 'lnk-use-pw', 'rc-go', 'rc-back', 'rc-bio'].forEach((id) => {
     const el = $('#' + id);
     if (el) el.disabled = on;
   });
@@ -244,7 +244,7 @@ async function loadAuthConfig() {
 
 async function tryResume() {
   const session = LS.get('session', null);
-  if (!session || session.demo) return false;
+  if (!session ) return false;
   if (!session.online && !(await hasBundle(session))) return false;
   if (session.online && !session.token) return false;
   if (new URLSearchParams(location.search).get('update') === '1') setError('Có bản mới. Đăng nhập lại để tải cập nhật.');
@@ -531,14 +531,6 @@ $('#password') && ($('#password').onkeydown = (event) => {
   if (event.key === 'Enter') { event.preventDefault(); passwordLogin(); }
 });
 
-if ($('#demo')) {
-  $('#demo').onclick = async () => {
-    await window.AuthApp?.onDemo?.();
-    LS.set('session', { demo: true, apiBase: location.origin });
-    await registerSw();
-    location.replace('index.html');
-  };
-}
 
 /* Khôi phục: mã khôi phục + mật khẩu / passkey */
 const recover = { bio: null };

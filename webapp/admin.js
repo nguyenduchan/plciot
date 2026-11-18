@@ -6,7 +6,7 @@
   try { session = JSON.parse(localStorage.getItem('session')); } catch {}
   // Mở qua đường hầm SSH (ADMIN_SSH_LOGIN=true trên server): server tự cấp phiên admin, không cần đăng nhập.
   // Từ Internet endpoint này luôn trả 404 nên rơi về màn đăng nhập như cũ.
-  if (!session?.token || session.demo) {
+  if (!session?.token ) {
     fetch('/api/admin/local-session', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (j?.token) { localStorage.setItem('session', JSON.stringify({ token: j.token, apiBase: location.origin })); location.reload(); }
       else location.replace('admin-login.html');

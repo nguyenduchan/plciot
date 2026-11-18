@@ -368,7 +368,7 @@ sealed class LineChart : Painted
         }
         if (vals.Count == 0)
         {
-            TextRenderer.DrawText(g, "Chưa có dữ liệu — hãy chạy gateway hoặc bật chế độ Demo", Theme.Normal, plot, Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "Chưa có dữ liệu — hãy chạy gateway", Theme.Normal, plot, Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             return;
         }
 

@@ -29,7 +29,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   for (const m of S.metrics || []) M[m.id] = { agg: 'last', ...m };
   const keyList = (m) => (m.keys || [m.id]).map((k) => (Array.isArray(k) ? [k[0].toLowerCase(), k[1]] : [String(k).toLowerCase(), 1]));
   const devs = new Map();            // childId → { v: {field: giá trị}, ts }
-  let lastTs = 0, demo = false, demoSeen = false;
+  let lastTs = 0;
 
   let depth = 0;   // chống công thức tham chiếu vòng
   // Chỉ số suy diễn (expr): tính ngay tại webapp từ số cảm biến, KHÔNG gửi qua server. Tên trong công thức: chỉ số khác, field thô, hoặc "thiết_bị.field".
@@ -67,7 +67,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
       default: return xs[xs.length - 1];
     }
   }
-  const live = () => [...devs.values()].filter((r) => demo || Date.now() - r.ts < STALE_MS * 4);
+  const live = () => [...devs.values()].filter((r) => Date.now() - r.ts < STALE_MS * 4);
   const val = (id) => (M[id] ? value(M[id], live()) : null);
 
   // trạng thái theo ngưỡng: ok | warn | bad
@@ -220,7 +220,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     if (!ids.length) return '<p class="muted">Chưa có thiết bị. Thêm thiết bị bằng mã QR ở tab Thiết bị.</p>';
     return `<div class="it-grid">` + ids.map((id) => {
       const r = devs.get(id), v = own(r, main), lv = main.lv ? stateLevel(main, v) : level(main, v);
-      const off = !demo && Date.now() - r.ts > STALE_MS;
+      const off = Date.now() - r.ts > STALE_MS;
       return `<div class="it ${off ? 'offl' : lv}"><div class="it-h"><b>${esc(titleOf(id))}</b><i></i></div>`
         + `<div class="it-v">${qi(main, 'it-ic')}${esc(stateText(main, v))} ${unitOf(main)}</div><div class="it-l">${esc(main.label)}</div>`
         // chỉ số phụ: icon nói lên đại lượng (nhãn đầy đủ khi rê chuột) + số — gọn trên điện thoại, giống GatewayApp
@@ -260,7 +260,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     const rooms = (b.rooms || []).map((r) => `<rect class="pl-room" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="1.2"/><text class="pl-lbl" x="${r.x + 1.6}" y="${r.y + 3.6}">${esc(r.label)}</text>`).join('');
     const marks = (b.markers || []).map((k) => {
       const rec = devs.get(k.dev), v = rec ? own(rec, main) : null, lv = main.lv ? stateLevel(main, v) : level(main, v);
-      const off = !rec || (!demo && Date.now() - rec.ts > STALE_MS);
+      const off = !rec || (Date.now() - rec.ts > STALE_MS);
       return `<g class="pl-m ${off ? 'offl' : lv}"><circle cx="${k.x}" cy="${k.y}" r="3.4"/><text class="pl-v" x="${k.x}" y="${k.y + 1.1}" text-anchor="middle">${esc(stateText(main, v))}</text>`
         + `<text class="pl-t" x="${k.x}" y="${k.y + 7}" text-anchor="middle">${esc(k.label || titleOf(k.dev))}</text></g>`;
     }).join('');
@@ -369,7 +369,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     const ids = idsFor(b, [st, vm]);
     if (!ids.length) return '<p class="muted">Chưa có máy nào gửi dữ liệu.</p>';
     return `<div class="iad">` + ids.map((id) => {
-      const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off', off = !demo && Date.now() - r.ts > STALE_MS;
+      const r = devs.get(id), v = own(r, st), lv = stateLevel(st, v) || 'off', off = Date.now() - r.ts > STALE_MS;
       return `<div class="iad-t ${off ? '' : lv}"><b>${esc(titleOf(id))}</b><span>${off ? 'Mất liên lạc' : esc(stateText(st, v))}</span>${vm ? `<em>${esc(stateText(vm, own(r, vm)))}<small> ${esc(vm.unit || '')}</small></em>` : ''}</div>`;
     }).join('') + '</div>';
   }
@@ -433,7 +433,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
 
   const card = document.createElement('div');
   card.id = 'ind-card';
-  card.innerHTML = `<h2><span class="ind-ic">${svgI(S.icon)}</span>${esc(S.heading || S.title)}<span class="st" id="ind-st">Chờ dữ liệu…</span></h2><div id="ind-body"></div><p class="muted" id="ind-demo" hidden>Đang hiển thị dữ liệu mẫu (chế độ chạy thử).</p>`;
+  card.innerHTML = `<h2><span class="ind-ic">${svgI(S.icon)}</span>${esc(S.heading || S.title)}<span class="st" id="ind-st">Chờ dữ liệu…</span></h2><div id="ind-body"></div>`;
   dash.insertBefore(card, (!HL && document.getElementById('gw-tabs')?.nextSibling) || dash.firstChild);   // dưới thanh tab gateway (nếu có)
 
   function drawOverview() {
@@ -446,7 +446,6 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     const st = $('#ind-st'), fresh = lastTs && Date.now() - lastTs < STALE_MS * 2, n = active().length;
     st.textContent = !lastTs ? 'Chờ dữ liệu…' : !fresh ? '▲ Mất liên lạc' : n ? `▲ ${n} cảnh báo` : '● Trực tuyến';
     st.className = 'st ' + (!lastTs ? '' : !fresh ? 'stale' : n ? 'warn' : 'live');
-    $('#ind-demo').hidden = !demo;
   }
 
   /* ------------------------------------------------------------------ tab theo ngành + Thiết bị + Cảnh báo */
@@ -470,12 +469,12 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   const LABEL = {}; for (const m of Object.values(M)) for (const [k] of keyList(m)) LABEL[k] = m;
   function drawDevices() {
     const listed = new Map();
-    if (!demo) for (const d of (window.DevicesUi?.getDashboard?.()?.devices || [])) if (!GW || d.gw?.base === GW) listed.set(d.childId, d);
+    for (const d of (window.DevicesUi?.getDashboard?.()?.devices || [])) if (!GW || d.gw?.base === GW) listed.set(d.childId, d);
     const ids = new Set([...listed.keys(), ...devs.keys()]), now = Date.now();
     let online = 0, bad = 0;
     const rows = [...ids].map((id) => {
       const rec = devs.get(id), meta = listed.get(id), v = rec?.v || {};
-      const on = !!rec && (demo || now - rec.ts < STALE_MS);
+      const on = !!rec && (now - rec.ts < STALE_MS);
       const faults = Object.entries(v).some(([k, x]) => /^(fault|alarm|err|error)/i.test(k) && Number(x) > 0);
       const lvBad = Object.keys(v).some((k) => LABEL[k] && level(LABEL[k], own(rec, LABEL[k])) === 'bad');
       if (on) online++; if (faults || lvBad) bad++;
@@ -547,48 +546,13 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     }
     lastTs = now;
   }
-  const t0 = Date.now();
-  // máy phát số liệu mẫu: số → hằng; [nền, biên, chu kỳ(s), pha?] → sin; {sq:[a,b], p, duty} → xung vuông; {cnt: tốc độ/giây, start} → bộ đếm
-  function genValue(g, t) {
-    if (typeof g === 'number') return g;
-    if (Array.isArray(g)) { const [base, amp, per = 60, ph = 0] = g; return base + amp * Math.sin((2 * Math.PI * (t + ph)) / per) + amp * 0.05 * Math.sin(t * 0.9 + ph); }
-    if (g && g.sin) { const [base, amp, per = 60, ph = 0] = g.sin; return base + amp * Math.sin((2 * Math.PI * (t + ph)) / per); }
-    if (g && g.sq) { const p = g.p || 40, duty = g.duty ?? 0.7; return ((t + (g.ph || 0)) % p) / p < duty ? g.sq[1] : g.sq[0]; }
-    if (g && g.cnt != null) return (g.start || 0) + g.cnt * t;
-    return 0;
-  }
-  function demoFrame(t) {
-    const d = {};
-    for (const [id, dv] of Object.entries(S.demo?.devices || {})) {
-      const o = {};
-      for (const [k, g] of Object.entries(dv.f)) { let v = genValue(g, t); if (Array.isArray(g) || typeof g === 'number' || (g && g.sin)) { const dec = dv.dec?.[k] ?? 2; v = +v.toFixed(dec); } o[k] = v; }
-      d[id] = o;
-    }
-    return d;
-  }
-  function demoTick() {
-    const t = (Date.now() - t0) / 1000 + 1000;
-    const f = demoFrame(t);
-    ingest({ d: f });
-  }
-  function prefill() {
-    // xu hướng mẫu: 90 điểm quá khứ, mỗi điểm cách 2 giây thật nhưng cách 20 giây trong "thời gian mẫu" để thấy dao động
-    const saveDevs = new Map(devs); devs.clear();
-    for (let k = HMAX; k >= 1; k--) {
-      const f = demoFrame((Date.now() - t0) / 1000 + 1000 - k * 20);
-      devs.clear(); for (const [id, o] of Object.entries(f)) devs.set(id, { v: Object.fromEntries(Object.entries(o).map(([a, b]) => [a.toLowerCase(), b])), ts: Date.now() });
-      for (const id of Object.keys(M)) pushHist(id, val(id));
-    }
-    devs.clear(); for (const [a, b] of saveDevs) devs.set(a, b);
-  }
-
   function redraw() {
     drawOverview();
     for (const id of Object.keys(MINE)) if (!MINE[id].hidden) drawTab(id);
   }
   const handler = (p, b) => {
     if (GW && b && b !== GW) return;   // số liệu của gateway khác không thuộc giao diện này
-    if (!demo) { ingest(p); sample(Date.now()); alarmScan(Date.now()); redraw(); }
+    ingest(p); sample(Date.now()); alarmScan(Date.now()); redraw();
   };
   function hook() {
     const ui = window.DevicesUi;
@@ -604,10 +568,6 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   if (!hook()) document.addEventListener('DOMContentLoaded', hook);
 
   const timer = setInterval(() => {
-    try { demo = typeof cfg !== 'undefined' && cfg.demo === true; } catch { demo = false; }
-    if (demo && !demoSeen) { demoSeen = true; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; prefill(); }
-    else if (!demo && demoSeen) { demoSeen = false; devs.clear(); for (const k of Object.keys(HIST)) delete HIST[k]; }   // rời chạy thử: bỏ thiết bị/số mẫu, không trộn với số thật
-    if (demo) demoTick();
     sample(Date.now()); alarmScan(Date.now()); redraw();
   }, 1500);
   drawOverview();

@@ -12,6 +12,13 @@ namespace GatewayApp;
 public sealed partial class MainForm
 {
     const BindingFlags NP = BindingFlags.NonPublic | BindingFlags.Instance;
+    static List<T> FindAll<T>(Control root) where T : Control
+    {
+        var r = new List<T>();
+        foreach (Control c in root.Controls) { if (c is T t) r.Add(t); r.AddRange(FindAll<T>(c)); }
+        return r;
+    }
+
     static T F<T>(object o, string name) => (T)o.GetType().GetField(name, NP)!.GetValue(o)!;
 
     static void Set(Control c, string v)

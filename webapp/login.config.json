@@ -8,6 +8,5 @@
   "stylesheet": "style.css",
   "appScripts": [
     "auth-app.js"
-  ],
-  "demoButton": "Chạy thử không đăng nhập"
+  ]
 }

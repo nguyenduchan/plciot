@@ -96,10 +96,11 @@ public sealed class UiMetaStore
     }
 
     readonly string _path;
-    /// <summary>false (chế độ demo): chỉ giữ trong bộ nhớ, không ghi file.</summary>
-    public bool Persist { get; set; } = true;
     public Dictionary<string, FieldMeta> Map { get; private set; } = new();
     public Dictionary<string, DeviceMeta> Devices { get; private set; } = new();
+
+    /// <summary>false: chỉ giữ trong bộ nhớ, không ghi file (khung xem trước trong hộp thoại thêm/sửa thiết bị).</summary>
+    public bool Persist { get; set; } = true;
 
     public UiMetaStore(string settingsPath)
     {
@@ -115,7 +116,7 @@ public sealed class UiMetaStore
         catch (Exception e) when (e is IOException or JsonException) { Map = new(); Devices = new(); }
     }
 
-    /// <summary>Đọc lại từ file (bỏ metadata tạm của chế độ demo).</summary>
+    /// <summary>Đọc lại từ file .</summary>
     public void Reload()
     {
         Map = new(); Devices = new();
@@ -184,92 +185,6 @@ public sealed class HistoryStore
     }
 
     public void Clear() { lock (_gate) _d.Clear(); }
-}
-
-/// <summary>
-/// PLC giả chạy ngay trong chương trình (chế độ Demo, không cần PlcSim/phần cứng, không cần mạng):
-/// bồn nước dao động + bơm đặt tốc độ. Địa chỉ lấy theo Pack: level, run, speed, flow, hours.
-/// </summary>
-public sealed class DemoDriver : IRegisterDriver
-{
-    readonly ushort[] _r = new ushort[Contract.MaxRegister];
-    readonly ScadaConfig _cfg;
-    readonly Random _rnd = new(11);
-    readonly object _gate = new();
-    DateTime _last = DateTime.UtcNow;
-    double _level = 55, _t, _hours, _temp = 27, _hum = 60;
-
-    public DemoDriver(ScadaConfig cfg)
-    {
-        _cfg = cfg;
-        lock (_gate) { Set("run", 1); Set("speed", 35); }
-    }
-
-    /// <summary>Pack mặc định cho demo: bồn nước + bơm + cảm biến (khớp PlcSim: D50…).</summary>
-    public static List<PackMap> DemoPack() => new()
-    {
-        new() { Child = "tank1", Field = "level", Address = 50, Scale = 10 },
-        new() { Child = "pump1", Field = "run", Address = 51, Scale = 1, Min = 0, Max = 1 },
-        new() { Child = "pump1", Field = "speed", Address = 52, Scale = 10, Min = 0, Max = 100 },
-        new() { Child = "pump1", Field = "hours", Address = 53, Scale = 10 },
-        new() { Child = "pump1", Field = "flow", Address = 54, Scale = 10 },
-        new() { Child = "env1", Field = "t", Address = 55, Scale = 10 },
-        new() { Child = "env1", Field = "h", Address = 56, Scale = 10 },
-    };
-
-    static readonly (string Child, string Tpl)[] SampleDevices = { ("tank1", "tank"), ("pump1", "pump"), ("env1", "env") };
-
-    /// <summary>Nạp bộ mẫu bồn nước + bơm + cảm biến cùng nhãn/đơn vị/chữ trạng thái của từng loại thiết bị.</summary>
-    public static void InstallSample(ScadaConfig cfg, UiMetaStore meta)
-    {
-        cfg.Pack.Clear(); cfg.Pack.AddRange(DemoPack());
-        foreach (var (child, tplId) in SampleDevices)
-        {
-            var t = DeviceTemplate.Find(tplId)!;
-            meta.SetDevice(child, new DeviceMeta { Title = t.DefaultTitle, Template = t.Id });
-            foreach (var f in t.Fields)
-                meta.Set(child, f.Field, new FieldMeta { Kind = f.Kind, Unit = f.Unit, Title = f.Label, OnText = f.On, OffText = f.Off, Low = f.Low, High = f.High });
-        }
-    }
-
-    /// <summary>Pack hiện tại đúng là bộ mẫu (để dọn khi tắt demo).</summary>
-    public static bool IsSample(ScadaConfig cfg) =>
-        cfg.Pack.Count == DemoPack().Count && cfg.Pack.Zip(DemoPack()).All(x => x.First.Child == x.Second.Child && x.First.Field == x.Second.Field && x.First.Address == x.Second.Address);
-
-    PackMap? Find(string field) => _cfg.Pack.FirstOrDefault(x => x.Field == field);
-    double Get(string field) { var m = Find(field); return m == null ? 0 : _r[m.Address] / m.Scale; }
-    void Set(string field, double v) { var m = Find(field); if (m != null) _r[m.Address] = (ushort)Math.Clamp(Math.Round(v * m.Scale), 0, 65535); }
-
-    void Step()
-    {
-        var now = DateTime.UtcNow; var dt = Math.Clamp((now - _last).TotalSeconds, 0, 2); _last = now; _t += dt;
-        var eff = Get("run") >= 1 ? Math.Clamp(Get("speed"), 0, 100) : 0;
-        var inflow = 0.9 + 0.3 * Math.Sin(_t / 15) + (_rnd.NextDouble() - .5) * .1;
-        _level = Math.Clamp(_level + (inflow - (_level > .5 ? eff * .025 : 0)) * dt, 0, 100);
-        _temp += (_rnd.NextDouble() - .5) * .15 + (27 - _temp) * .01;
-        _hum += (_rnd.NextDouble() - .5) * .3 + (60 - _hum) * .01;
-        if (eff > 0) _hours += dt / 3600;
-        Set("level", _level); Set("flow", _level > .5 ? eff * .8 : 0); Set("hours", _hours); Set("t", _temp); Set("h", _hum);
-    }
-
-    public Task<ushort[]> ReadAsync(int address, int count, CancellationToken ct = default)
-    {
-        lock (_gate)
-        {
-            Step();
-            var r = new ushort[count];
-            for (var i = 0; i < count; i++) r[i] = address + i < _r.Length ? _r[address + i] : (ushort)0;
-            return Task.FromResult(r);
-        }
-    }
-
-    public Task WriteAsync(int address, ushort value, CancellationToken ct = default)
-    {
-        lock (_gate) { if (address is >= 0 and < Contract.MaxRegister) _r[address] = value; }
-        return Task.CompletedTask;
-    }
-
-    public void Dispose() { }
 }
 
 /// <summary>

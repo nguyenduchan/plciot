@@ -4,6 +4,9 @@
  */
 import { cleanSolution, setGatewaySolution, allGatewaySolutions } from './gatewaySolution.js';
 import { isKnownSolution, solutionMeta } from './solutions.js';
+
+/** Thường hoá + bỏ dấu tiếng Việt (đ→d) để tìm kiếm không phân biệt dấu. */
+export const foldVi = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
 import { buildLicenseFile } from './gatewayKinds.js';
 import { publicUser, listSolutions } from './adminUsers.js';
 import { syncBundles } from './bundleSync.js';
@@ -469,7 +472,8 @@ export function mountAdminOps(app, {
    *   PATCH /api/admin/users/:id (vai trò, phạm vi, giải pháp, site/thiết bị, khoá), POST /api/admin/ops/users/:id/plan (gói, hạn, điều khiển từ xa),
    *   PATCH /api/admin/hardware/:site/:device (tên, ghi chú, profile, giải pháp).
    */
-  const norm = (v) => String(v ?? '').toLowerCase();
+  // so khớp KHÔNG phân biệt dấu tiếng Việt: gõ "bon nuoc" vẫn thấy "Bồn nước"
+  const norm = foldVi;
   const matchAll = (hay, q) => { const h = norm(hay); return q.split(/\s+/).filter(Boolean).every((t) => h.includes(norm(t))); };
   app.get('/api/admin/search', ...gate, (req, res) => {
     const q = String(req.query.q || '').trim().slice(0, 120);
@@ -536,9 +540,9 @@ export function mountAdminOps(app, {
     const cfgOf = db.prepare('SELECT rev, devices, updated_at FROM gateway_configs WHERE site = ? AND device = ?');
     // ?q=&limit=&offset= : lọc + phân trang (khi số gateway lớn, chỉ làm giàu thông tin cho trang đang xem). Không có limit = trả tất cả như cũ.
     const all = listHardwareDevices(db);
-    const q = String(req.query.q || '').trim().toLowerCase();
+    const q = foldVi(String(req.query.q || '').trim());
     let rows = all;
-    if (q) rows = all.filter((d) => [d.label, d.site, d.device, d.profile, d.note, d.claimedUsername, d.activatedHw].some((v) => String(v || '').toLowerCase().includes(q)));
+    if (q) rows = all.filter((d) => [d.label, d.site, d.device, d.profile, d.note, d.claimedUsername, d.activatedHw].some((v) => foldVi(v).includes(q)));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 0)) || null;
     const offset = Math.max(0, Number(req.query.offset) || 0);
     const total = rows.length;

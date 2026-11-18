@@ -29,7 +29,7 @@
 
 ## Chạy thử
 
-**Webapp (demo, không cần phần cứng):** phục vụ `webapp/` (`python -m http.server`) → mở `login.html` → **Chạy thử không đăng nhập**. Hoặc chạy app server (xem DEPLOY) rồi đăng nhập user đã seed.
+**Webapp:** chạy app server (xem DEPLOY) rồi đăng nhập user đã seed. Không còn chế độ chạy thử/demo; muốn thử giao diện không cần phần cứng thì dùng PLC giả lập `tools/PlcSim` (chọn giải pháp, dữ liệu được lưu theo hồ sơ).
 
 **Cloud (broker + app server trên PC + Cloudflare Tunnel):** xem [docs/DEPLOY.md](docs/DEPLOY.md).
 **Máy chủ MQTT tại Việt Nam (độ trễ thấp, nối thẳng):** xem [docs/MAY-CHU-VIET-NAM.md](docs/MAY-CHU-VIET-NAM.md).
@@ -50,7 +50,6 @@ Hướng dẫn từng bước (host HTTPS, wss, Thêm vào Màn hình chính): [
 ## Dùng webapp trên điện thoại
 
 - **Có server (khuyến nghị):** login tại `https://plc.<domain>` → tải bundle của user → cache offline; cập nhật bằng cách bump `version` trên server (DEPLOY.md).
-- **Demo không server:** nút 「Chạy thử không đăng nhập」 trên `login.html`.
 - **Hoàn toàn local:** Capacitor (`webDir: webapp`) nếu cần đóng gói native.
 - HTTPS chỉ nối được `wss://`; TLS qua Cloudflare Tunnel (DEPLOY.md).
 
@@ -60,7 +59,7 @@ Cảm biến sản phẩm vào X3, động cơ băng tải ra Y1. PLC đếm c�
 
 ## Lưu ý quan trọng — chưa kiểm chứng trên phần cứng
 
-- Đã chạy thử: webapp ở chế độ demo (UI, điều khiển, báo cáo). **Chưa** chạy: firmware gateway (chưa build), chương trình ST (chưa có XDPPro để biên dịch; cú pháp, tên rơ-le xung 1 s `M10`, và địa chỉ `DDn` cần đối chiếu với tài liệu XD), MQTT client với broker thật.
+- Đã chạy thử: webapp với dữ liệu thật qua PlcSim (UI, điều khiển, báo cáo). **Chưa** chạy: firmware gateway (chưa build), chương trình ST (chưa có XDPPro để biên dịch; cú pháp, tên rơ-le xung 1 s `M10`, và địa chỉ `DDn` cần đối chiếu với tài liệu XD), MQTT client với broker thật.
 - XD3-16T-E nền không có ngõ vào analog: nhiệt độ/mức liên tục cần module mở rộng; hiện logic dùng 2 công tắc mức (X1, X2) và X0 E-stop. Đổi ý nghĩa I/O trong `.st` và tên trong Cài đặt của app.
 - Lịch sử biểu đồ chỉ ghi khi app đang mở (cloud cố ý không lưu). Thống kê thời gian chạy/số lần khởi động do PLC tự đếm nên luôn đầy đủ.
 - Điều khiển từ xa ghi thẳng đầu ra: ACL + TLS là bắt buộc nếu broker ra internet; khoá liên động an toàn (E-stop, chạy khô) nằm trong PLC, không phụ thuộc mạng.

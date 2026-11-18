@@ -18,13 +18,12 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly HistoryStore _history = new();
     readonly ConcurrentDictionary<string, double> _values = new();
     ScadaHost? _host;
-    bool _demo;
     /// <summary>--customer: bản của khách — chỉ giám sát và điều khiển; thiết lập do tool admin gửi qua IP (xem MainForm.Remote.cs).</summary>
     readonly bool _customer = Environment.GetCommandLineArgs().Contains("--customer");
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
-    bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest", "--autodemo" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--autodemo", "--shot", "--edittest", "--soltest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
+    bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--soltest", "--freshtest", "--slottest", "--solshot" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -42,6 +41,30 @@ public sealed partial class MainForm : Form, IGatewayApp
     bool _localUnlocked;
     static bool _carryLocal;
     /// <summary>Hộp thoại/nút sửa cấu hình gọi trước khi sửa: chưa OTP thì hiện màn hình OTP; false = bị từ chối.</summary>
+    public bool CloudLoggedIn => _login != null && DateTime.UtcNow - _loginAt < TokenLife;
+
+    /// <summary>
+    /// Đổi loại UI (giải pháp) cần đăng nhập KẾT NỐI SERVER: gateway đã đăng ký + tài khoản webapp đăng nhập (trình duyệt: mật khẩu/Authenticator).
+    /// Mật khẩu cục bộ, --noauth hay chế độ chỉ-xem không thay được. Trả null nếu được phép, ngược lại lý do.
+    /// </summary>
+    async Task<string?> RequireServerLoginAsync()
+    {
+        if (_cfg.GatewayQr.Length == 0 || _cfg.MqttId.Length == 0 || _cfg.CloudApiUrl.Length == 0)
+            return "Gateway chưa đăng ký với server — đăng nhập kết nối server (mục Cloud) trước rồi mới đổi loại UI.";
+        if (CloudLoggedIn) return null;
+        _login = null; _loginAt = DateTime.MinValue;
+        if (_prompting) return "Đang chờ đăng nhập — hoàn tất cửa sổ đăng nhập rồi thử lại.";
+        _prompting = true;
+        try
+        {
+            using var f = new LoginForm(CloudPage.ServerOf(_cfg), "Đăng nhập server để đổi loại UI", "Đổi loại giao diện chỉ làm được khi đã đăng nhập kết nối server (tài khoản webapp).");
+            if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return "Chưa đăng nhập server — chưa đổi loại UI.";
+            _login = f.Result; _loginAt = DateTime.UtcNow;   // đăng nhập server cũng mở khoá tại máy (Unlocked)
+            return null;
+        }
+        finally { _prompting = false; }
+    }
+
     public bool RequireEdit() => EnsureUnlockedAsync().GetAwaiter().GetResult();   // EnsureUnlockedAsync không có await: hoàn tất đồng bộ
     // Gateway khởi động là TỰ CHẠY NỀN và nối server bằng khoá riêng của máy. Login/OTP chỉ cần khi: đăng ký lần đầu, hoặc chỉnh sửa cấu hình.
 
@@ -50,7 +73,6 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly Panel _body = new() { Dock = DockStyle.Fill, BackColor = Theme.Bg };
     readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent, UseMnemonic = false };   // "&" trong tên giải pháp (P&ID, Cấp nước & trạm bơm) là chữ thường
     readonly StatusChip _chipPlc = new(), _chipCloud = new(), _chipMode = new();
-    readonly FlatButton _demoBtn = new() { Caption = "Demo: tắt", Width = 110 };
     /// <summary>Trạng thái khoá luôn hiện ở đầu trang: người vận hành biết ngay có sửa/điều khiển được không, và khoá lại khi rời máy.</summary>
     readonly FlatButton _lockBtn = new() { Caption = "🔒 Mở khoá", Width = 130 };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
@@ -139,8 +161,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _toast.Location = new Point(_side.Width + 20, ClientSize.Height - 60);
     }
 
-    /// <summary>Chế độ demo không ghi đè cấu hình thật của người dùng.</summary>
-    void SaveCfg() { if (!_demo) ConfigStore.Save(SettingsPath, _cfg); }
+    void SaveCfg() => ConfigStore.Save(SettingsPath, _cfg);
 
     // ------------------------------------------------------------------ dựng giao diện
     public MainForm()
@@ -187,11 +208,10 @@ public sealed partial class MainForm : Form, IGatewayApp
         // thanh trên
         _head.Controls.Add(_pageTitle);
         _qrIcon = new QrIcon(this, () => CloudPage.DefaultServer);
-        foreach (var c in new Control[] { _qrIcon, _lockBtn, _demoBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _qrIcon, _lockBtn, _chipMode, _chipCloud, _chipPlc }) _head.Controls.Add(c);
         _lockBtn.Click += async (_, _) => await ToggleLockAsync();
         if (_testMode || _noAuth) _lockBtn.Visible = false;
         _head.Resize += (_, _) => LayoutHead();
-        _demoBtn.Click += async (_, _) => await ToggleDemoAsync();
 
         BuildLockScreen();
         Controls.Add(_lockScreen); Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -213,11 +233,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         Shown += (_, _) => BeginInvoke(async () => await StartupLoginAsync());   // hoãn: hộp thoại OTP (modal) không được chặn việc tự chạy nền ở các handler Shown khác;   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
         FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); };
         var args = Environment.GetCommandLineArgs();
-        _demo = args.Contains("--demo");
-        UpdateDemoButton();
-        if (_customer || !_editUi) _demoBtn.Visible = false;
         // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
-        if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest") && !args.Contains("--autodemo")) Shown += async (_, _) => await StartAsync();
+        if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest")) Shown += async (_, _) => await StartAsync();
         Shown += (_, _) => InitRemoteAccess(args);
         // Đổi giải pháp (UI) dựng lại cửa sổ trong CÙNG tiến trình: timer của cửa sổ cũ phải dừng, nếu không nó vẫn chạy Tick()
         // trên các điều khiển đã huỷ (vd. thêm dòng vào bảng nhật ký đã mất cột → crash "No row can be added…").
@@ -229,9 +246,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _qrIcon, _lockBtn, _demoBtn, _chipMode, _chipCloud, _chipPlc })
+        foreach (var c in new Control[] { _qrIcon, _lockBtn, _chipMode, _chipCloud, _chipPlc })
         {
-            if ((_customer || !_editUi) && c == _demoBtn) continue;
             if ((c == _qrIcon || c == _lockBtn) && !c.Visible) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : c == _qrIcon ? 11 : 14);
         }
@@ -445,32 +461,16 @@ public sealed partial class MainForm : Form, IGatewayApp
     }
 
     // ------------------------------------------------------------------ chạy / dừng
-    async Task ToggleDemoAsync()
-    {
-        if (_customer || !_editUi) return;
-        _demo = !_demo; UpdateDemoButton();
-        _meta.Persist = !_demo;
-        if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
-        else if (!_demo && DemoDriver.IsSample(_cfg)) { _cfg.Pack.Clear(); _meta.Reload(); }   // rời demo: bỏ bộ mẫu tạm, không lưu
-        else if (!_demo) _meta.Reload();
-        if (_host != null) { await StopAsync(); await StartAsync(); }
-        else Toast(_demo ? "Demo bật: xem bồn nước + bơm mô phỏng ngay trong chương trình." : "Demo tắt.");
-    }
-
-    void UpdateDemoButton() { _demoBtn.Caption = _demo ? "Demo: BẬT" : "Demo: tắt"; _demoBtn.Primary = _demo; _demoBtn.Invalidate(); }
-
     async Task StartAsync()
     {
         if (_host != null) return;
-        _meta.Persist = !_demo;
-        if (_demo && _cfg.Pack.Count == 0) DemoDriver.InstallSample(_cfg, _meta);
-        var err = _cfg.Validate(driverSupplied: _demo);   // demo dùng PLC giả trong chương trình → không cần địa chỉ PLC; cấu hình thật vẫn kiểm tra đủ
+        var err = _cfg.Validate();
         if (err != null) { Toast("Cấu hình chưa hợp lệ: " + err, true); return; }
         try { SaveCfg(); } catch (IOException) { }
         try
         {
             _values.Clear();
-            var h = new ScadaHost(_cfg, _demo ? new DemoDriver(_cfg) : null);
+            var h = new ScadaHost(_cfg);
             h.Describer = new MetaDescriber(_meta, _cfg);   // nhãn/đơn vị/kiểu từ hộp thoại thêm thiết bị → bản tin config
             h.Log += l => _log.Add("LOG", "gateway", l);
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
@@ -481,7 +481,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         }
         catch (LicenseRequiredException e) { await Abort(); Toast(e.Message, true); return; }
         catch (Exception e) { await Abort(); Toast("Không chạy được: " + e.Message, true); return; }
-        Toast(_demo ? "Gateway đang chạy với PLC giả (demo)." : $"Gateway đang chạy: {_host!.Core.InfoLine}");
+        Toast($"Gateway đang chạy: {_host!.Core.InfoLine}");
     }
 
     async Task Abort()
@@ -517,7 +517,8 @@ public sealed partial class MainForm : Form, IGatewayApp
     {
         // Mọi việc đổi cấu hình/kết nối cloud cần một lần duyệt còn hiệu lực trên webapp (đọc danh sách giải pháp thì không)
         if (action == "migrate") { var ok = await MigrateAsync(); if (ok) { await StopAsync(); await StartAsync(); } return (ok, ok ? "Đã chuyển gateway sang PC này." : "Chưa chuyển gateway."); }   // tự đăng nhập chủ tài khoản bên trong
-        if (action != "solutions" && !await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
+        if (action == "solution" && await RequireServerLoginAsync() is { } why) return Done(false, why);   // đổi loại UI: bắt buộc đăng nhập server (không dùng mật khẩu cục bộ)
+        if (action is not ("solutions" or "solution") && !await EnsureUnlockedAsync()) return (false, "Cần mở khoá (mật khẩu gateway) để thực hiện.");
         if (action == "password") { OfferLocalPassword(_cfg.LocalAdminHash.Length > 0); return (true, ""); }
         return action switch
         {
@@ -758,46 +759,5 @@ public sealed partial class MainForm : Form, IGatewayApp
         LayoutHead();
         if (_current == _dash) _dash.Tick();
         else if (_current == _devices) _devices.Tick();
-    }
-
-    // ------------------------------------------------------------------ chụp ảnh các trang (kiểm tra giao diện)
-    public async Task ScreenshotsAsync(string dir)
-    {
-        Directory.CreateDirectory(dir);
-        WindowState = FormWindowState.Normal; Size = new Size(1400, 860);
-        await Task.Delay(9000);
-        // thử đường điều khiển thật: đặt tốc độ bơm 80% rồi đọc lại telemetry
-        var wr = await WriteAsync("pump1", "speed", 80);
-        var bad = await WriteAsync("pump1", "speed", 500);          // ngoài khoảng Min–Max của Pack → phải bị từ chối
-        await Task.Delay(3500);
-        TryValue("pump1.speed", out var sp); TryValue("pump1.flow", out var fl);
-        File.WriteAllText(Path.Combine(dir, "write-test.txt"), $"write80={wr ?? "ok"} write500={bad ?? "ok"} speed={sp} flow={fl}");
-        // chụp thử thẻ QR của trang Cloud: GW_DEMO_QR = chuỗi QR tem (chỉ để kiểm tra giao diện)
-        if (Environment.GetEnvironmentVariable("GW_DEMO_QR") is { Length: > 0 } demoQr)
-        {
-            _cfg.GatewayQr = demoQr; _cfg.Site = "e2etest"; _cfg.Device = "gw01";
-            foreach (var p in _pages) (p.Page as CloudPage)?.Refresh2();
-        }
-        var names = new[] { "dashboard", "devices", "protocols", "cloud", "log" };
-        for (var i = 0; i < _pages.Count; i++)
-        {
-            var shotName = SolutionHost.ExtraPage != null && i >= 1 ? (i == 1 ? SolutionHost.Name : names[i - 1]) : names[i];
-            Show(_pages[i].Page); Tick();
-            await Task.Delay(1200);
-            using var bmp = new Bitmap(Width, Height);
-            DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));   // không chụp màn hình: chạy đúng cả khi máy scale DPI
-            bmp.Save(Path.Combine(dir, shotName + ".png"));
-        }
-        foreach (var (name, edit) in new[] { ("dialog-add", (string?)null), ("dialog-edit", _cfg.Pack.FirstOrDefault()?.Child) })
-        {
-            if (name == "dialog-edit" && edit == null) continue;
-            using var dlg = DeviceDialog.Preview(this, edit);
-            dlg.Show(this); await Task.Delay(800);
-            using var bmp = new Bitmap(dlg.Width, dlg.Height);
-            dlg.DrawToBitmap(bmp, new Rectangle(0, 0, dlg.Width, dlg.Height));
-            bmp.Save(Path.Combine(dir, name + ".png"));
-            dlg.Close();
-        }
-        Close();
     }
 }

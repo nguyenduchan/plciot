@@ -15,7 +15,7 @@
 
   async function loadPrices() {
     let session = null; try { session = JSON.parse(localStorage.getItem('session')); } catch { /* */ }
-    if (!session?.token || session.demo) return;
+    if (!session?.token ) return;
     try {
       const r = await fetch(`${session.apiBase || location.origin}/api/support/prices?days=${days}`, { headers: { Authorization: `Bearer ${session.token}` } });
       if (!r.ok) return;

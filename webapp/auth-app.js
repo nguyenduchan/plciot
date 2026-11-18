@@ -13,16 +13,10 @@ window.AuthApp = {
   onAuthenticated(data) {
     let cfg;
     try { cfg = JSON.parse(localStorage.getItem('cfg')) || {}; } catch { cfg = {}; }
-    cfg.demo = false;
     if (data.mqtt) {
       Object.assign(cfg, { user: data.mqtt.user, pass: data.mqtt.pass, site: data.mqtt.site, dev: data.mqtt.device, controlVia: data.mqtt.controlVia || 'mqtt' });
     } else if (data.notifySite) Object.assign(cfg, { site: data.notifySite, dev: data.notifyDevice });
     localStorage.setItem('cfg', JSON.stringify(cfg));
-  },
-  onDemo() {
-    let cfg;
-    try { cfg = JSON.parse(localStorage.getItem('cfg')) || {}; } catch { cfg = {}; }
-    localStorage.setItem('cfg', JSON.stringify({ ...cfg, demo: true }));
   },
   onSecuritySummary(summary) {
     const retention = document.querySelector('#ret-info');

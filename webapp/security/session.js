@@ -32,7 +32,7 @@
 
   function lock(notify = true) {
     const session = readSession();
-    if (lockOff || locked || !isApp || session?.demo) return;
+    if (lockOff || locked || !isApp) return;
     locked = true;
     document.documentElement.style.visibility = 'hidden';
     let token = '';
@@ -67,7 +67,7 @@
       const t = res.headers.get('X-Renewed-Token');
       if (t) {
         const s = readSession();
-        if (s && !s.demo && s.token === before?.token) { s.token = t; localStorage.setItem('session', JSON.stringify(s)); }
+        if (s  && s.token === before?.token) { s.token = t; localStorage.setItem('session', JSON.stringify(s)); }
       }
       if (isApp && api && res.status === 401) {
         const body = await res.clone().json().catch(() => ({}));
@@ -77,7 +77,7 @@
     return res;
   };
 
-  if (!isApp || lockOff || readSession()?.demo) return;
+  if (!isApp || lockOff) return;
   let entry = null;
   try { entry = sessionStorage.getItem('app-entry'); sessionStorage.removeItem('app-entry'); } catch {}
   // Tải lại trang (F5 / kéo để làm mới) trong CÙNG tab: không khoá. Dấu `app-alive` nằm trong sessionStorage nên mất khi đóng tab;

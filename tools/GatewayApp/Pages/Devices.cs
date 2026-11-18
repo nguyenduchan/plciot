@@ -49,6 +49,7 @@ sealed class PreviewApp : IGatewayApp
     public string HwText => "";
     public Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value) => Task.FromResult((false, "xem trước"));
     public void Toast(string text, bool error = false) { }
+    public bool CloudLoggedIn => false;
     public bool RequireEdit() => true;   // chỉ để xem trước hộp thoại: không có gì để bảo vệ
 }
 
@@ -86,7 +87,7 @@ sealed class DeviceDialog : Form
     readonly Dictionary<string, Control> _connInputs = new(), _paramInputs = new();
     readonly Label _addrHint = new() { ForeColor = Theme.Accent, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 22 };
 
-    /// <summary>Chế độ trình diễn (--autodemo): kịch bản chạy khi hộp thoại hiện.</summary>
+    /// <summary>Kiểm thử tự động (--edittest, --slottest): kịch bản chạy khi hộp thoại hiện.</summary>
     internal static Action<Form>? Hook;
 
     /// <summary>Thiết bị vừa bị xoá bằng nút trong hộp thoại sửa.</summary>
@@ -206,6 +207,13 @@ sealed class DeviceDialog : Form
         _g.CellValueChanged += (_, _) => Queue(null, EventArgs.Empty);
         _g.RowsAdded += (_, _) => Queue(null, EventArgs.Empty);
         _g.RowsRemoved += (_, _) => Queue(null, EventArgs.Empty);
+        // gõ TÊN tiếng Việt → mã thiết bị (ASCII) tự sinh theo tên, bỏ dấu ("Bồn nước 1" → bon_nuoc_1); sửa mã tay thì thôi tự sinh
+        _title.TextChanged += (_, _) =>
+        {
+            if (_edit != null || _childTouched || !_title.Focused) return;
+            var slug = Vn.Slug(_title.Text);
+            if (slug.Length > 0) _child.Text = UniqueChildName(slug);
+        };
         _title.TextChanged += Queue; _child.TextChanged += Queue; _icon.SelectedIndexChanged += Queue; _color.SelectedIndexChanged += Queue;
         Controls.Add(right); Controls.Add(prev); Controls.Add(left);
 
@@ -361,6 +369,14 @@ sealed class DeviceDialog : Form
         }
     }
 
+    /// <summary>Mã chưa dùng: giữ nguyên nếu rảnh, trùng thì thêm số _2, _3…</summary>
+    string UniqueChildName(string baseName)
+    {
+        var used = _app.Config.Pack.Select(p => p.Child).ToHashSet();
+        if (!used.Contains(baseName)) return baseName;
+        for (var i = 2; ; i++) { var c = baseName.Length + 1 + i.ToString().Length > 48 ? baseName[..(48 - 1 - i.ToString().Length)] + "_" + i : baseName + "_" + i; if (!used.Contains(c)) return c; }
+    }
+
     string UniqueChild(string prefix)
     {
         var used = _app.Config.Pack.Select(p => p.Child).ToHashSet();
@@ -424,7 +440,12 @@ sealed class DeviceDialog : Form
         _g.EndEdit();
         var rx = new Regex("^[A-Za-z0-9_-]{1,48}$");
         var child = _child.Text.Trim();
-        if (!rx.IsMatch(child)) { _err.Text = "Mã thiết bị chỉ gồm chữ, số, _ và -, tối đa 48 ký tự."; return; }
+        if (!rx.IsMatch(child))   // mã gõ có dấu/ký tự lạ (vd. "Bồn nước 1"): tự bỏ dấu thay vì từ chối
+        {
+            var slug = Vn.Slug(child, 48, allowDash: true);
+            if (slug.Length == 0) { _err.Text = "Mã thiết bị cần ít nhất một chữ hoặc số (tên tiếng Việt thì nhập ở ô Tên hiển thị)."; return; }
+            child = slug; _child.Text = slug;
+        }
         if (_edit == null && _app.Config.Pack.Any(p => p.Child == child)) { _err.Text = $"Mã \"{child}\" đã có thiết bị khác."; return; }
         var rows = _g.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow && Cell(r, ColField).Length > 0).ToList();
         if (rows.Count == 0) { _err.Text = "Cần ít nhất một field."; return; }
@@ -451,10 +472,20 @@ sealed class DeviceDialog : Form
         foreach (var r in rows)
         {
             var f = Cell(r, ColField); var line = r.Index + 1;
-            if (!rx.IsMatch(f)) { _err.Text = $"Dòng {line}: field chỉ gồm chữ, số, _ và -."; return; }
+            if (!rx.IsMatch(f))   // field gõ tiếng Việt: tự bỏ dấu, nhãn tiếng Việt đã có ở cột "Nhãn hiển thị"
+            {
+                var fs = Vn.Slug(f, 48, allowDash: true);
+                if (fs.Length == 0) { _err.Text = $"Dòng {line}: field cần ít nhất một chữ hoặc số (nhãn tiếng Việt nhập ở cột Nhãn hiển thị)."; return; }
+                f = fs; r.Cells[ColField].Value = fs;
+            }
             if (!names.Add(f)) { _err.Text = $"Dòng {line}: field \"{f}\" bị trùng."; return; }
             var mk = Cell(r, ColMqtt);
-            if (mk.Length > 0 && !Regex.IsMatch(mk, "^[A-Za-z0-9_]{1,32}$")) { _err.Text = $"Dòng {line}: khoá MQTT chỉ gồm chữ, số, _ (tối đa 32 ký tự)."; return; }
+            if (mk.Length > 0 && !Regex.IsMatch(mk, "^[A-Za-z0-9_]{1,32}$"))
+            {
+                var ms = Vn.Slug(mk, 32);
+                if (ms.Length == 0) { _err.Text = $"Dòng {line}: khoá MQTT cần ít nhất một chữ hoặc số (tối đa 32 ký tự)."; return; }
+                mk = ms; r.Cells[ColMqtt].Value = ms;
+            }
             if (!wires.Add(mk.Length > 0 ? mk : f)) { _err.Text = $"Dòng {line}: khoá MQTT \"{(mk.Length > 0 ? mk : f)}\" bị trùng trong thiết bị."; return; }
             var ai = Array.IndexOf(AccessNames, Convert.ToString(r.Cells[ColAccess].Value));
             var ti = Array.IndexOf(TypeNames, Convert.ToString(r.Cells[ColType].Value));

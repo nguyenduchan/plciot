@@ -108,5 +108,4 @@ const otherTab = browser();
 otherTab.storage.set('session', JSON.stringify({ token: 'session-token', locked: true }));
 otherTab.fire('window', 'storage', { key: 'session' });
 assert.equal(otherTab.window.AppLock.isLocked(), true);
-assert.equal(browser({ entry: false, demo: true }).window.AppLock.isLocked(), false);
 console.log('Browser app lock smoke passed');

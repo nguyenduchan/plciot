@@ -16,6 +16,7 @@ const keys = generateClaimRootKeyPair();
 process.env.CLAIM_ROOT_PUBLIC_KEY = keys.publicKey;
 process.env.CLAIM_ROOT_PRIVATE_KEY = keys.privateKey;
 process.env.APP_JWT_SECRET = 'gateway-transfer-smoke-secret16';
+process.env.TRANSFER_WAIT_HOURS = '24';   // test chế độ CÓ CHỜ (mặc định là chuyển ngay cho người cầm thiết bị: xem smoke-gateway-transfer-holder.js)
 process.env.MQTT_PUBLIC_HOST = 'mqtt.example.test';
 process.env.MQTT_PUBLIC_MQTTS_PORT = '48263';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-transfer-'));

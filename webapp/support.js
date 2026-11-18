@@ -14,7 +14,7 @@
   const panel = $('#support-panel');
   // Đã đăng xuất: xoá bộ nhớ đệm chat trên máy (máy dùng chung không để lộ nội dung)
   if (!session?.token) { try { indexedDB.databases?.().then((l) => (l || []).forEach((d) => /^plciot-chat-/.test(d.name) && indexedDB.deleteDatabase(d.name))); } catch {} }
-  if (!panel || !session?.token || session.demo) return;
+  if (!panel || !session?.token ) return;
   panel.hidden = false;
 
   const base = session.apiBase || location.origin;

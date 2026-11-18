@@ -22,7 +22,7 @@
 
   async function api(method, path, body) {
     const s = session();
-    if (!s?.token || s.demo) return { ok: false, data: { error: 'unauthorized' } };
+    if (!s?.token ) return { ok: false, data: { error: 'unauthorized' } };
     const r = await fetch(`${s.apiBase || location.origin}${path}`, {
       method,
       headers: {
@@ -220,20 +220,6 @@
     const n = devs.reduce((a, d) => a + d.widgets.length, 0);
     return `<details class="locked-group"><summary>🔒 ${devs.length} thiết bị (${n} widget) đang bị khoá theo gói — bấm để xem</summary><div class="gw-cards">${devs.map((d) => cardHtml(d, false)).join('')}</div></details>`;
   }
-
-  // Chế độ "Chạy thử không đăng nhập": có sẵn vài thiết bị mẫu chạy bằng số liệu mô phỏng (app.js DemoLink phát env01/pump1/energy1).
-  const DEMO_DASH = () => ({ demo: true, layout: { simple: { order: ['demo-env', 'demo-pump', 'demo-energy', 'demo-light'] } }, devices: [
-    { id: 'demo-env', childId: 'env01', type: 'env', icon: 'env', title: 'Môi trường xưởng (mẫu)', widgets: [
-      { id: 'de1', kind: 'gauge', bind: 't', label: 'Nhiệt độ', unit: '°C', min: 0, max: 50, high: 35 },
-      { id: 'de2', kind: 'gauge', bind: 'h', label: 'Độ ẩm', unit: '%', min: 0, max: 100 }] },
-    { id: 'demo-pump', childId: 'pump1', type: 'pump', icon: 'pump', title: 'Bơm nước (mẫu)', widgets: [
-      { id: 'dp1', kind: 'gauge', bind: 'flow', label: 'Lưu lượng', unit: 'L/phút', min: 0, max: 60 },
-      { id: 'dp2', kind: 'gauge', bind: 'hours', label: 'Giờ chạy', unit: 'h', min: 0, max: 100 }] },
-    { id: 'demo-energy', childId: 'energy1', type: 'energy', icon: 'energy', title: 'Điện năng (mẫu)', widgets: [
-      { id: 'dg1', kind: 'gauge', bind: 'kw', label: 'Công suất', unit: 'kW', min: 0, max: 3 }] },
-    { id: 'demo-light', childId: 'light1', type: 'switch', icon: 'switch', title: 'Đèn xưởng (mẫu — thử bấm)', widgets: [
-      { id: 'dl1', kind: 'toggle', bind: 'on', label: 'Bật / Tắt', onText: 'Bật', offText: 'Tắt', cmd: {} }] },
-  ] });
 
   /** Nhãn loại ở góc thẻ: bỏ khi nó chỉ lặp lại tiêu đề ("Băng tải" + "BĂNG TẢI"). */
   function typeTag(d) {
@@ -569,9 +555,7 @@
             else toast(`Lệnh chưa được gửi, thiết bị không thay đổi. ${window.ErrText(r?.error || "network", r?.status)}`, true);
           }).finally(() => { b.disabled = false; });
         } else {
-          live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
-          render();
-          toast('Đã gửi (demo/local)');
+          toast('Thiết bị này chưa có đường điều khiển nên chưa gửi được lệnh.', true);   // không giả lập thành công
         }
       };
     });
@@ -581,8 +565,8 @@
   let loadRetried = false;
   async function load() {
     const s = session();
-    if (!s?.token || s.demo) {
-      dashboard = s?.demo ? DEMO_DASH() : { devices: [], layout: { simple: { order: [] } } };
+    if (!s?.token ) {
+      dashboard = { devices: [], layout: { simple: { order: [] } } };
       render();
       return;
     }
@@ -844,10 +828,10 @@
   // Lý do thất bại viết cho người dùng phổ thông (bảng dùng chung ở errors.js): chuyện gì xảy ra + nên làm gì.
   function explainAddError(r) {
     const s = session();
-    if (!s?.token || s.demo) {
+    if (!s?.token ) {
       return {
         ok: false, title: 'Không thêm được thiết bị', code: 'unauthorized',
-        reason: 'Bạn đang ở chế độ dùng thử hoặc chưa đăng nhập nên chưa thể thêm thiết bị.',
+        reason: 'Bạn chưa đăng nhập nên chưa thể thêm thiết bị.',
         hint: 'Đăng xuất, đăng nhập bằng tài khoản thật rồi thêm lại.',
       };
     }
@@ -968,26 +952,6 @@
     render();
   }
 
-  function injectDemoLive() {
-    if (!dashboard?.devices?.length) return;
-    for (const d of dashboard.devices) {
-      if (d.type === 'env') {
-        live[lk(d)] = { t: 26 + Math.random() * 4, h: 55 + Math.random() * 10 };
-      } else if (d.type === 'pump') {
-        live[lk(d)] = { run: 1, hours: 12.4, flow: 30 + Math.random() * 20 };
-      } else if (d.type === 'switch' || d.type === 'relay') {
-        live[lk(d)] = { on: live[lk(d)]?.on ?? 0 };
-      } else if (d.type === 'energy') {
-        live[lk(d)] = { kw: 1.2 + Math.random(), kwh: 340 };
-      } else if (d.type === 'tank') {
-        live[lk(d)] = { level: 40 + Math.random() * 40 };
-      } else if (d.type === 'motor') {
-        live[lk(d)] = { run: 1, rpm: 1400 };
-      }
-    }
-    render();
-  }
-
   /** Gateway publish <base>/config: server đã upsert → tải lại dashboard (debounce vì ingest ghi DB trước khi UI hỏi). */
   let cfgTimer = null;
   function onConfig() {
@@ -1008,7 +972,7 @@
   }
   document.addEventListener('DOMContentLoaded', renderSample);
 
-  window.DevicesUi = { load, onConfig, onTelemetry, onAck, injectDemoLive, openModal, getDashboard: () => dashboard };
+  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard };
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);

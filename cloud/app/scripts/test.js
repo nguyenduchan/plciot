@@ -18,6 +18,7 @@ const tests = [
   'scripts/smoke-gateway-enroll.js',
   'scripts/smoke-gateway-rebind.js',
   'scripts/smoke-gateway-transfer.js',
+  'scripts/smoke-gateway-transfer-holder.js',
   'scripts/smoke-gateway-qr.js',
   'scripts/smoke-control.js',
   'scripts/smoke-sites.js',

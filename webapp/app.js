@@ -10,8 +10,9 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const cfg = Object.assign({ url: 'wss://plc-mqtt.dieukhientudong.net', user: 'app', pass: '', site: 'factory1', dev: 'plc01',
-  demo: true, inNames: '', outNames: '', maxRate: '60', pitchCm: '0',
+  inNames: '', outNames: '', maxRate: '60', pitchCm: '0',
   keepMinDays: '30', keepHourDays: '730', maxMB: '0', uiMode: 'simple' }, LS.get('cfg', {}));
+delete cfg.demo;   // chế độ chạy thử đã bỏ: cấu hình cũ còn cờ này thì gỡ
 const applyDbLimits = () => DB.setLimits({ minDays: cfg.keepMinDays, hourDays: cfg.keepHourDays, maxMB: cfg.maxMB });
 const simpleUi = () => cfg.uiMode !== 'pro';
 const names = (str, p) => Array.from({ length: 8 }, (_, i) => (str.split(',')[i] || '').trim() || (simpleUi() ? `${p === 'Y' ? 'Thiết bị' : 'Cảm biến'} ${i + 1}` : p + i));
@@ -74,80 +75,6 @@ class MqttLink {
   send(cmd) { return this.base ? this.c.publish(`${this.base}/cmd`, JSON.stringify(cmd)) : false; }
 }
 
-/* Offline simulator with the same logic as plc/xd3_logic.st */
-class DemoLink {
-  constructor(h) {
-    this.h = h; this.n = 0;
-    this.H = { c: Array.from({ length: 49 }, (_, i) => i ? 15 + Math.floor(Math.random() * 70) : 12), s: 1200, n: 48, r: 700,
-      m: Array.from({ length: 49 }, (_, i) => i ? 20 + Math.floor(Math.random() * 40) : 0) };
-    this.r = new Array(R.NREG).fill(0); this.level = 55; this.estop = false; this.pump = false; this.clk = 0; }
-  start() { this.h.status('online'); this.t = setInterval(() => this.tick(), 1000); this.tick(); }
-  stop() { clearInterval(this.t); }
-  tick() {
-    this.clk++;
-    const r = this.r, pumpOn = r[R.DO] & 1;
-    this.level = Math.min(100, Math.max(0, this.level + (pumpOn ? 3 : 0) - 1.2 - Math.random() * 0.5));
-    if (Math.random() < 0.004) this.estop = !this.estop;
-    const x0 = !this.estop, x1 = this.level > 20, x2 = this.level >= 80;
-    r[R.DI] = (x0 ? 1 : 0) | (x1 ? 2 : 0) | (x2 ? 4 : 0);
-    r[R.ALARM] = (x0 ? 0 : 1) | (x2 && !x1 ? 2 : 0);
-    if (!x1) this.pump = true; else if (x2) this.pump = false;
-    let o = (r[R.MODE] === 0 ? (this.pump ? 1 : 0) : r[R.MAN] & 0x7D);
-    if (r[R.CSTATE] === 1 && Math.random() < 0.6) { this.add(R.COUNT); this.add(R.TOTAL); this.H.c[0]++; }  // item passes photo-eye
-    const tgt = r[R.TARGET], reached = tgt > 0 && this.u(R.COUNT) >= tgt;
-    r[R.CSTATE] = r[R.RUN_REQ] ? (!x0 ? 3 : reached ? 2 : 1) : 0;
-    if (r[R.CSTATE] === 1) o |= 2;
-    if (r[R.ALARM] & 2) { o = (o & 0xFE) | 0x80; this.pump = false; }
-    if (!x0) { o = 0x80; this.pump = false; }
-    if (!x1) o &= 0xFE;
-    r[R.DO] = o;
-    this.add(R.UPTIME);
-    for (let i = 0; i < 8; i++) if (o >> i & 1) this.add(R.RUN + 2 * i);
-    if ((o & 1) && !this.was) this.add(R.STARTS);
-    this.was = o & 1;
-    const H = this.H; H.s++; if (r[R.CSTATE] === 1) H.r++;
-    if (H.s >= 3600) { H.m[0] = Math.floor(H.r / 60); H.c.pop(); H.m.pop(); H.c.splice(1, 0, H.c[0]); H.m.splice(1, 0, H.m[0]); H.c[0] = 0; H.m[0] = 0; H.s = 0; H.r = 0; H.n++; }
-    if (this.n++ % 5 === 0) this.h.history(JSON.parse(JSON.stringify(H)));
-    this.h.regs(r.slice());
-    // Demo multi-device payload (schema 2) cho catalog UI
-    window.DevicesUi?.onTelemetry?.({
-      schema: 2,
-      r: r.slice(),
-      d: {
-        env01: { t: 24 + Math.sin(this.clk / 20) * 3, h: 55 + Math.cos(this.clk / 25) * 8 },
-        pump1: { run: pumpOn ? 1 : 0, hours: 12.4, flow: pumpOn ? 25 + Math.random() * 10 : 0 },
-        sw1: { on: (r[R.DO] >> 2) & 1 },
-        energy1: { kw: pumpOn ? 1.1 + Math.random() * 0.4 : 0.05, kwh: 340 },
-        tank1: { level: this.level },
-        motor1: { run: r[R.CSTATE] === 1 ? 1 : 0, rpm: r[R.CSTATE] === 1 ? 1400 : 0 },
-      },
-    });
-  }
-  u(i) { return this.r[i] + this.r[i + 1] * 65536; }
-  add(i) { const v = this.r[i] + this.r[i + 1] * 65536 + 1; this.r[i] = v & 0xFFFF; this.r[i + 1] = v >>> 16; }
-  virt() {   // the same register map the PLC exposes, including the hourly history block
-    const v = new Array(300).fill(0); this.r.forEach((x, i) => { v[i] = x; });
-    this.H.c.forEach((x, i) => { v[100 + i] = x; }); v[149] = this.H.s; v[150] = this.H.n; v[199] = this.H.r; this.H.m.forEach((x, i) => { v[200 + i] = x; });
-    return v;
-  }
-  send(c) {
-    if (c.op === 'read') {
-      setTimeout(() => { const ok = c.a >= 0 && c.n >= 1 && c.a + c.n <= 300; this.h.ack({ id: c.id, ok, a: c.a, v: ok ? this.virt().slice(c.a, c.a + c.n) : undefined }); }, 150);
-      return true;
-    }
-    setTimeout(() => {
-      if (c.a === R.MODE) {
-        if (c.v === 1 && this.r[R.MODE] === 0) this.r[R.MAN] = this.r[R.DO];
-        this.r[R.MODE] = c.v;
-      } else if (c.a === R.RESET) { this.r[R.COUNT] = this.r[R.COUNT + 1] = 0; }
-      else if ([R.MAN, R.RUN_REQ, R.TARGET].includes(c.a)) this.r[c.a] = c.v;
-      this.h.ack({ id: c.id, ok: [R.MODE, R.MAN, R.RUN_REQ, R.TARGET, R.RESET].includes(c.a) });
-      this.tick();
-    }, 150);
-    return true;
-  }
-}
-
 /* ------------------------------------------------------------- commands */
 const pending = {};
 const pendDesc = {};
@@ -183,8 +110,8 @@ function applySubscription(sub) {
     + (sub.unlimited ? ' · lưu ∞' : (sub.retentionDays != null ? ` · lưu ${sub.retentionDays} ngày` : ''));
   window.PlanUi?.update(sub, null);
 }
-/* Đã đăng nhập (không demo): lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
-const viaServer = () => !cfg.demo && cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
+/* Đã đăng nhập: lệnh đi qua app server để kiểm tra Passkey/TOTP (control.js). */
+const viaServer = () => cfg.controlVia !== 'mqtt' && Boolean(LS.get('session', null)?.token) && window.Ctl;
 const CTL_ERR = (e) => (e === 'cancelled' ? '' : window.Ctl.errText(e));
 function sendReg(a, v, desc) {
   if (viaServer()) {
@@ -196,7 +123,7 @@ function sendReg(a, v, desc) {
     });
     return;
   }
-  if (!cfg.demo && !/^wss:/i.test(cfg.url || '')) return toast('Kết nối này không được mã hoá (ws://) nên chỉ xem được. Hãy dùng địa chỉ wss:// để điều khiển.', true);
+  if (!/^wss:/i.test(cfg.url || '')) return toast('Kết nối này không được mã hoá (ws://) nên chỉ xem được. Hãy dùng địa chỉ wss:// để điều khiển.', true);
   const id = Date.now().toString(36);
   if (S.status !== 'online' || !link.send({ id, a, v })) return toast('Chưa gửi được lệnh vì đang mất kết nối tới thiết bị. Kiểm tra mạng và nguồn thiết bị rồi thử lại.', true);
   armPending(id, desc);
@@ -414,7 +341,7 @@ function renderStatus() {
   const pill = $('#pill'), st = S.status, stale = isStale(), age = dataAge();
   document.body.classList.toggle('stale', stale);
   pill.className = 'pill ' + (st === 'online' && !stale ? 'on' : st === 'plc_fault' || st === 'online' ? 'warn' : 'off');
-  const base = { online: cfg.demo ? '● Chạy thử' : '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
+  const base = { online: '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
   pill.textContent = st === 'online' && stale ? `▲ Dữ liệu cũ${age != null ? ' · ' + ageText(age) : ''}` : st === 'online' && age != null ? `${base} · ${ageText(age)} trước` : base;
   renderAlarmBar();
   renderStatusCard();
@@ -572,13 +499,12 @@ function renderWidgets() {
 }
 
 /* ------------------------------------------------------------- wiring */
-const dbName = () => (cfg.demo ? 'demo' : `${cfg.site}-${cfg.dev}`);
+const dbName = () => `${cfg.site}-${cfg.dev}`;
 
 /** Pull server MQTT history into IndexedDB for offline charts (when logged in). */
 async function syncCloudHistory() {
-  if (cfg.demo) return;
   const session = LS.get('session', null);
-  if (!session?.token || session.demo) return;
+  if (!session?.token ) return;
   const base = session.apiBase || location.origin;
   // Server plan window (3 days default; longer on paid plans, null = unlimited → cap at 2 years)
   const retentionMs = LS.get('retentionDays', 3) * 86400e3;
@@ -642,7 +568,7 @@ window.applySiteFromDevices = (site, gateway) => {
 
 async function alignSiteDevFromSession() {
   const session = LS.get('session', null);
-  if (!session?.token || session.demo || cfg.demo) {
+  if (!session?.token) {
     lockTenantFields(false);
     return;
   }
@@ -684,11 +610,10 @@ function connect() {
   if (link) link.stop();
   S.status = 'offline';
   const h = { status: onStatus, regs: onRegs, ack: onAck, history: onHist, tick: () => { S.ts = Date.now(); } };
-  link = cfg.demo ? new DemoLink(h) : new MqttLink(h);
+  link = new MqttLink(h);
   link.start();
 }
 function loadSettings() {
-  $('#demo').checked = cfg.demo;
   ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm', 'keepMinDays', 'keepHourDays', 'maxMB'].forEach((k) => { $('#' + k).value = cfg[k]; });
   showStorage();
 }
@@ -729,9 +654,8 @@ $('#c-stop').onclick = () => command('Dừng máy', R.RUN_REQ, 0, STOP_CF);
 $('#c-set').onclick = () => { const v = parseInt($('#target').value || '0', 10); if (v >= 0 && v <= 65535) sendReg(R.TARGET, v); else toast('Giá trị không hợp lệ. Hãy nhập số từ 0 đến 65535.', true); };
 $('#c-reset').onclick = () => { if (confirm('Xoá số đếm hiện tại về 0?')) sendReg(R.RESET, 1); };
 $('#save').onclick = () => {
-  cfg.demo = $('#demo').checked;
   const session = LS.get('session', null);
-  const locked = session?.token && !session.demo && !cfg.demo;
+  const locked = Boolean(session?.token);
   const keys = locked
     ? ['url', 'inNames', 'outNames', 'maxRate', 'pitchCm']
     : ['url', 'user', 'pass', 'site', 'dev', 'inNames', 'outNames', 'maxRate', 'pitchCm'];
@@ -775,8 +699,8 @@ document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline
 document.addEventListener('visibilitychange', () => {
   if (window.AppLock?.isLocked()) return;
   clearTimeout(hideTimer);
-  if (document.hidden) { if (!cfg.demo) hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
-  else if (!cfg.demo) {
+  if (document.hidden) { hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
+  else {
     if (S.status === 'offline') connect();
     syncCloudHistory().then(() => DB.range('raw', Date.now() - 3600e3, Date.now())).then((rows) => {
       if (rows?.length) hist = rows.map((r) => [r.t, r.o, r.i, r.a, r.c]);

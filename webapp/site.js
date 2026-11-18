@@ -8,7 +8,7 @@
   };
   const session = LS.get('session', null);
   const root = $('#site-sec');
-  if (!root || !session?.token || session.demo) return;
+  if (!root || !session?.token ) return;
   root.hidden = false;
 
   const ERR = {

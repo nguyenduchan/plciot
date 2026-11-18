@@ -19,16 +19,13 @@ Làm theo [DEPLOY.md](DEPLOY.md): tunnel `plc` → app `:3080`, `plc-mqtt` → M
 4. Mở icon: **Đăng ký** (OTP Telegram) hoặc **Đăng nhập** (mật khẩu / OTP). Đợi tải xong bundle.
 5. Từ lần sau: mở app offline vẫn được (MQTT cần mạng). Tin nhắn Telegram “đếm đủ” có link **Mở Giám sát PLC** — bấm để mở lại app.
 
-Nút **Chạy thử không đăng nhập** chỉ xem UI demo, không gắn bundle server.
-
 ## Bước 4. Nối với PLC thật
 
 Trong app: tab **Cài đặt**:
-1. Tắt **Chạy thử**.
-2. Broker WebSocket URL: `wss://plc-mqtt.dieukhientudong.net`.
-3. Tài khoản MQTT: `app`. Mật khẩu: mật khẩu user `app` trên Mosquitto (khác mật khẩu đăng nhập webapp nếu bạn đặt khác).
-4. Site và Thiết bị: **trùng** `SITE` và `DEVICE` trong `gateway/src/config.h` (mặc định `factory1` / `plc01`).
-5. **Lưu & kết nối**.
+1. Broker WebSocket URL: `wss://plc-mqtt.dieukhientudong.net`.
+2. Tài khoản MQTT: `app`. Mật khẩu: mật khẩu user `app` trên Mosquitto (khác mật khẩu đăng nhập webapp nếu bạn đặt khác).
+3. Site và Thiết bị: **trùng** `SITE` và `DEVICE` trong `gateway/src/config.h` (mặc định `factory1` / `plc01`).
+4. **Lưu & kết nối**.
 
 Nhãn góc trên: `online` / `PLC mất liên lạc` / `offline`.
 

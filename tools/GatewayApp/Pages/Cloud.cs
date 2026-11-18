@@ -57,9 +57,11 @@ sealed class CloudPage : UserControl
         var solRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
         _sol.DropDownStyle = ComboBoxStyle.DropDownList; _sol.Width = 260; _sol.Location = new Point(130, 10);
         var solLbl = Skin.Lbl("Giải pháp (UI)"); solLbl.Location = new Point(0, 14);
-        var solBtn = new FlatButton { Caption = "Áp dụng", Primary = true, Width = 110, Location = new Point(400, 6) };
+        var solBtn = new FlatButton { Caption = "Đăng nhập & áp dụng", Primary = true, Width = 190, Location = new Point(400, 6) };
         solBtn.Click += async (_, _) => await RunSolution();
-        solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn });
+        var solNote = new Label { Text = "Đổi loại UI chỉ làm được khi đã đăng nhập kết nối server (tài khoản webapp); mật khẩu gateway tại máy không đủ.", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Location = new Point(130, 42), Size = new Size(560, 20), BackColor = Color.Transparent };
+        solRow.Height = 68;
+        solRow.Controls.AddRange(new Control[] { solLbl, _sol, solBtn, solNote });
         // Tự khoá khi không thao tác: cài đặt theo máy, không cần quyền sửa cấu hình
         var lockRow = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.Transparent, Padding = new Padding(0, 8, 0, 0) };
         var lockLbl = Skin.Lbl("Tự khoá sau"); lockLbl.Location = new Point(0, 14);
@@ -111,7 +113,7 @@ sealed class CloudPage : UserControl
         if (!string.IsNullOrEmpty(_app.Config.CloudPassword))
         {
             if (!_app.RequireEdit()) return;
-            if (MessageBox.Show(FindForm(), "Đăng nhập tài khoản khác để xin chuyển gateway này sang tài khoản đó?\n\nChủ hiện tại sẽ được báo: họ duyệt thì chuyển ngay, từ chối thì huỷ; không phản hồi thì tự chuyển sau 24 giờ. Trong lúc chờ gateway vẫn chạy bình thường.", "Đổi tài khoản", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (MessageBox.Show(FindForm(), "Chuyển gateway này sang tài khoản khác (vd. mất điện thoại/tài khoản cũ)?\n\nBạn đang cầm gateway nên được ưu tiên: đăng nhập tài khoản mới (tạo mới nếu cần) là gateway chuyển NGAY, kèm toàn bộ dữ liệu và cấu hình đã có. Chủ cũ chỉ được báo.", "Đổi tài khoản", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
         }
         // Không còn mã ghép cặp: đăng nhập qua trình duyệt (xem LoginForm) rồi server cấp gateway cho tài khoản này
         var r = await _app.CloudAsync("register", ServerOf(_app.Config), "");

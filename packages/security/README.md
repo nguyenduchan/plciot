@@ -91,14 +91,14 @@ App mới tạo `<webapp>/login.config.json` rồi chạy `node packages/securit
 ```json
 { "title": "Tên app", "subtitle": "Mô tả ngắn", "themeColor": "#1a1a1a", "manifest": "manifest.json",
   "icon": "icon.svg", "appleIcon": "icon-180.png", "stylesheet": "style.css",
-  "appScripts": ["auth-app.js"], "demoButton": "Chạy thử không đăng nhập" }
+  "appScripts": ["auth-app.js"] }
 ```
 
-Lệnh sinh `<webapp>/login.html` và `<webapp>/security/*` (kể cả `login.css`). `demoButton` bỏ trống thì không có nút chạy thử. Muốn đổi màu/phông chỉ cần đổi biến CSS trong `stylesheet` của app. `npm run check-client` (hoặc `--check`) báo lệch nếu ai sửa tay bản sinh ra. Thêm `/login.html` và `/security/login.css` vào danh sách shell của service worker để chạy offline.
+Lệnh sinh `<webapp>/login.html` và `<webapp>/security/*` (kể cả `login.css`). Muốn đổi màu/phông chỉ cần đổi biến CSS trong `stylesheet` của app. `npm run check-client` (hoặc `--check`) báo lệch nếu ai sửa tay bản sinh ra. Thêm `/login.html` và `/security/login.css` vào danh sách shell của service worker để chạy offline.
 
 Chạy `node packages/security/scripts/sync-client.js <webapp>/security`; không sửa bản sinh ra. Trang login nạp `device-proof.js`, `security-client.js`, adapter UI của host (tuỳ chọn), rồi `login.js` từ thư mục security. Trang app nạp `session.js` và `boot.js` ở head; các controller hồ sơ/khôi phục chỉ nạp trên trang tương ứng.
 
-`window.AuthApp` là hook hiển thị/nghiệp vụ: `onAuthenticated`, `onDemo`, `onAuthConfig`, `onSecuritySummary`, `contactLabel`. Không hook nào được bỏ qua quyết định xác thực của server. Menu riêng có thể phát sự kiện `security-profile-refresh` để tải lại hồ sơ. Client không cần `control.js` hoặc `window.Ctl` để đăng nhập.
+`window.AuthApp` là hook hiển thị/nghiệp vụ: `onAuthenticated`, `onAuthConfig`, `onSecuritySummary`, `contactLabel`. Không hook nào được bỏ qua quyết định xác thực của server. Menu riêng có thể phát sự kiện `security-profile-refresh` để tải lại hồ sơ. Client không cần `control.js` hoặc `window.Ctl` để đăng nhập.
 
 ### Migration và vận hành
 

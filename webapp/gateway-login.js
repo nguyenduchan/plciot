@@ -6,7 +6,7 @@
   const LOGIN = /^adminplc\./.test(location.hostname) ? 'admin-login.html' : 'login.html';   // tên miền admin có trang đăng nhập riêng
   let session = null;
   try { session = JSON.parse(localStorage.getItem('session')); } catch { /* chưa đăng nhập */ }
-  if (!session?.token || session.demo) { location.replace(LOGIN); return; }
+  if (!session?.token ) { location.replace(LOGIN); return; }
   const code = (new URLSearchParams(location.search).get('code') || '').replace(/\s/g, '');
   const focusTransfer = (new URLSearchParams(location.search).get('transfer') || '').trim();
   const rawApi = (m, p, b) => window.Security.api(m, p, b);

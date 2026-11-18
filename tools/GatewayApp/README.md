@@ -2,7 +2,6 @@
 
 ```powershell
 dotnet run --project tools/GatewayApp            # mở giao diện, mặc định KHÔNG có thiết bị
-dotnet run --project tools/GatewayApp -- --demo  # PLC giả trong chương trình (bồn nước + bơm), không cần PlcSim/mạng
 dotnet run --project tools/GatewayApp -- --autostart   # tự chạy với cấu hình đã lưu
 ```
 
@@ -20,9 +19,9 @@ C# thuần (WinForms, vẽ bằng GDI+), không web, không CDN, không cần In
 - Mỗi field = `d.<thiết bị>.<field> = giải mã(kiểu, thứ tự word, word từ D) / hệ số`. Field từ tem enroll chưa có giao thức/thanh ghi/hệ số: khai báo ở trang Thiết bị trước khi chạy.
 - Cùng bộ thông số và khoá với PlcSim (`Plciot.Scada.ProtocolSpec`); xem `tools/PlcSim/README.md`.
 - Điều khiển đi qua đúng đường của gateway (`ScadaCore.ExecuteKeyAsync`): whitelist theo Pack + giới hạn Min/Max.
-- Cấu hình: `%ProgramData%\PlciotScada\gateway-app\config.json` và `config.ui.json` (cách hiển thị). Demo không ghi đè.
+- Cấu hình: `%ProgramData%\PlciotScada\gateway-app\config.json` và `config.ui.json` (cách hiển thị).
 - Biến môi trường `GATEWAYAPP_SETTINGS` đổi đường dẫn file cấu hình (dùng cho thử nghiệm).
-- Kiểm tra tự động: `--shot THƯ_MỤC` (chụp các trang), `--selftest THƯ_MỤC` (thêm thiết bị bằng hộp thoại thật, chạy Modbus TCP 1502 + OPC UA 4841 tới PlcSim nạp `e2e/plcsim-settings.json`, đọc/ghi/xoá, ghi `gateway-result.txt`).
+- Kiểm tra tự động: `--solshot THƯ_MỤC` (chụp giao diện giải pháp, dữ liệu từ PlcSim), `--selftest THƯ_MỤC` (thêm thiết bị bằng hộp thoại thật, chạy Modbus TCP 1502 + OPC UA 4841 tới PlcSim nạp `e2e/plcsim-settings.json`, đọc/ghi/xoá, ghi `gateway-result.txt`).
 
 ## Chế độ khách + API cho tool admin
 

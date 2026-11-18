@@ -1,6 +1,6 @@
 /* GENERATED từ packages/security/client/boot.js bằng "npm run sync-client". KHÔNG sửa ở đây. */
 'use strict';
-/* Gate index.html: require a downloaded user bundle (or local demo session). */
+/* Gate index.html: require a downloaded user bundle (phải đăng nhập). */
 (function () {
   const LS = {
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
@@ -91,8 +91,8 @@
 
   async function run() {
     if (window.AppLock?.isLocked()) return;
-    const session = LS.get('session', null);
-    if (session?.demo) return; // local trial without server bundle
+    let session = LS.get('session', null);
+    if (session?.demo) { try { localStorage.removeItem('session'); } catch {} session = null; }   // phiên "chạy thử" cũ (đã bỏ chế độ này): bắt đăng nhập
 
     if (!session?.userId && !session?.cacheName) {
       toLogin();
@@ -149,7 +149,7 @@
       }
       if (!r.ok) {   // 429 / 5xx tạm thời: đừng bỏ qua im lặng, hỏi lại sau (giãn dần)
         clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => { const s = readSession(); if (s && !s.demo && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
+        retryTimer = setTimeout(() => { const s = readSession(); if (s  && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
         return;
       }
       const me = await r.json();
@@ -161,7 +161,7 @@
       else if (res === 'auth') { window.AppLock?.allowNavigation?.(); toLogin('?update=1'); }
       else {
         clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => { const s = readSession(); if (s && !s.demo && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
+        retryTimer = setTimeout(() => { const s = readSession(); if (s  && !s.gate) checkVersion(s); }, Math.min(60_000, 3000 * 2 ** failCount++));
       }
     } catch {
       updating = false;
@@ -172,7 +172,7 @@
   function recheck() {
     if (window.AppLock?.isLocked?.()) return;
     const session = readSession();
-    if (session && !session.demo && !session.gate) checkVersion(session);
+    if (session  && !session.gate) checkVersion(session);
   }
   let lastCheck = Date.now();
   const throttled = () => { if (Date.now() - lastCheck < 10_000) return; lastCheck = Date.now(); recheck(); };

@@ -1,8 +1,12 @@
 /**
- * ĐỔI CHỦ gateway — có kiểm soát của chủ cũ.
+ * ĐỔI CHỦ gateway — ƯU TIÊN NGƯỜI CẦM THIẾT BỊ.
  *
- * Người mới (B) đăng nhập gateway đủ tên + mật khẩu + mã ghép và giữ đúng khoá riêng của gateway → server KHÔNG chuyển ngay,
- * chỉ tạo một yêu cầu chờ:
+ * Dữ liệu gắn với GATEWAY (lịch sử, cấu hình, thiết bị), không gắn với tài khoản. Mất điện thoại / mất tài khoản: người cầm gateway
+ * tạo tài khoản mới, đăng nhập trên gateway (giữ đúng khoá riêng của máy) → gateway CHUYỂN NGAY sang tài khoản mới, kèm dữ liệu cũ.
+ * Chủ cũ được báo (push + audit) để biết nếu việc đó không do họ. Mặc định không chờ (TRANSFER_WAIT_HOURS=0).
+ *
+ * Chế độ có chờ (đặt TRANSFER_WAIT_HOURS > 0, vd. nơi muốn chủ cũ kịp chặn): người mới (B) đăng nhập đủ tên + mật khẩu + mã ghép
+ * và giữ đúng khoá riêng → server không chuyển ngay, chỉ tạo một yêu cầu chờ:
  *   - Chủ cũ (A) được báo (push + audit) và vào webapp DUYỆT (cần Face ID/TOTP) → chuyển ngay; hoặc TỪ CHỐI → huỷ.
  *   - A không làm gì trong TRANSFER_WAIT_HOURS (mặc định 24 giờ) → tự chuyển (A có thể đã mất tài khoản/điện thoại).
  *   - A không còn (tài khoản bị xoá/khoá) → chuyển ngay, không có ai để hỏi.
@@ -16,7 +20,7 @@ import { addDeviceFromQr, removeGateway } from './userDevices.js';
 import { notifyGateway } from './gatewayNotify.js';
 import { pushToUser } from './webPush.js';
 
-const WAIT_MS = Math.max(0, Number(process.env.TRANSFER_WAIT_HOURS ?? 24)) * 3600_000;
+const WAIT_MS = Math.max(0, Number(process.env.TRANSFER_WAIT_HOURS ?? 0)) * 3600_000;
 const SWEEP_MS = 5 * 60_000;
 
 export function migrateGatewayTransfers(db) {

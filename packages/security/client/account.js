@@ -3,7 +3,7 @@
 (function () {
   const $ = (s) => document.querySelector(s);
   const session = () => { try { return JSON.parse(localStorage.getItem('session')); } catch { return null; } };
-  if (!session()?.token || session()?.demo) return;
+  if (!session()?.token ) return;
 
   function msg(text, bad) {
     const el = $('#acc-msg');

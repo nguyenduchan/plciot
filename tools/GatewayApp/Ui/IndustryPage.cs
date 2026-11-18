@@ -5,7 +5,7 @@ namespace GatewayApp.Ui;
 /// <summary>
 /// Trang giao diện "giải pháp ngành" của gateway (chỉ đổi giao diện; ghép cặp, MQTT, thiết bị, cài đặt… dùng chung bản cơ bản).
 /// Đọc cấu hình giao diện (cùng spec với webapp: chỉ số, ngưỡng, khối hiển thị) và vẽ bằng GDI+ từ số liệu của Pack
-/// (TryValue "thiết bị.field"). Chạy --demo mà chưa có field của ngành này thì hiện số mẫu theo spec.
+/// (TryValue "thiết bị.field").
 /// Một trang DÙNG CHUNG cho mọi giải pháp: giao diện là DỮ LIỆU (ui.json do server gửi trong kit lúc Enroll, lưu cache, xem SkinBoot.cs) — không cần build riêng.
 /// Chỉ số suy diễn (expr) tính ngay trên gateway từ số cảm biến, không gửi qua server.
 /// </summary>
@@ -26,14 +26,12 @@ sealed class IndustryPage : UserControl
     readonly JsonElement _spec;
     readonly Dictionary<string, Metric> _m = new();
     readonly System.Windows.Forms.Timer _t = new() { Interval = 1000 };
-    readonly bool _demoArg = Environment.GetCommandLineArgs().Contains("--demo");
     readonly DateTime _t0 = DateTime.Now;
     readonly Dictionary<string, List<double>> _hist = new();
     readonly Dictionary<string, List<(double A, double O)>> _trail = new();
     readonly List<(DateTime Ts, string Text, string Lv)> _log = new();
     readonly Dictionary<string, string> _prevLv = new();
     Dictionary<string, Dictionary<string, double>> _devs = new(StringComparer.OrdinalIgnoreCase);
-    bool _demoShown;
     int _tab;                       // 0 = tổng quan; i = tab thứ i của spec
     /// <summary>
     /// GỘP: trang giải pháp nằm chung trang chính của gateway (một mục duy nhất, cùng thẻ thiết bị) — vẽ MỌI khối của mọi tab
@@ -92,42 +90,9 @@ sealed class IndustryPage : UserControl
         return d;
     }
 
-    static double Gen(JsonElement g, double t)
-    {
-        switch (g.ValueKind)
-        {
-            case JsonValueKind.Number: return g.GetDouble();
-            case JsonValueKind.Array:
-                { var b = g[0].GetDouble(); var a = g[1].GetDouble(); var per = g.GetArrayLength() > 2 ? g[2].GetDouble() : 60; var ph = g.GetArrayLength() > 3 ? g[3].GetDouble() : 0;
-                  return b + a * Math.Sin(2 * Math.PI * (t + ph) / per) + a * 0.05 * Math.Sin(t * 0.9 + ph); }
-            case JsonValueKind.Object:
-                if (g.TryGetProperty("sin", out var s)) { var per = s.GetArrayLength() > 2 ? s[2].GetDouble() : 60; var ph = s.GetArrayLength() > 3 ? s[3].GetDouble() : 0; return s[0].GetDouble() + s[1].GetDouble() * Math.Sin(2 * Math.PI * (t + ph) / per); }
-                if (g.TryGetProperty("sq", out var q)) { var p = Dbl(g, "p") ?? 40; var duty = Dbl(g, "duty") ?? 0.7; var ph = Dbl(g, "ph") ?? 0; return ((t + ph) % p) / p < duty ? q[1].GetDouble() : q[0].GetDouble(); }
-                if (g.TryGetProperty("cnt", out var c)) return (Dbl(g, "start") ?? 0) + c.GetDouble() * t;
-                return 0;
-            default: return 0;
-        }
-    }
-
-    Dictionary<string, Dictionary<string, double>> DemoFrame(double t)
-    {
-        var d = new Dictionary<string, Dictionary<string, double>>(StringComparer.OrdinalIgnoreCase);
-        if (!_spec.TryGetProperty("demo", out var demo)) return d;
-        foreach (var dv in demo.GetProperty("devices").EnumerateObject())
-        {
-            var o = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            foreach (var f in dv.Value.GetProperty("f").EnumerateObject()) o[f.Name.ToLowerInvariant()] = Gen(f.Value, t);
-            d[dv.Name] = o;
-        }
-        return d;
-    }
-
     void Tick()
     {
         var d = Read();
-        _demoShown = false;
-        if (_demoArg && (d.Count == 0 || d.Keys.All(k => k is "tank1" or "pump1" or "env1"))) {   // --demo: bộ mẫu bồn/bơm của gateway không thuộc ngành này → dùng số mẫu của ngành
-            _demoShown = true; d = DemoFrame(1000 + (DateTime.Now - _t0).TotalSeconds); }
         _devs = d;
         var now = DateTime.Now;
         // vệt đường đi (bản đồ)
@@ -231,7 +196,7 @@ sealed class IndustryPage : UserControl
         var pad = Merged ? 2f : 20f; var w = Math.Max(300, ClientSize.Width - pad * 2 - (VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
         float y = Merged ? 4f : pad;
         var act = Active();
-        var st = _devs.Count == 0 ? ("Chưa có dữ liệu", Theme.Yellow) : _demoShown ? ("Dữ liệu mẫu (--demo)", Theme.Teal) : act.Count > 0 ? ($"{act.Count} cảnh báo", Theme.Yellow) : ("Đang nhận dữ liệu", Theme.Green);
+        var st = _devs.Count == 0 ? ("Chưa có dữ liệu", Theme.Yellow) : act.Count > 0 ? ($"{act.Count} cảnh báo", Theme.Yellow) : ("Đang nhận dữ liệu", Theme.Green);
         if (!Merged)
         {
             // tiêu đề có icon giải pháp (gộp vào trang chính thì tiêu đề nằm ở thanh trên của cửa sổ)

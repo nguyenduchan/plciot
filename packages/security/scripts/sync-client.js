@@ -5,7 +5,7 @@
  *   node scripts/sync-client.js [thư-mục-đích] [--check]
  *
  * Trang đăng nhập cũng dùng chung: client/login.template.html + client/login.css. Nếu cạnh thư mục đích có login.config.json
- * (thương hiệu của app: title, subtitle, icon, themeColor, stylesheet, appScripts, demoButton...) thì sinh ra login.html cho app đó.
+ * (thương hiệu của app: title, subtitle, icon, themeColor, stylesheet, appScripts...) thì sinh ra login.html cho app đó.
  * App mới chỉ cần viết login.config.json rồi chạy lệnh này, không tự viết lại HTML/CSS/luồng các bước đăng nhập.
  */
 import fs from 'fs';
@@ -45,7 +45,6 @@ if (fs.existsSync(cfgFile)) {
   if (!d.title) throw new Error('login.config.json cần "title"');
   const parts = {
     appScripts: d.appScripts.map((s) => `<script src="${esc(s)}"></script>\n`).join(''),
-    demoButton: d.demoButton ? `        <button type="button" id="demo" class="fit">${esc(d.demoButton)}</button>\n` : '',
   };
   let html = norm(fs.readFileSync(path.join(srcDir, 'login.template.html'), 'utf8'))
     .replace(/\{\{(\w+)\}\}/g, (_, k) => (k in parts ? parts[k] : esc(d[k] ?? '')));

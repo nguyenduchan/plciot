@@ -24,6 +24,8 @@ public interface IGatewayApp
     /// <summary>Việc cloud do GATEWAY thực hiện (cần mạng của gateway): action = "pair" (value = mã ghép cặp) hoặc "enroll" (value = mã QR của tem).</summary>
     Task<(bool Ok, string Msg)> CloudAsync(string action, string api, string value);
     void Toast(string text, bool error = false);
+    /// <summary>Đã đăng nhập tài khoản trên server (phiên đăng ký còn hạn). Đổi loại giao diện (giải pháp) chỉ được khi true — mật khẩu cục bộ không đủ.</summary>
+    bool CloudLoggedIn { get; }
     /// <summary>Cổng OTP trước khi SỬA cấu hình (thêm/sửa/xoá thiết bị, giao thức, cloud): chưa nhập OTP thì hiện màn hình OTP. false = bị từ chối, không được sửa.</summary>
     bool RequireEdit();
 }
@@ -171,7 +173,7 @@ sealed class DashboardPage : UserControl
         Controls.Add(lay);
         _chart.WindowSec = _window;
         var et = new Label { Text = "Chưa có thiết bị nào", ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(0, 8), BackColor = Color.Transparent };
-        var es = new Label { Text = "Bấm nút bên dưới, chọn loại thiết bị vật lý (bồn nước, bơm, cảm biến, van, động cơ…),\nchỉnh thanh ghi D rồi lưu — thẻ sẽ hiện ngay ở đây. Dùng Demo để xem thử không cần PLC.", ForeColor = Theme.Muted, Font = Theme.Normal, AutoSize = true, Location = new Point(0, 56), BackColor = Color.Transparent };
+        var es = new Label { Text = "Bấm nút bên dưới, chọn loại thiết bị vật lý (bồn nước, bơm, cảm biến, van, động cơ…),\nchỉnh thanh ghi D rồi lưu — thẻ sẽ hiện ngay ở đây.", ForeColor = Theme.Muted, Font = Theme.Normal, AutoSize = true, Location = new Point(0, 56), BackColor = Color.Transparent };
         var eb = new FlatButton { Caption = "＋  Thêm thiết bị ngoại vi", Primary = true, Width = 240, Height = 40, Location = new Point(0, 128) };
         eb.Click += (_, _) => AddDevice();
         _empty.Controls.AddRange(new Control[] { et, es, eb });

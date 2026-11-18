@@ -3,7 +3,7 @@ using GatewayApp.Ui;
 namespace GatewayApp;
 
 /// <summary>
-/// Chụp giao diện GIẢI PHÁP để rà soát (--demo --solshot THƯ_MỤC): cần file giao diện (*.skin.json cạnh GATEWAYAPP_SETTINGS).
+/// Chụp giao diện GIẢI PHÁP để rà soát (--solshot THƯ_MỤC, dữ liệu thật từ PlcSim): cần file giao diện (*.skin.json cạnh GATEWAYAPP_SETTINGS).
 /// Ghi window.png (cả cửa sổ như người dùng thấy) và page.png (toàn bộ trang giải pháp, đủ chiều cao, không bị cắt bởi thanh cuộn).
 /// </summary>
 public sealed partial class MainForm
