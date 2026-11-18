@@ -580,6 +580,102 @@ NO:X12 BOX:DCNT_HC0_K100000
 ```
 
 
+### 3.10 Đối chiếu ladder ↔ C++ (lệnh cơ bản)
+
+Ladder chạy trong **vòng quét** (đọc X → chạy chương trình trên xuống dưới → ghi Y), nên khi quy sang C++ ta mô phỏng bằng một vòng lặp. Quy ước dùng trong các ví dụ dưới đây:
+
+```cpp
+bool X[16], Y[16], M[8000], S[1000];   // bit: ngõ vào, ngõ ra, trung gian, bước
+int16_t D[8000];                       // thanh ghi 16-bit (DMOV/DADD... = int32_t)
+bool X0_prev;                          // trạng thái chu kỳ quét trước — để bắt sườn
+
+while (true) {                         // = vòng quét của PLC
+    readInputs();                      // đọc chân X vào vùng ảnh
+    /* ... chương trình ladder, trên xuống dưới, trái sang phải ... */
+    writeOutputs();                    // ghi vùng ảnh ra chân Y thật
+}
+```
+
+**Tiếp điểm và đường nối (điều kiện)**
+
+| Hình / lệnh | C++ | Ghi chú |
+|---|---|---|
+| Thường mở `LD X0` / `AND X0` / `OR X0` | `X0` | `LD` mở đầu biểu thức, `AND` thành `&&`, `OR` thành `\|\|` |
+| Thường đóng `LDI X0` / `ANI X0` / `ORI X0` | `!X0` | Như trên nhưng đảo |
+| Sườn lên `LDP` / `ANDP` / `ORP` | `X0 && !X0_prev` | Phải tự lưu `X0_prev`; cuối mỗi vòng quét gán `X0_prev = X0;` |
+| Sườn xuống `LDF` / `ANDF` / `ORF` | `!X0 && X0_prev` | |
+| Nối tiếp (đường ngang) | `a && b` | |
+| Song song (đường dọc, nhánh trên/dưới) | `a \|\| b` | |
+| `ANB` (nối tiếp hai khối) | `(a \|\| b) && (c \|\| d)` | Dấu ngoặc chính là "khối" |
+| `ORB` (song song hai khối) | `(a && b) \|\| (c && d)` | |
+| `LDD` `LDDI` `ANDD` `ANDDI` `ORD` `ORDI` | `readPinNow(X0)` | Đọc **thẳng chân vào**, không dùng vùng ảnh `X[]` |
+
+**Cuộn dây (kết quả)**
+
+| Hình / lệnh | C++ | Ghi chú |
+|---|---|---|
+| Cuộn xuất `OUT Y0` | `Y0 = dieu_kien;` | Luôn bám theo mạch, mất dẫn thì tắt |
+| Cuộn đặt `SET Y0` | `if (dieu_kien) Y0 = true;` | Có nhớ |
+| Cuộn reset `RST Y0` | `if (dieu_kien) Y0 = false;` | Cặp với `SET`; dòng nằm dưới thắng |
+| `OUTD Y0` | `if (dieu_kien) writePinNow(Y0, true);` | Ghi **thẳng chân ra**, không đợi hết chu kỳ quét |
+| `PLS M0` | `M0 = dieu_kien && !dk_prev;` | `M0` ON đúng 1 chu kỳ quét khi điều kiện lên |
+| `PLF M0` | `M0 = !dieu_kien && dk_prev;` | Khi điều kiện xuống |
+| `ALT M0` | `if (dieu_kien) M0 = !M0;` | Đảo trạng thái (toggle); thường đi với điều kiện sườn lên |
+| `END` | `break;` / kết thúc thân vòng lặp | Phần sau `END` không chạy |
+| `GROUP` / `GROUPE` | chú thích `// ---` hoặc `#pragma region` | Chỉ để gom nhóm trong editor, không ảnh hưởng chạy |
+
+**Điều khiển chủ, timer, counter**
+
+| Hình / lệnh | C++ | Ghi chú |
+|---|---|---|
+| `MCS` … `MCR` | `if (X1) { /* các dòng bên trong */ }` | Lồng tối đa 10 cấp = `if` lồng nhau. Khi `X1` = OFF, các `OUT` bên trong về OFF |
+| `TMR T0 K10 K100` | xem ví dụ dưới | Trễ 10 × 100 ms = 1 s; điều kiện OFF thì reset |
+| `TMR_A HT0 K2000 K10` | xem ví dụ dưới | Tích lũy: OFF thì **giữ**, chỉ `RST HT0` mới xoá |
+| `CNT C0 K10` (16-bit lên) | `int16_t` đếm sườn lên | Đủ giá trị đặt thì `C0` ON, vẫn đếm tiếp |
+| `CNT_D C0 K-10` (16-bit xuống) | `count--` | Giá trị đặt âm |
+| `DCNT` / `DCNT_D` (32-bit) | `int32_t count` | Chữ `_D` = đếm xuống |
+| `RST C0` / `RST T0` | `count = 0; C0 = false;` | Xoá cả giá trị lẫn cuộn ra |
+
+Ví dụ `TMR` / `TMR_A` (cho vòng quét gọi mỗi chu kỳ, `now_ms()` là đồng hồ ms):
+
+```cpp
+// TMR T0 K10 K100 : NO:M0 → sau 1 s thì T0 ON
+static uint32_t t0_start; static bool t0_run = false;
+if (M0) {
+    if (!t0_run) { t0_run = true; t0_start = now_ms(); }
+    T0 = (now_ms() - t0_start >= 10 * 100);
+} else { t0_run = false; T0 = false; }          // điều kiện OFF → reset
+
+// TMR_A HT0 K2000 K10 : tích lũy 20 s, giữ khi X0 tắt, xoá bằng X2
+static uint32_t ht0_acc = 0, ht0_last = now_ms();
+uint32_t t = now_ms();
+if (X0) ht0_acc += t - ht0_last;                // chỉ cộng dồn khi X0 ON
+ht0_last = t;
+HT0 = (ht0_acc >= 2000 * 10);
+if (X2) { ht0_acc = 0; HT0 = false; }           // RST HT0
+```
+
+Ví dụ `CNT`:
+
+```cpp
+// CNT C0 K10 : đếm sườn lên X11, reset bằng X10
+static int16_t c0 = 0;
+if (X10) { c0 = 0; C0 = false; }                // RST C0
+if (X11 && !X11_prev) c0++;                     // OFF→ON là +1
+C0 = (c0 >= 10);
+X11_prev = X11;
+```
+
+Ví dụ tự giữ và `SET`/`RST`:
+
+```cpp
+Y0 = (X0 || Y0) && !X1;                         // ( NO:X0 / NO:Y0 ) NC:X1 OUT:Y0
+if (X10) Y1 = true;                             // NO:X10 SET:Y1
+if (X11) Y1 = false;                            // NO:X11 RST:Y1 (nằm dưới → Stop thắng)
+```
+
+Khác biệt cần nhớ: PLC tự có vòng quét, tự bắt sườn và tự ghi `Y` ra chân sau khi chạy hết chương trình; trong C++ phải tự viết `while`, tự lưu giá trị chu kỳ trước (`_prev`) và tự gọi `writeOutputs()`.
+
 ## 4. Lệnh ứng dụng (applied instructions)
 
 > **Khả dụng:** sổ tay ghi mọi lệnh bên dưới là *XD, XL* — dùng được trên XD3-16T-E. Giới hạn chủ yếu ở phần cứng (xung chỉ Y0/Y1, 3 kênh HSC, ngắt X2~X7); RTC và số cổng truyền thông chưa xác nhận — xem **mục 4.9**.
@@ -878,6 +974,107 @@ NO:SM0 BOX:TRD_D0
 
 **Cách kiểm tra chắc chắn:** trong XDPPro chọn đúng model **XD3-16T** (hoặc XD3-16T-E nếu có) rồi biên dịch; lệnh/tài nguyên không hỗ trợ sẽ báo lỗi. Hoặc đối chiếu *XD/XL hardware manual* và Phụ lục 4, 5 của sổ tay lệnh.
 
+### 4.10 Đối chiếu lệnh ứng dụng ↔ C++
+
+Dùng cùng quy ước với mục 3.10 (`D[]` là `int16_t`, bản 32-bit `Dxxx` dùng `int32_t` ghép hai thanh ghi liền nhau). Mỗi lệnh chỉ chạy khi **điều kiện dẫn**: viết `if (dieu_kien) { ... }` bao quanh; muốn chạy 1 lần thì điều kiện là sườn lên (`X0 && !X0_prev`).
+
+**Luồng chương trình (4.1)**
+
+| Lệnh | C++ | Ghi chú |
+|---|---|---|
+| `CJ Pn` | `if (dk) goto Pn;` | Nhảy tới nhãn `Pn:` |
+| `CALL Pn` … `SRET` | `pn();` … `return;` | `Pn` là hàm con, đặt sau `FEND` |
+| `FEND` | hết thân `main`/vòng quét | Sau đó là chương trình con và ngắt |
+| `END` | `break;` | Kết thúc toàn chương trình |
+| `FOR n` … `NEXT` | `for (int i = 0; i < n; i++) { ... }` | |
+| `STL Sn` … `STLE` | `case Sn: { ... break; }` | Mỗi flow là một trạng thái của máy trạng thái |
+| `SET Sn` (trong flow) | `step = Sn;` | Chuyển bước, bước cũ tự đóng |
+| `ST Sn` | `S[n] = true;` | Mở thêm flow, **giữ** flow hiện tại (chạy song song) |
+| Ngắt `Ixxxx` … `IRET` | hàm ngắt (ISR) | Đặt sau `FEND` |
+
+```cpp
+// STL: S0 bật Y0, X0 thì sang S1 (bật Y1 trong 5 s rồi về S0)
+switch (step) {
+  case 0: Y0 = true;  if (X0) step = 1; break;
+  case 1: Y1 = true;  if (t0_done) step = 0; break;
+}
+```
+
+**So sánh, truyền dữ liệu (4.2, 4.3)**
+
+| Lệnh | C++ | Ghi chú |
+|---|---|---|
+| `LD> D0 K100`, `AND= D1 D2`, `OR<= …` | `D[0] > 100`, `&& D[1] == D[2]`, `\|\| …<=…` | Tiếp điểm so sánh; `<>` là `!=` |
+| `CMP S1 S2 D` | `D0 = S1 > S2; D1 = S1 == S2; D2 = S1 < S2;` | Ra 3 bit liên tiếp |
+| `ZCP S1 S2 S D` | `D0 = S < S1; D1 = (S >= S1 && S <= S2); D2 = S > S2;` | So với vùng |
+| `MOV S D` / `DMOV` | `D = S;` (`int16_t` / `int32_t`) | |
+| `BMOV S D n` / `PMOV` | `std::copy_n(&S, n, &D);` | Chép khối n thanh ghi |
+| `FMOV S D n` | `std::fill_n(&D, n, S);` | Điền cùng một giá trị |
+| `EMOV S D` | `float` gán `f = g;` | Chép số thực |
+| `FWRT S D` | ghi Flash/EEPROM | Chậm, giới hạn lần ghi — chỉ gọi bằng sườn |
+| `MSET S1 S2` | `for (i = s1; i <= s2; i++) M[i] = true;` | Set vùng bit |
+| `ZRST S1 S2` | `for (i = s1; i <= s2; i++) M[i] = false;` | Xoá vùng |
+| `SWAP S` | `S = (S << 8) \| (S >> 8);` (`uint16_t`) | Đổi byte cao/thấp |
+| `XCH D1 D2` | `std::swap(D1, D2);` | |
+
+**Số học và logic (4.4)**
+
+| Lệnh | C++ | Ghi chú |
+|---|---|---|
+| `ADD S1 S2 D` / `DADD` | `D = S1 + S2;` | Tràn dải làm tác động cờ SM20/21/22 |
+| `SUB S1 S2 D` | `D = S1 - S2;` | |
+| `MUL S1 S2 D` | `int32_t D = (int32_t)S1 * S2;` | Kết quả 32-bit chiếm 2 thanh ghi |
+| `DIV S1 S2 D` | `if (S2 != 0) { D = S1 / S2; D_next = S1 % S2; }` | Thương, số dư; chia 0 là lỗi |
+| `INC D` / `DEC D` | `D++;` / `D--;` | |
+| `MEAN S D n` | `D = std::accumulate(&S, &S + n, 0) / n;` | Trung bình |
+| `WAND` / `WOR` / `WXOR` | `D = S1 & S2;` / `S1 \| S2` / `S1 ^ S2` | Theo từng bit |
+| `CML S D` | `D = ~S;` | Đảo bit |
+| `NEG D` | `D = -D;` | Bù 2 |
+
+**Dịch, xoay (4.5) và chuyển đổi (4.6)**
+
+| Lệnh | C++ | Ghi chú |
+|---|---|---|
+| `SHL D n` / `SHR D n` | `D <<= n;` / `D >>= n;` | Số học (`int16_t`) |
+| `LSL D n` / `LSR D n` | `D <<= n;` / `D >>= n;` | Logic (`uint16_t`) |
+| `ROL D n` / `ROR D n` | `D = std::rotl(D, n);` / `std::rotr` | `<bit>` C++20 |
+| `SFTL` / `SFTR` | dịch mảng bit, ví dụ `std::bitset`, `std::copy` | Chuỗi dài n1, dịch n2 bit |
+| `WSFL` / `WSFR` | `std::rotate` / `std::copy_backward` trên mảng word | |
+| `WTD S D` | `int32_t d = (int16_t)s;` | Mở rộng 16 → 32 bit |
+| `FLT` / `DFLT` / `FLTD` | `float f = (float)s;` (`double` cho 64-bit) | Nguyên → thực |
+| `INT S D` | `int d = (int)f;` | Thực → nguyên (cắt phần thập phân) |
+| `BCD S D` / `BIN S D` | `((s/10)<<4) \| (s%10)` / `(b>>4)*10 + (b&0xF)` | Ví dụ cho 2 chữ số |
+| `ASCI` / `HEX` | `sprintf("%X")` / `strtol(s, 0, 16)` | Hex ↔ ASCII |
+| `DECO S D n` | `D = 1u << S;` | n bit → 1 trong 2ⁿ |
+| `ENCO` / `ENCOL` | chỉ số bit cao nhất / thấp nhất đang ON (`std::countl_zero`…) | |
+| `GRY S D` / `GBIN S D` | `g = b ^ (b >> 1);` / giải mã ngược bằng vòng lặp XOR | Mã Gray |
+
+**Số thực, thời gian thực (4.7, 4.8) và chức năng đặc biệt (mục 5)**
+
+| Lệnh | C++ | Ghi chú |
+|---|---|---|
+| `ECMP`, `EZCP` | `f1 > f2`, `f >= lo && f <= hi` | So sánh số thực |
+| `EADD` `ESUB` `EMUL` `EDIV` | `+` `-` `*` `/` trên `float` | |
+| `ESQR` | `std::sqrt(f)` | |
+| `SIN` `COS` `TAN` `ASIN` `ACOS` `ATAN` | `std::sin`, `std::cos`, `std::tan`, `std::asin`, `std::acos`, `std::atan` | `<cmath>`, đơn vị radian |
+| `TRD D` | `time_t t = time(nullptr); tm* lt = localtime(&t);` | Đọc đồng hồ vào 7 thanh ghi (năm, tháng, ngày, giờ…) |
+| `TWR D` | đặt lại đồng hồ hệ thống / RTC | |
+| `TCMP` | so sánh `time_t` / từng trường giờ-phút-giây | |
+| `CNT HSC0 K…` | bộ đếm phần cứng / ngắt encoder | Đọc bằng `DMOV HSC0 D30` ≈ `int32_t v = hsc0_read();` |
+| Xuất xung `Y0`, `Y1`, PWM | `analogWrite` / timer phần cứng | |
+| Modbus, `SEND`/`RCV` | thư viện Modbus (`libmodbus`…) hoặc cổng nối tiếp | |
+| `PID` | hàm PID: `out = Kp*e + Ki*∫e + Kd*de/dt` | |
+
+Ví dụ trọn một chương trình nhỏ (tính nhiệt độ từ ADC, rồi cảnh báo):
+
+```cpp
+// NO:SM0 FLT D0 D10 ; EMUL D10 E0.1 D12 ; EADD D12 E-20.0 D14 ; CMP:LD> …
+float f10 = (float)D[0];              // FLT
+float f12 = f10 * 0.1f;               // EMUL
+float f14 = f12 + (-20.0f);           // EADD
+Y0 = (f14 > 60.0f);                   // tiếp điểm so sánh → OUT Y0
+```
+
 ## 5. Các chức năng đặc biệt (chương riêng trong sổ tay)
 
 | Chức năng | Tóm tắt |
@@ -1027,6 +1224,44 @@ NO:X7 RST:Y3
 | cặp ngoặc `( )` | cuộn xuất | `OUT` |
 | ngoặc có chữ **S** / **R** | cuộn đặt / cuộn reset | `SET` / `RST` |
 | hình chữ nhật có tên lệnh + toán hạng | lệnh ứng dụng, timer, counter | `MOV`, `TMR`, `CNT`… |
+
+**Tổng kết: ladder Xinje (XDPPro) có bao nhiêu hình vẽ cơ bản?**
+
+Có **7 ký hiệu cơ bản** (4 tiếp điểm + 3 cuộn dây), cộng **1 loại khối chữ nhật** và **các đường nối** để ghép mạch — tổng cộng 3 nhóm:
+
+| Nhóm | Hình | Ký hiệu | Ý nghĩa / khi nào dùng | Phím |
+|---|---|---|---|---|
+| **A. Tiếp điểm** (điều kiện, nằm bên trái) | 1 | `⊣ ⊢` thường mở (NO) | Dẫn khi phần tử = 1 (`LD/AND/OR`) | F5 |
+| | 2 | `⊣/⊢` thường đóng (NC) | Dẫn khi phần tử = 0 (`LDI/ANI/ORI`) | F6 |
+| | 3 | `⊣↑⊢` sườn lên | Dẫn đúng 1 chu kỳ quét khi OFF→ON (`LDP/ANDP/ORP`) | Shift+F5 |
+| | 4 | `⊣↓⊢` sườn xuống | Dẫn đúng 1 chu kỳ quét khi ON→OFF (`LDF/ANDF/ORF`) | Shift+F6 |
+| **B. Cuộn dây** (kết quả, sát thanh cái phải) | 5 | `( )` cuộn xuất | `OUT`: ON khi mạch dẫn, mất dẫn thì OFF | F7 |
+| | 6 | `(S)` cuộn đặt | `SET`: lên 1 và **giữ** dù mạch mất dẫn | Shift+F7 |
+| | 7 | `(R)` cuộn reset | `RST`: về 0 (cũng xoá timer/counter) | Shift+F8 |
+| **C. Khối chữ nhật** | 8 | `[ tên lệnh + toán hạng ]` | Timer `TMR`, counter `CNT`, lệnh ứng dụng `MOV/ADD/CMP…` — cũng đặt cuối hàng | F7 / F8 |
+| **D. Đường nối** (không phải linh kiện) | — | đường ngang / dọc | Nối nối tiếp (AND) và rẽ nhánh song song (OR) | F11 / F12 |
+
+Cách đọc: **tiếp điểm nối tiếp = AND, nhánh song song = OR, cuộn dây là kết quả**. Hai phép ghép khối `ORB`/`ANB` không có hình riêng mà do cách vẽ đường dọc/ngang tạo ra. Ngoài ra còn *Take Negation* (đảo kết quả nhánh, Alt+F6) và tiếp điểm sườn nhiều điều kiện (Ctrl+F5/F6) là biến thể của các hình trên, không tính là ký hiệu cơ bản mới.
+
+**So sánh ba phím cuộn dây: F7 / Shift+F7 / Shift+F8**
+
+| Phím | Lệnh | Khi mạch dẫn (điều kiện = 1) | Khi mạch mất dẫn (điều kiện về 0) | Có nhớ trạng thái? |
+|---|---|---|---|---|
+| **F7** | `OUT` | Phần tử **ON** | Phần tử **OFF** tự động | Không — luôn bám theo mạch |
+| **Shift+F7** | `SET` | Phần tử **lên 1 và giữ** | **Vẫn giữ 1**, không tự tắt | Có — chốt đến khi có `RST` |
+| **Shift+F8** | `RST` | Phần tử **về 0** (timer/counter: xoá cả giá trị lẫn cuộn ra) | Không làm gì, giữ nguyên trạng thái trước | — |
+
+Ví dụ nút X0 điều khiển Y0 (`SET` đi cặp `RST` bằng X1):
+
+| Thao tác | Dùng `OUT` | Dùng `SET` + `RST` |
+|---|---|---|
+| Nhấn X0 | Y0 ON | Y0 ON |
+| Thả X0 | Y0 **OFF** | Y0 **vẫn ON** |
+| Nhấn X1 | không ảnh hưởng | Y0 OFF |
+
+- Dùng `OUT` khi đầu ra chỉ cần bám theo điều kiện (giữ nút thì chạy, thả thì dừng); dùng `SET`/`RST` khi cần nhớ (nhấn Start một lần chạy liên tục, nhấn Stop mới dừng).
+- `OUT` cũng nhớ được nếu tự giữ bằng tiếp điểm của chính nó: `( NO:X0 / NO:Y0 ) NC:X1 OUT:Y0`.
+- **Không** dùng `OUT` chung phần tử với `SET`/`RST`. Nếu `SET` và `RST` cùng dẫn trong một chu kỳ quét, lệnh nằm **phía dưới** thắng (PLC quét trên xuống) — đặt `RST` dưới `SET` thì Stop luôn ưu tiên.
 
 **Nhánh song song (OR) và tự giữ Start/Stop** — hai tiếp điểm xếp trên/dưới nối vào cùng điểm:
 
