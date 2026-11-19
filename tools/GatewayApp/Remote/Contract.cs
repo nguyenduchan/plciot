@@ -30,3 +30,8 @@ public sealed class ApiDevice { public string Child { get; set; } = ""; public b
 public sealed class ApiResult { public bool Ok { get; set; } public string? Err { get; set; } public bool Running { get; set; } public string? Msg { get; set; } }
 /// <summary>Việc cloud do gateway làm: ghép cặp bằng mã admin hoặc enroll bằng QR.</summary>
 public sealed class ApiCloud { public string Action { get; set; } = ""; public string Api { get; set; } = ""; public string Value { get; set; } = ""; }
+/// <summary>
+/// Trả lời gói tìm thiết bị UDP (cổng <see cref="RemoteClient.DiscoverPort"/>). Kind: "pc" (GatewayApp) | "mcu" (Waveshare ESP32-S3).
+/// Hw: mã phần cứng (MAC với MCU). Name: tên hiển thị (site/device nếu đã đăng ký).
+/// </summary>
+public sealed class ApiHello { public string Kind { get; set; } = ""; public string Name { get; set; } = ""; public string Hw { get; set; } = ""; public int Port { get; set; } public string Version { get; set; } = ""; }

@@ -42,7 +42,44 @@ public sealed class RemoteApi : IDisposable
         }
     }
 
-    public void Start() { _l.Start(); _ = Task.Run(Loop); }
+    public void Start()
+    {
+        _l.Start(); _ = Task.Run(Loop);
+        if (!IPAddress.IsLoopback(Endpoint.Address)) StartDiscovery();
+    }
+
+    /// <summary>Thông tin trả lời gói tìm thiết bị (đọc lại mỗi lần để tên đổi theo cấu hình).</summary>
+    public Func<ApiHello>? Hello { get; set; }
+    UdpClient? _disc;
+
+    /// <summary>Trả lời broadcast "PLCIOT-DISCOVER" để tool admin thấy gateway này trong danh sách (chỉ khi mở cho LAN).</summary>
+    void StartDiscovery()
+    {
+        try
+        {
+            _disc = new UdpClient(AddressFamily.InterNetwork);
+            _disc.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            _disc.Client.Bind(new IPEndPoint(IPAddress.Any, RemoteClient.DiscoverPort));
+        }
+        catch (SocketException) { _disc?.Dispose(); _disc = null; return; }   // cổng đã có gateway khác trên máy này: bỏ qua tìm kiếm, API vẫn chạy
+        _ = Task.Run(async () =>
+        {
+            while (!_cts.IsCancellationRequested && _disc != null)
+            {
+                try
+                {
+                    var r = await _disc.ReceiveAsync(_cts.Token);
+                    if (Encoding.ASCII.GetString(r.Buffer) != RemoteClient.DiscoverMagic) continue;
+                    var h = Hello?.Invoke() ?? new ApiHello { Kind = "pc" };
+                    h.Port = Endpoint.Port;
+                    var b = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(h);
+                    await _disc.SendAsync(b, b.Length, r.RemoteEndPoint);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception) { /* gói hỏng / mạng: bỏ */ }
+            }
+        });
+    }
 
     async Task Loop()
     {
@@ -124,5 +161,5 @@ public sealed class RemoteApi : IDisposable
         await s.WriteAsync(head); await s.WriteAsync(body); await s.FlushAsync();
     }
 
-    public void Dispose() { _cts.Cancel(); try { _l.Stop(); } catch (Exception) { } }
+    public void Dispose() { _cts.Cancel(); try { _l.Stop(); } catch (Exception) { } _disc?.Dispose(); _disc = null; }
 }

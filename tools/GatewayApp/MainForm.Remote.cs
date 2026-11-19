@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using GatewayApp.Ui;
 using Plciot.Scada;
 
 namespace GatewayApp;
@@ -65,7 +66,10 @@ public sealed partial class MainForm
             _codeAt = DateTime.UtcNow;
             try
             {
-                _api = new RemoteApi(_apiLan ? IPAddress.Any : IPAddress.Loopback, _apiPort, _code, HandleApi);
+                _api = new RemoteApi(_apiLan ? IPAddress.Any : IPAddress.Loopback, _apiPort, _code, HandleApi)
+                {
+                    Hello = () => new ApiHello { Kind = "pc", Name = _cfg.MqttId.Length > 0 ? $"{_cfg.Site}/{_cfg.Device}" : Environment.MachineName, Hw = SafeHw(), Version = AppUpdate.LocalVersion ?? "dev" },
+                };
                 _api.Start(); _apiOn = true; _codeTimer.Start();
                 _log.Add("INFO", "api", $"Đã BẬT cho admin cài đặt: {(_apiLan ? "mọi địa chỉ" : "127.0.0.1")}:{_apiPort}");
                 Toast(newCode ? "Đã tạo mã kết nối mới." : "Đã bật cho admin cài đặt.");
@@ -134,7 +138,10 @@ public sealed partial class MainForm
                 {
                     var c = JsonSerializer.Deserialize<ApiCloud>(body, J);
                     if (c == null || c.Action.Length == 0) return Err("bad_request");
-                    var r = await OnUi(() => CloudAsync(c.Action, c.Api, c.Value));
+                    // Admin đã đăng nhập webapp hộ (Value = LoginResult JSON): dùng phiên đó để đăng ký, không bật hộp thoại trên máy gateway
+                    var r = c.Action == "register" && c.Value.Length > 0
+                        ? await OnUi(() => RegisterWithLoginAsync(c.Api, c.Value))
+                        : await OnUi(() => CloudAsync(c.Action, c.Api, c.Value));
                     return (200, Json(new ApiResult { Ok = r.Ok, Err = r.Ok ? null : r.Msg, Msg = r.Msg, Running = Running }));
                 }
                 default: return Err("not_found", 404);
@@ -142,6 +149,19 @@ public sealed partial class MainForm
         }
         catch (JsonException) { return Err("bad_json"); }
         catch (Exception e) { return Err(e.Message, 500); }
+    }
+
+    string SafeHw() { try { return HwText; } catch (Exception) { return ""; } }
+
+    /// <summary>Đăng ký cloud bằng phiên webapp do tool admin đăng nhập (admin mở trình duyệt trên máy admin, gateway chỉ nhận token).</summary>
+    async Task<(bool Ok, string Msg)> RegisterWithLoginAsync(string api, string loginJson)
+    {
+        LoginResult? l;
+        try { l = JsonSerializer.Deserialize<LoginResult>(loginJson, J); } catch (JsonException) { l = null; }
+        if (l == null || string.IsNullOrEmpty(l.Token)) return (false, "phiên đăng nhập không hợp lệ");
+        _login = l; _loginAt = DateTime.UtcNow;
+        _log.Add("INFO", "api", $"admin chuyển phiên webapp ({l.User}) để đăng ký cloud");
+        return await RegisterAsync(string.IsNullOrWhiteSpace(api) ? CloudPage.ServerOf(_cfg) : api);
     }
 
     ApiState StateModel() => new()

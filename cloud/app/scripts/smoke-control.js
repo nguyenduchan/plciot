@@ -542,6 +542,34 @@ ok(jwtTtlSeconds() === 72 * 3600, 'JWT mặc định 72 giờ (trượt), không
   ok(q.status === 401, 'xác nhận chỉ dùng được một lần (không phát lại)');
 }
 
+/* ---- Lệnh nguy hiểm tới gateway PHỤ (body.gw) — làm ĐÚNG như webapp (control.js): sau bước xác nhận gửi lại r.body.command ----
+ * Lỗi đã gặp: server trả command không kèm gw → webapp gửi lại thiếu gw → lệnh rơi về gateway CHÍNH (offline), gateway phụ không nhận. */
+{
+  const { migrateUserDevices } = await import('../src/userDevices.js');
+  migrateUserDevices(db);
+  db.prepare(`INSERT INTO user_devices (id, user_id, site, gateway_device, child_id, type, title, binds, created_at, critical_keys)
+    VALUES ('ud_gw2', ?, 'siteB', 'gw09', 'pump1', 'pump', 'Bơm gateway phụ', NULL, ?, '["run"]')`).run(uPk, Date.now());
+  let q = await cmd(uPk, { child: 'pump1', key: 'run', v: 0, gw: 'siteB/gw09' }, { 'x-control-token': tokPk });
+  ok(q.status === 401 && q.body.commandChallenge && q.body.target?.site === 'siteB' && q.body.target?.device === 'gw09', 'lệnh nguy hiểm gateway phụ: bước xác nhận nhắm đúng siteB/gw09');
+  ok(q.body.command?.gw === 'siteB/gw09', 'lệnh server trả về để xác nhận giữ gateway đích (gw)');
+  const ch = q.body.commandChallenge, again = q.body.command;
+  const o = (await call('POST', '/api/webauthn/auth/options', uPk)).body;
+  q = await call('POST', '/api/webauthn/auth/verify', uPk, { credential: assertion(o) }, { 'x-command-challenge': ch });
+  ok(q.status === 200, 'passkey xác nhận lệnh gateway phụ');
+  const before = published.length;
+  q = await cmd(uPk, again, { 'x-control-token': q.body.controlToken, 'x-command-challenge': ch });
+  if (q.status === 202 && q.body.pending) {   // còn lớp nút vật lý: bấm nút tại gateway phụ
+    noteTelemetry('siteB', 'gw09', 0);
+    await new Promise((x) => setTimeout(x, 20));
+    noteTelemetry('siteB', 'gw09', 1 << 5);
+    q = await call('GET', `/api/control/confirm/${q.body.confirmId}`, uPk);
+  }
+  const last = published.at(-1);
+  ok(published.length === before + 1 && last.site === 'siteB' && last.device === 'gw09' && last.cmd.child === 'pump1' && last.cmd.key === 'run',
+    `gửi lại sau xác nhận: lệnh tới đúng gateway phụ (thực tế: ${published.length === before ? 'không phát' : `${last.site}/${last.device}`}, HTTP ${q.status})`);
+  ok(!('gw' in (last?.cmd || {})), 'trường gw không lọt vào bản tin MQTT gửi gateway');
+}
+
 /* ---- Thu hồi ---- */
 r = await call('POST', '/api/control/lock', uPk, {}, { 'x-control-token': tokPk });
 r = await cmd(uPk, { a: 7, v: 9 }, { 'x-control-token': tokPk });

@@ -23,7 +23,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest", "--lantest" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -211,6 +211,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         _side.Controls.Add(brand);
         var ver = new Label { Text = "C# thuần · không cần Internet", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(20, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side };
         _side.Controls.Add(ver);
+        if (_editUi)   // thiết lập gateway khác qua LAN (Waveshare ESP32-S3 / gateway PC khác): mở cửa sổ riêng, gateway trên PC này vẫn chạy
+        {
+            var lan = new FlatButton { Caption = "🔌  Kết nối Waveshare (LAN)", Dock = DockStyle.Bottom, Height = 38 };
+            lan.Click += (_, _) => RemoteForm.Open(this);
+            _side.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 6, BackColor = Theme.Side });
+            _side.Controls.Add(lan);
+        }
 
         // thanh trên
         _head.Controls.Add(_pageTitle);
@@ -245,6 +252,13 @@ public sealed partial class MainForm : Form, IGatewayApp
         // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
         if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest")) Shown += async (_, _) => await StartAsync();
         Shown += (_, _) => InitRemoteAccess(args);
+        // --remote IP[:cổng] [--code MÃ]: mở ngay cửa sổ thiết lập thiết bị LAN (kiểm thử / lối tắt cho người cài đặt)
+        if (ArgValue(args, "--remote") is { Length: > 0 } rem)
+        {
+            var i = rem.LastIndexOf(':');
+            var (rh, rp) = i > 0 && int.TryParse(rem[(i + 1)..], out var pp) ? (rem[..i], pp) : (rem, 8750);
+            Shown += (_, _) => BeginInvoke(() => RemoteForm.Open(this, rh, rp, ArgValue(args, "--code")));
+        }
         // Đổi giải pháp (UI) dựng lại cửa sổ trong CÙNG tiến trình: timer của cửa sổ cũ phải dừng, nếu không nó vẫn chạy Tick()
         // trên các điều khiển đã huỷ (vd. thêm dòng vào bảng nhật ký đã mất cột → crash "No row can be added…").
         FormClosed += (_, _) => { _ui.Stop(); _toastTimer.Stop(); _codeTimer.Stop(); _ui.Dispose(); _toastTimer.Dispose(); _codeTimer.Dispose(); _api?.Dispose(); };

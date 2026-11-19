@@ -57,7 +57,8 @@
           });
           if (!confirmed) return { error: 'cancelled' };
           challenge = r.body.commandChallenge;
-          command = r.body.command;
+          // gửi lại đúng lệnh server đưa xác nhận, GIỮ gateway đích (gw) của lệnh gốc (server cũ không trả gw → lệnh rơi về gateway chính)
+          command = { ...r.body.command, ...(command.gw && !r.body.command.gw ? { gw: command.gw } : {}) };
         }
         LS.del('ctl');
         if (attempt < 2 && await unlock({ ...r.body, title: challenge ? 'Xác nhận lệnh PLC' : undefined })) continue;

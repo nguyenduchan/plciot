@@ -14,7 +14,7 @@ static class Program
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -42,6 +42,8 @@ static class Program
                 if (ss >= 0 && ss + 1 < args.Length) form.Shown += async (_, _) => await form.SolShotAsync(args[ss + 1]);
                 var bt = Array.IndexOf(args, "--backuptest");
                 if (bt >= 0 && bt + 1 < args.Length) form.Shown += async (_, _) => await form.BackupTestAsync(args[bt + 1]);
+                var lt = Array.IndexOf(args, "--lantest");
+                if (lt >= 0 && lt + 1 < args.Length) form.Shown += async (_, _) => await form.LanTestAsync(args[lt + 1]);
                 var m = Array.IndexOf(args, "--edittest");
                 if (m >= 0 && m + 1 < args.Length) form.Shown += async (_, _) => await form.EditTestAsync(args[m + 1]);
             }

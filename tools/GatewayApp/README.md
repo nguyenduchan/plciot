@@ -34,4 +34,16 @@ GatewayApp.exe --customer --api --token 12345678  # bật sẵn cho admin với 
 - API (JSON, `Remote/Contract.cs`): `GET /api/state` · `GET /api/config` · `PUT /api/config` (đẩy thiết bị/giao thức/hiển thị; gateway kiểm tra, lưu, khởi động lại luồng đọc) · `POST /api/write` · `POST /api/run`.
 - Mật khẩu (cloud, user local, cert) không gửi về tool; để trống khi đẩy = giữ nguyên.
 - HTTP thường: chỉ dùng trong LAN tin cậy hoặc VPN.
+- Tìm thiết bị: admin broadcast UDP `PLCIOT-DISCOVER` lên cổng 8751, gateway đang mở cho LAN trả `ApiHello` (`Kind` = `pc` | `mcu`).
+
+## Thiết lập gateway khác qua LAN (Waveshare ESP32-S3 / gateway PC khác)
+
+Nút **🔌 Kết nối Waveshare (LAN)** cuối thanh bên → chọn thiết bị tìm được hoặc nhập IP + mã kết nối → mở cửa sổ riêng
+(`RemoteForm`) với **đúng các trang** Tổng quan / Thiết bị / Cloud / Nhật ký; mọi thay đổi đẩy xuống thiết bị qua API trên,
+gateway trên PC này vẫn chạy. Đăng ký cloud: người cài đặt đăng nhập webapp trên máy admin, thiết bị chỉ nhận phiên
+(`POST /api/cloud {Action:"register", Value:<LoginResult JSON>}`). Lối tắt: `GatewayApp.exe --remote IP[:cổng] --code MÃ`.
+
+Kiểm thử (cần một gateway đích, vd. GatewayApp thứ hai `--customer --noauth --api --bind 0.0.0.0 --api-port 8760 --token 12345678`
+với `GATEWAYAPP_SETTINGS` riêng, và `python tools/modbus_tcp_sim.py --port 5020`):
+`GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8760 --lan-code 12345678 --lan-mb 5020` → `lantest-result.txt` (FAIL = lỗi) + ảnh chụp.
 - Tool admin: `tools/GatewayAdmin` (dùng lại các trang giao diện của GatewayApp).

@@ -107,7 +107,8 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
           return out(res, 401, {
             error: 'step_up_required', reason: 'critical_command', commandChallenge: id,
             methods: security.methodsFor(req.user),          // passkey / totp / password (xác nhận đúng lệnh này)
-            command: v.cmd, target: { site: tu.notify_site, device: tu.notify_device },
+            // giữ gateway đích (gw) trong lệnh trả về: webapp gửi lại đúng lệnh này sau khi xác nhận — thiếu gw thì lệnh rơi về gateway CHÍNH
+            command: gwSel ? { ...v.cmd, gw: gwSel } : v.cmd, target: { site: tu.notify_site, device: tu.notify_device },
           });
         }
         commandChallenges.delete(challengeId);

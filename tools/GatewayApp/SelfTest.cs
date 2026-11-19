@@ -28,8 +28,12 @@ public sealed partial class MainForm
 
     /// <summary>Thêm một thiết bị qua hộp thoại thật. Trả về thông báo lỗi của hộp thoại (rỗng = thành công).</summary>
     string AddDeviceViaDialog(string templateId, PlcSource src, string host, int port, Dictionary<string, string> opts, Dictionary<string, string> prm, Action<DataGridView>? tweak = null, Action<Form>? dlgTweak = null)
+        => AddDeviceViaDialog(this, templateId, src, host, port, opts, prm, tweak, dlgTweak);
+
+    /// <summary>Như trên cho một IGatewayApp bất kỳ (vd. cửa sổ thiết lập thiết bị LAN — --lantest).</summary>
+    internal static string AddDeviceViaDialog(IGatewayApp app, string templateId, PlcSource src, string host, int port, Dictionary<string, string> opts, Dictionary<string, string> prm, Action<DataGridView>? tweak = null, Action<Form>? dlgTweak = null)
     {
-        using var dlg = DeviceDialog.Preview(this, null);
+        using var dlg = DeviceDialog.Preview(app, null);
         var t = dlg.GetType();
         F<ComboBox>(dlg, "_proto").SelectedIndex = Array.IndexOf(ProtocolSpec.Streamable, src);        // dựng lại ô kết nối + thông số của giao thức
         t.GetMethod("PickTemplate", NP)!.Invoke(dlg, new object[] { DeviceTemplate.Find(templateId)!, true });
