@@ -17,5 +17,8 @@ class EthClass {
   IPAddress localIP();
   String macAddress();
   void setHostname(const char*) {}
+  /// Bản giả lập không đổi được IP của PC: chỉ ghi lại IP board SẼ dùng (log), localIP() vẫn là IP của PC.
+  bool config(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dns);
+  IPAddress subnetMask();
 };
 extern EthClass ETH;

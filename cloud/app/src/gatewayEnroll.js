@@ -21,6 +21,7 @@ import { normalizeLimits } from './childControl.js';
 import { verifyProof, requestMessage, ensureKeyColumns, parsePubkey } from './gatewayKey.js';
 import { cmdPublicKey } from './cmdSign.js';
 import { gatewaySolution, solutionUi, cleanSolution, setGatewaySolution } from './gatewaySolution.js';
+import { isHwBlocked, hwOfPubkey, BLOCKED } from './hwBlock.js';
 
 /** Khoá theo dải mạng: IPv4 /24, IPv6 /64 (xấp xỉ theo 4 nhóm đầu). */
 export function subnetOf(ip) {
@@ -305,6 +306,8 @@ export function enrollGateway(db, body = {}, opts = {}) {
     }
     body = { ...body, hw: id.hardware.activated_hw };   // hw đã được khoá công khai chứng minh
   }
+  // Thiết bị báo MẤT TRỘM (admin khoá theo mã phần cứng): từ chối mọi enroll/config — board nhận mã này thì tự vào chế độ khoá
+  if (isHwBlocked(db, body.hw, id.hardware.activated_hw, hwOfPubkey(pubkey))) return fail({ ...BLOCKED }, id.site, id.device);
   // Tem đang bị khoá do quá nhiều lần sai: chỉ máy đã chứng minh (chữ ký hợp lệ) / đúng hw (tem cũ) mới qua — kẻ phá không khoá được gateway thật
   const key = `${id.site}/${id.device}`;
   const given = parseHardwareId(body.hw);
@@ -385,6 +388,7 @@ export function refreshGatewayQr(db, body = {}) {
   if (!row) return bad;
   const keyOk = row.gw_pubkey ? row.gw_pubkey === pk.spki : Boolean(row.activated_hw) && row.activated_hw === pk.hw;
   if (!keyOk || !verifyProof(body.pubkey, requestMessage('qr', site, device, body.ts), body.sig, body.ts)) return { ...bad, site, device };
+  if (isHwBlocked(db, pk.hw)) return { ...BLOCKED, site, device };
   if (!row.gw_pubkey) db.prepare('UPDATE hardware_devices SET gw_pubkey = ? WHERE site = ? AND device = ? AND gw_pubkey IS NULL').run(pk.spki, site, device);
   const q = getHardwareDeviceQr(db, { site, device });
   if (q.error) return bad;

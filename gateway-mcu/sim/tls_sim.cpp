@@ -2,6 +2,7 @@
 // Nhờ lớp này, cloud.cpp và crypto.cpp CỦA BOARD biên dịch và chạy nguyên văn trên PC. Chỉ biên dịch khi có -DGW_SIM.
 #ifdef GW_SIM
 #include <NetworkClientSecure.h>
+#include <NetworkClient.h>
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <esp_random.h>
@@ -173,11 +174,20 @@ esp_err_t esp_http_client_perform(esp_http_client_handle_t h) {
   size_t sl = u.find('/'); std::string hostport = u.substr(0, sl), path = sl == std::string::npos ? "/" : u.substr(sl);
   size_t co = hostport.find(':'); std::string host = hostport.substr(0, co);
   int port = co == std::string::npos ? (https ? 443 : 80) : atoi(hostport.c_str() + co + 1);
-  if (!https) { printf("[sim] esp_http_client: chỉ hỗ trợ https\n"); return ESP_FAIL; }
-  NetworkClientSecure c;
-  if (h->cfg.crt_bundle_attach) c.useSystemRoots(); else c.setInsecure();
-  c.setHandshakeTimeout(max(5, h->cfg.timeout_ms / 1000));
-  if (!c.connect(host.c_str(), (uint16_t)port)) return ESP_FAIL;
+  // https: TLS kiểm CA (VPS); http: server cài trên PC trong LAN (trường hợp offline)
+  NetworkClientSecure tls; NetworkClient plain;
+  std::function<size_t(const uint8_t*, size_t)> wr; std::function<int(uint8_t*, size_t)> rdf; std::function<bool()> alive;
+  if (https) {
+    if (h->cfg.crt_bundle_attach) tls.useSystemRoots(); else tls.setInsecure();
+    tls.setHandshakeTimeout(max(5, h->cfg.timeout_ms / 1000));
+    if (!tls.connect(host.c_str(), (uint16_t)port)) return ESP_FAIL;
+    wr = [&](const uint8_t* p, size_t n) { return tls.write(p, n); }; rdf = [&](uint8_t* b, size_t n) { return tls.read(b, n); }; alive = [&] { return (bool)tls.connected(); };
+  } else {
+    if (!plain.connect(host.c_str(), port, 5000)) return ESP_FAIL;
+    wr = [&](const uint8_t* p, size_t n) { return plain.write(p, n); }; rdf = [&](uint8_t* b, size_t n) { return plain.read(b, n); }; alive = [&] { return plain.connected(); };
+  }
+  struct { std::function<size_t(const uint8_t*, size_t)>& w; std::function<int(uint8_t*, size_t)>& r; std::function<bool()>& a;
+    size_t write(const uint8_t* p, size_t n) { return w(p, n); } int read(uint8_t* b, size_t n) { return r(b, n); } bool connected() { return a(); } } c{wr, rdf, alive};
   std::string req = std::string(h->cfg.method == HTTP_METHOD_POST ? "POST " : "GET ") + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\nUser-Agent: plciot-gw-sim\r\n";
   for (auto& kv : h->headers) req += kv.first + ": " + kv.second + "\r\n";
   if (h->cfg.method == HTTP_METHOD_POST) { char b[48]; snprintf(b, sizeof b, "Content-Length: %u\r\n", (unsigned)h->body.size()); req += b; }

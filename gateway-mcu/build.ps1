@@ -35,6 +35,7 @@ if (-not $Sim) {
   Write-Host '==> image thật cho board (pio run)'
   Push-Location $root
   try {
+    $ErrorActionPreference = 'Continue'   # cảnh báo của trình biên dịch ra stderr: không coi là lỗi (PowerShell 5.1)
     if ($Upload) { & $Pio run -t upload } else { & $Pio run }
     if ($LASTEXITCODE -ne 0) { throw "pio lỗi ($LASTEXITCODE)" }
   } finally { Pop-Location }
@@ -60,6 +61,7 @@ $common = @('-O1', '-DGW_SIM', '-D_WIN32_WINNT=0x0601', '-DMBEDTLS_USER_CONFIG_F
 $mbSrc = Get-ChildItem "$mb\library\*.c"
 $todo = $mbSrc | Where-Object { -not (Test-Path (Join-Path $mbo ($_.BaseName + '.o'))) }
 if ($todo) { Write-Host "==> mbedtls: $($todo.Count) file" }
+$ErrorActionPreference = 'Continue'   # cảnh báo ra stderr không phải lỗi — dựa vào $LASTEXITCODE
 foreach ($f in $todo) {
   & $Gcc -std=gnu99 @common "-I$mb\library" -c $f.FullName -o (Join-Path $mbo ($f.BaseName + '.o'))
   if ($LASTEXITCODE -ne 0) { throw "mbedtls lỗi: $($f.Name)" }

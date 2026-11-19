@@ -58,7 +58,7 @@ void ioLoop() {
       storeReset();
       delay(200); ESP.restart();
     } else if (held > 30 && held < 3000) {
-      apiOpenWindow(10 * 60 * 1000UL);
+      apiOpenWindow(SETUP_WINDOW_MS);
       ioBeep(80);
     }
   }

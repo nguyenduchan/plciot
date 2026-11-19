@@ -19,15 +19,20 @@ Windows: gói Arduino-ESP32 có đường dẫn rất sâu, giải nén vào `%U
 ## Thử trên PC, không cần board (bản giả lập)
 
 ```powershell
-pio pkg install                         # lần đầu: tải thư viện (ArduinoJson) của bản board
-.\build-sim.ps1                         # → build-sim\gw-sim.exe (MinGW g++)
-$env:SIM_API_PORT=8760; .\build-sim\gw-sim.exe
+.\build.ps1                             # image thật cho board (mặc định) — lần đầu cũng tải thư viện ArduinoJson/PubSubClient
+.\build.ps1 -Sim                        # bản giả lập → build-sim\gw-sim.exe (MinGW g++)
+$env:SIM_API_PORT=8443; $env:SIM_HTTP_PORT=8081; .\build-sim\gw-sim.exe
 ```
 
-- Biên dịch **chính mã `src/`** (API LAN, cấu hình, đọc/ghi Modbus, cảnh báo, gửi bù, I/O) với lớp giả phần cứng trong `sim/`: Ethernet/HTTP/UDP = Winsock, LittleFS/NVS = file trong `simdata\`, DI = file `simdata\di.txt` (vd. `0x05`), DO trong bộ nhớ, RS485 = cổng COM thật nếu đặt `SIM_COM=COM5`.
-- **Cách ly bằng cờ `GW_SIM`**: mọi file trong `sim/` bọc `#ifdef GW_SIM` và header giả báo `#error` nếu thiếu cờ; `gw.h` báo `#error` nếu cờ lọt vào bản ESP32. `pio run` (bản nạp xuống board) không biên dịch `sim/`.
-- Không có trên PC: cloud (MQTTS/HTTPS) và mật mã mbedtls — `sim/sim_stubs.cpp` thay bằng bản tắt; cảnh báo ngưỡng vẫn tính và in log.
-- Thử với GatewayApp: `GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8760 --lan-code <mã in lúc khởi động> --lan-mb 5020` (PLC giả: `python tools/modbus_tcp_sim.py --port 5020`).
+- Biên dịch **chính mã `src/`** — kể cả `cloud.cpp`, `crypto.cpp`, `https.cpp`, PubSubClient và **mbedtls 3.6** (giải nén vào `sim/third_party/mbedtls`, không commit) —
+  với lớp giả trong `sim/`: Ethernet/TCP/UDP = Winsock, TLS = mbedtls trên socket Windows, CA gốc = kho chứng chỉ Windows, LittleFS/NVS = file trong `simdata\`,
+  DI = file `simdata\di.txt` (vd. `0x05`), DO trong bộ nhớ, RS485 = cổng COM thật nếu đặt `SIM_COM=COM5`. `ESP.restart()` = tự chạy lại chương trình.
+- Biến môi trường: `SIM_API_PORT` (HTTPS, mặc định 443), `SIM_HTTP_PORT` (trang trạng thái, mặc định 80), `SIM_DATA`, `SIM_MAC`,
+  `SIM_WINDOW_SEC` (cửa sổ ghép, mặc định 600), `SIM_PAIR_WAIT_SEC` (thời gian chờ PC mới, mặc định 86400).
+- **Cách ly bằng cờ `GW_SIM`**: mọi file trong `sim/` bọc `#ifdef GW_SIM` và header giả báo `#error` nếu thiếu cờ; `gw.h` báo `#error` nếu cờ lọt vào bản ESP32. Image board không biên dịch `sim/`.
+- Thử tự động với GatewayApp (PLC giả: `python tools/modbus_tcp_sim.py --port 5020`; chạy gw-sim với `SIM_WINDOW_SEC=120 SIM_PAIR_WAIT_SEC=6`):
+  `GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8443 --lan-http 8081 --lan-mb 5020` — kênh HTTPS + ghim khoá, ghép/chờ/đồng ý/từ chối/tự kích hoạt,
+  thêm/sửa/xoá thiết bị, ghi lệnh, đổi IP + tự đăng nhập lại, PC lạ bị từ chối sau khởi động lại.
 
 ## Giống gateway C# ở đâu
 
@@ -52,15 +57,30 @@ $env:SIM_API_PORT=8760; .\build-sim\gw-sim.exe
 - **I/O trên board** = Modbus RTU **Unit ID 0** (địa chỉ broadcast, không slave thật nào trả lời): `D0` = DI1..DI8 (bit 0 = DI1), `D1` = DO1..DO8 (ghi được), `D10..D17` = từng DI (0/1), `D20..D27` = từng DO (0/1, ghi được). Vẫn cần khai báo kết nối Modbus RTU.
 - Giao thức khác (S7, FINS, MC, EtherNet/IP, ADS, OPC UA) bị từ chối khi lưu, kèm câu báo rõ.
 
-## Cài đặt qua LAN (bảo mật)
+## Mạng
 
-- API cổng **8750**, cùng hợp đồng với gateway PC (`tools/GatewayApp/Remote/Contract.cs`); tìm thiết bị UDP **8751** (`Kind: "mcu"`).
-- Mã kết nối 8 số **cố định** (sinh lần đầu, lưu NVS, in ra cổng USB lúc khởi động — dán tem lúc xuất xưởng).
-- Chỉ đăng nhập được trong **cửa sổ cài đặt**: 10 phút sau khi cấp điện, hoặc 10 phút sau khi **nhấn BOOT**. Phải có mặt cạnh board mới cài được.
-- Sai mã 5 lần/60 giây → khoá 60 giây. Tối đa 4 phiên, phiên rảnh 30 phút thì hết.
-- **Giữ BOOT 10 giây** (còi kêu dài) rồi thả = xoá cấu hình (giữ khoá danh tính + mã kết nối).
-- Mật khẩu MQTT lưu NVS, không bao giờ trả về qua API. HTTP thường: chỉ dùng trong LAN tin cậy.
-- `http://<IP>:8750/` = trang trạng thái (không lộ mã/bí mật).
+- Mặc định **IP tĩnh `192.168.1.200/24`**, gateway `192.168.1.1`, DNS `8.8.8.8` (quy ước thiết bị Ethernet sẵn firmware của Waveshare); có tuỳ chọn DHCP.
+- Đổi bằng GatewayApp → cửa sổ Waveshare → **"Mạng (IP)…"** (API `GET/PUT /api/network`); lưu xong board tự khởi động lại, GatewayApp tự nối lại bằng IP mới.
+- Tìm thiết bị UDP **8751**: board trả lời cả **broadcast** kèm IP/subnet/MAC → PC khác mạng con vẫn thấy board (GatewayApp báo "⚠ khác mạng con").
+
+## Cài đặt qua LAN — bảo mật, không mã/mật khẩu cho board
+
+Nguyên tắc: **ai cầm thiết bị được setup** (người cầm thiết bị ưu tiên hơn tài khoản), nhưng **PC quản trị cũ giữ quyền từ chối** trong 24 giờ.
+
+- **Kênh mã hoá**: HTTPS cổng **443**, chứng chỉ tự ký từ **chính khoá danh tính ECDSA P-256** của board. GatewayApp **ghim khoá** — dấu nhận dạng là
+  **mã phần cứng** 20 ký tự (in ra cổng USB lúc khởi động, trang `http://<IP>/`; nên dán tem). Lần đầu: người dùng đối chiếu mã với tem **một lần**; sau đó board giả bị từ chối.
+- **Cổng 80**: trang trạng thái chỉ đọc (không lộ bí mật); mọi `/api/*` trả `use_https`.
+- **Đăng nhập bằng khoá của PC** (GatewayIdentity của GatewayApp): `GET /api/challenge` → ký `admin-login|<mã phần cứng>|<nonce>` → `POST /api/login`.
+  Thử thách dùng một lần, không cần đồng hồ (chạy được hoàn toàn offline). Khoá PC chỉ dùng sau **mật khẩu GatewayApp** (hoặc đăng nhập webapp) — người dùng chỉ nhớ một mật khẩu của chính PC họ.
+- **Ghép PC** (một lần cho mỗi PC):
+  - board **chưa có PC quản trị** (mới / vừa reset): cửa sổ ghép mở 10 phút sau khi cấp điện hoặc nhấn BOOT → ghép là **dùng ngay**;
+  - board **đã có PC quản trị**: cấp điện **không** mở cửa sổ ghép (người lạ rút điện cắm lại không ghép được); **nhấn BOOT** → PC mới ở trạng thái **chờ**:
+    PC quản trị cũ **Đồng ý** (ngay) hoặc **Từ chối** trong GatewayApp → "PC quản trị…"; không ai từ chối → **tự kích hoạt sau 24 giờ** board có điện
+    (đổi PC, mất máy/tài khoản cũ). Không gỡ được PC quản trị cuối cùng;
+  - **chủ board xác nhận bằng webapp** (OTP, cần server — VPS hoặc server cài trên PC trong LAN): PC mới **dùng ngay**.
+- **Giữ BOOT 10 giây** (còi kêu dài) rồi thả = reset: xoá cấu hình, tài khoản cloud, IP về `192.168.1.200`, **xoá danh sách PC quản trị** (cài lại từ đầu; người lạ reset không lấy được dữ liệu cũ).
+- Lưu ý: không giữ BOOT lúc cấp điện / bấm RESET (GPIO0 là chân chọn chế độ khởi động → vào chế độ nạp firmware).
+- Mật khẩu MQTT và danh sách PC lưu NVS, không bao giờ trả về qua API. Tối đa 8 PC quản trị, 4 phiên; phiên rảnh 30 phút thì hết; thử sai 5 lần/60 giây → khoá 60 giây.
 
 ## LED
 
@@ -75,4 +95,4 @@ xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị
 
 ## Chưa làm
 
-IP tĩnh (đang DHCP), cập nhật firmware qua mạng (OTA), CAN, xem/xuất lịch sử của board từ GatewayApp, gửi bù QoS 1 (PubSubClient chỉ QoS 0 — xoá khỏi hàng đợi khi gửi TCP xong).
+Khoá thiết bị bị mất trộm theo mã phần cứng (server + firmware), cập nhật firmware qua mạng (OTA), CAN, xem/xuất lịch sử của board từ GatewayApp, gửi bù QoS 1 (PubSubClient chỉ QoS 0 — xoá khỏi hàng đợi khi gửi TCP xong).

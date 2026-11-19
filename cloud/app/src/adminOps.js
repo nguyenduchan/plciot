@@ -34,6 +34,7 @@ import { retentionInfo } from './retention.js';
 import { capacityStatus } from './capacity.js';
 import { revokeDeviceBinding } from './sites.js';
 import { notifyGateway } from './gatewayNotify.js';
+import { listHwBlocks, blockHw, unblockHw } from './hwBlock.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
   listPolicyEvents, policyConfigPublic, peekRejectStats,
@@ -613,6 +614,25 @@ export function mountAdminOps(app, {
     const out = attachGatewayBundle(db, r, { rotateMqtt: true, includePassword: false });
     if (!out.error) out.revoked = revoked;
     sendHw(res, out);
+  });
+
+  /**
+   * Khoá thiết bị MẤT TRỘM theo mã phần cứng (hwBlock.js): server từ chối enroll/config/đăng ký/chuyển của hw đó và gửi { sys:'lock' }
+   * tới gateway đang nối (board vào chế độ khoá, giữ qua reset). Mở khoá: { sys:'unlock' } khi tìm lại máy.
+   *   GET /api/admin/hw-blocks · POST /api/admin/hw-blocks { hw, reason } · DELETE /api/admin/hw-blocks/:hw
+   */
+  app.get('/api/admin/hw-blocks', ...gate, (_req, res) => res.json({ blocks: listHwBlocks(db) }));
+  app.post('/api/admin/hw-blocks', ...writeGate, (req, res) => {
+    const r = blockHw(db, { hw: req.body?.hw, reason: req.body?.reason || '', adminId: req.user.id });
+    if (r.error) return res.status(r.status || 400).json(r);
+    audit(db, 'hardware_hw_block', { userId: req.user.id, ip: clientIp(req), detail: `${r.hw} (${r.devices.map((d) => `${d.site}/${d.device}`).join(', ') || 'chưa gắn tem'}) ${String(req.body?.reason || '').slice(0, 80)}` });
+    res.json(r);
+  });
+  app.delete('/api/admin/hw-blocks/:hw', ...writeGate, (req, res) => {
+    const r = unblockHw(db, req.params.hw);
+    if (r.error) return res.status(r.status || 400).json(r);
+    audit(db, 'hardware_hw_unblock', { userId: req.user.id, ip: clientIp(req), detail: r.hw });
+    res.json(r);
   });
 
   /** Kích hoạt gateway (kể cả offline): admin dán ID từ gateway → trả mã kích hoạt để nhập vào gateway. */

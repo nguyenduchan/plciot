@@ -8,6 +8,7 @@ import { initOpsFlagsTable, loadOpsFlags } from './opsFlags.js';
 import { migrateSecurity } from '@plciot/security';
 import { ensureMqttIdColumn } from './mqttIds.js';
 import { initPushTables } from './webPush.js';
+import { initHwBlockTable } from './hwBlock.js';
 
 function migrate(db) {
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
@@ -151,6 +152,7 @@ export function openDb(dataDir) {
   initHomePcTable(db);
   initOpsFlagsTable(db);
   initPushTables(db);
+  initHwBlockTable(db);
   loadOpsFlags(db);
   // Tránh import vòng: seed tenant mặc định bằng SQL thuần
   const def = db.prepare("SELECT id FROM tenants WHERE id = 'default'").get();
@@ -166,7 +168,7 @@ export function openDb(dataDir) {
  * Số phiên bản schema của DB (PRAGMA user_version). TĂNG 1 mỗi khi thêm migration mới (chỉ THÊM, xem CLAUDE.md).
  * Chỉ để theo dõi + cảnh báo: migration vẫn tự kiểm "đã có chưa" nên chạy lại an toàn; DB mới hơn mã server (vd. lùi code) vẫn chạy được vì mọi thay đổi đều tương thích ngược.
  */
-export const DB_SCHEMA_VERSION = 2;   // 2: gateway_clients.last_backup_at
+export const DB_SCHEMA_VERSION = 3;   // 2: gateway_clients.last_backup_at · 3: blocked_hw (khoá thiết bị mất trộm theo mã phần cứng)
 function stampSchemaVersion(db) {
   const cur = Number(db.pragma('user_version', { simple: true })) || 0;
   if (cur > DB_SCHEMA_VERSION) console.warn(`DB schema v${cur} mới hơn mã server (v${DB_SCHEMA_VERSION}): server chạy bản code cũ hơn DB — vẫn tương thích ngược, nhưng nên deploy lại bản mới.`);

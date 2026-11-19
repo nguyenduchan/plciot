@@ -166,6 +166,10 @@ public sealed partial class MainForm : Form, IGatewayApp
         Width = 1400; Height = 860; MinimumSize = new Size(1100, 700); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; DoubleBuffered = true;
         _meta = new UiMetaStore(SettingsPath);
+        // thiết lập board Waveshare qua LAN: đăng nhập bằng khoá của PC này, sửa cấu hình qua cùng cổng mật khẩu/phiên sửa 5 phút
+        RemoteForm.IdentityProvider = Identity;
+        RemoteForm.EditGate = RequireEdit;
+        TrustedBoards.FilePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(SettingsPath))!, "remote-boards.json");
         try
         {
             if (File.Exists(SettingsPath))
@@ -214,7 +218,8 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (_editUi)   // thiết lập gateway khác qua LAN (Waveshare ESP32-S3 / gateway PC khác): mở cửa sổ riêng, gateway trên PC này vẫn chạy
         {
             var lan = new FlatButton { Caption = "🔌  Kết nối Waveshare (LAN)", Dock = DockStyle.Bottom, Height = 38 };
-            lan.Click += (_, _) => RemoteForm.Open(this);
+            // khoá PC (đăng nhập board, không mã) chỉ dùng sau MẬT KHẨU GatewayApp (offline/LAN-only) hoặc đăng nhập webapp — như sửa cấu hình máy này
+            lan.Click += (_, _) => { if (RequireEdit()) RemoteForm.Open(this); };
             _side.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 6, BackColor = Theme.Side });
             _side.Controls.Add(lan);
         }
@@ -256,7 +261,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (ArgValue(args, "--remote") is { Length: > 0 } rem)
         {
             var i = rem.LastIndexOf(':');
-            var (rh, rp) = i > 0 && int.TryParse(rem[(i + 1)..], out var pp) ? (rem[..i], pp) : (rem, 8750);
+            var (rh, rp) = i > 0 && int.TryParse(rem[(i + 1)..], out var pp) ? (rem[..i], pp) : (rem, 80);   // board Waveshare: cổng 80 (gateway PC: ghi rõ :8750)
             Shown += (_, _) => BeginInvoke(() => RemoteForm.Open(this, rh, rp, ArgValue(args, "--code")));
         }
         // Đổi giải pháp (UI) dựng lại cửa sổ trong CÙNG tiến trình: timer của cửa sổ cũ phải dừng, nếu không nó vẫn chạy Tick()

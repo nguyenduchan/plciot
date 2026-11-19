@@ -3,54 +3,72 @@ using GatewayApp.Ui;
 namespace GatewayApp;
 
 /// <summary>
-/// Chọn thiết bị trong LAN (tự tìm bằng broadcast UDP) hoặc nhập IP, rồi nhập mã kết nối 8 số đang hiện trên thiết bị
-/// (Waveshare: in ra cổng USB-serial và trang trạng thái; gateway PC: trang "Kết nối admin").
+/// Chọn thiết bị trong LAN (tự tìm bằng broadcast UDP) hoặc nhập IP.
+///   Board Waveshare (HTTPS 443): KHÔNG mã — đăng nhập bằng khoá của PC này. Board lạ: đối chiếu mã phần cứng với tem MỘT lần (ghim).
+///     PC chưa ghép: nhấn BOOT trên board (người cầm thiết bị được ưu tiên) rồi "Thử lại", hoặc đăng nhập webapp của chủ board.
+///   Gateway PC (cổng 8750): mã kết nối đang hiện ở trang "Kết nối admin" của máy đó.
 /// </summary>
 sealed class ConnectDialog : Form
 {
     readonly ListView _list = new() { View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false, Dock = DockStyle.Fill, BackColor = Theme.Panel, ForeColor = Theme.Text, BorderStyle = BorderStyle.None };
     readonly TextBox _host = new() { Width = 200 }, _code = new() { Width = 140, MaxLength = 8 };
-    readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 8750, Width = 90 };
-    readonly Label _msg = new() { AutoSize = false, Dock = DockStyle.Bottom, Height = 40, ForeColor = Theme.Muted, Font = Theme.Small, Padding = new Padding(14, 4, 14, 0) };
-    readonly FlatButton _go = new() { Caption = "Kết nối", Primary = true, Width = 130 };
-    readonly FlatButton _scan = new() { Caption = "Tìm lại", Width = 100 };
+    readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 443, Width = 90 };   // Waveshare: 443 (gateway PC: 8750) — chọn trong danh sách thì tự điền
+    readonly Label _codeLbl = new() { Text = "Mã kết nối (chỉ gateway PC)", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 9, 2, 0) };
+    readonly Label _msg = new() { AutoSize = false, Dock = DockStyle.Bottom, Height = 52, ForeColor = Theme.Muted, Font = Theme.Small, Padding = new Padding(14, 4, 14, 0) };
+    readonly FlatButton _go = new() { Caption = "Kết nối", Primary = true, Width = 120 };
+    readonly FlatButton _scan = new() { Caption = "Tìm lại", Width = 90 };
+    readonly FlatButton _retry = new() { Caption = "Đã nhấn BOOT — thử lại", Width = 200, Visible = false };
+    readonly FlatButton _web = new() { Caption = "Đăng nhập webapp…", Width = 160, Visible = false };
     readonly Dictionary<string, ApiHello> _found = new();
     public (RemoteClient Client, ApiHello Hello, string Host, int Port, ApiConfig Config)? Result { get; private set; }
+
+    bool IsMcu => _found.TryGetValue($"{_host.Text.Trim()}:{(int)_port.Value}", out var h) ? h.Tls || h.Kind == "mcu" : (int)_port.Value == 443;
 
     ConnectDialog(string host, int port, string code, string? note)
     {
         Text = "Kết nối thiết bị qua mạng LAN"; StartPosition = FormStartPosition.CenterParent; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = MinimizeBox = false;
-        BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; ClientSize = new Size(640, 470);
+        BackColor = Theme.Bg; ForeColor = Theme.Text; Font = Theme.Normal; ClientSize = new Size(680, 500);
 
         var top = new Label { Dock = DockStyle.Top, Height = 66, ForeColor = Theme.Text, Padding = new Padding(14, 10, 14, 0), UseMnemonic = false,
-            Text = note ?? "Gateway Waveshare (ESP32-S3) hoặc gateway PC đã bật \"Kết nối admin\" trong cùng mạng LAN. Chọn trong danh sách hoặc nhập IP, rồi nhập mã kết nối.\nWaveshare: mã 8 số in trên tem; nhấn nút BOOT trên board để mở cài đặt 10 phút." };
-        _list.Columns.Add("Loại", 110); _list.Columns.Add("Tên", 210); _list.Columns.Add("Địa chỉ", 170); _list.Columns.Add("Phiên bản", 110);
+            Text = note ?? "Chọn board Waveshare (hoặc gateway PC) trong danh sách rồi bấm Kết nối. Board Waveshare không cần mã: PC này đăng nhập bằng khoá riêng qua kênh mã hoá.\nLần đầu với một board: nhấn nút BOOT trên board để ghép PC này (chỉ một lần)." };
+        _list.Columns.Add("Loại", 95); _list.Columns.Add("Tên", 160); _list.Columns.Add("Địa chỉ", 150); _list.Columns.Add("Mạng", 120); _list.Columns.Add("Phiên bản", 95);
         _list.SelectedIndexChanged += (_, _) =>
         {
             if (_list.SelectedItems.Count == 0) return;
             var k = (string)_list.SelectedItems[0].Tag!; var i = k.LastIndexOf(':');
-            _host.Text = k[..i]; _port.Value = int.Parse(k[(i + 1)..]); _code.Focus();
+            _host.Text = k[..i]; _port.Value = int.Parse(k[(i + 1)..]);
+            SyncKind();
+            if (!RemoteClient.SameSubnetAsThisPc(_host.Text))
+            {
+                _msg.ForeColor = Theme.Yellow;
+                _msg.Text = $"Board ở {_host.Text} KHÁC mạng con với PC (mặc định của board: 192.168.1.200). Thêm cho card mạng PC một IP cùng dải (vd. 192.168.1.10/24) để kết nối, rồi đổi IP board bằng nút \"Mạng (IP)…\".";
+            }
         };
-        _list.DoubleClick += (_, _) => _code.Focus();
+        _list.DoubleClick += async (_, _) => await GoAsync();
         var listHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 4, 14, 8), BackColor = Theme.Bg };
         listHost.Controls.Add(_list);
 
-        var form = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 96, Padding = new Padding(10, 6, 10, 0), BackColor = Theme.Bg, WrapContents = true };
+        var form = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 100, Padding = new Padding(10, 6, 10, 0), BackColor = Theme.Bg, WrapContents = true };
         Control L(string t) => new Label { Text = t, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 9, 2, 0) };
         _host.Text = host; _port.Value = Math.Clamp(port, 1, 65535); _code.Text = code;
-        form.Controls.AddRange(new Control[] { L("IP"), _host, L("Cổng"), _port, L("Mã kết nối"), _code });
+        _port.ValueChanged += (_, _) => SyncKind(); _host.TextChanged += (_, _) => SyncKind();
+        form.Controls.AddRange(new Control[] { L("IP"), _host, L("Cổng (Waveshare 443 · gateway PC 8750)"), _port, _codeLbl, _code });
         form.SetFlowBreak(_code, true);
-        var cancel = new FlatButton { Caption = "Huỷ", Width = 100 };
+        var cancel = new FlatButton { Caption = "Huỷ", Width = 80 };
         cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         _go.Click += async (_, _) => await GoAsync();
+        _retry.Click += async (_, _) => await GoAsync();
+        _web.Click += async (_, _) => await WebPairAsync();
         _scan.Click += async (_, _) => await ScanAsync();
-        form.Controls.AddRange(new Control[] { _go, _scan, cancel });
-        AcceptButton = null;
+        form.Controls.AddRange(new Control[] { _go, _retry, _web, _scan, cancel });
         _code.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await GoAsync(); } };
 
         Controls.Add(listHost); Controls.Add(form); Controls.Add(_msg); Controls.Add(top);
-        Shown += async (_, _) => { if (host.Length > 0) _code.Focus(); await ScanAsync(); };
+        SyncKind();
+        Shown += async (_, _) => await ScanAsync();
     }
+
+    void SyncKind() { var mcu = IsMcu; _code.Enabled = !mcu; _codeLbl.Enabled = !mcu; }
 
     async Task ScanAsync()
     {
@@ -63,34 +81,63 @@ sealed class ConnectDialog : Form
             {
                 var key = $"{ip}:{h.Port}";
                 _found[key] = h;
-                var it = new ListViewItem(new[] { h.Kind == "mcu" ? "Waveshare" : "Gateway PC", h.Name, key, h.Version }) { Tag = key };
+                var net = h.Ip.Length == 0 ? "" : RemoteClient.SameSubnetAsThisPc(ip.ToString()) ? "cùng mạng" : "⚠ khác mạng con";
+                var trusted = h.Locked ? " 🔒 bị khoá" : h.Kind == "mcu" && TrustedBoards.Contains(h.Hw) ? " ✓" : "";
+                var it = new ListViewItem(new[] { (h.Kind == "mcu" ? "Waveshare" : "Gateway PC") + trusted, h.Name, key, net, h.Version }) { Tag = key };
+                if (net.StartsWith("⚠")) it.ForeColor = Theme.Yellow;
+                if (h.Locked) it.ForeColor = Theme.Red;
                 _list.Items.Add(it);
             }
-            _msg.Text = res.Count == 0 ? "Không thấy thiết bị nào trả lời (khác mạng con, tường lửa chặn UDP 8751, hoặc gateway PC chưa mở cho LAN). Vẫn nhập IP tay được." : $"Tìm thấy {res.Count} thiết bị.";
+            _msg.Text = res.Count == 0 ? "Không thấy thiết bị nào trả lời (tường lửa chặn UDP 8751, hoặc gateway PC chưa mở cho LAN). Vẫn nhập IP tay được (board Waveshare mặc định 192.168.1.200)." : $"Tìm thấy {res.Count} thiết bị. ✓ = board PC này đã tin cậy.";
+            SyncKind();
         }
         catch (Exception e) { _msg.Text = "Không tìm được: " + e.Message; }
         finally { if (!IsDisposed) _scan.Enabled = true; }
     }
 
-    async Task GoAsync()
+    /// <summary>Board lạ: người dùng đối chiếu mã phần cứng (in ra cổng USB, trang trạng thái http://IP/, nên dán tem) — chỉ hỏi một lần.</summary>
+    bool ConfirmBoard(string hw) =>
+        Ask.Yes(this, $"Lần đầu kết nối board này qua kênh mã hoá.\n\nMã phần cứng: {hw}\n\nĐối chiếu với mã in trên tem board (hoặc trang http://{_host.Text.Trim()}/). Đúng thì tin cậy — lần sau PC tự kiểm, board giả mạo sẽ bị từ chối.", "Tin cậy board?");
+
+    async Task GoAsync(string webToken = "")
     {
         var host = _host.Text.Trim(); var code = _code.Text.Trim(); var port = (int)_port.Value;
-        if (host.Length == 0) { Err("Nhập IP của thiết bị."); return; }
-        if (code.Length == 0) { Err("Nhập mã kết nối đang hiện trên thiết bị."); return; }
-        _go.Enabled = false; _msg.ForeColor = Theme.Muted; _msg.Text = $"Đang nối {host}:{port}…";
+        if (host.Length == 0) { Err("Nhập IP của thiết bị (board Waveshare mặc định 192.168.1.200)."); return; }
+        var mcu = IsMcu;
+        if (!mcu && code.Length == 0) { Err("Gateway PC: nhập mã kết nối ở trang \"Kết nối admin\" của máy đó."); return; }
+        if (mcu && RemoteForm.IdentityProvider == null) { Err("Chưa có khoá của PC này (mở từ GatewayApp)."); return; }
+        _go.Enabled = _retry.Enabled = _web.Enabled = false; _msg.ForeColor = Theme.Muted; _msg.Text = $"Đang nối {host}:{port}{(mcu ? " (HTTPS)" : "")}…";
         RemoteClient? c = null;
         try
         {
-            c = await RemoteClient.ConnectAsync(host, port, code);
+            var paired = false;
+            if (mcu) (c, paired) = await RemoteClient.ConnectMcuAsync(host, port, RemoteForm.IdentityProvider!(), ConfirmBoard, webToken);
+            else c = await RemoteClient.ConnectAsync(host, port, code);
             var cfg = await c.ConfigAsync();
             _ = await c.StateAsync();   // kiểm tra phiên dùng được trước khi mở cửa sổ
-            var hello = _found.TryGetValue($"{host}:{port}", out var h) ? h : new ApiHello { Kind = "pc", Port = port };
+            var hello = _found.TryGetValue($"{host}:{port}", out var h) ? h : new ApiHello { Kind = mcu ? "mcu" : "pc", Port = port, Tls = mcu, Hw = c.ObservedHw };
             if (hello.Name.Length == 0 && cfg.Config.MqttId.Length > 0) hello.Name = $"{cfg.Config.Site}/{cfg.Config.Device}";
+            if (paired) RemoteForm.PendingNote = "Đã ghép PC này với board — lần sau vào thẳng, không cần nhấn BOOT.";
             Result = (c, hello, host, port, cfg);
             DialogResult = DialogResult.OK; Close();
         }
-        catch (Exception e) { c?.Dispose(); Err(RemoteClient.Explain(e)); }
-        finally { if (!IsDisposed) _go.Enabled = true; }
+        catch (Exception e)
+        {
+            c?.Dispose();
+            var code2 = (e as RemoteException)?.Code;
+            var needPair = code2 is "not_paired" or "not_owner" or "board_not_registered" or "server_unreachable";
+            _retry.Visible = _web.Visible = needPair;
+            Err(RemoteClient.Explain(e));
+        }
+        finally { if (!IsDisposed) _go.Enabled = _retry.Enabled = _web.Enabled = true; }
+    }
+
+    /// <summary>Không với tới board để nhấn BOOT: chủ board đăng nhập webapp (duyệt trên điện thoại / OTP); board tự hỏi server xác nhận rồi ghép PC.</summary>
+    async Task WebPairAsync()
+    {
+        using var f = new LoginForm(CloudPage.DefaultServer, "Đăng nhập webapp", "Xác nhận chủ board để ghép PC này (thay cho nhấn nút BOOT)");
+        if (f.ShowDialog(this) != DialogResult.OK || f.Result == null) return;
+        await GoAsync(f.Result.Token);
     }
 
     void Err(string t) { _msg.ForeColor = Theme.Red; _msg.Text = t; }

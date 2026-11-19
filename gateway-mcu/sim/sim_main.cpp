@@ -29,6 +29,11 @@ static int cryptoTest(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   WSADATA w; WSAStartup(MAKEWORD(2, 2), &w);
+  if (const char* wp = getenv("SIM_WAIT_PID")) {   // vừa "khởi động lại" (ESP.restart): chờ tiến trình cũ nhả cổng
+    HANDLE old = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)strtoul(wp, nullptr, 10));
+    if (old) { WaitForSingleObject(old, 5000); CloseHandle(old); }
+    SetEnvironmentVariableA("SIM_WAIT_PID", nullptr); _putenv("SIM_WAIT_PID=");
+  }
   if (argc >= 2 && strcmp(argv[1], "--cryptotest") == 0) { _mkdir(simDataDir()); return cryptoTest(argc, argv); }
   srand((unsigned)GetTickCount() ^ (unsigned)GetCurrentProcessId());
   _mkdir(simDataDir());

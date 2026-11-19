@@ -63,6 +63,11 @@ struct Lock { Lock() { xSemaphoreTakeRecursive(g_lock, portMAX_DELAY); } ~Lock()
 // Thứ tự luôn là BusLock trước rồi mới Lock.
 extern SemaphoreHandle_t g_bus;
 struct BusLock { BusLock() { xSemaphoreTakeRecursive(g_bus, portMAX_DELAY); } ~BusLock() { xSemaphoreGiveRecursive(g_bus); } };
+/// CHẾ ĐỘ KHOÁ (thiết bị báo mất trộm, admin khoá theo mã phần cứng trên server): dừng đọc/điều khiển PLC, từ chối mọi đăng nhập và ghép PC
+/// (kể cả nút BOOT), ngừng gửi dữ liệu. Lưu NVS "lock" — reset bằng BOOT KHÔNG xoá được; chỉ server mở (sys:unlock có chữ ký / hết bị chặn).
+extern bool g_locked;
+extern String g_lockReason;
+void setLocked(bool on, const String& reason);
 void storeBegin();
 String storeValidate(JsonObjectConst cfg);       // "" = hợp lệ, ngược lại câu báo lỗi (tiếng Việt, hiện trên GatewayApp)
 void storeApply();                               // g_raw → g_cfg
@@ -77,12 +82,25 @@ String configMessage();                          // bản tin <base>/config (Con
 struct FieldLook { String devTitle, label, unit; bool hasLow = false, hasHigh = false; double low = 0, high = 0; };
 FieldLook fieldLook(const Field& f);
 
+// ---------------------------------------------------------------- net.cpp: cấu hình IP (NVS, tách khỏi ApiConfig — admin đẩy cấu hình thiết bị không đụng tới)
+struct NetCfg { bool dhcp = false; String ip, mask, gw, dns; };
+NetCfg netLoad();
+String netValidate(const NetCfg& n);             // "" = hợp lệ
+void netSave(const NetCfg& n);
+void netReset();                                 // về mặc định 192.168.1.200/24
+void netApply();                                 // gọi sau ETH.begin(): IP tĩnh → ETH.config, DHCP → để nguyên
+String netMask();                                // subnet đang dùng (cho gói tìm thiết bị)
+
 // ---------------------------------------------------------------- crypto.cpp: danh tính ECDSA P-256 (khớp GatewayIdentity.cs)
 void cryptoBegin();
 String idPublicKey();                            // SPKI DER base64url
 String idHw();                                   // 20 ký tự Crockford của SHA-256(SPKI)
 String idSign(const String& msg);                // chữ ký IEEE P1363 base64url
 bool verifyCmd(const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);
+bool verifySig(const String& spkiB64u, const String& msg, const String& sigB64u);   // ECDSA P-256 P1363, khoá SPKI
+std::vector<uint8_t> tlsCertDer();               // chứng chỉ TLS tự ký từ khoá danh tính (dấu nhận dạng = idHw)
+struct mbedtls_pk_context;
+mbedtls_pk_context* idKey();
 String b64u(const uint8_t* p, size_t n);
 std::vector<uint8_t> fromB64u(const String& s);
 String sha256Hex(const uint8_t* p, size_t n);
@@ -124,8 +142,8 @@ size_t backfillPending();
 // ---------------------------------------------------------------- api.cpp: API LAN cho GatewayApp + tìm thiết bị UDP
 void apiBegin();
 void apiLoop();
-void apiOpenWindow(uint32_t ms);                 // mở cho admin đăng nhập trong khoảng này (nút BOOT / lúc khởi động)
-String apiCode();
+void apiOpenWindow(uint32_t ms);                 // mở ghép PC admin mới trong khoảng này (nút BOOT / lúc khởi động)
+void apiForgetAdmins();                          // reset: xoá danh sách PC admin đã ghép
 
 // ---------------------------------------------------------------- cloud.cpp
 void cloudBegin();
@@ -134,6 +152,9 @@ void cloudRestart();                             // cấu hình cloud đổi: n�
 String cloudStateName();                         // Disabled | Disconnected | Connecting | Connected (CloudState của C#)
 // Việc cloud do admin yêu cầu (POST /api/cloud): register (value = LoginResult JSON) | enroll (value = QR). Trả (ok, câu báo).
 bool cloudAction(const String& action, const String& api, const String& value, String& msg);
+/// Ghép PC bằng webapp (OTP) thay cho nút BOOT: hỏi server (VPS hoặc server cài trên PC trong LAN) tài khoản của phiên webapp
+/// có sở hữu board này không. false + why khi không (chưa đăng ký cloud, không có server, không phải chủ…).
+bool cloudOwnsBoard(const String& webToken, String& why);
 bool timeSynced();
 int64_t nowMs();
 

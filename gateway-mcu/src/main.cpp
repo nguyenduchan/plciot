@@ -33,7 +33,9 @@ static void ledTick() {
   if (millis() - last < 500) return;
   last = millis();
   String cs = cloudStateName();
-  if (!s_ethUp) ioLed(24, 0, 0);
+  static bool blink = false; blink = !blink;
+  if (g_locked) ioLed(blink ? 32 : 0, 0, 0);   // bị khoá (báo mất): đỏ nhấp nháy
+  else if (!s_ethUp) ioLed(24, 0, 0);
   else if (g_status == "plc_fault" || g_status == "no_devices") ioLed(20, 14, 0);
   else if (cs == "Connecting" || cs == "Disconnected") ioLed(0, 0, 24);
   else ioLed(0, 20, 0);
@@ -48,13 +50,13 @@ void setup() {
   if (!ETH.begin(ETH_PHY_W5500, 1, ETH_CS, ETH_INT, ETH_RST, SPI2_HOST, ETH_SCLK, ETH_MISO, ETH_MOSI))
     logf("Không khởi động được W5500 — kiểm tra chân SPI trong board.h");
   storeBegin();          // sau ETH.begin: tên thiết bị mặc định lấy từ MAC
+  netApply();            // IP tĩnh mặc định 192.168.1.200 (hoặc DHCP / IP đã đặt) — cần NVS nên sau storeBegin
   cryptoBegin();
   modbusBegin();
   apiBegin();
   cloudBegin();
   engineBegin();
-  logf("Thiết bị %s/%s · mã phần cứng %s · %u field · mã kết nối admin %s",
-       g_cfg.site.c_str(), g_cfg.device.c_str(), idHw().c_str(), (unsigned)g_cfg.pack.size(), apiCode().c_str());
+  logf("Thiết bị %s/%s · mã phần cứng %s · %u field", g_cfg.site.c_str(), g_cfg.device.c_str(), idHw().c_str(), (unsigned)g_cfg.pack.size());
 }
 
 void loop() {

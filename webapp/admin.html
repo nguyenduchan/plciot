@@ -90,6 +90,17 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
   <div id="dup-list"></div>
 </div>
 <div class="panel" style="max-width:none;margin-bottom:14px">
+  <h2>🔒 Khoá thiết bị mất trộm (theo mã phần cứng)</h2>
+  <p class="help">Khách báo mất: nhập <b>mã phần cứng</b> 20 ký tự (GatewayApp / tem board / cột "ID máy"). Server từ chối đăng ký, enroll, hỏi cấu hình của máy đó;
+    board đang nối nhận lệnh khoá ngay (dừng đọc/điều khiển, từ chối mọi đăng nhập và ghép PC — kể cả nhấn BOOT, giữ nguyên sau reset). Board offline sẽ khoá khi lên mạng lại.</p>
+  <div class="row" style="gap:8px;flex-wrap:wrap">
+    <input id="hwb-hw" placeholder="Mã phần cứng (vd. ZSB640QC6EAR7V8Z969S)" autocomplete="off" style="flex:2;min-width:220px;font-family:monospace">
+    <input id="hwb-reason" placeholder="Lý do (vd. khách báo mất 19/11, phiếu #123)" autocomplete="off" style="flex:3;min-width:220px">
+    <button id="hwb-go" class="danger fit">Khoá thiết bị</button>
+  </div>
+  <div id="hwb-list" style="margin-top:8px"></div>
+</div>
+<div class="panel" style="max-width:none;margin-bottom:14px">
   <h2>Gateway đã đăng ký (<span id="hw-count">0</span>)</h2>
   <input id="hw-q" placeholder="Tìm theo tên, site, thiết bị, người dùng, ID máy…" autocomplete="off" style="width:100%;margin-bottom:8px">
   <div id="hw-list">Đang tải…</div>

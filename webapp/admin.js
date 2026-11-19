@@ -16,6 +16,7 @@
   const base = session.apiBase || location.origin;
 
   const ERR = {
+    bad_hw: 'Mã phần cứng phải đúng 20 ký tự (chữ hoa và số, không có I, L, O, U).',
     invalid_solution: 'Giải pháp không có trong danh sách.',
     confirm_mismatch: 'Tên xác nhận không khớp — chưa đổi kiểu giao diện. Kiểm tra lại đúng gateway rồi gõ lại tên tài khoản.',
     invalid_id: 'Mã mục: chữ thường/số/gạch dưới, bắt đầu bằng chữ, tối đa 24 ký tự (không dùng “basic”).',
@@ -135,7 +136,7 @@
     clearInterval(solTimer);
     if (name === 'sol') { loadSolutions().catch((e) => msg(e.message, 'err')); solTimer = setInterval(() => { if (!document.hidden) loadSolutions().catch(() => {}); }, 20000); }   // thư mục mới chép lên server tự vào ô chọn
     if (name === 'cap') loadCapacity().catch(() => {});
-    if (name === 'gw') { loadHw().catch(() => {}); loadDup().catch(() => {}); }
+    if (name === 'gw') { loadHw().catch(() => {}); loadDup().catch(() => {}); loadHwBlocks().catch(() => {}); }
   }
   document.querySelector('.adm-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-at]'); if (b) showAdminTab(b.dataset.at); });
   $('#hw-q')?.addEventListener('input', debounce((e) => { pg.hw.q = e.target.value.trim(); pg.hw.off = 0; loadHw().catch((er) => msg(er.message, 'err')); }));
@@ -237,6 +238,33 @@
   }
 
   function closeQr() { $('#qr-modal').classList.remove('on'); }
+
+  // ---- Khoá thiết bị mất trộm theo mã phần cứng (server: hwBlock.js)
+  async function loadHwBlocks() {
+    const el = $('#hwb-list'); if (!el) return;
+    const r = await api('/api/admin/hw-blocks');
+    el.innerHTML = r.blocks.length ? r.blocks.map((b) => `
+      <div class="row" style="justify-content:space-between;border-top:1px solid var(--line,#333);padding:6px 0;gap:8px">
+        <div><b style="font-family:monospace">${esc(b.hw)}</b> — ${esc(b.reason || '(không ghi lý do)')}
+          <div class="help">khoá lúc ${new Date(b.blockedAt).toLocaleString('vi-VN')} · ${b.devices.length ? b.devices.map((d) => esc(`${d.site}/${d.device}`)).join(', ') : 'chưa gắn tem nào'}</div></div>
+        <button class="fit" data-unblock="${esc(b.hw)}">Mở khoá</button>
+      </div>`).join('') : '<p class="help">Chưa khoá thiết bị nào.</p>';
+    el.querySelectorAll('[data-unblock]').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm(`Mở khoá thiết bị ${btn.dataset.unblock}? Board nhận lệnh mở khoá và hoạt động lại.`)) return;
+      try { await api(`/api/admin/hw-blocks/${encodeURIComponent(btn.dataset.unblock)}`, 'DELETE'); msg('Đã mở khoá thiết bị.'); await loadHwBlocks(); } catch (e) { msg(e.message, 'err'); }
+    }));
+  }
+  $('#hwb-go')?.addEventListener('click', async () => {
+    const hw = $('#hwb-hw').value.trim(), reason = $('#hwb-reason').value.trim();
+    if (!hw) return msg('Nhập mã phần cứng của thiết bị.', 'err');
+    if (!confirm(`Khoá thiết bị ${hw}?\n\nMáy ngừng hoạt động và không đăng ký / cài đặt lại được cho tới khi mở khoá.`)) return;
+    try {
+      const r = await api('/api/admin/hw-blocks', 'POST', { hw, reason });
+      msg(r.devices.length ? `Đã khoá ${r.hw} — gửi lệnh khoá tới ${r.devices.map((d) => `${d.site}/${d.device}`).join(', ')}.` : `Đã khoá ${r.hw} (chưa gắn tem nào — máy bị chặn khi đăng ký).`);
+      $('#hwb-hw').value = ''; $('#hwb-reason').value = '';
+      await loadHwBlocks();
+    } catch (e) { msg(e.message, 'err'); }
+  });
 
   async function loadHw() {
     const j = await api(`/api/admin/hardware?${qs(pg.hw)}`);

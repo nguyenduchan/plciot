@@ -34,6 +34,10 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly Label _pageTitle = new() { ForeColor = Theme.Text, Font = Theme.Big, AutoSize = true, Location = new Point(22, 12), BackColor = Color.Transparent, UseMnemonic = false };
     readonly StatusChip _chipLink = new(), _chipPlc = new(), _chipCloud = new();
     readonly FlatButton _closeBtn = new() { Caption = "Ngắt kết nối", Width = 130 };
+    /// <summary>Đổi IP của board (chỉ hiện khi thiết bị có API /api/network — board MCU; gateway PC không có).</summary>
+    readonly FlatButton _netBtn = new() { Caption = "Mạng (IP)…", Width = 120, Visible = false };
+    /// <summary>PC quản trị của board (đồng ý / từ chối PC đang chờ ghép) — chỉ board MCU.</summary>
+    readonly FlatButton _adminBtn = new() { Caption = "PC quản trị…", Width = 130, Visible = false };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _ui = new() { Interval = 1000 };
     readonly System.Windows.Forms.Timer _toastTimer = new() { Interval = 4000 };
@@ -72,8 +76,11 @@ public sealed class RemoteForm : Form, IGatewayApp
         _side.Controls.Add(new Label { Text = "Đang thiết lập thiết bị qua mạng — không phải gateway trên PC này", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(20, 0, 8, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side });
 
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _closeBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
         _closeBtn.Click += (_, _) => Close();
+        _netBtn.Click += async (_, _) => { if (RequireEdit()) await ChangeNetworkAsync(); };
+        _adminBtn.Click += (_, _) => { if (RequireEdit()) AdminsDialog.Run(this, _client); };
+        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _client.Tls; LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
         _head.Resize += (_, _) => LayoutHead();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -86,6 +93,7 @@ public sealed class RemoteForm : Form, IGatewayApp
         _ui.Tick += async (_, _) => await PollAsync();
         _ui.Start();
         Shown += async (_, _) => await PollAsync();
+        Shown += (_, _) => { if (PendingNote is { } n) { PendingNote = null; Toast(n); Log("INFO", "lan", n); } };
         FormClosed += (_, _) => { _ui.Stop(); _toastTimer.Stop(); _ui.Dispose(); _toastTimer.Dispose(); _client.Dispose(); };
     }
 
@@ -97,9 +105,9 @@ public sealed class RemoteForm : Form, IGatewayApp
     void Log(string dir, string ch, string text) { _log.Add(dir, ch, text); lock (_logLines) _logLines.Add($"{dir} {ch} {text}"); }
 
     /// <summary>Hỏi IP + mã kết nối rồi mở cửa sổ thiết lập thiết bị đó. Gọi từ gateway PC (nút "Kết nối Waveshare (LAN)").</summary>
-    public static void Open(IWin32Window owner, string host = "", int port = 8750, string code = "")
+    public static void Open(IWin32Window owner, string host = "", int port = 80, string code = "", string? note = null)
     {
-        var r = ConnectDialog.Run(owner, host, port, code);
+        var r = ConnectDialog.Run(owner, host, port, code, note);
         if (r == null) return;
         new RemoteForm(r.Value.Client, r.Value.Hello, r.Value.Host, r.Value.Port, r.Value.Config).Show();
     }
@@ -161,15 +169,30 @@ public sealed class RemoteForm : Form, IGatewayApp
         finally { _polling = false; Tick(); }
     }
 
-    /// <summary>Thiết bị khởi động lại (mất phiên): hỏi mã kết nối mới, giữ nguyên cửa sổ.</summary>
+    /// <summary>Thiết bị khởi động lại (mất phiên). Board MCU: tự đăng nhập lại bằng khoá PC (đã ghép, không hỏi gì). Gateway PC: hỏi mã mới.</summary>
     async Task ReconnectAsync()
     {
         if (_reconnecting) return;
         _reconnecting = true; _ui.Stop();
         try
         {
-            Log("WARN", "lan", "phiên hết hiệu lực (thiết bị khởi động lại?) — cần nhập lại mã kết nối");
-            var r = ConnectDialog.Run(this, _host, _port, "", "Phiên kết nối đã hết (thiết bị vừa khởi động lại hoặc tắt API). Nhập mã kết nối mới đang hiện trên thiết bị.");
+            if (_client.Tls && IdentityProvider != null)
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        var (c, _) = await RemoteClient.ConnectMcuAsync(_host, _port, IdentityProvider(), _ => false);   // board đã ghim: board lạ → từ chối
+                        _client.Dispose(); _client = c; _rev = -1;
+                        LoadFrom(await c.ConfigAsync()); _dash.Rebuild(); _cloud.Refresh2();
+                        Log("INFO", "lan", "đã tự đăng nhập lại board bằng khoá PC");
+                        return;
+                    }
+                    catch (Exception e) { Log("WARN", "lan", "đăng nhập lại: " + RemoteClient.Explain(e)); await Task.Delay(2000); }
+                }
+            }
+            Log("WARN", "lan", "phiên hết hiệu lực (thiết bị khởi động lại?) — kết nối lại");
+            var r = ConnectDialog.Run(this, _host, _port, "", "Phiên kết nối đã hết (thiết bị vừa khởi động lại). Bấm Kết nối để nối lại.");
             if (r == null) { Close(); return; }
             _client.Dispose(); _client = r.Value.Client; _rev = -1;
             LoadFrom(r.Value.Config); _dash.Rebuild(); _cloud.Refresh2();
@@ -186,8 +209,15 @@ public sealed class RemoteForm : Form, IGatewayApp
     public bool TryValue(string key, out double v) => _values.TryGetValue(key, out v);
     public string FingerprintText => _state.Fingerprint;
     public string HwText => _hello.Hw;
-    /// <summary>Đã vào được bằng mã kết nối hiện trên thiết bị = người đứng cạnh thiết bị: không hỏi thêm mật khẩu.</summary>
-    public bool RequireEdit() => true;
+    /// <summary>Sửa cấu hình thiết bị qua LAN dùng CHUNG phiên sửa 5 phút + mật khẩu của GatewayApp trên PC này (EditGate do MainForm đặt).</summary>
+    public bool RequireEdit() => EditGate?.Invoke() ?? true;
+
+    /// <summary>Khoá riêng của PC này (GatewayIdentity của GatewayApp) — board MCU ghép/đăng nhập bằng khoá này, không mã.</summary>
+    internal static Func<Plciot.Scada.Services.Ui.GatewayIdentity>? IdentityProvider { get; set; }
+    /// <summary>Cổng mật khẩu GatewayApp (RequireEdit của MainForm): người ngồi vào PC đã ghép mà không biết mật khẩu thì không sửa được board.</summary>
+    internal static Func<bool>? EditGate { get; set; }
+    /// <summary>Thông báo hiện khi cửa sổ mở (vd. "vừa ghép PC này").</summary>
+    internal static string? PendingNote { get; set; }
 
     public async Task<string?> WriteAsync(string child, string field, double value)
     {
@@ -276,7 +306,29 @@ public sealed class RemoteForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _closeBtn, _chipCloud, _chipPlc, _chipLink }) { x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14); }
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _chipCloud, _chipPlc, _chipLink })
+        {
+            if (!c.Visible && (c == _netBtn || c == _adminBtn)) continue;
+            x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
+        }
+    }
+
+    /// <summary>Đổi IP board: lưu xong board khởi động lại → đóng cửa sổ này, mở hộp kết nối điền sẵn IP mới (DHCP: tìm lại trong danh sách).</summary>
+    async Task ChangeNetworkAsync()
+    {
+        var newHost = await NetworkDialog.RunAsync(this, _client);
+        if (newHost == null) return;
+        Log("INFO", "lan", newHost.Length > 0 ? $"đổi IP board → {newHost}, board khởi động lại" : "board chuyển sang DHCP, khởi động lại");
+        _ui.Stop();
+        var port = _port; var owner = Owner;
+        Hide();
+        BeginInvoke(() =>
+        {
+            Open(owner!, newHost, port, "", newHost.Length > 0
+                ? $"Board đang khởi động lại với IP {newHost} (khoảng 5–10 giây; khởi động lại thì cửa sổ cài đặt tự mở lại 10 phút). Nhập mã kết nối để nối lại."
+                : "Board đang khởi động lại và xin IP bằng DHCP. Bấm \"Tìm lại\" sau vài giây rồi chọn board trong danh sách.");
+            Close();
+        });
     }
 
     void Show(Control page)

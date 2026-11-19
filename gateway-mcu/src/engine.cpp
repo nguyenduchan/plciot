@@ -4,6 +4,7 @@
 #include "gw.h"
 #include <math.h>
 #include <algorithm>
+#include <atomic>
 
 bool g_running = true;
 String g_status = "no_devices";
@@ -11,7 +12,7 @@ String g_status = "no_devices";
 namespace {
 std::map<String, double> s_values;   // "child.field" → giá trị
 TaskHandle_t s_task = nullptr;
-volatile uint32_t s_seq = 0;
+std::atomic<uint32_t> s_seq{0};   // tăng ở luồng đọc, đọc ở loop() (cloud)
 
 double decode(const uint16_t* w0, DType t, bool swap) {
   uint16_t w[4]; int n = t == DType::Float64 ? 4 : (t == DType::UInt32 || t == DType::Int32 || t == DType::Float32) ? 2 : 1;
@@ -85,7 +86,7 @@ void pollOnce() {
 void task(void*) {
   for (;;) {
     uint32_t t0 = millis();
-    if (g_running) pollOnce();
+    if (g_running && !g_locked) pollOnce();   // thiết bị bị khoá (báo mất): không đọc PLC
     int wait = max(20, g_cfg.pollMs - (int)(millis() - t0));
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait));   // lệnh ghi xong → đánh thức đọc ngay
   }
@@ -112,6 +113,7 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
       if (k.equalsIgnoreCase(key) && (child.length() == 0 || p.child.equalsIgnoreCase(child))) { copy = p; found = true; break; }
     }
   }
+  if (g_locked) return "device_locked";
   if (!found) return "unknown_key";
   const Field* f = &copy;
   if ((f->hasMin && v < f->min) || (f->hasMax && v > f->max)) { logf("Từ chối %s.%s = %g: ngoài khoảng", f->child.c_str(), f->field.c_str(), v); return "value_out_of_range"; }

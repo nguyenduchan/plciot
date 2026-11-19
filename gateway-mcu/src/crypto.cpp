@@ -7,6 +7,7 @@
 #include <mbedtls/ecp.h>
 #include <mbedtls/sha256.h>
 #include <mbedtls/base64.h>
+#include <mbedtls/x509_crt.h>
 #include <esp_random.h>
 
 namespace {
@@ -126,26 +127,56 @@ String idSign(const String& msg) {
   return b64u(raw, 64);
 }
 
-bool verifyCmd(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
-  static const char* marker = ",\"sig\":\"";
-  int i = raw.lastIndexOf(marker);
-  if (i < 0 || !raw.endsWith("\"}")) return false;
-  String json = raw.substring(0, i) + "}";
-  auto sig = fromB64u(raw.substring(i + strlen(marker), raw.length() - 2));
-  if (sig.size() != 64) return false;
-  auto spki = fromB64u(keyB64u);
-  if (spki.empty()) return false;
+/// Kiểm chữ ký ECDSA P-256 / SHA-256 dạng IEEE P1363 (r||s, base64url) bằng khoá công khai SPKI (base64url) — dùng cho
+/// lệnh ký của server và chữ ký đăng nhập của PC admin (GatewayIdentity.Sign của GatewayApp).
+bool verifySig(const String& spkiB64u, const String& msg, const String& sigB64u) {
+  auto sig = fromB64u(sigB64u);
+  auto spki = fromB64u(spkiB64u);
+  if (sig.size() != 64 || spki.empty()) return false;
   mbedtls_pk_context pk; mbedtls_pk_init(&pk);
   bool ok = false;
-  if (mbedtls_pk_parse_public_key(&pk, spki.data(), spki.size()) == 0) {
-    String msg = "cmd1|" + mqttId + "|" + json;
+  if (mbedtls_pk_parse_public_key(&pk, spki.data(), spki.size()) == 0 && mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
     uint8_t h[32]; sha256((const uint8_t*)msg.c_str(), msg.length(), h);
     uint8_t der[80]; size_t dl = rawToDer(sig.data(), der);
     ok = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, h, 32, der, dl) == 0;
   }
   mbedtls_pk_free(&pk);
-  if (ok) unsignedOut = json;
   return ok;
+}
+
+bool verifyCmd(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
+  static const char* marker = ",\"sig\":\"";
+  int i = raw.lastIndexOf(marker);
+  if (i < 0 || !raw.endsWith("\"}")) return false;
+  String json = raw.substring(0, i) + "}";
+  if (!verifySig(keyB64u, "cmd1|" + mqttId + "|" + json, raw.substring(i + strlen(marker), raw.length() - 2))) return false;
+  unsignedOut = json;
+  return true;
+}
+
+mbedtls_pk_context* idKey() { return &s_pk; }
+
+/// Chứng chỉ TLS tự ký từ CHÍNH khoá danh tính: admin ghim khoá này, dấu nhận dạng = mã phần cứng (idHw, in ra cổng USB / tem).
+/// Không cần CA: GatewayApp kiểm khoá công khai, không kiểm chuỗi chứng chỉ.
+std::vector<uint8_t> tlsCertDer() {
+  std::vector<uint8_t> out;
+  mbedtls_x509write_cert crt; mbedtls_x509write_crt_init(&crt);
+  String cn = "CN=plciot-" + idHw() + ",O=plciot";
+  mbedtls_x509write_crt_set_subject_key(&crt, &s_pk);
+  mbedtls_x509write_crt_set_issuer_key(&crt, &s_pk);
+  mbedtls_x509write_crt_set_subject_name(&crt, cn.c_str());
+  mbedtls_x509write_crt_set_issuer_name(&crt, cn.c_str());
+  mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
+  mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
+  uint8_t serial[8]; esp_fill_random(serial, sizeof serial); serial[0] &= 0x7f;
+  mbedtls_x509write_crt_set_serial_raw(&crt, serial, sizeof serial);
+  mbedtls_x509write_crt_set_validity(&crt, "20250101000000", "20991231235959");
+  static uint8_t buf[1024];
+  int n = mbedtls_x509write_crt_der(&crt, buf, sizeof buf, rng, nullptr);   // ghi vào CUỐI bộ đệm
+  if (n > 0) out.assign(buf + sizeof buf - n, buf + sizeof buf);
+  else logf("Tạo chứng chỉ TLS lỗi %d", n);
+  mbedtls_x509write_crt_free(&crt);
+  return out;
 }
 
 String fingerprint() {

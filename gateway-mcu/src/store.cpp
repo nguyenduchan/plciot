@@ -23,6 +23,17 @@ int g_rev = 0;
 SemaphoreHandle_t g_lock = xSemaphoreCreateRecursiveMutex();
 SemaphoreHandle_t g_bus = xSemaphoreCreateRecursiveMutex();
 
+bool g_locked = false;
+String g_lockReason;
+
+void setLocked(bool on, const String& reason) {
+  if (on == g_locked && (!on || reason == g_lockReason)) return;
+  g_locked = on; g_lockReason = on ? (reason.length() ? reason : String("server")) : String("");
+  s_nvs.putString("lock", g_lockReason);   // storeReset (giữ BOOT 10 giây) không đụng khoá này
+  engineRestart();   // bỏ giá trị cũ; vòng đọc dừng/chạy theo g_locked
+  logf(on ? "⚠ THIẾT BỊ BỊ KHOÁ (%s) — dừng đọc/điều khiển, từ chối mọi đăng nhập và ghép PC" : "Thiết bị đã được mở khoá%s", g_lockReason.c_str());
+}
+
 String secretGet(const char* key) { return s_nvs.getString(key, ""); }
 void secretSet(const char* key, const String& v) { s_nvs.putString(key, v); }
 String cloudPassword() { return secretGet("cloud_pw"); }
@@ -50,6 +61,8 @@ static void defaults() {
 
 void storeBegin() {
   s_nvs.begin("gw", false);
+  g_lockReason = s_nvs.getString("lock", ""); g_locked = g_lockReason.length() > 0;
+  if (g_locked) logf("⚠ Thiết bị đang bị KHOÁ (%s) — chờ server mở khoá", g_lockReason.c_str());
   if (!LittleFS.begin(true)) logf("LittleFS lỗi — chạy với cấu hình mặc định (không lưu được)");
   File f = LittleFS.open(kPath, "r");
   bool ok = false;
@@ -72,6 +85,8 @@ bool storeSave() {
 void storeReset() {
   LittleFS.remove(kPath);
   s_nvs.remove("cloud_pw");
+  netReset();   // quên IP đã đặt vẫn tìm lại được board: về 192.168.1.200
+  apiForgetAdmins();   // mọi PC admin phải ghép lại (nhấn BOOT)
   defaults();
   storeSave();
   storeApply();

@@ -115,6 +115,9 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
       bool on = sys == "claimed";
       { Lock l; g_raw["Config"]["CloudSendData"] = on; } storeSave(); storeApply();
       logf(on ? "Server báo tem đã có user — bắt đầu gửi data lên cloud" : "Server báo tem không còn user — ngừng gửi data, chỉ đồng bộ setting");
+    } else if (sys == "lock" || sys == "unlock") {
+      if (!trusted) { logf("Bỏ lệnh %s không có chữ ký server", sys.c_str()); return; }   // chỉ server (khoá ký) mới khoá/mở được
+      setLocked(sys == "lock", r["reason"] | "server");
     } else if (sys == "live") {
       int ttl = constrain((int)(r["ttl"] | 60), 5, 600);
       if (!live()) logf("Có người xem webapp — gửi dữ liệu nhanh");
@@ -155,10 +158,11 @@ void timeFromDate(const String& date) {
   logf("Đặt giờ theo server: %s", date.c_str());
 }
 
-int httpsJson(const String& url, const String& body, const String& bearer, String& resp) {
+/// HTTPS (chứng chỉ CA của ESP-IDF) tới VPS, hoặc http:// tới server cài trên PC trong LAN (trường hợp offline, không có CA công khai).
+int httpsJson(const String& url, const String& body, const String& bearer, String& resp, bool get = false) {
   HttpBuf b;
   esp_http_client_config_t c = {};
-  c.url = url.c_str(); c.method = HTTP_METHOD_POST; c.timeout_ms = 30000;
+  c.url = url.c_str(); c.method = get ? HTTP_METHOD_GET : HTTP_METHOD_POST; c.timeout_ms = 30000;
   c.crt_bundle_attach = esp_crt_bundle_attach; c.event_handler = httpEvent; c.user_data = &b;
   esp_http_client_handle_t h = esp_http_client_init(&c);
   if (!h) return -1;
@@ -167,7 +171,7 @@ int httpsJson(const String& url, const String& body, const String& bearer, Strin
   esp_http_client_set_header(h, "X-Gateway-Kind", "mcu");
   String auth = "Bearer " + bearer;
   if (bearer.length()) esp_http_client_set_header(h, "Authorization", auth.c_str());
-  esp_http_client_set_post_field(h, body.c_str(), body.length());
+  if (!get) esp_http_client_set_post_field(h, body.c_str(), body.length());
   esp_err_t e = esp_http_client_perform(h);
   int st = e == ESP_OK ? esp_http_client_get_status_code(h) : -1;
   esp_http_client_cleanup(h);
@@ -276,6 +280,7 @@ bool doRegister(const String& api, const String& loginJson, String& msg) {
   int st = httpsJson(apiBase(api) + "/api/v1/gateway/register", req, token, resp);
   if (st < 200 || st >= 300) {
     String e = st < 0 ? "không nối được server" : errorOf(resp, st);
+    if (e == "device_blocked") { setLocked(true, "server"); msg = "Thiết bị đã bị khoá (báo mất) — liên hệ nhà cung cấp."; return false; }
     msg = e == "too_many_gateways" ? "Tài khoản đã đạt số gateway tối đa." : e == "invalid_proof" ? "Đồng hồ board lệch quá 5 phút so với server." :
           e == "unauthorized" || e == "session_revoked" ? "Phiên đăng nhập hết hạn — đăng nhập lại." : "Kết nối lỗi: " + e;
     return false;
@@ -302,7 +307,10 @@ bool doEnroll(const String& api, const String& qr, String& msg) {
   body["sig"] = idSign("enroll|" + site + "|" + device + "|" + String(ts));
   String req, resp; serializeJson(body, req);
   int st = httpsJson(apiBase(api) + "/api/v1/gateway/enroll", req, "", resp);
-  if (st < 200 || st >= 300) { msg = "Enroll lỗi: " + (st < 0 ? String("không nối được server") : errorOf(resp, st)); return false; }
+  if (st < 200 || st >= 300) {
+    if (st > 0 && errorOf(resp, st) == "device_blocked") { setLocked(true, "server"); msg = "Thiết bị đã bị khoá (báo mất) — liên hệ nhà cung cấp."; return false; }
+    msg = "Enroll lỗi: " + (st < 0 ? String("không nối được server") : errorOf(resp, st)); return false;
+  }
   JsonDocument kit; deserializeJson(kit, resp);
   return applyKit(kit.as<JsonObjectConst>(), qr, api, msg);
 }
@@ -318,7 +326,12 @@ void refreshConfig() {
   body["sig"] = idSign("config|" + site + "|" + device + "|" + String(ts));
   String req, resp; serializeJson(body, req);
   int st = httpsJson(apiBase("") + "/api/v1/gateway/config", req, "", resp);
-  if (st < 200 || st >= 300) { if (st > 0) logf("Hỏi cấu hình server lỗi: %s", errorOf(resp, st).c_str()); return; }
+  if (st < 200 || st >= 300) {
+    if (st > 0 && errorOf(resp, st) == "device_blocked") setLocked(true, "server");   // admin khoá theo mã phần cứng
+    if (st > 0) logf("Hỏi cấu hình server lỗi: %s", errorOf(resp, st).c_str());
+    return;
+  }
+  if (g_locked) setLocked(false, "");   // server không còn chặn máy này → mở khoá
   JsonDocument k; if (deserializeJson(k, resp)) return;
   bool changed = false;
   {
@@ -399,8 +412,23 @@ bool cloudAction(const String& action, const String& api, const String& value, S
   if (ETH.localIP() == IPAddress(0, 0, 0, 0)) { msg = "Board chưa có mạng."; return false; }
   if (action == "register") return doRegister(api, value, msg);
   if (action == "enroll") return doEnroll(api, value, msg);
-  msg = action == "password" ? "Gateway Waveshare không có mật khẩu mở khoá tại máy — cài đặt chỉ khi nhấn BOOT trên board."
+  msg = action == "password" ? "Gateway Waveshare không dùng mật khẩu: PC admin được ghép bằng nút BOOT (hoặc đăng nhập webapp), sau đó vào tự động."
       : action == "migrate" ? "Board không chuyển được sang máy khác — đăng ký lại board mới." : "việc cloud không hợp lệ";
+  return false;
+}
+
+bool cloudOwnsBoard(const String& webToken, String& why) {
+  if (!mqttIdOk(g_cfg.mqttId)) { why = "board_not_registered"; return false; }   // chưa đăng ký server nào: chỉ ghép được bằng nút BOOT
+  if (ETH.localIP() == IPAddress(0, 0, 0, 0)) { why = "server_unreachable"; return false; }
+  String resp;
+  int st = httpsJson(apiBase("") + "/api/v1/gateway/mine", "", webToken, resp, true);
+  if (st < 0) { why = "server_unreachable"; return false; }
+  if (st != 200) { why = errorOf(resp, st); return false; }
+  JsonDocument d;
+  if (deserializeJson(d, resp)) { why = "bad_response"; return false; }
+  for (JsonObjectConst g : d["gateways"].as<JsonArrayConst>())
+    if (g_cfg.site == (g["site"] | "") && g_cfg.device == (g["device"] | "")) return true;
+  why = "not_owner";
   return false;
 }
 
@@ -446,14 +474,14 @@ void cloudLoop() {
   if (st != s_lastStatus) { s_lastStatus = st; publish("status", st, true); }
 
   // telemetry theo TelemetryGate; chưa có user → chỉ setting, không data
-  if (s_telePending && g_cfg.sendData && millis() - s_lastTele >= gapMs()) {
+  if (s_telePending && g_cfg.sendData && !g_locked && millis() - s_lastTele >= gapMs()) {
     String tele = engineTelemetry();
     if (tele.length() && tele.length() <= 4096) { publish("telemetry", tele, true); s_lastTele = millis(); }
     s_telePending = false;
   }
 
   // gửi bù dữ liệu lúc offline: ~10 bản tin/giây, cũ nhất trước
-  if (g_cfg.sendData && (int32_t)(millis() - s_nextBackfill) >= 0) {
+  if (g_cfg.sendData && !g_locked && (int32_t)(millis() - s_nextBackfill) >= 0) {
     String p;
     if (backfillNext(p)) {
       String t = base() + "/telemetry";

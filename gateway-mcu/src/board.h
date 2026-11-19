@@ -33,8 +33,24 @@ static const int DI_PINS[8] = {4, 5, 6, 7, 8, 9, 10, 11};
 #define PIN_BOOT   0         // nút BOOT: nhấn ngắn = mở cho admin 10 phút; giữ 10 giây = xoá cấu hình
 
 #ifdef GW_SIM
-#define API_PORT simApiPort()  // bản giả lập trên PC: đổi cổng bằng biến môi trường SIM_API_PORT (tránh trùng GatewayApp)
+#define API_PORT simApiPort()        // bản giả lập trên PC: SIM_API_PORT (mặc định 443 như board)
+#define STATUS_PORT simStatusPort()  // SIM_HTTP_PORT (mặc định 80)
 #else
-#define API_PORT 8750        // giống gateway PC (MainForm.Remote.cs)
+#define API_PORT 443         // API cài đặt qua HTTPS (chứng chỉ từ khoá danh tính, GatewayApp ghim khoá)
+#define STATUS_PORT 80       // trang trạng thái HTTP thường như thiết bị Ethernet sẵn firmware Waveshare — KHÔNG nhận lệnh cấu hình
 #endif
 #define DISCOVER_PORT 8751   // RemoteClient.DiscoverPort
+#ifdef GW_SIM
+#define SETUP_WINDOW_MS simSetupWindowMs()   // bản giả lập: rút ngắn bằng SIM_WINDOW_SEC để thử "hết cửa sổ ghép"
+#define PAIR_WAIT_MS simPairWaitMs()         // SIM_PAIR_WAIT_SEC: rút ngắn 24 giờ chờ để thử tự kích hoạt
+#else
+#define SETUP_WINDOW_MS (10 * 60 * 1000UL)   // cửa sổ ghép PC admin mới: 10 phút sau khi nhấn BOOT (hoặc cấp điện khi chưa có PC nào)
+#define PAIR_WAIT_MS (24UL * 3600 * 1000)    // PC mới ghép khi đã có PC quản trị: chờ 24 giờ (thời gian board có điện) nếu không ai từ chối
+#endif
+
+// Mạng mặc định — theo quy ước thiết bị Ethernet công nghiệp có sẵn firmware của Waveshare: IP TĨNH 192.168.1.200/24.
+// Đổi bằng GatewayApp (cửa sổ Waveshare → "Mạng (IP)…") hoặc API PUT /api/network; giữ BOOT 10 giây = về mặc định.
+#define NET_DEFAULT_IP   "192.168.1.200"
+#define NET_DEFAULT_MASK "255.255.255.0"
+#define NET_DEFAULT_GW   "192.168.1.1"
+#define NET_DEFAULT_DNS  "8.8.8.8"

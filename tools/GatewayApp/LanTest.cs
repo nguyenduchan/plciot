@@ -26,16 +26,30 @@ public sealed partial class MainForm
         try
         {
             var found = await RemoteClient.DiscoverAsync(TimeSpan.FromSeconds(2));
-            log.Add("discover: " + string.Join(", ", found.Select(f => $"{f.Ip}:{f.Hello.Port} {f.Hello.Kind} \"{f.Hello.Name}\" hw={f.Hello.Hw}")));
+            log.Add("discover: " + string.Join(", ", found.Select(f => $"{f.Ip}:{f.Hello.Port} {f.Hello.Kind} tls={f.Hello.Tls} \"{f.Hello.Name}\" hw={f.Hello.Hw}")));
             Check("discover thấy thiết bị đích", found.Any(f => f.Hello.Port == port));
+            var mcu = found.Any(f => f.Hello.Port == port && f.Hello.Tls);
 
-            try { using var bad = await RemoteClient.ConnectAsync(host, port, code == "00000000" ? "11111111" : "00000000"); Check("mã sai bị từ chối", false, "lại nối được"); }
-            catch (RemoteException e) { Check("mã sai bị từ chối", e.Code == "unauthorized", e.Code); }
-
-            var c = await RemoteClient.ConnectAsync(host, port, code);
+            RemoteClient c;
+            if (mcu)
+            {
+                // board MCU: HTTPS + khoá PC, không mã. Thử bảo mật TRƯỚC (cửa sổ ghép đang mở vì board chưa có PC nào)
+                TrustedBoards.FilePath = Path.Combine(outDir, "remote-boards.json");
+                if (File.Exists(TrustedBoards.FilePath)) File.Delete(TrustedBoards.FilePath);
+                var http = int.TryParse(ArgValue(args, "--lan-http"), out var hp) ? hp : 80;
+                var boardHw = found.First(f => f.Hello.Port == port).Hello.Hw;
+                await McuSecurityTestAsync(host, port, http, boardHw, Check, log);
+                c = (await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => true)).Client;
+            }
+            else
+            {
+                try { using var bad = await RemoteClient.ConnectAsync(host, port, code == "00000000" ? "11111111" : "00000000"); Check("mã sai bị từ chối", false, "lại nối được"); }
+                catch (RemoteException e) { Check("mã sai bị từ chối", e.Code == "unauthorized", e.Code); }
+                c = await RemoteClient.ConnectAsync(host, port, code);
+            }
             var first = await c.ConfigAsync();
             var st0 = await c.StateAsync();
-            Check("nối bằng mã đúng + đọc cấu hình/trạng thái", true, $"pack={first.Config.Pack.Count} rev={st0.Rev} running={st0.Running}");
+            Check("đăng nhập + đọc cấu hình/trạng thái", true, $"pack={first.Config.Pack.Count} rev={st0.Rev} running={st0.Running}");
             Check("không lộ mật khẩu cloud", string.IsNullOrEmpty(first.Config.CloudPassword));
             var hello = found.FirstOrDefault(f => f.Hello.Port == port).Hello ?? new ApiHello { Kind = "pc", Port = port };
             rf = RemoteForm.ForTest(c, hello, host, port, first);
@@ -96,7 +110,7 @@ public sealed partial class MainForm
             Check($"xoá {tank} qua LAN", cfgD.Config.Pack.All(p => p.Child != tank) && cfgD.Config.Pack.Any(p => p.Child == pump));
 
             // đổi cấu hình từ phía thiết bị (admin khác) → cửa sổ tự nạp lại
-            var other = await RemoteClient.ConnectAsync(host, port, code);
+            var other = mcu ? (await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => false)).Client : await RemoteClient.ConnectAsync(host, port, code);
             var oc = await other.ConfigAsync();
             oc.Config.PollMs = oc.Config.PollMs == 700 ? 800 : 700;
             await other.PutConfigAsync(oc);
@@ -105,12 +119,115 @@ public sealed partial class MainForm
             Check("cửa sổ tự nạp lại khi thiết bị đổi cấu hình", rf.Config.PollMs == oc.Config.PollMs, $"PollMs={rf.Config.PollMs}");
             log.Add("--- nhật ký cửa sổ từ xa ---");
             log.Add(rf.LogText);
+            // đổi IP làm board khởi động lại (mất phiên): đóng cửa sổ từ xa trước để nó không bật hộp hỏi mã giữa bài thử
+            rf.Close(); rf = null;
+            if (mcu)
+            {
+                Func<Task<RemoteClient>> connect = async () => (await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => false)).Client;
+                await NetworkTestAsync(connect, Check, log);
+                // sau khởi động lại (đổi IP): board đã có PC quản trị nên KHÔNG mở cửa sổ ghép → PC lạ bị từ chối, PC đã ghép vẫn vào
+                var k = ""; var stranger = Plciot.Scada.Services.Ui.GatewayIdentity.LoadOrCreate(ref k, out _);
+                try { using var s = (await RemoteClient.ConnectMcuAsync(host, port, stranger, _ => true)).Client; Check("sau khởi động lại: PC lạ không ghép được (cấp điện không mở cửa sổ ghép)", false, "lại vào được"); }
+                catch (RemoteException e) { Check("sau khởi động lại: PC lạ không ghép được (cấp điện không mở cửa sổ ghép)", e.Code == "not_paired", e.Code); }
+                try { using var me = await connect(); Check("PC đã ghép vẫn vào không cần BOOT", true); }
+                catch (Exception e) { Check("PC đã ghép vẫn vào không cần BOOT", false, RemoteClient.Explain(e)); }
+            }
         }
         catch (Exception e) { Check("chạy kiểm thử", false, RemoteClient.Explain(e) + " " + e.GetType().Name + ": " + e.Message); }
         File.WriteAllLines(Path.Combine(outDir, "lantest-result.txt"), log);
         rf?.Close();
         await StopAsync();
         Close();
+    }
+
+    /// <summary>Board MCU: mạng mặc định 192.168.1.200/24, từ chối cấu hình sai, đổi IP → board khởi động lại → nối lại → đã lưu; trả về mặc định.</summary>
+    /// <summary>
+    /// Board MCU, kênh bảo mật: cổng HTTP thường không nhận lệnh; PC đầu ghép dùng ngay; PC sau chờ → PC cũ đồng ý / từ chối;
+    /// PC chờ đủ thời gian tự kích hoạt (SIM_PAIR_WAIT_SEC); ghim khoá: board lạ phải được người dùng xác nhận.
+    /// </summary>
+    async Task McuSecurityTestAsync(string host, int port, int httpPort, string boardHw, Action<string, bool, string> Check, List<string> log)
+    {
+        using (var plain = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
+        {
+            try
+            {
+                var r = await plain.GetAsync($"http://{host}:{httpPort}/api/state");
+                Check("cổng HTTP thường không nhận lệnh cấu hình (use_https)", (int)r.StatusCode == 403 && (await r.Content.ReadAsStringAsync()).Contains("use_https"), $"HTTP {(int)r.StatusCode}");
+            }
+            catch (Exception e) { Check("cổng HTTP thường không nhận lệnh cấu hình (use_https)", false, e.Message); }
+        }
+        var asked = "";
+        try { using var _ = (await RemoteClient.ConnectMcuAsync(host, port, Identity(), hw => { asked = hw; return false; })).Client; Check("board lạ: hỏi người dùng đối chiếu mã phần cứng", false, "không hỏi"); }
+        catch (RemoteException e) { Check("board lạ: hỏi người dùng đối chiếu mã phần cứng (khoá trong chứng chỉ TLS = mã của board)", e.Code == "untrusted_board" && asked == boardHw, $"hỏi {asked}, board {boardHw}"); }
+
+        var (c1, paired1) = await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => true);
+        Check("PC đầu tiên (board chưa có PC quản trị): ghép dùng ngay", paired1, "");
+        Plciot.Scada.Services.Ui.GatewayIdentity NewKey() { var k = ""; return Plciot.Scada.Services.Ui.GatewayIdentity.LoadOrCreate(ref k, out _); }
+        async Task<string> Try(Plciot.Scada.Services.Ui.GatewayIdentity id)
+        {
+            try { using var x = (await RemoteClient.ConnectMcuAsync(host, port, id, _ => true)).Client; return "ok"; }
+            catch (RemoteException e) { return e.Code; }
+        }
+        async Task<ApiAdmin?> Find(string name) => (await c1.AdminsAsync()).FirstOrDefault(a => !a.Self && !a.Active);
+        // PC thứ hai: chờ → PC cũ đồng ý → vào được
+        var pc2 = NewKey();
+        Check("PC thứ hai (đã có PC quản trị): phải chờ", await Try(pc2) == "pair_pending", "");
+        var p2 = await Find("");
+        Check("PC quản trị thấy PC đang chờ", p2 != null && p2.RemainMin > 0, p2 == null ? "không thấy" : $"còn {p2.RemainMin} phút");
+        if (p2 != null) await c1.AdminActionAsync(p2.Id, "approve");
+        Check("PC cũ bấm Đồng ý → PC thứ hai vào được ngay", await Try(pc2) == "ok", "");
+        // PC thứ ba: chờ → PC cũ từ chối → bị gỡ khỏi danh sách
+        var pc3 = NewKey();
+        await Try(pc3);
+        var p3 = await Find("");
+        if (p3 != null) await c1.AdminActionAsync(p3.Id, "reject");
+        var after = await c1.AdminsAsync();
+        Check("PC cũ bấm Từ chối → PC thứ ba bị gỡ", p3 != null && after.All(a => a.Id != p3.Id), $"{after.Count} PC trong danh sách");
+        foreach (var a in after.Where(a => !a.Self)) await c1.AdminActionAsync(a.Id, "remove");   // dọn PC thứ hai trước bài thử tự kích hoạt
+        // PC thứ tư: chờ, không ai từ chối → tự kích hoạt khi hết thời gian chờ
+        var pc4 = NewKey();
+        await Try(pc4);
+        var p4 = await Find("");
+        log.Add($"PC thứ tư chờ {p4?.RemainMin} phút (bản giả lập rút ngắn bằng SIM_PAIR_WAIT_SEC)");
+        var r4 = "";
+        for (var i = 0; i < 40 && (r4 = await Try(pc4)) != "ok"; i++) await Task.Delay(1000);
+        Check("PC chờ đủ thời gian, không ai từ chối → tự kích hoạt", r4 == "ok", r4);
+        foreach (var a in (await c1.AdminsAsync()).Where(a => !a.Self)) await c1.AdminActionAsync(a.Id, "remove");
+        var rmSelf = await c1.AdminActionAsync((await c1.AdminsAsync()).First(a => a.Self).Id, "remove").ContinueWith(t => t.IsFaulted ? (t.Exception!.InnerException as RemoteException)?.Code ?? "lỗi" : t.Result.Ok ? "ok" : t.Result.Err ?? "");
+        Check("không gỡ được PC quản trị cuối cùng", rmSelf != "ok", rmSelf);
+        c1.Dispose();
+    }
+
+    static async Task NetworkTestAsync(Func<Task<RemoteClient>> connect, Action<string, bool, string> Check, List<string> log)
+    {
+        var c = await connect();   // thay bằng phiên mới sau mỗi lần board khởi động lại
+        var n0 = await c.NetworkAsync();
+        log.Add($"mạng hiện tại: dhcp={n0.Dhcp} ip={n0.Ip}/{n0.Mask} gw={n0.Gateway} dns={n0.Dns} mac={n0.Mac} đang dùng={n0.Current}");
+        Check("mạng mặc định = IP tĩnh 192.168.1.200/24, gw 192.168.1.1", !n0.Dhcp && n0.Ip == "192.168.1.200" && n0.Mask == "255.255.255.0" && n0.Gateway == "192.168.1.1", "");
+        foreach (var (bad, why) in new[] { (new ApiNetwork { Ip = "192.168.1.300", Mask = "255.255.255.0" }, "IP sai"), (new ApiNetwork { Ip = "192.168.1.50", Mask = "255.0.255.0" }, "mask không liền bit"), (new ApiNetwork { Ip = "192.168.1.50", Mask = "255.255.255.0", Gateway = "10.0.0.1" }, "gateway khác mạng con") })
+        {
+            try { var r = await c.PutNetworkAsync(bad); Check($"từ chối cấu hình mạng sai ({why})", !r.Ok, r.Err ?? ""); }
+            catch (RemoteException e) { Check($"từ chối cấu hình mạng sai ({why})", true, e.Code); }
+        }
+        async Task<ApiNetwork?> PutAndReconnect(ApiNetwork n)
+        {
+            var r = await c.PutNetworkAsync(n);
+            if (!r.Ok) { log.Add("đổi mạng lỗi: " + r.Err); return null; }
+            // board hẹn 1,5 giây mới khởi động lại: phải chờ nó THẬT SỰ mất kết nối, không thì nối lại vào bản cũ chưa khởi động lại
+            for (var i = 0; i < 20; i++) { await Task.Delay(500); try { await c.StateAsync(); } catch (RemoteException) { break; } }
+            c.Dispose();
+            for (var i = 0; i < 30; i++)   // board khởi động lại (bản giả lập: tự chạy lại) → cửa sổ cài đặt mở lại → nối bằng mã
+            {
+                await Task.Delay(1000);
+                try { c = await connect(); return await c.NetworkAsync(); } catch (Exception) { }
+            }
+            return null;
+        }
+        var n1 = await PutAndReconnect(new ApiNetwork { Ip = "192.168.1.201", Mask = "255.255.255.0", Gateway = "192.168.1.1", Dns = "1.1.1.1" });
+        Check("đổi IP → board khởi động lại → nối lại, IP mới đã lưu", n1 is { Dhcp: false, Ip: "192.168.1.201", Dns: "1.1.1.1" }, n1 == null ? "không nối lại được" : $"{n1.Ip} dns {n1.Dns}");
+        var n2 = await PutAndReconnect(new ApiNetwork { Ip = "192.168.1.200", Mask = "255.255.255.0", Gateway = "192.168.1.1", Dns = "8.8.8.8" });
+        Check("trả về mạng mặc định", n2 is { Ip: "192.168.1.200" }, n2?.Ip ?? "không nối lại được");
+        c.Dispose();
     }
 
     static void SaveForm(Form f, string path)

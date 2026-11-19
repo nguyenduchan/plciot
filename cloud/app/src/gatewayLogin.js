@@ -20,6 +20,7 @@ import { addDeviceFromQr } from './userDevices.js';
 import { requestTransfer, mountGatewayTransfers } from './gatewayTransfer.js';
 import { notifyGateway } from './gatewayNotify.js';
 import { findForeignPairing, checkTransferRequest, registerForUser, listGatewaysOfUser, rebindForUser } from './gatewayPairing.js';
+import { isHwBlocked, hwOfPubkey, BLOCKED } from './hwBlock.js';
 
 const ALPHABET = '0123456789';   // mã ghép / OTP CHỈ gồm chữ số (dễ gõ trên bàn phím số, không nhầm O/0, I/1)
 const CODE_RE = /^\d{8}$/;
@@ -219,6 +220,8 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
     if (!user || user.disabled) return res.status(user?.disabled ? 403 : 401).json({ error: user?.disabled ? 'account_disabled' : 'unauthorized' });
     if ((payload.tv | 0) !== (user.token_version | 0)) return res.status(401).json({ error: 'session_revoked' });
+    // Thiết bị báo mất trộm (admin khoá theo mã phần cứng): không đăng ký / không chuyển chủ được
+    if (isHwBlocked(db, hwOfPubkey(req.body?.pubkey))) return res.status(BLOCKED.status).json({ error: BLOCKED.error });
     // Gateway này đang thuộc tài khoản KHÁC → không chuyển ngay: tạo YÊU CẦU ĐỔI CHỦ chờ chủ cũ duyệt (Face ID/TOTP) hoặc hết hạn chờ (gatewayTransfer.js).
     const prev = findForeignPairing(db, user, req.body || {});
     if (prev) {
@@ -258,6 +261,7 @@ export function mountGatewayLogin(app, { db, requireAuth, jwtSecret, publicUrl }
   });
   app.post('/api/v1/gateway/rebind', regLimit, (req, res) => {
     const user = regUser(req, res); if (!user) return;
+    if (isHwBlocked(db, hwOfPubkey(req.body?.pubkey))) return res.status(BLOCKED.status).json({ error: BLOCKED.error });
     const r = rebindForUser(db, user, req.body || {});
     if (r.error) return res.status(r.status || 400).json(r);
     res.json(r);

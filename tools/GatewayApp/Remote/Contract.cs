@@ -34,4 +34,26 @@ public sealed class ApiCloud { public string Action { get; set; } = ""; public s
 /// Trả lời gói tìm thiết bị UDP (cổng <see cref="RemoteClient.DiscoverPort"/>). Kind: "pc" (GatewayApp) | "mcu" (Waveshare ESP32-S3).
 /// Hw: mã phần cứng (MAC với MCU). Name: tên hiển thị (site/device nếu đã đăng ký).
 /// </summary>
-public sealed class ApiHello { public string Kind { get; set; } = ""; public string Name { get; set; } = ""; public string Hw { get; set; } = ""; public int Port { get; set; } public string Version { get; set; } = ""; }
+public sealed class ApiHello
+{
+    public string Kind { get; set; } = ""; public string Name { get; set; } = ""; public string Hw { get; set; } = ""; public int Port { get; set; } public string Version { get; set; } = "";
+    /// <summary>IP / subnet / MAC của thiết bị (board MCU gửi; gateway PC để trống). Board trả lời cả broadcast nên khác mạng con vẫn thấy.</summary>
+    public string Ip { get; set; } = ""; public string Mask { get; set; } = ""; public string Mac { get; set; } = "";
+    /// <summary>true = API cài đặt qua HTTPS (board MCU, cổng 443): đăng nhập bằng khoá PC, không mã.</summary>
+    public bool Tls { get; set; }
+    /// <summary>true = board bị khoá (báo mất trộm, admin khoá theo mã phần cứng) — không cài đặt được tới khi server mở khoá.</summary>
+    public bool Locked { get; set; }
+}
+/// <summary>Board MCU: một PC quản trị (GET /api/admins). Active=false: đang chờ — PC quản trị cũ đồng ý/từ chối, hoặc tự kích hoạt sau RemainMin phút.</summary>
+public sealed class ApiAdmin { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public string How { get; set; } = ""; public bool Active { get; set; } public int RemainMin { get; set; } public bool Self { get; set; } }
+/// <summary>Board MCU: thử thách đăng nhập (GET /api/challenge) — Nonce dùng một lần; Window = đang mở ghép PC mới (nhấn BOOT).</summary>
+public sealed class ApiChallenge { public string Nonce { get; set; } = ""; public string Hw { get; set; } = ""; public bool Window { get; set; } }
+/// <summary>Board MCU: POST /api/login — Sig = khoá PC ký "admin-login|&lt;mã phần cứng board&gt;|&lt;Nonce&gt;". WebToken (tuỳ chọn) = phiên webapp của chủ board để ghép PC khi không nhấn được BOOT.</summary>
+public sealed class ApiKeyLogin { public string Pubkey { get; set; } = ""; public string Nonce { get; set; } = ""; public string Sig { get; set; } = ""; public string Name { get; set; } = ""; public string WebToken { get; set; } = ""; }
+/// <summary>Cấu hình IP của board MCU (GET/PUT /api/network). Mặc định IP tĩnh 192.168.1.200/24 như thiết bị Ethernet sẵn firmware của Waveshare. Current = IP đang dùng.</summary>
+public sealed class ApiNetwork
+{
+    public bool Dhcp { get; set; }
+    public string Ip { get; set; } = ""; public string Mask { get; set; } = ""; public string Gateway { get; set; } = ""; public string Dns { get; set; } = "";
+    public string Mac { get; set; } = ""; public string Current { get; set; } = "";
+}
