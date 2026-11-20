@@ -225,7 +225,7 @@ export function widgetsFromFields(fields) {
     const w = { id: f.key, kind, bind: f.key, label: f.lbl || f.key };
     if (f.unit) w.unit = f.unit;
     if (kind === 'gauge' || kind === 'tank') { w.min = f.min ?? 0; w.max = f.max ?? 100; }
-    if (kind === 'toggle') { w.cmd = { key: f.key, on: 1, off: 0 }; if (f.on) w.onText = f.on; if (f.off) w.offText = f.off; }
+    if (kind === 'toggle') { w.cmd = { key: f.key, on: 1, off: 0 }; if (f.on) w.onText = f.on; if (f.off) w.offText = f.off; if (f.fb) w.fb = f.fb; }
     if (kind === 'status') { if (f.on) w.onText = f.on; if (f.off) w.offText = f.off; }
     if (f.low !== undefined) w.low = f.low;
     if (f.high !== undefined) w.high = f.high;

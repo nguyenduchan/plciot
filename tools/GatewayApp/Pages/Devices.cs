@@ -75,7 +75,7 @@ sealed class DeviceDialog : Form
     readonly System.Windows.Forms.Timer _prevTimer = new() { Interval = 200 };
     readonly PreviewApp _pa;
 
-    const int ColField = 0, ColMqtt = 1, ColTitle = 2, ColAccess = 3, ColType = 4, ColD = 5, ColScale = 6, ColUnit = 7, ColMin = 8, ColMax = 9, ColKind = 10, ColOn = 11, ColOff = 12, ColLow = 13, ColHigh = 14, ColSlot = 15;
+    const int ColField = 0, ColMqtt = 1, ColTitle = 2, ColAccess = 3, ColType = 4, ColD = 5, ColScale = 6, ColUnit = 7, ColMin = 8, ColMax = 9, ColKind = 10, ColOn = 11, ColOff = 12, ColLow = 13, ColHigh = 14, ColFb = 15, ColSlot = 16;
     const string NoSlot = "— Widget riêng —";
 
     // Kết nối + thông số giao thức + thứ tự word: khai báo rõ cho thiết bị, không có giá trị ngầm định (ô gợi ý có thể sửa)
@@ -311,6 +311,9 @@ sealed class DeviceDialog : Form
         var kind = new DataGridViewComboBoxColumn { HeaderText = "Hiển thị", Width = 108, FlatStyle = FlatStyle.Flat, SortMode = DataGridViewColumnSortMode.NotSortable };
         kind.Items.AddRange(FieldMeta.KindNames); _g.Columns.Add(kind);
         T("Chữ khi Bật", 100); T("Chữ khi Tắt", 90); T("Ngưỡng thấp", 96); T("Ngưỡng cao", 92);
+        // PHẢN HỒI THẬT: tên field ĐẦU VÀO (DI nối cảm biến / tiếp điểm relay) của cùng thiết bị. Webapp so lệnh với giá trị này
+        // sau khi gửi — khớp = "đã xác nhận bằng cảm biến", lệch/không đổi = cảnh báo. Chỉ dùng cho dòng Công tắc ghi được.
+        T("Phản hồi từ field", 120);
         // GHÉP VÀO SƠ ĐỒ (chỉ khi gateway đang dùng một giải pháp UI): chọn ô sơ đồ → đặt tên field = khoá của ô đó (gateway + webapp
         // cùng nhận theo tên field). "Widget riêng" = field giữ tên riêng, hiện thành thẻ widget ngoài sơ đồ.
         if (SolutionHost.Slots.Count > 0)
@@ -410,7 +413,7 @@ sealed class DeviceDialog : Form
             var ki = Math.Max(0, Array.IndexOf(FieldMeta.Kinds, r.Kind));
             _g.Rows.Add(p.Field, p.MqttKey, m?.Title ?? "", AccessNames[(int)p.Access], TypeNames[(int)p.DataType], p.Address >= 0 ? p.Address.ToString() : "", p.Scale > 0 ? Num(p.Scale) : "", r.Unit,
                 p.Min is { } a ? Num(a) : "", p.Max is { } b ? Num(b) : "",
-                FieldMeta.KindNames[ki], m?.OnText ?? "", m?.OffText ?? "", m?.Low is { } lo ? Num(lo) : "", m?.High is { } hi ? Num(hi) : "");
+                FieldMeta.KindNames[ki], m?.OnText ?? "", m?.OffText ?? "", m?.Low is { } lo ? Num(lo) : "", m?.High is { } hi ? Num(hi) : "", m?.Feedback ?? "");
         }
     }
 
@@ -502,13 +505,22 @@ sealed class DeviceDialog : Form
             if (mn.HasValue && mx.HasValue && mn > mx) { _err.Text = $"Dòng {line}: Min lớn hơn Max."; return; }
             if (!TryNum(Cell(r, ColLow), out var lo) || !TryNum(Cell(r, ColHigh), out var hi)) { _err.Text = $"Dòng {line}: ngưỡng phải là số."; return; }
             var kn = Convert.ToString(r.Cells[ColKind].Value); var ki = Array.IndexOf(FieldMeta.KindNames, kn);
+            var fb = Cell(r, ColFb);
+            if (fb.Length > 0)
+            {
+                // cùng thiết bị, khác chính nó, và chính dòng này phải là công tắc ghi được thì mới có "lệnh" để đối chiếu
+                if (fb == f) { _err.Text = $"Dòng {line}: field phản hồi không được là chính nó."; return; }
+                if ((PackAccess)ai == PackAccess.Read || (FieldMeta.Kinds[Math.Max(0, ki)] is not ("toggle" or "auto"))) { _err.Text = $"Dòng {line}: chỉ field ghi được dạng Công tắc mới có phản hồi."; return; }
+            }
             packs.Add((new PackMap
                 {
                     Child = child, Field = f, MqttKey = mk == f ? "" : mk, Address = addr, Scale = sc!.Value, Min = mn, Max = mx,
                     Protocol = src.ToString(), Access = (PackAccess)ai, DataType = type, WordSwap = swap, Params = new Dictionary<string, string>(prm),
                 },
-                new FieldMeta { Kind = FieldMeta.Kinds[Math.Max(0, ki)], Unit = Cell(r, ColUnit), Title = Cell(r, ColTitle), OnText = Cell(r, ColOn), OffText = Cell(r, ColOff), Low = lo, High = hi }));
+                new FieldMeta { Kind = FieldMeta.Kinds[Math.Max(0, ki)], Unit = Cell(r, ColUnit), Title = Cell(r, ColTitle), OnText = Cell(r, ColOn), OffText = Cell(r, ColOff), Low = lo, High = hi, Feedback = fb }));
         }
+        foreach (var (p, m) in packs)
+            if (m.Feedback.Length > 0 && !packs.Any(x => x.Item1.Field == m.Feedback)) { _err.Text = $"Field phản hồi \"{m.Feedback}\" của \"{p.Field}\" không có trong thiết bị này."; return; }
 
         // áp vào cấu hình
         foreach (var old in _app.Config.Pack.Where(p => p.Child == child).ToList()) { _app.Config.Pack.Remove(old); _app.Meta.Remove(child, old.Field); }

@@ -199,11 +199,12 @@ public sealed partial class MainForm : Form
         PlcModel.FieldMode.Fixed => $"= {value.ToString("0.###", CultureInfo.InvariantCulture)}",
         PlcModel.FieldMode.Random => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)} mỗi giây",
         PlcModel.FieldMode.Sine => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)}, chu kỳ {g.Period.ToString("0.#", CultureInfo.InvariantCulture)} s",
+        PlcModel.FieldMode.Follow => g.Delay < 0 ? $"theo {g.Follow}: HỎNG (không đổi)" : $"theo {g.Follow}{(g.Invert ? " (đảo)" : "")} sau {g.Delay.ToString("0.#", CultureInfo.InvariantCulture)} s",
         _ => $"{g.Min.ToString("0.###", CultureInfo.InvariantCulture)} … {g.Max.ToString("0.###", CultureInfo.InvariantCulture)}, bước {g.Step.ToString("0.###", CultureInfo.InvariantCulture)}/s",
     };
 
-    static readonly string[] ModeNames = { "Cố định", "Ngẫu nhiên trong khoảng", "Sóng sin", "Tăng dần" };
-    static string ModeName(PlcModel.FieldMode m) => ModeNames[m switch { PlcModel.FieldMode.Fixed => 0, PlcModel.FieldMode.Random => 1, PlcModel.FieldMode.Sine => 2, _ => 3 }];
+    static readonly string[] ModeNames = { "Cố định", "Ngẫu nhiên trong khoảng", "Sóng sin", "Tăng dần", "Theo field khác (relay / cảm biến)" };
+    static string ModeName(PlcModel.FieldMode m) => ModeNames[m switch { PlcModel.FieldMode.Fixed => 0, PlcModel.FieldMode.Random => 1, PlcModel.FieldMode.Sine => 2, PlcModel.FieldMode.Ramp => 3, _ => 4 }];
 
     string Sig() => string.Join("|", Streams().Select(s => $"{s.Child}.{s.Field}@{s.Addr}x{s.Scale}:{s.Kind}/{s.Access}/{s.Param}/{s.Type}/{s.Swap}/{s.Group}:{_model.ModeOf(s.Child, s.Field)}"));
 
@@ -484,7 +485,8 @@ public sealed partial class MainForm : Form
                     string N(double d) => d.ToString(CultureInfo.InvariantCulture);
                     return new[] { f.Child, f.Field, N(f.Value), m?.Addr.ToString() ?? "", m == null ? "" : N(m.Value.Scale), g.Mode.ToString(), N(g.Min), N(g.Max), N(g.Period), N(g.Step),
                         mt?.Kind ?? "modbus", (mt?.Access ?? PlcModel.Access.ReadWrite).ToString(), mt?.Param ?? "",
-                        (mt is { Kind: not null } m2 ? m2.Type : PlcModel.DataType.UInt16).ToString(), (mt?.WordSwap ?? false).ToString(), mt?.Group ?? "" };
+                        (mt is { Kind: not null } m2 ? m2.Type : PlcModel.DataType.UInt16).ToString(), (mt?.WordSwap ?? false).ToString(), mt?.Group ?? "",
+                        g.Follow ?? "", N(g.Delay), g.Invert.ToString() };
                 }).ToList(),
             };
             var path = ProfilePath(_solution);
@@ -531,7 +533,7 @@ public sealed partial class MainForm : Form
                 _model.MapField(f[0], f[1], da, sc);
                 // file cũ (5 cột) không có chế độ: mặc định cố định
                 if (f.Length >= 8 && Enum.TryParse<PlcModel.FieldMode>(f[5], out var mode))
-                    _model.SetMode(f[0], f[1], new PlcModel.Gen(mode, D(f, 6, 0), D(f, 7, 100), D(f, 8, 60), D(f, 9, 1)));
+                    _model.SetMode(f[0], f[1], new PlcModel.Gen(mode, D(f, 6, 0), D(f, 7, 100), D(f, 8, 60), D(f, 9, 1), f.Length >= 17 ? f[16] : "", D(f, 17, 1), f.Length >= 19 && f[18] == "True"));
                 // file cũ chưa có giao thức/quyền: Modbus TCP, đọc/ghi
                 var kind = f.Length >= 11 && Protos.Any(p => p.Kind == f[10]) ? f[10] : "modbus";
                 var acc = f.Length >= 12 && Enum.TryParse<PlcModel.Access>(f[11], out var ac) ? ac : PlcModel.Access.ReadWrite;

@@ -118,6 +118,61 @@
     </svg>`;
   }
 
+  // ---- Phản hồi thật: lệnh (DO) so với đầu vào (DI nối cảm biến / tiếp điểm relay) do gateway khai bằng w.fb -------------------------
+  // "Đã gửi" ≠ "đã chạy": chỉ khi đầu vào phản hồi khớp lệnh mới báo "cảm biến xác nhận"; lệch quá FB_WAIT_MS thì cảnh báo rõ.
+  const FB_WAIT_MS = 6000;
+  // ---- Trạng thái của MỘT lệnh (hiện ngay trên thẻ): Đang gửi → Đã gửi tới máy chủ → Gateway nhận (ack theo id) → Cảm biến xác nhận ----
+  // Ghép lệnh ↔ phản hồi: ack mang đúng id của lệnh (awaiting); telemetry KHÔNG mang id nên "cảm biến xác nhận" ghép theo giá trị: đầu vào fb == giá trị lệnh.
+  // Kết quả cuối: confirmed (cảm biến khớp) | done (không có cảm biến: chỉ biết gateway đã ghi) | rejected | noreply | mismatch | failed.
+  const cmdSt = new Map();                 // holdKey → { st, dev, w, want, id, err, reached, t }
+  const CMD_FINAL = new Set(['confirmed', 'done', 'rejected', 'noreply', 'mismatch', 'failed']);
+  function cmdSet(dev, w, st, extra) {
+    const k = holdKey(dev, w);
+    const cur = { dev, w, ...(cmdSt.get(k) || {}), ...extra, st, t: Date.now() };
+    cmdSt.set(k, cur);
+    if (st === 'acked' && w.fb) setTimeout(() => { const c = cmdSt.get(k); if (c && c.st === 'acked' && c.t === cur.t) cmdSet(dev, w, 'mismatch'); }, FB_WAIT_MS);
+    if (CMD_FINAL.has(st)) setTimeout(() => { const c = cmdSt.get(k); if (c && c.t === cur.t) { cmdSt.delete(k); render(); } }, st === 'confirmed' || st === 'done' ? 6000 : 20000);
+    render();
+  }
+  const cmdClear = (dev, w) => { cmdSt.delete(holdKey(dev, w)); };
+  /** Gói telemetry mới về: lệnh đang chờ cảm biến mà đầu vào fb đã khớp giá trị lệnh → xác nhận. */
+  function confirmCheck() {
+    for (const c of [...cmdSt.values()]) {
+      if (!c.w.fb || (c.st !== 'sent' && c.st !== 'acked')) continue;
+      const raw = val(c.dev, c.w.fb);
+      if (raw != null && raw !== '' && ((Number(raw) === 1 || raw === true) ? 1 : 0) === c.want) cmdSet(c.dev, c.w, 'confirmed', { reached: 3 });
+    }
+  }
+  const lab = (w, b) => (b ? (w.onText || 'Bật') : (w.offText || 'Tắt'));
+  function cmdHtml(dev, w) {
+    const c = cmdSt.get(holdKey(dev, w)); if (!c) return '';
+    const what = w.kind === 'toggle' ? `“${lab(w, c.want === 1)}”` : `${c.want}${w.unit ? ' ' + w.unit : ''}`;
+    const T = {
+      sending: ['wait', `Đang gửi lệnh ${what}…`],
+      sent: ['wait', 'Đã gửi tới máy chủ — chờ gateway nhận…'],
+      acked: w.fb ? ['wait', `Gateway đã ghi lệnh — chờ cảm biến xác nhận ${what}…`] : ['wait', 'Gateway đã ghi lệnh…'],
+      confirmed: ['ok', `✔ Đã thực hiện ${what} — cảm biến xác nhận`],
+      done: ['ok', '✔ Gateway đã ghi lệnh vào thiết bị (chưa có cảm biến phản hồi để kiểm chứng)'],
+      rejected: ['bad', `✖ Thiết bị từ chối, không có gì thay đổi. ${esc(window.ErrText(c.err || 'bad_command'))}`],
+      noreply: ['bad', `⚠ ${esc(window.ErrText('gateway_no_reply'))}`],
+      mismatch: ['bad', '⚠ Gateway đã ghi lệnh nhưng cảm biến chưa đổi theo — kiểm tra relay / dây / cảm biến'],
+      failed: ['bad', `✖ Lệnh chưa gửi được, thiết bị không thay đổi. ${esc(c.err || '')}`],
+    }[c.st] || ['wait', ''];
+    const steps = ['Đã gửi', 'Gateway nhận'].concat(w.fb ? ['Cảm biến xác nhận'] : []);
+    const bad = T[0] === 'bad';
+    const items = steps.map((n, i) => `<li class="${i < (c.reached || 0) ? 'done' : i === (c.reached || 0) ? (bad ? 'err' : 'active') : ''}">${esc(n)}</li>`).join('');
+    return `<div class="dw-cmd ${T[0]}" role="${bad ? 'alert' : 'status'}"><ol class="dw-steps">${items}</ol><div class="dw-cmdtxt">${T[1]}</div></div>`;
+  }
+  /** Dòng cảm biến tĩnh (khi không có lệnh nào đang hiện): trạng thái thật so với trạng thái lệnh gần nhất. */
+  function fbHtml(dev, w, cmdOn) {
+    if (!w.fb || cmdSt.has(holdKey(dev, w))) return '';
+    const raw = val(dev, w.fb);
+    if (raw == null || raw === '') return `<div class="dw-fb idle" role="status"><i class="lamp"></i>Phản hồi <code>${esc(w.fb)}</code>: chưa có tín hiệu</div>`;
+    const fbOn = Number(raw) === 1 || raw === true;
+    if (fbOn === cmdOn) return `<div class="dw-fb ok" role="status"><i class="lamp on"></i>Cảm biến xác nhận: ${esc(lab(w, fbOn))}</div>`;
+    return `<div class="dw-fb bad" role="alert"><i class="lamp"></i>⚠ Lệnh ${esc(lab(w, cmdOn))} nhưng cảm biến báo ${esc(lab(w, fbOn))} — kiểm tra relay / dây / cảm biến</div>`;
+  }
+
   function widgetHtml(dev, w) {
     // Vượt giới hạn widget của gói: làm mờ, KHÔNG hiện/cập nhật số liệu, không điều khiển; bấm vào để biết lý do + nâng gói
     if (w.locked) {
@@ -172,7 +227,7 @@
         : '';
       const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : ''].filter(Boolean).join(' · ');
       return `<div class="dw ctlw ${c.critical ? 'crit' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}</div>
-        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}</small></button>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
+        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}</small></button><div class="dw-status">${cmdHtml(dev, w)}${fbHtml(dev, w, on)}</div>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'slider') {
       // thanh trượt đặt giá trị (vd tốc độ bơm): thả tay mới gửi lệnh {child,key,v}, giá trị thật hiện qua telemetry
@@ -192,7 +247,7 @@
         <div class="dw-numrow dw-vtop"><button type="button" class="dw-step" data-d="-1" aria-label="Giảm ${step}">−</button><input type="number" class="dw-numin" inputmode="decimal" enterkeyhint="done" min="${min}" max="${max}" step="${Math.min(step, 1)}" value="${sval}" aria-label="${esc(w.label)} — nhập số bằng bàn phím"><button type="button" class="dw-step" data-d="1" aria-label="Tăng ${step}">+</button>${unitTxt}<button type="button" class="dw-cancel" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" tabindex="${pend ? 0 : -1}">Huỷ</button></div>
         <div class="slider-row"><input type="range" class="dw-slider" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" min="${min}" max="${max}" step="${step}" value="${sval}" aria-label="${esc(w.label)}"${pend ? ' data-dirty="1"' : ''}>
           <button type="button" class="dw-send${pend ? ' dirty' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}"${pend ? '' : ' disabled'}>Gửi lệnh</button></div>
-        <div class="dw-pendinfo" aria-live="polite">${esc(pendText)}</div>
+        <div class="dw-pendinfo" aria-live="polite">${esc(pendText)}</div><div class="dw-status">${cmdHtml(dev, w)}</div>
         <div class="d muted dw-info">${esc(rangeTxt)}</div></div>`;
     }
     if (w.kind === 'status' || w.kind === 'chip') {
@@ -260,21 +315,25 @@
     render();
   }
   function trackAck(id, dev, w, prev) {
-    if (!id) return toast('Đã gửi lệnh tới thiết bị.');
-    toast(`Đã gửi “${w.label}” — đang chờ thiết bị xác nhận…`);
+    if (!id) { cmdSet(dev, w, 'done', { reached: 2 }); return; }
+    cmdSet(dev, w, 'sent', { id: String(id), reached: 1 });
     const timer = setTimeout(() => {
       const p = awaiting.get(id); if (!p) return;
       awaiting.delete(id);
-      toast(`“${w.label}”: ${window.ErrText('gateway_no_reply')}`, true);
+      if (cmdSt.get(holdKey(dev, w))?.st === 'sent') cmdSet(dev, w, 'noreply');
     }, ACK_WAIT_MS);
     awaiting.set(id, { dev, w, prev, timer });
   }
   function onAck(a) {
     const p = a && awaiting.get(String(a.id)); if (!p) return;
     clearTimeout(p.timer); awaiting.delete(String(a.id));
-    if (a.ok) return toast(`Thiết bị đã thực hiện: ${p.w.label}.`);
+    if (a.ok) {
+      const c = cmdSt.get(holdKey(p.dev, p.w));
+      if (c && c.st === 'confirmed') return;                 // telemetry về trước ack: đã xác nhận bằng cảm biến rồi
+      return cmdSet(p.dev, p.w, p.w.fb ? 'acked' : 'done', { reached: 2 });
+    }
     revert(p);
-    toast(`Thiết bị từ chối “${p.w.label}”, không có gì thay đổi. ${window.ErrText(a.err || a.error || 'bad_command')}`, true);
+    cmdSet(p.dev, p.w, 'rejected', { err: a.err || a.error || 'bad_command' });
   }
   // Giá trị thanh trượt người dùng đã chọn nhưng CHƯA gửi: lưu ở đây để không mất khi lưới dựng lại, và luôn hiện rõ "chưa gửi".
   const staged = {};                       // "<dev.id>|<w.id>" → số
@@ -298,7 +357,7 @@
   function structSig(order, byId, banner) {
     return JSON.stringify([banner, dashboard?.gateways?.length || 0, activeGw, order.map((id) => {
       const d = byId[id];
-      return d && [d.id, d.title, d.icon, d.color, d.type, d.gw, d.widgets.map((w) => [w.id, w.kind, w.label, w.locked, w.unit, w.min, w.max, w.step, w.low, w.high, w.onText, w.offText, w.cmd])];
+      return d && [d.id, d.title, d.icon, d.color, d.type, d.gw, d.widgets.map((w) => [w.id, w.kind, w.label, w.locked, w.unit, w.min, w.max, w.step, w.low, w.high, w.onText, w.offText, w.cmd, w.fb])];
     })]);
   }
 
@@ -516,10 +575,12 @@
         live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
         setHold(dev, w, next);
         clearDirty();
+        cmdSet(dev, w, 'sending', { want: next, reached: 0, err: '' });
         btn.disabled = true; btn.textContent = 'Đang gửi…';
         window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
           if (r?.ok) return trackAck(r.id, dev, w, prev);
           clearHold(dev, w);
+          if (r?.error === 'cancelled') cmdClear(dev, w); else cmdSet(dev, w, 'failed', { err: window.ErrText(r?.error || 'network', r?.status) });
           live[lk(dev)] = { ...live[lk(dev)], [w.bind]: prev };
           render();
           if (r?.error === 'cancelled') return toast('Đã huỷ lệnh, thiết bị không thay đổi.');
@@ -544,14 +605,16 @@
           const prev = live[lk(dev)]?.[w.bind];
           live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
           setHold(dev, w, next);
+          cmdSet(dev, w, 'sending', { want: Number(next), reached: 0, err: '' });   // trước render: nút đã đổi nhưng đầu vào chưa kịp đổi thì không phải là "lệch"
           render();
           window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
             if (r?.ok) return trackAck(r.id, dev, w, prev);
             clearHold(dev, w);
+            if (r?.error === 'cancelled') cmdClear(dev, w); else cmdSet(dev, w, 'failed', { err: window.ErrText(r?.error || 'network', r?.status) });
             live[lk(dev)] = { ...live[lk(dev)], [w.bind]: prev };
             render();
             if (r?.error === 'cancelled') return toast('Đã huỷ lệnh, thiết bị không thay đổi.');
-            if (/^sub_|^widget_locked$/.test(r?.error || "")) window.PlanUi?.show(r.error);   // lỗi do gói: hộp giải thích + nút "Nâng gói"
+            if (/^sub_|^widget_locked$/.test(r?.error || ""))window.PlanUi?.show(r.error);   // lỗi do gói: hộp giải thích + nút "Nâng gói"
             else toast(`Lệnh chưa được gửi, thiết bị không thay đổi. ${window.ErrText(r?.error || "network", r?.status)}`, true);
           }).finally(() => { b.disabled = false; });
         } else {
@@ -934,6 +997,7 @@
           live[k] = { ...live[k], ...fresh };
         }
       }
+      confirmCheck();
     }
     if (Array.isArray(payload.r) && dashboard?.devices) {
       for (const d of dashboard.devices) {

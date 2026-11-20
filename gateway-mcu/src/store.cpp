@@ -266,6 +266,11 @@ String configMessage() {
       if (ranged) { o["min"] = r.min; o["max"] = r.max; }
       else { if (p.hasMin) o["min"] = p.min; if (p.hasMax) o["max"] = p.max; }
       if (r.kind == "toggle") { String on = m["OnText"] | "", off = m["OffText"] | ""; if (on.length()) o["on"] = on; if (off.length()) o["off"] = off; }
+      // Phản hồi thật: field đầu vào (DI nối cảm biến/relay) cùng thiết bị → gửi khoá wire để webapp đối chiếu lệnh với trạng thái thực.
+      if (r.kind == "toggle" && writable) {
+        String fbf = m["Feedback"] | "";
+        if (fbf.length() && fbf != p.field) for (auto& q : g_cfg.pack) if (q.child == child && q.field == fbf) { o["fb"] = q.wire; break; }
+      }
       if (r.kind == "tank" || r.kind == "gauge") { if (!m["Low"].isNull()) o["low"] = m["Low"]; if (!m["High"].isNull()) o["high"] = m["High"]; }
     }
   }

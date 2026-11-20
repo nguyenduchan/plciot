@@ -28,6 +28,10 @@
 
   <ItemGroup>
     <!-- Logic đăng nhập của giải pháp Conveyor không phụ thuộc WPF nên biên dịch thẳng vào đây để kiểm thử -->
+    <!-- PlcSim (PLC giả): phần model + Modbus TCP không phụ thuộc WinForms, biên dịch thẳng vào đây để kiểm thử gateway ↔ PlcSim -->
+    <Compile Include="..\..\..\tools\PlcSim\PlcModel.cs" Link="PlcSim\PlcModel.cs" />
+    <Compile Include="..\..\..\tools\PlcSim\Protocols\IEndpoint.cs" Link="PlcSim\IEndpoint.cs" />
+    <Compile Include="..\..\..\tools\PlcSim\Protocols\ModbusTcpSlave.cs" Link="PlcSim\ModbusTcpSlave.cs" />
     <Compile Include="..\..\solutions\Plciot.Solution.Conveyor\Auth\*.cs" Link="ConveyorAuth\%(Filename)%(Extension)" />
   </ItemGroup>
 

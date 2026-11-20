@@ -18,6 +18,8 @@ public sealed class FieldMeta
     /// <summary>Ngưỡng cảnh báo thấp / cao (bồn: đổi màu và hiện chữ "Mức thấp"/"Mức cao").</summary>
     public double? Low { get; set; }
     public double? High { get; set; }
+    /// <summary>Tên field ĐẦU VÀO cùng thiết bị phản ánh trạng thái thật của công tắc này (cảm biến / tiếp điểm relay nối vào DI). Rỗng = không có.</summary>
+    public string Feedback { get; set; } = "";
 
     public static readonly string[] Kinds = { "auto", "tank", "gauge", "toggle", "slider", "number" };
     public static readonly string[] KindNames = { "Tự động", "Bồn nước", "Đồng hồ", "Công tắc", "Thanh trượt", "Số lớn" };
@@ -199,6 +201,13 @@ public sealed class MetaDescriber : IConfigDescriber
 
     public string? DeviceTitle(string child) => _meta.Device(child)?.Title;
 
+    /// <summary>Khoá MQTT (wire) của field cùng thiết bị; null nếu field phản hồi đã bị xoá.</summary>
+    string? WireOf(string child, string field)
+    {
+        var p = _cfg.Pack.FirstOrDefault(x => x.Child == child && x.Field == field);
+        return p == null ? null : p.WireKey;
+    }
+
     public FieldView? Field(string child, string field)
     {
         var p = _cfg.Pack.FirstOrDefault(x => x.Child == child && x.Field == field);
@@ -211,7 +220,8 @@ public sealed class MetaDescriber : IConfigDescriber
         var thresholds = r.Kind is "tank" or "gauge";
         return new FieldView(r.Title, r.Unit, widget, ranged ? r.Min : null, ranged ? r.Max : null,
             toggle && !string.IsNullOrEmpty(m?.OnText) ? m!.OnText : null, toggle && !string.IsNullOrEmpty(m?.OffText) ? m!.OffText : null,
-            thresholds ? r.Low : null, thresholds ? r.High : null);
+            thresholds ? r.Low : null, thresholds ? r.High : null,
+            toggle && !string.IsNullOrEmpty(m?.Feedback) ? WireOf(child, m!.Feedback) : null);
     }
 
     /// <summary>Biểu tượng (mã theo loại thiết bị) + màu nhấn người dùng chọn → webapp vẽ thẻ giống GatewayApp.</summary>

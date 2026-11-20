@@ -6,7 +6,7 @@ namespace Plciot.Scada;
 
 /// <summary>Cách một field được hiển thị trên webapp (do người dùng đặt khi thêm thiết bị trong giao diện gateway).</summary>
 public sealed record FieldView(string Label, string Unit, string Widget, double? Min = null, double? Max = null,
-    string? On = null, string? Off = null, double? Low = null, double? High = null);
+    string? On = null, string? Off = null, double? Low = null, double? High = null, string? Fb = null);
 
 /// <summary>Kiểu thẻ thiết bị trên webapp: icon = mã biểu tượng (tank, pump, env, valve, motor, energy, pressure, conveyor, di, do, custom), color = blue|green|yellow|red|purple|orange.</summary>
 public sealed record DeviceView(string? Icon = null, string? Color = null);
@@ -44,6 +44,7 @@ public static class ConfigBuilder
         [JsonPropertyName("off"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Off { get; set; }
         [JsonPropertyName("low"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Low { get; set; }
         [JsonPropertyName("high"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? High { get; set; }
+        [JsonPropertyName("fb"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Fb { get; set; }
     }
 
     sealed class DeviceDto
@@ -86,6 +87,7 @@ public static class ConfigBuilder
                     Min = min, Max = max,
                     On = string.IsNullOrEmpty(v?.On) ? null : v!.On, Off = string.IsNullOrEmpty(v?.Off) ? null : v!.Off,
                     Low = v?.Low, High = v?.High,
+                    Fb = writable && !string.IsNullOrEmpty(v?.Fb) ? v!.Fb : null,
                 });
             }
             list.Add(dev);

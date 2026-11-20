@@ -222,15 +222,20 @@ sealed class StreamDialog : IDisposable
     readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     readonly NumericUpDown _value = DlgUi.Dec(-1_000_000, 1_000_000), _min = DlgUi.Dec(-1_000_000, 1_000_000), _max = DlgUi.Dec(-1_000_000, 1_000_000);
     readonly NumericUpDown _period = DlgUi.Dec(1, 86400, 1), _step = DlgUi.Dec(-100000, 100000);
+    // chế độ "Theo field khác": mô phỏng relay / cảm biến nối vào đầu vào (DI lặp lại trạng thái của DO cùng thiết bị)
+    readonly TextBox _follow = new();
+    readonly NumericUpDown _delay = DlgUi.Dec(-1, 3600, 1);
+    readonly CheckBox _invert = new() { Text = "Đảo (tiếp điểm thường đóng)" };
+    Label _followLbl = null!, _delayLbl = null!, _invertLbl = null!;
     readonly Label _hint = new() { ForeColor = Color.DimGray, Padding = new Padding(16, 6, 16, 0) };
     readonly Label _err = new() { ForeColor = Color.Firebrick, Padding = new Padding(16, 0, 16, 0) };
     readonly HashSet<int> _used;
     readonly HashSet<(string, string)> _existing;
     readonly bool _edit;
-    static readonly PlcModel.FieldMode[] Modes = { PlcModel.FieldMode.Fixed, PlcModel.FieldMode.Random, PlcModel.FieldMode.Sine, PlcModel.FieldMode.Ramp };
+    static readonly PlcModel.FieldMode[] Modes = { PlcModel.FieldMode.Fixed, PlcModel.FieldMode.Random, PlcModel.FieldMode.Sine, PlcModel.FieldMode.Ramp, PlcModel.FieldMode.Follow };
     static readonly string[] Names =
     {
-        "Cố định (một số)", "Ngẫu nhiên trong khoảng Min–Max", "Sóng sin giữa Min–Max", "Tăng dần từ Min tới Max rồi quay lại"
+        "Cố định (một số)", "Ngẫu nhiên trong khoảng Min–Max", "Sóng sin giữa Min–Max", "Tăng dần từ Min tới Max rồi quay lại", "Theo field khác — mô phỏng relay / cảm biến"
     };
 
     /// <summary>Cửa sổ hộp thoại và ô thông số theo khoá (dùng cho chế độ trình diễn --autodemo).</summary>
@@ -249,7 +254,7 @@ sealed class StreamDialog : IDisposable
     public string Kind => _protos[Math.Max(0, _proto.SelectedIndex)].Kind;
     public PlcModel.Access AccessMode => Accesses[Math.Max(0, _access.SelectedIndex)];
     public string Param => ProtoParams.Format(_pc[ProtoParams.Group(Kind)].Select(x => (x.Def.Key, x.Ctl is ComboBox cb ? Convert.ToString(cb.SelectedItem) ?? x.Def.Default : x.Ctl.Text.Trim())));
-    public PlcModel.Gen Gen => new(Modes[Math.Max(0, _mode.SelectedIndex)], (double)_min.Value, (double)_max.Value, (double)_period.Value, (double)_step.Value);
+    public PlcModel.Gen Gen => new(Modes[Math.Max(0, _mode.SelectedIndex)], (double)_min.Value, (double)_max.Value, (double)_period.Value, (double)_step.Value, _follow.Text.Trim(), (double)_delay.Value, _invert.Checked);
 
     public StreamDialog(string? child, string? field, int addr, double scale, PlcModel.Gen gen, double value, HashSet<int> used, string[] children, HashSet<(string, string)> existing, bool edit,
         (string Label, string Kind)[] protos, string kind, PlcModel.Access access, string param,
@@ -305,6 +310,9 @@ sealed class StreamDialog : IDisposable
         _maxLbl = DlgUi.Row(t, "Max", _max, "giá trị cao nhất");
         _periodLbl = DlgUi.Row(t, "Chu kỳ sóng sin (giây)", _period, "thời gian 1 vòng dao động");
         _stepLbl = DlgUi.Row(t, "Bước tăng mỗi giây", _step, "tăng tới Max thì về Min");
+        _followLbl = DlgUi.Row(t, "Theo field", _follow, "field lệnh cùng thiết bị, vd run");
+        _delayLbl = DlgUi.Row(t, "Trễ (giây)", _delay, "relay/cảm biến đổi sau bấy lâu; -1 = hỏng, không đổi");
+        _invertLbl = DlgUi.Row(t, "Đảo", _invert, "");
 _hint.Text = "";
         var ok = new Button { Text = edit ? "Lưu" : "Thêm", Width = 100, Height = 32, DialogResult = DialogResult.None };
         var cancel = new Button { Text = "Huỷ", Width = 90, Height = 32, DialogResult = DialogResult.Cancel };
@@ -337,6 +345,7 @@ _hint.Text = "";
         _mode.SelectedIndex = Math.Max(0, Array.IndexOf(Modes, gen.Mode));
         _value.Value = (decimal)Math.Clamp(value, -1_000_000, 1_000_000);
         _min.Value = (decimal)Math.Clamp(gen.Min, -1_000_000, 1_000_000); _max.Value = (decimal)Math.Clamp(gen.Max, -1_000_000, 1_000_000);
+        _follow.Text = gen.Follow ?? ""; _delay.Value = (decimal)Math.Clamp(gen.Delay, -1, 3600); _invert.Checked = gen.Invert;
         _period.Value = (decimal)Math.Clamp(gen.Period, 1, 86400); _step.Value = (decimal)Math.Clamp(gen.Step, -100000, 100000);
         _mode.SelectedIndexChanged += (_, _) => UpdateState();
         _proto.SelectedIndexChanged += (_, _) => UpdateState();
@@ -473,6 +482,8 @@ _hint.Text = "";
         _minLbl.Visible = _maxLbl.Visible = _min.Visible = _max.Visible = !st && rng;
         _periodLbl.Visible = _period.Visible = !st && m == PlcModel.FieldMode.Sine;
         _stepLbl.Visible = _step.Visible = !st && m == PlcModel.FieldMode.Ramp;
+        var fol = !st && m == PlcModel.FieldMode.Follow;
+        _followLbl.Visible = _follow.Visible = _delayLbl.Visible = _delay.Visible = _invertLbl.Visible = _invert.Visible = fol;
         if (_f.Visible) _fit(false);
     }
 
@@ -497,6 +508,7 @@ _hint.Text = "";
         {
             if (!_edit && _existing.Contains((Child, Field))) { _err.Text = "Luồng này đã có."; return; }
             var g = Gen;
+            if (g.Mode == PlcModel.FieldMode.Follow && (g.Follow.Length == 0 || g.Follow == Field)) { _err.Text = "Chế độ theo field khác: nhập tên field lệnh (khác chính nó)."; return; }
             if (g.Mode is PlcModel.FieldMode.Random or PlcModel.FieldMode.Sine or PlcModel.FieldMode.Ramp && g.Min > g.Max) { _err.Text = "Min không được lớn hơn Max."; return; }
         }
         _f.DialogResult = DialogResult.OK; _f.Close();

@@ -192,8 +192,10 @@ extern HardwareSerial Serial1;
 #include <ctime>
 #include <sys/time.h>
 // MinGW-w64 moi khong khai bao setenv/tzset trong <cstdlib>
+#ifdef __MINGW64_VERSION_MAJOR   // MinGW.org cũ (GCC 6) đã có setenv trong <cstdlib>: khai báo lại sẽ lỗi "redefinition"
 extern "C" int _putenv_s(const char*, const char*);
 static inline int setenv(const char* k, const char* v, int) { return _putenv_s(k, v); }
+#endif
 inline void configTime(long, int, const char*, const char* = nullptr) {}
 inline int settimeofday(const struct timeval*, const void*) { return 0; }
 inline void yield() { Sleep(0); }                         // PubSubClient

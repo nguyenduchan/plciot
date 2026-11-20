@@ -101,6 +101,7 @@ public sealed class RemoteClient : IDisposable
     }
 
     public Task<ApiState> StateAsync(CancellationToken ct = default) => SendAsync<ApiState>(HttpMethod.Get, "api/state", null, ct);
+    public Task<System.Text.Json.JsonElement> ConfigMessageAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/config-message", null);
     public Task<ApiConfig> ConfigAsync(CancellationToken ct = default) => SendAsync<ApiConfig>(HttpMethod.Get, "api/config", null, ct);
     public Task<ApiResult> PutConfigAsync(ApiConfig cfg, CancellationToken ct = default) => SendAsync<ApiResult>(HttpMethod.Put, "api/config", cfg, ct, longOp: true);
     public Task<ApiResult> WriteAsync(string child, string field, double v) => SendAsync<ApiResult>(HttpMethod.Post, "api/write", new ApiWrite { Child = child, Field = field, Value = v });

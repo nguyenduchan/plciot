@@ -200,6 +200,9 @@ void hGetConfig() {
   send(200, s);
 }
 
+/// Bản tin <base>/config đúng như board sẽ publish lên cloud (chỉ đọc): để GatewayApp xem trước / kiểm thử cặp lệnh ↔ phản hồi (fb).
+void hConfigMessage() { send(200, configMessage()); }
+
 void applyChange(const char* why) {
   storeSave(); storeApply(); engineRestart(); cloudRestart();
   g_rev++;
@@ -310,7 +313,7 @@ struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
   {"GET", "/api/challenge", hChallenge, false}, {"POST", "/api/login", hLogin, false},
-  {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"PUT", "/api/config", hPutConfig, true},
+  {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true},
 };

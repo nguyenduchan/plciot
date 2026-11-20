@@ -192,13 +192,13 @@ public sealed class PlcModel
             if (!_children.TryGetValue(child, out var f)) return;
             f.Remove(field);
             _maps.Remove((child, field));
-            _modes.Remove((child, field));
+            _modes.Remove((child, field)); _followDue.Remove((child, field));
             _meta.Remove((child, field));
             if (f.Count == 0) _children.Remove(child);
         }
     }
 
-    public void ClearChildren() { lock (_gate) { _children.Clear(); _maps.Clear(); _modes.Clear(); _meta.Clear(); } }
+    public void ClearChildren() { lock (_gate) { _children.Clear(); _maps.Clear(); _modes.Clear(); _followDue.Clear(); _meta.Clear(); } }
 
     public (string Child, string Field, double Value)[] Fields()
     {
@@ -239,12 +239,17 @@ public sealed class PlcModel
     }
 
     // ---- cách sinh giá trị của từng field: cố định / ngẫu nhiên / sóng sin / tăng dần----------
-    public enum FieldMode { Fixed, Random, Sine, Ramp }
+    public enum FieldMode { Fixed, Random, Sine, Ramp, Follow }
 
     /// <summary>Cài đặt sinh giá trị: khoảng Min–Max, chu kỳ sóng sin (giây), bước tăng mỗi giây (Ramp).</summary>
-    public readonly record struct Gen(FieldMode Mode, double Min, double Max, double Period = 60, double Step = 1);
+    /// <remarks>
+    /// Follow = mô phỏng RELAY / CẢM BIẾN nối vào đầu vào: field này (DI) lặp lại trạng thái 0/1 của field <c>Follow</c> (DO cùng thiết bị)
+    /// sau <c>Delay</c> giây; <c>Invert</c> đảo (tiếp điểm thường đóng). Delay &lt; 0 = relay/cảm biến HỎNG (không bao giờ đổi) để thử cảnh báo lệch.
+    /// </remarks>
+    public readonly record struct Gen(FieldMode Mode, double Min, double Max, double Period = 60, double Step = 1, string Follow = "", double Delay = 1, bool Invert = false);
 
     readonly Dictionary<(string, string), Gen> _modes = new();
+    readonly Dictionary<(string, string), double> _followDue = new();   // (child, field) → thời điểm (_genT) field sẽ đổi theo nguồn
     double _genT;
 
     public void SetMode(string child, string field, Gen g)
@@ -275,6 +280,15 @@ public sealed class PlcModel
                 {
                     case FieldMode.Random: v = g.Min + _rnd.NextDouble() * (g.Max - g.Min); break;
                     case FieldMode.Sine: v = (g.Min + g.Max) / 2 + (g.Max - g.Min) / 2 * Math.Sin(2 * Math.PI * _genT / g.Period); break;
+                    case FieldMode.Follow:
+                    {
+                        if (g.Delay < 0 || !fl.TryGetValue(g.Follow, out var src)) continue;     // relay hỏng / chưa có nguồn: đứng yên
+                        double want = (src != 0) != g.Invert ? 1 : 0;
+                        if (cur == want) { _followDue.Remove((c, f)); continue; }
+                        if (!_followDue.TryGetValue((c, f), out var due)) _followDue[(c, f)] = due = _genT + g.Delay;
+                        if (_genT < due) continue;
+                        _followDue.Remove((c, f)); v = want; break;
+                    }
                     default:   // Ramp
                         v = cur + g.Step;
                         if (cur < g.Min || cur > g.Max) v = g.Min;

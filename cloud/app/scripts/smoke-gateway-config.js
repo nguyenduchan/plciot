@@ -6,6 +6,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { applyGatewayConfig, getGatewayConfig, sanitizeConfig } from '../src/gatewayConfig.js';
 import { migrateUserDevices, getDashboardFor } from '../src/userDevices.js';
+import { widgetsFromFields } from '../src/uiContract.js';
 import { normalizeTelemetryPayload } from '../src/telemetryNormalize.js';
 import { parseTopic, KINDS } from '../src/contract.js';
 import { userAclBlock, deviceAclBlock } from '../src/mqttProvision.js';
@@ -47,6 +48,16 @@ ok(ba.widgets.find((w) => w.bind === 'temp').kind === 'gauge' && ba.widgets.find
 ok(fan.widgets.find((w) => w.bind === 'control').kind === 'toggle' && fan.widgets.find((w) => w.bind === 'control').cmd.key === 'control', 'switch writable → toggle có cmd');
 ok(fan.widgets.find((w) => w.bind === 'ro').kind === 'status', 'switch không writable → status (không điều khiển)');
 ok(fan.source.path === 'd.quat_hut_02', 'bind telemetry theo d.<id>');
+
+// phản hồi thật: fb chỉ giữ cho field ghi được, đúng dạng khoá, khác chính nó
+const fbCfg = sanitizeConfig({ devices: [{ id: 'm1', fields: [
+  { key: 'run', widget: 'switch', writable: true, fb: 'di1' },
+  { key: 'ro', widget: 'switch', fb: 'di1' },
+  { key: 'self', widget: 'switch', writable: true, fb: 'self' },
+  { key: 'bad', widget: 'switch', writable: true, fb: 'x y!' }] }] }).devices[0].fields;
+ok(fbCfg[0].fb === 'di1', 'fb hợp lệ đi qua sanitize');
+ok(!('fb' in fbCfg[1]) && !('fb' in fbCfg[2]) && !('fb' in fbCfg[3]), 'fb bị bỏ: field chỉ đọc / trỏ chính nó / khoá xấu');
+ok(widgetsFromFields(fbCfg).find((w) => w.bind === 'run').fb === 'di1', 'toggle mang fb xuống widget');
 
 ok(applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap, quat]) }).changed === false, 'gửi lại y hệt → không đổi');
 r = applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap]) });

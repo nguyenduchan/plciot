@@ -9,6 +9,7 @@
 #include <NetworkClient.h>
 #include <Wire.h>
 #include "../src/board.h"
+uint8_t ioDo();   // io.cpp: trạng thái logic của DO (cho SIM_LOOPBACK)
 
 SerialPort Serial;
 HardwareSerial Serial1;
@@ -24,13 +25,28 @@ const char* simDataDir() { const char* p = getenv("SIM_DATA"); return p && *p ? 
 static std::string dataPath(const char* path) { std::string p = simDataDir(); p += "/"; p += (path[0] == '/' ? path + 1 : path); return p; }
 
 // ---------------------------------------------------------------- GPIO giả: DI lấy từ file <SIM_DATA>/di.txt (số thập phân hoặc 0x..), đổi lúc đang chạy được
-static uint8_t simDi() {
+static uint8_t simFileDi() {
   static uint32_t lastRead = 0; static uint8_t cached = 0;
   if (millis() - lastRead < 500) return cached;
   lastRead = millis();
   FILE* f = fopen(dataPath("di.txt").c_str(), "r");
   if (f) { char b[32] = {0}; fgets(b, sizeof b, f); fclose(f); cached = (uint8_t)strtol(b, nullptr, 0); }
   return cached;
+}
+// SIM_LOOPBACK=<giây>: mô phỏng dây DOn → relay/cảm biến → DIn: DIn lặp lại DOn sau bấy nhiêu giây (số âm = relay hỏng, DI không đổi theo DO).
+// Dùng để thử "lệnh → phản hồi thật" mà không cần phần cứng; chỉ có trong bản giả lập.
+static uint8_t simDi() {
+  uint8_t fileDi = simFileDi();
+  const char* lb = getenv("SIM_LOOPBACK");
+  if (!lb || !*lb || atof(lb) < 0) return fileDi;
+  static uint8_t seen = 0, shown = 0; static uint32_t chg[8] = {0};
+  uint8_t d = ioDo(); uint32_t now = millis();
+  for (int i = 0; i < 8; i++) {
+    uint8_t bit = (d >> i) & 1;
+    if (bit != ((seen >> i) & 1)) { seen ^= (1 << i); chg[i] = now; }
+    if (bit != ((shown >> i) & 1) && now - chg[i] >= (uint32_t)(atof(lb) * 1000)) shown = bit ? (shown | (1 << i)) : (shown & ~(1 << i));
+  }
+  return fileDi | shown;
 }
 void pinMode(int, int) {}
 int digitalRead(int pin) {

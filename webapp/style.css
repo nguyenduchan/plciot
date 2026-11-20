@@ -366,6 +366,20 @@ body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}
 
 .dw-star{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;padding:0 4px;color:var(--muted,#888)}.dw-star.on{color:#d97706}.dw-star:disabled{cursor:default;opacity:.85}
 .ctlw.crit{outline:1px solid #d9770655;border-radius:12px}.dw-info{font-size:12px;margin-top:4px}
+.dw-fb{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px;padding:5px 8px;border-radius:8px;background:rgba(127,127,127,.12)}
+.dw-fb .lamp{width:8px;height:8px;border-radius:50%;background:#8a8f98;flex:none}
+.dw-fb.ok{background:rgba(34,160,90,.14)}.dw-fb.ok .lamp{background:#22a05a}
+.dw-fb.wait .lamp{background:#d9a406;animation:fbp 1s infinite}
+.dw-fb.bad{background:rgba(217,48,37,.15);color:#d93025;font-weight:600}.dw-fb.bad .lamp{background:#d93025}
+@keyframes fbp{50%{opacity:.25}}
+.dw-cmd{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.12);font-size:12px}
+.dw-steps{display:flex;gap:4px;list-style:none;margin:0 0 4px;padding:0}
+.dw-steps li{flex:1;text-align:center;padding:2px 4px;border-radius:6px;background:rgba(127,127,127,.18);opacity:.7;font-size:11px}
+.dw-steps li.done{background:rgba(34,160,90,.25);opacity:1}
+.dw-steps li.active{background:rgba(217,164,6,.28);opacity:1;animation:fbp 1s infinite}
+.dw-steps li.err{background:rgba(217,48,37,.28);opacity:1}
+.dw-cmd.ok{background:rgba(34,160,90,.14)}.dw-cmd.bad{background:rgba(217,48,37,.15);color:#d93025;font-weight:600}
+.dw-cmdtxt{line-height:1.35}
 
 /* ---- Màn quét QR toàn màn hình (kiểu VCB Digibank) ---- */
 .qs{position:fixed;inset:0;z-index:1000;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;font-family:inherit}

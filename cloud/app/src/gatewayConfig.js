@@ -76,6 +76,8 @@ export function sanitizeConfig(payload) {
       };
       if (f.unit) out.unit = clip(f.unit, 16);
       if (f.writable === true) out.writable = true;
+      // fb = khoá field ĐẦU VÀO của cùng thiết bị (DI nối cảm biến/tiếp điểm relay) phản ánh trạng thái thật của tải đang điều khiển.
+      if (out.writable && f.fb) { const fb = clip(f.fb, 32); if (KEY.test(fb) && fb !== key) out.fb = fb; }
       if (f.on) out.on = clip(f.on, 24);
       if (f.off) out.off = clip(f.off, 24);
       const low = num(f.low); const high = num(f.high);

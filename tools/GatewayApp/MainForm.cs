@@ -23,7 +23,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
     bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest", "--lantest" }.Any(Environment.GetCommandLineArgs().Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest", "--lantest", "--fbtest" }.Any(Environment.GetCommandLineArgs().Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
