@@ -12,7 +12,7 @@ void* SecureZeroMemory(void* p, size_t n) {
 }
 
 /* mbedtls dùng để so địa chỉ IP trong SAN của chứng chỉ. Chỉ cần IPv4 (broker/server của dự án); IPv6 → 0 = không phải địa chỉ hợp lệ. */
-int inet_pton(int af, const char* src, void* dst) {
+__attribute__((weak)) int inet_pton(int af, const char* src, void* dst) {
   if (af != 2 /* AF_INET */) return 0;
   unsigned char out[4]; int part = 0; unsigned v = 0; int digits = 0;
   for (const char* c = src;; c++) {

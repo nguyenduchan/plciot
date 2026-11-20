@@ -84,6 +84,7 @@ int NetworkClientSecure::connect(const char* host, uint16_t port) {
 
   mbedtls_ssl_init(&ssl_); mbedtls_ssl_config_init(&conf_); inited_ = true;
   mbedtls_ssl_config_defaults(&conf_, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
+  mbedtls_ssl_conf_max_tls_version(&conf_, MBEDTLS_SSL_VERSION_TLS1_2);   // mbedtls build bang MinGW-w64 moi: TLS 1.3 loi noi bo
   mbedtls_ssl_conf_rng(&conf_, rng, nullptr);
   if (insecure_) mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_NONE);
   else { mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_REQUIRED); mbedtls_ssl_conf_ca_chain(&conf_, roots(), nullptr); }

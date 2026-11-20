@@ -14,6 +14,7 @@ import { gatewaysOfUser } from './mqttIds.js';
 import { deviceToUiNode, applyWidgetLimit } from './uiContract.js';
 import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
+import { isGatewayLocked } from './hwBlock.js';
 import { mayRemoteControl, planWidgetLimit, planDeviceLimit, takeRpcBudget } from './entitlements.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
@@ -60,6 +61,8 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
       if (!hit) return out(res, 403, { error: "forbidden_gateway" });
       tu = { ...req.user, notify_site: hit.site, notify_device: hit.device };
     }
+    // gateway bị khoá (admin khoá hoặc chủ báo mất đang chờ duyệt): không phát lệnh nữa (board cũng tự từ chối)
+    if (isGatewayLocked(db, tu.notify_site, tu.notify_device)) return out(res, 423, { error: 'gateway_locked' });
     const cfg = configForUser(tu);
     if (!canControl(req.user)) return out(res, 403, { error: 'forbidden' });
     // Ngân sách lệnh theo gói (DK10: 60 lệnh/phút/tài khoản; cửa sổ trượt 60 giây)

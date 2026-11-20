@@ -26,6 +26,7 @@ import { initSupport, mountSupport } from './supportChat.js';
 import { adoptSolution, listUsers, createUser, updateUser, deleteUser, applyBootstrapAdmins, purgeIncompleteUsers, ROLES, MONITOR_SCOPES, listSolutions, defaultSolution } from './adminUsers.js';
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
+import { mountHwReports } from './hwReports.js';
 import { plcControlConfig } from './plcCommands.js';
 import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
@@ -275,6 +276,7 @@ app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) 
 
 /* ---------- Điều khiển: step-up (Passkey / TOTP), PC trạm, nút vật lý ---------- */
 mountPlcControl(app, { db, requireAuth, security: controlApi });
+mountHwReports(app, { db, requireAuth, security: controlApi });
 /* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
 mountSite(app, { db, requireAuth, reauth });
 mountPush(app, { db, requireAuth, dataDir: DATA_DIR });

@@ -93,6 +93,10 @@ xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị
 - HTTPS tới server dùng bộ CA có sẵn của ESP-IDF (`esp_crt_bundle_attach`); MQTTS chỉ chạy khi server trao `pinSha256` (broker tự ký).
 - Đồng hồ: NTP; chưa có NTP thì lấy giờ từ header `Date` của server. Lệnh cloud có `ts` bị từ chối (`clock_not_synced`) cho tới khi có giờ.
 
+## Báo mất / khoá
+
+Xem [../docs/GATEWAY-LOST.md](../docs/GATEWAY-LOST.md): chủ báo mất → khoá tạm → admin duyệt; board khoá giữ qua reset.
+
 ## Chưa làm
 
-Khoá thiết bị bị mất trộm theo mã phần cứng (server + firmware), cập nhật firmware qua mạng (OTA), CAN, xem/xuất lịch sử của board từ GatewayApp, gửi bù QoS 1 (PubSubClient chỉ QoS 0 — xoá khỏi hàng đợi khi gửi TCP xong).
+Cập nhật firmware qua mạng (OTA), CAN, xem/xuất lịch sử của board từ GatewayApp, gửi bù QoS 1 (PubSubClient chỉ QoS 0 — xoá khỏi hàng đợi khi gửi TCP xong).

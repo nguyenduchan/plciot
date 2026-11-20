@@ -64,6 +64,9 @@ bool HttpServer::begin() {
         || mbedtls_ssl_conf_own_cert(&impl_->conf, &impl_->cert, idKey()) != 0) {
       logf("HTTPS: cấu hình TLS lỗi — tắt cổng %d", port_); return false;
     }
+#ifdef GW_SIM
+    mbedtls_ssl_conf_max_tls_version(&impl_->conf, MBEDTLS_SSL_VERSION_TLS1_2);   // mbedtls build bằng MinGW-w64 mới: TLS 1.3 lỗi nội bộ (-0x6C00); TLS 1.2 chạy tốt
+#endif
     mbedtls_ssl_conf_rng(&impl_->conf, rng, nullptr);
     mbedtls_ssl_conf_authmode(&impl_->conf, MBEDTLS_SSL_VERIFY_NONE);   // admin xác thực bằng chữ ký khoá PC (api.cpp), không bằng chứng chỉ client
   }

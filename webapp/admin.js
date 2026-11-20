@@ -240,8 +240,27 @@
   function closeQr() { $('#qr-modal').classList.remove('on'); }
 
   // ---- Khoá thiết bị mất trộm theo mã phần cứng (server: hwBlock.js)
+  const REPORT_STATE = { pending: 'chờ duyệt', approved: 'đã duyệt', rejected: 'đã từ chối', cancelled: 'chủ đã huỷ', released: 'đã mở khoá' };
+  async function loadHwReports() {
+    const el = $('#hwr-list'); if (!el) return;
+    const r = await api('/api/admin/hw-reports');
+    el.innerHTML = r.reports.length ? r.reports.slice(0, 30).map((x) => `
+      <div class="row" style="justify-content:space-between;border-top:1px solid var(--line,#333);padding:6px 0;gap:8px">
+        <div><b>#${x.id}</b> <span style="font-family:monospace">${esc(x.hw)}</span> — ${esc(x.site)}/${esc(x.device)} · tài khoản #${x.userId}
+          <b>${esc(REPORT_STATE[x.status] || x.status)}</b>
+          <div class="help">${esc(x.reason || '(không ghi lý do)')} · báo lúc ${new Date(x.createdAt).toLocaleString('vi-VN')}${x.decidedAt ? ` · xử lý lúc ${new Date(x.decidedAt).toLocaleString('vi-VN')}` : ''}${x.note ? ` · ghi chú: ${esc(x.note)}` : ''}</div></div>
+        ${x.status === 'pending' ? `<div class="row" style="gap:6px"><button class="danger fit" data-rep="approve" data-id="${x.id}">Duyệt (giữ khoá)</button><button class="fit" data-rep="reject" data-id="${x.id}">Từ chối (mở khoá)</button></div>` : ''}
+      </div>`).join('') : '<p class="help">Chưa có báo cáo mất nào.</p>';
+    el.querySelectorAll('[data-rep]').forEach((btn) => btn.addEventListener('click', async () => {
+      const approve = btn.dataset.rep === 'approve';
+      const note = prompt(approve ? 'Ghi chú duyệt (đã xác minh thế nào?):' : 'Lý do từ chối (vd. khách đã tìm thấy máy):', '');
+      if (note === null) return;
+      try { await api(`/api/admin/hw-reports/${btn.dataset.id}/${btn.dataset.rep}`, 'POST', { note }); msg(approve ? 'Đã duyệt: máy tiếp tục bị khoá.' : 'Đã từ chối: máy được mở khoá.'); await loadHwBlocks(); } catch (e) { msg(e.message, 'err'); }
+    }));
+  }
   async function loadHwBlocks() {
     const el = $('#hwb-list'); if (!el) return;
+    loadHwReports().catch(() => {});
     const r = await api('/api/admin/hw-blocks');
     el.innerHTML = r.blocks.length ? r.blocks.map((b) => `
       <div class="row" style="justify-content:space-between;border-top:1px solid var(--line,#333);padding:6px 0;gap:8px">

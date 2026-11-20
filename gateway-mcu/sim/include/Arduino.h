@@ -191,6 +191,9 @@ extern HardwareSerial Serial1;
 // ---- thời gian (cloud.cpp): đồng hồ Windows luôn đúng nên NTP/đặt giờ là no-op
 #include <ctime>
 #include <sys/time.h>
+// MinGW-w64 moi khong khai bao setenv/tzset trong <cstdlib>
+extern "C" int _putenv_s(const char*, const char*);
+static inline int setenv(const char* k, const char* v, int) { return _putenv_s(k, v); }
 inline void configTime(long, int, const char*, const char* = nullptr) {}
 inline int settimeofday(const struct timeval*, const void*) { return 0; }
 inline void yield() { Sleep(0); }                         // PubSubClient

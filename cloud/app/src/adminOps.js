@@ -34,7 +34,7 @@ import { retentionInfo } from './retention.js';
 import { capacityStatus } from './capacity.js';
 import { revokeDeviceBinding } from './sites.js';
 import { notifyGateway } from './gatewayNotify.js';
-import { listHwBlocks, blockHw, unblockHw } from './hwBlock.js';
+import { listHwBlocks, blockHw, unblockHw, listReports, decideReport } from './hwBlock.js';
 import {
   listBlocks, createBlock, disableBlock, hardBlockDevice,
   listPolicyEvents, policyConfigPublic, peekRejectStats,
@@ -47,7 +47,7 @@ import { runDeploy, deployStatusFull } from './deploySync.js';
 const SECURITY_EVENTS = [
   'login_ok', 'passkey_login_fail', 'passkey_fail', 'totp_fail', 'otp_fail',
   'control_denied', 'control_cmd', 'rate_limited',
-  'policy_hard_block', 'policy_block_create', 'policy_block_disable',
+  'policy_hard_block', 'gateway_lost_report', 'gateway_lost_cancel', 'gateway_lost_decision', 'hardware_hw_block', 'hardware_hw_unblock', 'policy_block_create', 'policy_block_disable',
   'ops_flag_enable', 'ops_flag_disable', 'ops_flag_reset',
   'admin_plan_grant', 'device_revoked', 'logout_all',
   'recovery_start', 'phone_change_unauthorised', 'pair_fail',
@@ -634,6 +634,17 @@ export function mountAdminOps(app, {
     audit(db, 'hardware_hw_unblock', { userId: req.user.id, ip: clientIp(req), detail: r.hw });
     res.json(r);
   });
+
+  /** Báo mất của chủ gateway (hwReports.js): khoá tạm đã áp dụng, admin DUYỆT (giữ khoá) hoặc TỪ CHỐI (mở khoá). ?status=pending lọc. */
+  app.get('/api/admin/hw-reports', ...gate, (req, res) => res.json({ reports: listReports(db, { status: String(req.query.status || '') }) }));
+  for (const action of ['approve', 'reject']) {
+    app.post(`/api/admin/hw-reports/:id/${action}`, ...writeGate, (req, res) => {
+      const r = decideReport(db, Number(req.params.id), { approve: action === 'approve', adminId: req.user.id, note: req.body?.note });
+      if (r.error) return res.status(r.status || 400).json(r);
+      audit(db, 'gateway_lost_decision', { userId: req.user.id, ip: clientIp(req), detail: `#${r.report.id} ${action} ${r.report.hw}` });
+      res.json(r);
+    });
+  }
 
   /** Kích hoạt gateway (kể cả offline): admin dán ID từ gateway → trả mã kích hoạt để nhập vào gateway. */
   app.post('/api/admin/hardware/:site/:device/activate', ...writeGate, (req, res) => {

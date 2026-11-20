@@ -98,6 +98,11 @@ select{font:inherit;background:var(--bg);color:var(--fg);border:0}
     <input id="hwb-reason" placeholder="Lý do (vd. khách báo mất 19/11, phiếu #123)" autocomplete="off" style="flex:3;min-width:220px">
     <button id="hwb-go" class="danger fit">Khoá thiết bị</button>
   </div>
+  <h3 style="margin:14px 0 4px">📣 Chủ gateway báo mất (chờ duyệt)</h3>
+  <p class="help">Chủ báo mất trên webapp (cần TOTP / Face ID): máy bị <b>khoá tạm ngay</b>. <b>Duyệt</b> = giữ khoá (mở lại bằng "Mở khoá" bên dưới khi tìm thấy máy);
+    <b>Từ chối</b> = báo nhầm / đã tìm thấy → mở khoá. Chủ tự huỷ được khi báo cáo chưa duyệt.</p>
+  <div id="hwr-list"></div>
+  <h3 style="margin:14px 0 4px">Danh sách đang khoá</h3>
   <div id="hwb-list" style="margin-top:8px"></div>
 </div>
 <div class="panel" style="max-width:none;margin-bottom:14px">
