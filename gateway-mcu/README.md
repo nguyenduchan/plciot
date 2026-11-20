@@ -34,6 +34,21 @@ $env:SIM_API_PORT=8443; $env:SIM_HTTP_PORT=8081; .\build-sim\gw-sim.exe
   `GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8443 --lan-http 8081 --lan-mb 5020` — kênh HTTPS + ghim khoá, ghép/chờ/đồng ý/từ chối/tự kích hoạt,
   thêm/sửa/xoá thiết bị, ghi lệnh, đổi IP + tự đăng nhập lại, PC lạ bị từ chối sau khởi động lại.
 
+### Giả lập đủ DI/DO + RS485 + Modbus TCP (không cần phần cứng)
+
+`tools/esp32_field_sim.py` là "thế giới bên ngoài" của board giả lập: RS485 giả (khung Modbus RTU thô có CRC qua TCP :5485, slave 1 và 2, FC1/2/3/4/5/6/15/16),
+Modbus TCP :5020 (cùng ngân hàng thanh ghi; D0 nhiệt độ x10, D1 bộ đếm +1/giây, D2 mức %, coil n → discrete n sau 1 giây), và **bảng web http://127.0.0.1:8090**
+để bấm DI1..DI8 (ghi `di.txt`) và xem DO1..DO8 (board ghi `do.txt`).
+
+```powershell
+$d = "$PWD\gateway-mcu\simdata"
+python tools\esp32_field_sim.py --data $d
+$env:SIM_DATA=$d; $env:SIM_RS485_TCP='127.0.0.1:5485'; .\gateway-mcuuild-sim\gw-sim.exe    # SIM_RS485_TCP thay cho SIM_COM
+```
+
+Cài đặt từ GatewayApp như board thật: **Kết nối Waveshare (LAN)** → Thêm thiết bị: Modbus RTU (Địa chỉ `RS485`, Unit 0 = DI/DO board, Unit 1 = slave RS485 giả),
+hoặc Modbus TCP `127.0.0.1:5020`. Thử tự động: `GatewayApp.exe --iotest KQ --lan-target 127.0.0.1:8443 --io-data <SIM_DATA>` (kết quả `iotest-result.txt`).
+
 ## Giống gateway C# ở đâu
 
 | Việc | Gateway C# | Board |
@@ -55,6 +70,7 @@ $env:SIM_API_PORT=8443; $env:SIM_HTTP_PORT=8081; .\build-sim\gw-sim.exe
 - **Modbus RTU (RS485)**: kết nối "Modbus RTU" trong GatewayApp — ô *Địa chỉ* ghi gì cũng được (vd. `RS485`), ô *Cổng* = baud, *Parity* Even/None/Odd (8 bit, 1 stop). Unit ID theo từng thiết bị.
 - **Modbus TCP**: qua cổng Ethernet của board.
 - **I/O trên board** = Modbus RTU **Unit ID 0** (địa chỉ broadcast, không slave thật nào trả lời): `D0` = DI1..DI8 (bit 0 = DI1), `D1` = DO1..DO8 (ghi được), `D10..D17` = từng DI (0/1), `D20..D27` = từng DO (0/1, ghi được). Vẫn cần khai báo kết nối Modbus RTU.
+- **DI lọc rung + bộ đếm cạnh**: task nền lấy mẫu DI mỗi 2 ms; mức `D0`/`D10..D17` chỉ đổi khi tín hiệu ổn định ≥ **lọc rung** (tuỳ chọn *Lọc rung DI board* của kết nối Modbus RTU, mặc định 20 ms, 0 = tắt, tối đa 500). Bộ đếm cạnh lên (đếm SAU lọc, nên nhiễu ngắn không bị đếm): `D30..D37` = DI1..DI8 (16 bit, vòng 65535→0), `D40..D55` = 32 bit (DIn = D40+2(n-1), word cao trước); ghi vào ô đếm = đặt lại (thường 0). Trong GatewayApp → Thêm thiết bị chọn mẫu **"Đầu vào số (DI) trên board — mức"** hoặc **"— bộ đếm cạnh lên"** (tự đặt Modbus RTU, Unit 0, địa chỉ đúng).
 - Giao thức khác (S7, FINS, MC, EtherNet/IP, ADS, OPC UA) bị từ chối khi lưu, kèm câu báo rõ.
 
 ## Mạng

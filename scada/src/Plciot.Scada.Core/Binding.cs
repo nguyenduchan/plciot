@@ -27,7 +27,8 @@ public sealed class PlcConnection
 }
 
 /// <summary>Một thông số riêng của giao thức (khoá, nhãn, giá trị gợi ý, danh sách lựa chọn nếu có, hoặc số nguyên).</summary>
-public sealed record ParamDef(string Key, string Label, string Default, string[]? Choices = null, bool Int = false);
+/// <param name="Optional">Tuỳ chọn có thể vắng trong cấu hình cũ (không bắt buộc đủ khoá): thêm khoá mới mà không phải di trú cấu hình đã lưu.</param>
+public sealed record ParamDef(string Key, string Label, string Default, string[]? Choices = null, bool Int = false, bool Optional = false);
 
 /// <summary>
 /// Định nghĩa CHUNG (một nguồn duy nhất) thông số của từng giao thức: dùng để kiểm tra cấu hình, dựng driver và vẽ giao diện.
@@ -68,7 +69,12 @@ public static class ProtocolSpec
     public static ParamDef[] ConnOptions(PlcSource s) => s switch
     {
         PlcSource.OpcUa => new ParamDef[] { new("path", "Đường dẫn endpoint", "plcsim"), new("security", "Bảo mật", "none", new[] { "none", "signencrypt" }) },
-        PlcSource.ModbusRtu => new ParamDef[] { new("parity", "Parity", "Even", new[] { "Even", "None", "Odd" }) },
+        PlcSource.ModbusRtu => new ParamDef[]
+        {
+            new("parity", "Parity", "Even", new[] { "Even", "None", "Odd" }),
+            // chỉ board Waveshare dùng (I/O trên board = Unit ID 0): mức DI đổi khi ổn định ≥ số ms này; 0 = tắt lọc
+            new("difilter", "Lọc rung DI board (ms, 0 = tắt)", "20", Int: true, Optional: true),
+        },
         _ => Array.Empty<ParamDef>(),
     };
 
@@ -86,10 +92,12 @@ public static class ProtocolSpec
     {
         foreach (var d in defs ?? Params(s))
         {
+            if (d.Optional && (!p.TryGetValue(d.Key, out var ov) || string.IsNullOrWhiteSpace(ov))) continue;
             if (!p.TryGetValue(d.Key, out var v) || string.IsNullOrWhiteSpace(v)) return $"{what}: thiếu thông số \"{d.Label}\" ({ProtocolSpec.Name(s)}).";
             if (d.Choices != null && !d.Choices.Contains(v)) return $"{what}: \"{d.Label}\" phải là một trong {string.Join(", ", d.Choices)}.";
             if (d.Int && (!int.TryParse(v, out var n) || n < 0)) return $"{what}: \"{d.Label}\" phải là số nguyên không âm.";
         }
+        if (s == PlcSource.ModbusRtu && p.TryGetValue("difilter", out var dfv) && int.TryParse(dfv, out var dfn) && dfn > 500) return $"{what}: lọc rung DI tối đa 500 ms.";
         if (s == PlcSource.OmronFins && int.TryParse(p["node"], out var node) && (node < 1 || node > 254)) return $"{what}: node đích FINS phải từ 1 đến 254.";
         return null;
     }

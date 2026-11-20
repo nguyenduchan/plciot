@@ -119,7 +119,7 @@ void storeApply() {
   n.cmdMaxAgeSec = c["CmdMaxAgeSec"] | 10; n.remoteCmdPerSec = c["RemoteCmdPerSec"] | 5;
   n.retentionDays = c["CloudRetentionDays"] | 1; n.histIntervalSec = max(1, (int)(c["LocalHistoryIntervalSec"] | 10));
   for (JsonObjectConst k : c["Connections"].as<JsonArrayConst>()) {
-    Conn x; x.has = true; x.host = k["Host"] | ""; x.port = k["Port"] | 0; x.parity = k["Options"]["parity"] | "Even";
+    Conn x; x.has = true; x.host = k["Host"] | ""; x.port = k["Port"] | 0; x.parity = k["Options"]["parity"] | "Even"; { String df = k["Options"]["difilter"] | ""; x.diFilterMs = df.length() ? constrain((int)df.toInt(), 0, 500) : 20; }
     Proto p = protoOf(k["Protocol"] | "");
     if (p == Proto::ModbusRtu) n.rtu = x; else if (p == Proto::ModbusTcp) n.tcp = x;
   }
@@ -183,6 +183,7 @@ String storeValidate(JsonObjectConst c) {
       hasRtu = true; int baud = k["Port"] | 0; String par = k["Options"]["parity"] | "";
       if (baud < 1200 || baud > 115200) return "Kết nối Modbus RTU: tốc độ baud (ô Cổng) phải từ 1200 đến 115200.";
       if (par != "Even" && par != "None" && par != "Odd") return "Kết nối Modbus RTU: Parity phải là Even, None hoặc Odd.";
+      { String df = k["Options"]["difilter"] | ""; if (df.length() && (df.toInt() < 0 || df.toInt() > 500 || (df != "0" && df.toInt() == 0))) return "Kết nối Modbus RTU: lọc rung DI phải từ 0 đến 500 ms."; }
     } else if (pr == "ModbusTcp") {
       hasTcp = true; String h = k["Host"] | ""; int port = k["Port"] | 0;
       if (h.length() == 0) return "Kết nối Modbus TCP: thiếu địa chỉ.";

@@ -5,10 +5,10 @@ namespace GatewayApp;
 /// <summary>Một field của mẫu thiết bị: tên, nhãn tiếng Việt, kiểu hiển thị, đơn vị, khoảng, hệ số, chữ trạng thái.</summary>
 public sealed record FieldTpl(
     string Field, string Label, string Kind, string Unit = "", double Min = 0, double Max = 100, double Scale = 10,
-    bool Writable = false, string On = "", string Off = "", double? Low = null, double? High = null);
+    bool Writable = false, string On = "", string Off = "", double? Low = null, double? High = null, int Addr = -1);   // Addr >= 0: địa chỉ D cố định (I/O trên board)
 
 /// <summary>Mẫu theo loại thiết bị vật lý: chọn mẫu → có sẵn các field, nhãn, đơn vị, chữ trạng thái đúng loại.</summary>
-public sealed record DeviceTemplate(string Id, string Name, string Icon, string Desc, string IdPrefix, string DefaultTitle, FieldTpl[] Fields)
+public sealed record DeviceTemplate(string Id, string Name, string Icon, string Desc, string IdPrefix, string DefaultTitle, FieldTpl[] Fields, bool BoardIo = false)
 {
     public static readonly DeviceTemplate[] All =
     {
@@ -143,6 +143,29 @@ public sealed record DeviceTemplate(string Id, string Name, string Icon, string 
         {
             new FieldTpl("out", "Tín hiệu ra", "toggle", "", 0, 1, 1, true, "Bật", "Tắt"),
         }),
+        // ---- I/O trên board Waveshare (Modbus RTU Unit ID 0): chọn kiểu đọc DI khi thêm thiết bị ----
+        new("diboard", "Đầu vào số (DI) trên board — mức", "⏚", "Đọc trạng thái DI1–DI8 của board Waveshare, đã lọc rung (Kết nối: Lọc rung DI)", "di", "Đầu vào số", new[]
+        {
+            new FieldTpl("di1", "Đầu vào DI1", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 10),
+            new FieldTpl("di2", "Đầu vào DI2", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 11),
+            new FieldTpl("di3", "Đầu vào DI3", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 12),
+            new FieldTpl("di4", "Đầu vào DI4", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 13),
+            new FieldTpl("di5", "Đầu vào DI5", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 14),
+            new FieldTpl("di6", "Đầu vào DI6", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 15),
+            new FieldTpl("di7", "Đầu vào DI7", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 16),
+            new FieldTpl("di8", "Đầu vào DI8", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 17),
+        }, BoardIo: true),
+        new("dicount", "Đầu vào số (DI) trên board — bộ đếm cạnh lên", "#", "Đếm số lần DI chuyển 0→1 (xung đồng hồ, đếm sản phẩm); ghi 0 để đặt lại. Không mất xung dù đọc chậm", "cnt", "Bộ đếm xung", new[]
+        {
+            new FieldTpl("cnt1", "Đếm xung DI1", "number", "xung", 0, 65535, 1, true, Addr: 30),
+            new FieldTpl("cnt2", "Đếm xung DI2", "number", "xung", 0, 65535, 1, true, Addr: 31),
+            new FieldTpl("cnt3", "Đếm xung DI3", "number", "xung", 0, 65535, 1, true, Addr: 32),
+            new FieldTpl("cnt4", "Đếm xung DI4", "number", "xung", 0, 65535, 1, true, Addr: 33),
+            new FieldTpl("cnt5", "Đếm xung DI5", "number", "xung", 0, 65535, 1, true, Addr: 34),
+            new FieldTpl("cnt6", "Đếm xung DI6", "number", "xung", 0, 65535, 1, true, Addr: 35),
+            new FieldTpl("cnt7", "Đếm xung DI7", "number", "xung", 0, 65535, 1, true, Addr: 36),
+            new FieldTpl("cnt8", "Đếm xung DI8", "number", "xung", 0, 65535, 1, true, Addr: 37),
+        }, BoardIo: true),
         new("custom", "Tuỳ chọn", "＋", "Tự khai báo từng field", "dev", "Thiết bị mới", new[]
         {
             new FieldTpl("v1", "Giá trị 1", "number", "", 0, 100, 10),

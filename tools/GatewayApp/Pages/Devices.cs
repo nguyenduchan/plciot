@@ -367,11 +367,18 @@ sealed class DeviceDialog : Form
         var used = UsedElsewhere(); var next = 50;
         foreach (var f in t.Fields)
         {
-            while (used.Contains(next) && next < Contract.MaxRegister - 1) next++;
-            used.Add(next);
+            var addr = next;
+            if (f.Addr >= 0) addr = f.Addr;   // I/O trên board: địa chỉ cố định
+            else { while (used.Contains(next) && next < Contract.MaxRegister - 1) next++; used.Add(next); addr = next; }
             var ki = Math.Max(0, Array.IndexOf(FieldMeta.Kinds, f.Kind));
-            _g.Rows.Add(f.Field, "", f.Label, f.Writable ? "Đọc/ghi" : "Chỉ đọc", "UINT", next.ToString(), Num(f.Scale), f.Unit, f.Writable ? Num(f.Min) : "", f.Writable ? Num(f.Max) : "",
+            _g.Rows.Add(f.Field, "", f.Label, f.Writable ? "Đọc/ghi" : "Chỉ đọc", "UINT", addr.ToString(), Num(f.Scale), f.Unit, f.Writable ? Num(f.Min) : "", f.Writable ? Num(f.Max) : "",
                 FieldMeta.KindNames[ki], f.On, f.Off, f.Low is { } lo ? Num(lo) : "", f.High is { } hi ? Num(hi) : "");
+        }
+        if (t.BoardIo)   // I/O của board = Modbus RTU, Unit ID 0 (không có slave thật nào dùng địa chỉ 0)
+        {
+            _proto.SelectedIndex = Array.IndexOf(ProtocolSpec.Streamable, PlcSource.ModbusRtu);
+            if (_paramInputs.TryGetValue("unit", out var u)) u.Text = "0";
+            if (_connInputs.TryGetValue("host", out var h) && string.IsNullOrWhiteSpace(h.Text)) h.Text = "RS485";
         }
     }
 

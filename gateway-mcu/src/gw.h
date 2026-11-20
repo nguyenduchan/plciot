@@ -5,6 +5,8 @@
 // Board chỉ chạy 2 giao thức: Modbus RTU (RS485 trên board) và Modbus TCP (qua cổng Ethernet).
 // Modbus RTU với Unit ID 0 (địa chỉ broadcast, không slave thật nào trả lời) = I/O TRÊN BOARD:
 //   D0 = DI1..DI8 (bit 0 = DI1, chỉ đọc), D1 = DO1..DO8 (ghi được), D10..D17 = DI1..DI8 (0/1), D20..D27 = DO1..DO8 (0/1, ghi được).
+//   DI đã LỌC RUNG (mức đổi khi ổn định ≥ difilter ms). Bộ đếm cạnh lên của DI: D30..D37 (16 bit, vòng 65535→0), D40..D55 (32 bit, DIn = D40+2(n-1) word cao trước);
+//   ghi vào bộ đếm = đặt lại giá trị (thường ghi 0).
 // GW_SIM = bản giả lập trên PC (gateway-mcu/sim, build-sim.ps1). Bản nạp xuống board KHÔNG BAO GIỜ có cờ này.
 #if defined(GW_SIM) && defined(ESP_PLATFORM)
 #error "GW_SIM chi dung cho ban gia lap tren PC - bo -DGW_SIM khoi build_flags truoc khi nap xuong board"
@@ -36,7 +38,7 @@ struct Field {
   bool localIo() const { return proto == Proto::ModbusRtu && unit == 0; }
 };
 
-struct Conn { bool has = false; String host; int port = 0; String parity = "Even"; };
+struct Conn { bool has = false; String host; int port = 0; String parity = "Even"; int diFilterMs = 20; };   // diFilterMs: lọc rung DI của board (tuỳ chọn "difilter" của kết nối Modbus RTU, 0 = tắt)
 
 struct Cfg {
   String site = "factory1", device = "plc01", mqttId, solution;
@@ -108,7 +110,9 @@ String fingerprint();                            // XXXX-XXXX (để người du
 
 // ---------------------------------------------------------------- io.cpp: DI/DO, LED, còi, nút BOOT
 void ioBegin();
-uint8_t ioDi();
+uint8_t ioDi();                                  // DI đã lọc rung (task nền lấy mẫu 2 ms; xem io.cpp)
+uint32_t ioDiCount(int ch);                      // số lần chuyển 0→1 (cạnh lên) của DI ch (0..7) sau lọc, 32 bit vòng
+void ioDiCountSet(int ch, uint32_t v);           // đặt lại bộ đếm
 uint8_t ioDo();
 bool ioSetDo(uint8_t mask);
 void ioLed(uint8_t r, uint8_t g, uint8_t b);

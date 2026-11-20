@@ -81,6 +81,8 @@ bool localRead(int addr, int count, uint16_t* out, String& err) {
     else if (a == 1) out[i] = dout;
     else if (a >= 10 && a <= 17) out[i] = (di >> (a - 10)) & 1;
     else if (a >= 20 && a <= 27) out[i] = (dout >> (a - 20)) & 1;
+    else if (a >= 30 && a <= 37) out[i] = ioDiCount(a - 30) & 0xFFFF;                 // bộ đếm cạnh lên, 16 bit
+    else if (a >= 40 && a <= 55) { uint32_t c = ioDiCount((a - 40) / 2); out[i] = ((a - 40) & 1) ? (c & 0xFFFF) : (c >> 16); }   // 32 bit, word cao trước
     else out[i] = 0;
   }
   return true;
@@ -92,9 +94,11 @@ bool localWrite(int addr, const uint16_t* w, int count, String& err) {
     int a = addr + i;
     if (a == 1) m = w[i] & 0xFF;
     else if (a >= 20 && a <= 27) m = w[i] ? (m | (1 << (a - 20))) : (m & ~(1 << (a - 20)));
+    else if (a >= 30 && a <= 37) ioDiCountSet(a - 30, w[i]);                           // ghi = đặt lại bộ đếm
+    else if (a >= 40 && a <= 55) { int ch = (a - 40) / 2; uint32_t c = ioDiCount(ch); ioDiCountSet(ch, ((a - 40) & 1) ? ((c & 0xFFFF0000u) | w[i]) : ((c & 0xFFFFu) | ((uint32_t)w[i] << 16))); }
     else { err = "illegal_address"; return false; }   // DI chỉ đọc; ô khác không có
   }
-  if (!ioSetDo(m)) { err = "do_unavailable"; return false; }
+  if (m != ioDo() && !ioSetDo(m)) { err = "do_unavailable"; return false; }
   return true;
 }
 }  // namespace

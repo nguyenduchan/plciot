@@ -27,7 +27,7 @@ static std::string dataPath(const char* path) { std::string p = simDataDir(); p 
 // ---------------------------------------------------------------- GPIO giả: DI lấy từ file <SIM_DATA>/di.txt (số thập phân hoặc 0x..), đổi lúc đang chạy được
 static uint8_t simFileDi() {
   static uint32_t lastRead = 0; static uint8_t cached = 0;
-  if (millis() - lastRead < 500) return cached;
+  if (millis() - lastRead < 5) return cached;   // task DI lấy mẫu mỗi 2 ms: đọc lại tệp tối đa 200 lần/giây
   lastRead = millis();
   FILE* f = fopen(dataPath("di.txt").c_str(), "r");
   if (f) { char b[32] = {0}; fgets(b, sizeof b, f); fclose(f); cached = (uint8_t)strtol(b, nullptr, 0); }
@@ -35,7 +35,12 @@ static uint8_t simFileDi() {
 }
 // SIM_LOOPBACK=<giây>: mô phỏng dây DOn → relay/cảm biến → DIn: DIn lặp lại DOn sau bấy nhiêu giây (số âm = relay hỏng, DI không đổi theo DO).
 // Dùng để thử "lệnh → phản hồi thật" mà không cần phần cứng; chỉ có trong bản giả lập.
+static void simExportDo() {   // <SIM_DATA>/do.txt = DO hiện tại (số thập phân) cho bảng điều khiển tools/esp32_field_sim.py
+  static int last = -1; int d = ioDo(); if (d == last) return; last = d;
+  FILE* f = fopen(dataPath("do.txt").c_str(), "w"); if (f) { fprintf(f, "%d\n", d); fclose(f); }
+}
 static uint8_t simDi() {
+  simExportDo();
   uint8_t fileDi = simFileDi();
   const char* lb = getenv("SIM_LOOPBACK");
   if (!lb || !*lb || atof(lb) < 0) return fileDi;
@@ -150,6 +155,8 @@ bool Preferences::remove(const char* key) { return DeleteFileA(dataPath((std::st
 // ---------------------------------------------------------------- RS485 giả: COM thật nếu SIM_COM=COMx
 void HardwareSerial::begin(unsigned long baud, uint32_t mode, int, int) {
   end();
+  const char* tcp = getenv("SIM_RS485_TCP");
+  if (tcp && *tcp) { tcpTarget_ = tcp; tcpOpen(); printf("[sim] RS485 = TCP %s (%lu baud, khung RTU thô)\n", tcp, baud); return; }
   const char* com = getenv("SIM_COM");
   if (!com || !*com) return;
   std::string name = std::string("\\\\.\\") + com;
@@ -162,14 +169,44 @@ void HardwareSerial::begin(unsigned long baud, uint32_t mode, int, int) {
   COMMTIMEOUTS t = {}; t.ReadIntervalTimeout = MAXDWORD; SetCommTimeouts(h_, &t);   // đọc không chặn
   printf("[sim] RS485 = %s %lu baud\n", com, baud);
 }
-void HardwareSerial::end() { if (h_ != INVALID_HANDLE_VALUE) CloseHandle(h_); h_ = INVALID_HANDLE_VALUE; len_ = pos_ = 0; }
+bool HardwareSerial::tcpOpen() {
+  if (s_ != INVALID_SOCKET) return true;
+  size_t c = tcpTarget_.rfind(':'); if (c == std::string::npos) return false;
+  addrinfo hints = {}, *res = nullptr; hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
+  if (getaddrinfo(tcpTarget_.substr(0, c).c_str(), tcpTarget_.substr(c + 1).c_str(), &hints, &res) != 0) return false;
+  SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0);
+  u_long nb = 1; ioctlsocket(s, FIONBIO, &nb);
+  ::connect(s, res->ai_addr, (int)res->ai_addrlen); freeaddrinfo(res);
+  fd_set w; FD_ZERO(&w); FD_SET(s, &w); timeval tv = {0, 300000}; int err = 0, len = sizeof err;
+  if (select(0, nullptr, &w, nullptr, &tv) <= 0 || (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len), err)) { closesocket(s); return false; }
+  int one = 1; setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof one);
+  s_ = s; return true;
+}
+void HardwareSerial::end() {
+  if (h_ != INVALID_HANDLE_VALUE) CloseHandle(h_); h_ = INVALID_HANDLE_VALUE;
+  if (s_ != INVALID_SOCKET) closesocket(s_); s_ = INVALID_SOCKET; tcpTarget_.clear(); len_ = pos_ = 0;
+}
 int HardwareSerial::available() {
+  if (!tcpTarget_.empty()) {
+    if (pos_ >= len_) {
+      len_ = pos_ = 0;
+      if (s_ != INVALID_SOCKET) { int r = recv(s_, (char*)buf_, sizeof buf_, 0); if (r > 0) len_ = r; else if (r == 0 || WSAGetLastError() != WSAEWOULDBLOCK) { closesocket(s_); s_ = INVALID_SOCKET; } }
+    }
+    return len_ - pos_;
+  }
   if (h_ == INVALID_HANDLE_VALUE) return 0;
   if (pos_ >= len_) { DWORD n = 0; ReadFile(h_, buf_, sizeof buf_, &n, nullptr); len_ = (int)n; pos_ = 0; }
   return len_ - pos_;
 }
 int HardwareSerial::read() { return available() > 0 ? buf_[pos_++] : -1; }
 size_t HardwareSerial::write(const uint8_t* p, size_t n) {
+  if (!tcpTarget_.empty()) {
+    if (!tcpOpen()) return n;   // bus không có ai nghe: như RS485 hở, bên đọc sẽ hết giờ
+    size_t k = 0;
+    while (k < n) { int r = send(s_, (const char*)p + k, (int)(n - k), 0); if (r > 0) k += r; else if (WSAGetLastError() == WSAEWOULDBLOCK) Sleep(1); else { closesocket(s_); s_ = INVALID_SOCKET; break; } }
+    return n;
+  }
   if (h_ == INVALID_HANDLE_VALUE) return n;
   DWORD w = 0; WriteFile(h_, p, (DWORD)n, &w, nullptr); return w;
 }

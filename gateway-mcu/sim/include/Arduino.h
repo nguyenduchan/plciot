@@ -184,6 +184,8 @@ class HardwareSerial {
   void flush() {}
  private:
   HANDLE h_ = INVALID_HANDLE_VALUE;
+  SOCKET s_ = INVALID_SOCKET; std::string tcpTarget_;   // SIM_RS485_TCP=host:cổng: bus RS485 giả (khung RTU thô qua TCP, nối tools/esp32_field_sim.py)
+  bool tcpOpen();
   uint8_t buf_[512]; int len_ = 0, pos_ = 0;
 };
 extern HardwareSerial Serial1;

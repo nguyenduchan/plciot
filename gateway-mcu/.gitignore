@@ -1,3 +1,4 @@
 .pio/
 build-sim/
 simdata/
+simdata-io/
