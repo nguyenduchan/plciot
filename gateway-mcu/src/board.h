@@ -33,9 +33,11 @@ static const int DI_PINS[8] = {4, 5, 6, 7, 8, 9, 10, 11};
 #define PIN_BOOT   0         // nút BOOT: nhấn ngắn = mở cho admin 10 phút; giữ 10 giây = xoá cấu hình
 
 #ifdef GW_SIM
+#define MBS_PORT simMbsPort()        // Modbus TCP slave (chế độ gateway): SIM_MBS_PORT (mặc định 502)
 #define API_PORT simApiPort()        // bản giả lập trên PC: SIM_API_PORT (mặc định 443 như board)
 #define STATUS_PORT simStatusPort()  // SIM_HTTP_PORT (mặc định 80)
 #else
+#define MBS_PORT 502         // Modbus TCP slave — chỉ nhận kết nối từ PC đang giữ lease (xem slave.cpp)
 #define API_PORT 443         // API cài đặt qua HTTPS (chứng chỉ từ khoá danh tính, GatewayApp ghim khoá)
 #define STATUS_PORT 80       // trang trạng thái HTTP thường như thiết bị Ethernet sẵn firmware Waveshare — KHÔNG nhận lệnh cấu hình
 #endif

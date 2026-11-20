@@ -20,6 +20,7 @@ NetworkClass Network;
 EspClass ESP;
 
 int simApiPort() { const char* p = getenv("SIM_API_PORT"); return p && atoi(p) > 0 ? atoi(p) : 443; }   // mặc định như board (HTTPS 443)
+int simMbsPort() { const char* p = getenv("SIM_MBS_PORT"); return p && atoi(p) > 0 ? atoi(p) : 502; }
 int simStatusPort() { const char* p = getenv("SIM_HTTP_PORT"); return p && atoi(p) > 0 ? atoi(p) : 80; }
 const char* simDataDir() { const char* p = getenv("SIM_DATA"); return p && *p ? p : "simdata"; }
 static std::string dataPath(const char* path) { std::string p = simDataDir(); p += "/"; p += (path[0] == '/' ? path + 1 : path); return p; }

@@ -449,14 +449,18 @@ void cloudLoop() {
     }
   }
 
-  bool want = hasIp && g_cfg.cloudOn() && mqttIdOk(g_cfg.mqttId) && g_cfg.cloudHost.length();
+  bool want = hasIp && g_cfg.cloudOn() && mqttIdOk(g_cfg.mqttId) && g_cfg.cloudHost.length() && !leaseActive();   // chế độ gateway: PC là đường báo duy nhất
   if (s_restart) {
     s_restart = false;
     if (s_mqtt.connected()) { publish("status", "offline", true); s_mqtt.disconnect(); }
     s_tls.stop(); s_nextTry = 0; s_backoff = 2000;
   }
   if (s_republish) { s_republish = false; if (s_mqtt.connected()) { publish("config", configMessage(), true); s_telePending = true; } }
-  if (!want) { if (s_mqtt.connected()) s_mqtt.disconnect(); s_state = g_cfg.cloudOn() ? St::Disconnected : St::Disabled; return; }
+  if (!want) {
+    if (s_mqtt.connected()) { if (leaseActive()) publish("status", "offline", true); s_mqtt.disconnect(); }
+    if (leaseActive()) s_lastStatus = "";   // hết lease: nối lại sẽ báo trạng thái lại
+    s_state = leaseActive() || !g_cfg.cloudOn() ? St::Disabled : St::Disconnected; return;
+  }
 
   if (!s_mqtt.connected()) {
     if (s_state == St::Connected) logf("Mất kết nối cloud");

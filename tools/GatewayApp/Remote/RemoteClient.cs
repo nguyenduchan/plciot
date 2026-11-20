@@ -107,6 +107,8 @@ public sealed class RemoteClient : IDisposable
     public Task<ApiResult> WriteAsync(string child, string field, double v) => SendAsync<ApiResult>(HttpMethod.Post, "api/write", new ApiWrite { Child = child, Field = field, Value = v });
     public Task<ApiResult> RunAsync(bool run) => SendAsync<ApiResult>(HttpMethod.Post, "api/run", new ApiRun { Run = run }, longOp: true);
     public Task<ApiResult> DeviceAsync(string child, bool enabled) => SendAsync<ApiResult>(HttpMethod.Post, "api/device", new ApiDevice { Child = child, Enabled = enabled });
+    /// <summary>Board MCU: xin / gia hạn lease chế độ gateway (board dừng MQTTS, mở Modbus TCP slave cho IP của PC này) hoặc trả lease. Lỗi lease_held = PC khác đang giữ.</summary>
+    public Task<ApiLease> LeaseAsync(bool acquire, int ttlSec = 15) => SendAsync<ApiLease>(HttpMethod.Post, "api/lease", new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec });
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
     public Task<ApiNetwork> NetworkAsync() => SendAsync<ApiNetwork>(HttpMethod.Get, "api/network", null);
     /// <summary>Đổi IP: board lưu rồi tự khởi động lại sau ~1,5 giây — phiên hiện tại mất, nối lại bằng IP mới.</summary>
@@ -245,6 +247,8 @@ public static class TrustedBoards
         catch (Exception) { return new(); }
     }
     public static bool Contains(string hw) => Load().ContainsKey(hw);
+    /// <summary>Địa chỉ IP của các board đã tin cậy.</summary>
+    public static HashSet<string> Hosts() => Load().Values.ToHashSet();
     public static void Add(string hw, string ip)
     {
         var d = Load(); d[hw] = ip;

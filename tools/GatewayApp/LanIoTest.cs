@@ -100,6 +100,56 @@ public sealed partial class MainForm
             File.WriteAllText(diFile, "0"); await Task.Delay(800);
             File.WriteAllText(diFile, "1"); await Task.Delay(800); File.WriteAllText(diFile, "0"); await Task.Delay(800);
             Check("thêm một xung nữa → bộ đếm = 2", await Wait(v => V(v, ck) == 2), $"{V(await St(), ck)}");
+            // (5) LEASE chế độ gateway: board độc lập ↔ gateway (Modbus TCP slave cho PC giữ lease). Cổng slave: --lan-mbs (mặc định 5502).
+            var mbs = int.TryParse(ArgValue(args, "--lan-mbs"), out var mp) ? mp : 5502;
+            static async Task<byte[]?> Mb(string h, int pt, byte unit, params byte[] pdu)
+            {
+                try
+                {
+                    using var tc = new System.Net.Sockets.TcpClient(); using var cts = new CancellationTokenSource(2500);
+                    await tc.ConnectAsync(h, pt, cts.Token);
+                    var ns = tc.GetStream(); var req = new byte[7 + pdu.Length];
+                    req[1] = 1; req[4] = (byte)((pdu.Length + 1) >> 8); req[5] = (byte)(pdu.Length + 1); req[6] = unit; pdu.CopyTo(req, 7);
+                    await ns.WriteAsync(req, cts.Token);
+                    var hd = new byte[7]; var got = 0;
+                    while (got < 7) { var n = await ns.ReadAsync(hd.AsMemory(got), cts.Token); if (n == 0) return null; got += n; }
+                    var body = new byte[((hd[4] << 8) | hd[5]) - 1]; got = 0;
+                    while (got < body.Length) { var n = await ns.ReadAsync(body.AsMemory(got), cts.Token); if (n == 0) return null; got += n; }
+                    return body;
+                }
+                catch (Exception) { return null; }
+            }
+            static int W(byte[]? r) => r is { Length: >= 4 } && r[0] == 3 ? (r[2] << 8) | r[3] : -1;
+            Check("mặc định board chạy ĐỘC LẬP", (await c.StateAsync()).Mode == "standalone");
+            Check("chưa có lease → Modbus TCP slave từ chối", await Mb(host, mbs, 0, 3, 0, 10, 0, 1) == null);
+            var ls = await c.LeaseAsync(true, 8);
+            Check("xin lease → chế độ GATEWAY", ls.Ok && ls.Mode == "gateway" && ls.Port == mbs, $"{ls.Mode}:{ls.Port}");
+            var gs = await c.StateAsync();
+            Check("state báo gateway, cloud tạm dừng", gs.Mode == "gateway" && gs.Cloud == "Disabled", $"{gs.Mode}/{gs.Cloud}");
+            File.WriteAllText(diFile, "1"); await Task.Delay(700);
+            Check("Modbus TCP Unit 0: FC03 D10 = DI1 = 1", W(await Mb(host, mbs, 0, 3, 0, 10, 0, 1)) == 1);
+            var fc2 = await Mb(host, mbs, 0, 2, 0, 0, 0, 8);
+            Check("Modbus TCP Unit 0: FC02 discrete input DI1 = 1", fc2 is { Length: 3 } && (fc2[2] & 1) == 1);
+            var wr5 = await Mb(host, mbs, 0, 5, 0, 2, 0xFF, 0);
+            Check("Modbus TCP Unit 0: FC05 bật coil DO3", wr5 is { Length: 5 } && wr5[0] == 5);
+            var fc1 = await Mb(host, mbs, 0, 1, 0, 0, 0, 8);
+            Check("FC01 đọc coil: DO3 = 1", fc1 is { Length: 3 } && (fc1[2] & 4) == 4);
+            Check("FC03 D22 (DO3) = 1", W(await Mb(host, mbs, 0, 3, 0, 22, 0, 1)) == 1);
+            await Mb(host, mbs, 0, 6, 0, 22, 0, 0);
+            Check("FC06 ghi D22 = 0 → DO3 tắt", W(await Mb(host, mbs, 0, 3, 0, 22, 0, 1)) == 0);
+            Check("Modbus TCP Unit 0: ghi DI (D10) bị từ chối", (await Mb(host, mbs, 0, 6, 0, 10, 0, 1)) is { Length: 2 } e5 && e5[0] == 0x86);
+            Check("coil với Unit ≠ 0 → illegal function", (await Mb(host, mbs, 1, 1, 0, 0, 0, 1)) is { Length: 2 } e6 && e6[1] == 1);
+            await Mb(host, mbs, 1, 6, 0, 10, 0, 7);
+            Check("CẦU RS485: ghi/đọc slave Unit 1 D10 = 7 (board là master RS485)", W(await Mb(host, mbs, 1, 3, 0, 10, 0, 1)) == 7);
+            await c.LeaseAsync(true, 8);   // gia hạn
+            Check("trong chế độ gateway board không poll thiết bị ngoài (field RS485 ngừng cập nhật)", await Wait(v => double.IsNaN(V(v, $"{rs}.flow"))), $"{V(await St(), $"{rs}.flow")}");
+            var rel = await c.LeaseAsync(false);
+            Check("trả lease → về ĐỘC LẬP, slave đóng", rel.Mode == "standalone" && await Mb(host, mbs, 0, 3, 0, 10, 0, 1) == null);
+            Check("độc lập: board poll lại thiết bị ngoài", await Wait(v => !double.IsNaN(V(v, $"{rs}.flow"))));
+            await c.LeaseAsync(true, 5);
+            await Task.Delay(7500);
+            Check("mất nhịp tim quá hạn → tự về ĐỘC LẬP", (await c.StateAsync()).Mode == "standalone");
+            File.WriteAllText(diFile, "0");
             rf.ShowPage(1); await Task.Delay(800); SaveForm(rf, Path.Combine(outDir, "io-devices.png"));
             foreach (var k in kids) DeviceDialog.Remove(rf, k);
             await rf.ApplyAsync("iotest: dọn");

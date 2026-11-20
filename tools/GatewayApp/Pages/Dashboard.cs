@@ -6,6 +6,8 @@ namespace GatewayApp;
 /// <summary>Những gì các trang cần từ cửa sổ chính (tách ra để trang không biết chi tiết host).</summary>
 public interface IGatewayApp
 {
+    /// <summary>Loại gateway đang được cấu hình, tự nhận diện: "mcu" = board Waveshare ESP32 (qua LAN), còn lại = gateway PC. Quyết định mẫu thiết bị được đề nghị.</summary>
+    string GatewayKind => "";
     ScadaConfig Config { get; }
     UiMetaStore Meta { get; }
     HistoryStore History { get; }

@@ -34,6 +34,13 @@ $env:SIM_API_PORT=8443; $env:SIM_HTTP_PORT=8081; .\build-sim\gw-sim.exe
   `GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8443 --lan-http 8081 --lan-mb 5020` — kênh HTTPS + ghim khoá, ghép/chờ/đồng ý/từ chối/tự kích hoạt,
   thêm/sửa/xoá thiết bị, ghi lệnh, đổi IP + tự đăng nhập lại, PC lạ bị từ chối sau khởi động lại.
 
+### Hai chế độ: độc lập ↔ gateway (lease)
+- **Độc lập (mặc định)**: board tự đọc thiết bị (RS485/Modbus TCP + DI/DO) và đẩy MQTTS lên server.
+- **Gateway**: một PC admin (GatewayApp) xin **lease** qua HTTPS đã xác thực — `POST /api/lease {Action:"acquire"|"release", TtlSec}` (5–120 s, mặc định 15), gia hạn bằng nhịp tim mỗi 5 s. Có lease: board **tạm dừng MQTTS** (PC là đường báo duy nhất, `/api/state` → `Mode:"gateway"`, `Cloud:"Disabled"`), **không poll thiết bị ngoài**, và mở **Modbus TCP slave** (cổng 502; giả lập `SIM_MBS_PORT`) chỉ cho IP của PC giữ lease. PC khác xin lease → `409 lease_held`. Mất nhịp tim quá hạn hoặc trả lease → tự về độc lập (MQTTS nối lại, dữ liệu lúc gateway vẫn được ghi để gửi bù).
+- Bản đồ Modbus TCP slave: **Unit 0** = I/O board — FC03/04 đọc, FC06/16 ghi (bảng D0/D1/D10–D17/D20–D27/D30–D55 như trên), FC02 discrete input = DI1..DI8 (địa chỉ 0..7), FC01/FC05 coil = DO1..DO8 (địa chỉ 0..7). **Unit n ≠ 0** = **cầu RS485**: board VẪN là master RS485 và chuyển FC03/04/06/16 tới slave Unit n (hoặc PLC như Xinje XD3 qua RS485).
+- GatewayApp (PC): kết nối Modbus TCP có IP trùng một board đã tin cậy ("Kết nối Waveshare" đã ghép) → `BoardLease` tự giữ lease khi gateway chạy và trả lease khi dừng/đóng app. Thêm thiết bị: mẫu **"Nối chân DI / DO của board"** trên gateway PC dùng Modbus TCP tới IP board, Unit 0.
+- Thử tự động: `--iotest` thêm 18 kiểm tra lease/slave; thêm `--lan-mbs 5502` và chạy gw-sim với `SIM_MBS_PORT=5502`.
+
 ### Giả lập đủ DI/DO + RS485 + Modbus TCP (không cần phần cứng)
 
 `tools/esp32_field_sim.py` là "thế giới bên ngoài" của board giả lập: RS485 giả (khung Modbus RTU thô có CRC qua TCP :5485, slave 1 và 2, FC1/2/3/4/5/6/15/16),
@@ -70,7 +77,7 @@ hoặc Modbus TCP `127.0.0.1:5020`. Thử tự động: `GatewayApp.exe --iotest
 - **Modbus RTU (RS485)**: kết nối "Modbus RTU" trong GatewayApp — ô *Địa chỉ* ghi gì cũng được (vd. `RS485`), ô *Cổng* = baud, *Parity* Even/None/Odd (8 bit, 1 stop). Unit ID theo từng thiết bị.
 - **Modbus TCP**: qua cổng Ethernet của board.
 - **I/O trên board** = Modbus RTU **Unit ID 0** (địa chỉ broadcast, không slave thật nào trả lời): `D0` = DI1..DI8 (bit 0 = DI1), `D1` = DO1..DO8 (ghi được), `D10..D17` = từng DI (0/1), `D20..D27` = từng DO (0/1, ghi được). Vẫn cần khai báo kết nối Modbus RTU.
-- **DI lọc rung + bộ đếm cạnh**: task nền lấy mẫu DI mỗi 2 ms; mức `D0`/`D10..D17` chỉ đổi khi tín hiệu ổn định ≥ **lọc rung** (tuỳ chọn *Lọc rung DI board* của kết nối Modbus RTU, mặc định 20 ms, 0 = tắt, tối đa 500). Bộ đếm cạnh lên (đếm SAU lọc, nên nhiễu ngắn không bị đếm): `D30..D37` = DI1..DI8 (16 bit, vòng 65535→0), `D40..D55` = 32 bit (DIn = D40+2(n-1), word cao trước); ghi vào ô đếm = đặt lại (thường 0). Trong GatewayApp → Thêm thiết bị chọn mẫu **"Đầu vào số (DI) trên board — mức"** hoặc **"— bộ đếm cạnh lên"** (tự đặt Modbus RTU, Unit 0, địa chỉ đúng).
+- **DI lọc rung + bộ đếm cạnh**: task nền lấy mẫu DI mỗi 2 ms; mức `D0`/`D10..D17` chỉ đổi khi tín hiệu ổn định ≥ **lọc rung** (tuỳ chọn *Lọc rung DI board* của kết nối Modbus RTU, mặc định 20 ms, 0 = tắt, tối đa 500). Bộ đếm cạnh lên (đếm SAU lọc, nên nhiễu ngắn không bị đếm): `D30..D37` = DI1..DI8 (16 bit, vòng 65535→0), `D40..D55` = 32 bit (DIn = D40+2(n-1), word cao trước); ghi vào ô đếm = đặt lại (thường 0). Trong GatewayApp → Thêm thiết bị chọn mẫu **"Nối chân DI / DO của board"** (cảm biến DI · điều khiển DO + DI phản hồi · điều khiển DO; GatewayApp tự nhận board Waveshare nên không phải chọn loại gateway) hoặc **"Đầu vào số (DI) trên board — bộ đếm cạnh lên"** (tự đặt Modbus RTU, Unit 0, địa chỉ đúng).
 - Giao thức khác (S7, FINS, MC, EtherNet/IP, ADS, OPC UA) bị từ chối khi lưu, kèm câu báo rõ.
 
 ## Mạng

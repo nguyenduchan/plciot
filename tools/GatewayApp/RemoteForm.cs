@@ -48,6 +48,7 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly List<(NavButton Btn, Control Page, string Title)> _pages = new();
     Control _current = null!;
 
+    public string GatewayKind => _hello.Kind;
     string KindName => _hello.Kind == "mcu" ? "Waveshare" : "Gateway PC";
 
     RemoteForm(RemoteClient client, ApiHello hello, string host, int port, ApiConfig first)

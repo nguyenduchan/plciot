@@ -206,6 +206,7 @@ inline void yield() { Sleep(0); }                         // PubSubClient
 
 // ---- sim
 int simApiPort();
+int simMbsPort();
 int simSetupWindowMs();
 uint32_t simPairWaitMs();
 int simStatusPort();

@@ -246,13 +246,14 @@ public sealed partial class MainForm : Form, IGatewayApp
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
         StartHistory();
+        _lease = new BoardLease(() => _cfg, () => Running, Identity()); _lease.Start();   // board Waveshare đọc bằng Modbus TCP → giữ lease chế độ gateway
         if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng
         {
             _login = _carry.Login; _loginAt = _carry.At; _localUnlocked = _carryLocal; var t = _carry.Toast; _carry = default; _carryLocal = false;
             if (!string.IsNullOrEmpty(t)) Shown += (_, _) => Toast(t);
         }
         Shown += (_, _) => BeginInvoke(async () => await StartupLoginAsync());   // hoãn: hộp thoại OTP (modal) không được chặn việc tự chạy nền ở các handler Shown khác;   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
-        FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); };
+        FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); if (_lease != null) await _lease.StopAsync(); };
         var args = Environment.GetCommandLineArgs();
         // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
         if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest")) Shown += async (_, _) => await StartAsync();
@@ -573,6 +574,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         };
     }
 
+    BoardLease? _lease;
     GatewayIdentity? _identity;
     /// <summary>Danh tính mật mã của gateway (sinh lần đầu, lưu khoá riêng vào cấu hình đã mã hoá).</summary>
     GatewayIdentity Identity()

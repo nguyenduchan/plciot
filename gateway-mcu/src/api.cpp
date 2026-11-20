@@ -189,6 +189,7 @@ void hAdminAction() {
 void hState() {
   JsonDocument d;
   d["Running"] = g_running; d["Status"] = g_running ? g_status : String("đã dừng");
+  d["Mode"] = leaseActive() ? "gateway" : "standalone"; if (leaseActive()) d["LeaseHolder"] = leaseHolder().toString();
   d["Cloud"] = cloudStateName(); d["Rev"] = g_rev; d["Customer"] = true; d["Fingerprint"] = fingerprint();
   engineValues(d["Values"].to<JsonObject>());
   String s; serializeJson(d, s); send(200, s);
@@ -231,6 +232,21 @@ void hWrite() {
   if (!child.length() || !field.length() || !d["Value"].is<double>()) { err("bad_request"); return; }
   String e = engineWrite(child, field, d["Value"].as<double>(), false);
   if (e.length()) err(e); else ok();
+}
+
+/// Lease chế độ gateway: {Action:"acquire"|"release", TtlSec} — PC đang giữ gia hạn bằng nhịp tim (mỗi vài giây); PC khác bị từ chối (lease_held).
+void hLease() {
+  JsonDocument d; if (!body(d)) return;
+  String action = d["Action"] | "acquire";
+  if (action == "release") { if (leaseActive() && leaseHolder() == q_->ip) leaseRelease(); }
+  else if (action == "acquire") {
+    if (leaseActive() && leaseHolder() != q_->ip) { err("lease_held", 409); return; }
+    int ttl = d["TtlSec"] | 15; ttl = ttl < 5 ? 5 : ttl > 120 ? 120 : ttl;
+    leaseSet(q_->ip, (uint32_t)ttl * 1000);
+  } else { err("bad_request"); return; }
+  JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Mode"] = leaseActive() ? "gateway" : "standalone";
+  o["TtlMs"] = leaseRemainingMs(); o["Port"] = MBS_PORT;
+  String s; serializeJson(o, s); send(200, s);
 }
 
 void hRun() {
@@ -314,7 +330,7 @@ const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
   {"GET", "/api/challenge", hChallenge, false}, {"POST", "/api/login", hLogin, false},
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
-  {"POST", "/api/write", hWrite, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
+  {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true},
 };
 

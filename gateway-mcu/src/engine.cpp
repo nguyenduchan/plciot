@@ -52,7 +52,7 @@ void pollOnce() {
   std::vector<Field> fields;
   { Lock l; fields = g_cfg.pack; }   // bản sao: trao đổi với PLC mà không giữ khoá chung
   std::vector<const Field*> rd;
-  for (auto& f : fields) if (f.enabled && f.access != Access::Write && (f.proto == Proto::ModbusRtu || f.proto == Proto::ModbusTcp)) rd.push_back(&f);
+  for (auto& f : fields) if (f.enabled && f.access != Access::Write && (f.proto == Proto::ModbusRtu || f.proto == Proto::ModbusTcp) && (!leaseActive() || f.localIo())) rd.push_back(&f);   // chế độ gateway: PC lo thiết bị ngoài, board chỉ đọc I/O của chính nó
   if (rd.empty()) { Lock l; s_values.clear(); g_status = fields.empty() ? "no_devices" : "online"; s_seq++; return; }
   std::sort(rd.begin(), rd.end(), [](const Field* a, const Field* b) { String ka = keyOf(*a), kb = keyOf(*b); return ka != kb ? ka < kb : a->addr < b->addr; });
   int okReads = 0, badReads = 0;

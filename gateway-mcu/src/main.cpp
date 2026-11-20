@@ -62,6 +62,7 @@ void setup() {
 void loop() {
   ioLoop();
   apiLoop();
+  slaveLoop();
   cloudLoop();
   ledTick();
   delay(2);

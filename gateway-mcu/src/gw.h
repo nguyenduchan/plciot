@@ -125,6 +125,18 @@ void modbusReconfigure();                        // sau khi cấu hình đổi (
 bool mbRead(const Field& f, int addr, int count, uint16_t* out, String& err);
 bool mbWrite(const Field& f, int addr, const uint16_t* words, int count, String& err);
 
+// ---------------------------------------------------------------- slave.cpp: CHẾ ĐỘ GATEWAY (lease) + Modbus TCP slave
+// Mặc định board chạy ĐỘC LẬP: tự đọc thiết bị, đẩy MQTTS lên cloud. Khi một PC admin (GatewayApp/C# gateway) xin LEASE qua API mã hoá
+// (POST /api/lease, gia hạn bằng nhịp tim) board chuyển sang chế độ GATEWAY: tạm dừng MQTTS, KHÔNG poll RS485 cho cloud, mở Modbus TCP slave
+// cho đúng IP đó. Unit 0 = I/O board (FC01/02/03/04/05/06/16, xem modbus.cpp); Unit n ≠ 0 = cầu sang RS485 (board vẫn là master RS485).
+// Mất nhịp tim quá hạn → tự về độc lập.
+bool leaseActive();
+IPAddress leaseHolder();
+void leaseSet(const IPAddress& ip, uint32_t ttlMs);
+void leaseRelease();
+uint32_t leaseRemainingMs();
+void slaveLoop();
+
 // ---------------------------------------------------------------- engine.cpp: đọc theo chu kỳ, giá trị, ghi
 extern bool g_running;
 extern String g_status;                          // online | plc_fault | no_devices | đã dừng
