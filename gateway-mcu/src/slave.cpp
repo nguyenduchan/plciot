@@ -119,7 +119,7 @@ void leaseRelease() { s_has = false; }
 
 void slaveLoop() {
   if (!s_started) {
-    if (ETH.localIP() == IPAddress(0, 0, 0, 0)) return;
+    if (!netUp()) return;
     s_srv.begin(); s_started = true;
     logf("Modbus TCP slave: cổng %d (chỉ nhận PC đang giữ lease)", MBS_PORT);
   }

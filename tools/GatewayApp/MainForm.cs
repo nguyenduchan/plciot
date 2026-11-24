@@ -19,11 +19,11 @@ public sealed partial class MainForm : Form, IGatewayApp
     readonly ConcurrentDictionary<string, double> _values = new();
     ScadaHost? _host;
     /// <summary>--customer: bản của khách — chỉ giám sát và điều khiển; thiết lập do tool admin gửi qua IP (xem MainForm.Remote.cs).</summary>
-    readonly bool _customer = Environment.GetCommandLineArgs().Contains("--customer");
+    readonly bool _customer = RunOptions.Args.Contains("--customer");
     /// <summary>Gateway KHÔNG sửa thiết bị/giao thức: mọi thiết lập chỉ làm qua tool Admin. Chỉ các chế độ kiểm thử/trình diễn mới mở lại giao diện sửa.</summary>
     /// <summary>Tự chạy gateway sau mỗi lần lưu cấu hình (trừ các chế độ kiểm thử tự điều khiển việc chạy).</summary>
-    bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(Environment.GetCommandLineArgs().Contains);
-    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest", "--lantest", "--fbtest", "--iotest" }.Any(Environment.GetCommandLineArgs().Contains);
+    bool AutoRun => !new[] { "--selftest", "--edittest", "--pairtest" }.Any(RunOptions.Args.Contains);
+    readonly bool _testMode = new[] { "--selftest", "--pairtest", "--edittest", "--freshtest", "--slottest", "--solshot", "--backuptest", "--lantest", "--fbtest", "--iotest", "--wifisetup" }.Any(RunOptions.Args.Contains);
     /// <summary>Bản đầy đủ (đã gộp tool Admin): có trang Thiết bị / Cloud. Bản khách (--customer) chỉ xem + điều khiển.</summary>
     bool _editUi => !_customer || _testMode;
 
@@ -34,7 +34,7 @@ public sealed partial class MainForm : Form, IGatewayApp
     DateTime _loginAt = DateTime.MinValue;
     bool _prompting;
     /// <summary>TẠM THỜI (theo yêu cầu): --noauth bỏ qua màn hình đăng nhập/OTP để test đầy đủ gateway. Bỏ cờ này trước khi phát hành.</summary>
-    readonly bool _noAuth = Environment.GetCommandLineArgs().Contains("--noauth");
+    readonly bool _noAuth = RunOptions.Args.Contains("--noauth");
     /// <summary>OTP chỉ cần MỘT lần cho mỗi lần mở app (không hết hạn giữa chừng); mở lại gateway thì phải nhập lại để sửa.</summary>
     bool Unlocked => _testMode || _noAuth || _login != null || _localUnlocked;
     /// <summary>Đã mở khoá bằng MẬT KHẨU CỤC BỘ (không cần webapp/Internet). Giữ khi dựng lại cửa sổ.</summary>
@@ -222,6 +222,10 @@ public sealed partial class MainForm : Form, IGatewayApp
             lan.Click += (_, _) => { if (RequireEdit()) RemoteForm.Open(this); };
             _side.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 6, BackColor = Theme.Side });
             _side.Controls.Add(lan);
+            var wifi = new FlatButton { Caption = "📶  Cài Wi-Fi cho board mới", Dock = DockStyle.Bottom, Height = 38 };
+            wifi.Click += async (_, _) => { if (RequireEdit()) await WifiSetupAsync(); };
+            _side.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 6, BackColor = Theme.Side });
+            _side.Controls.Add(wifi);
         }
 
         // thanh trên
@@ -254,7 +258,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         }
         Shown += (_, _) => BeginInvoke(async () => await StartupLoginAsync());   // hoãn: hộp thoại OTP (modal) không được chặn việc tự chạy nền ở các handler Shown khác;   // màn hình đăng nhập lúc mở app (bỏ qua ở chế độ kiểm thử / bản khách)
         FormClosing += async (_, _) => { try { SaveCfg(); } catch (IOException) { } await StopAsync(); if (_lease != null) await _lease.StopAsync(); };
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         // luôn tự chạy (kể cả chưa có thiết bị): thêm thiết bị là đọc ngay. Các chế độ kiểm thử tự điều khiển việc chạy.
         if (!args.Contains("--selftest") && !args.Contains("--edittest") && !args.Contains("--slottest") && !args.Contains("--pairtest")) Shown += async (_, _) => await StartAsync();
         Shown += (_, _) => InitRemoteAccess(args);

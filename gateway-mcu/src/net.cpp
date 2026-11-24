@@ -3,6 +3,9 @@
 #include "gw.h"
 #include "board.h"
 #include <ETH.h>
+#ifndef GW_SIM
+#include <WiFi.h>
+#endif
 
 static bool parseIp(const String& s, IPAddress& out) {
   int p[4]; char tail;
@@ -54,6 +57,57 @@ void netApply() {
   if (!parseIp(n.dns, d)) d = IPAddress(8, 8, 8, 8);
   ETH.config(ip, g, m, d);
   logf("Mạng: IP tĩnh %s/%s, gateway %s, DNS %s", n.ip.c_str(), n.mask.c_str(), n.gw.c_str(), n.dns.c_str());
+}
+
+static bool wifiUp() {
+#ifndef GW_SIM
+  return WiFi.status() == WL_CONNECTED;
+#else
+  return false;
+#endif
+}
+static bool sameNet(const IPAddress& a, const IPAddress& b, const IPAddress& mask) { for (int i = 0; i < 4; i++) if ((a[i] & mask[i]) != (b[i] & mask[i])) return false; return true; }
+
+/// Ethernet chỉ tính là "có mạng" khi dây đã cắm (link lên): IP tĩnh vẫn được gán dù rút dây, nên không tin ETH.localIP() một mình.
+bool netEthUp();
+static bool ethUp() {
+#ifdef GW_SIM
+  return ETH.localIP() != IPAddress(0, 0, 0, 0);
+#else
+  return ETH.linkUp() && ETH.localIP() != IPAddress(0, 0, 0, 0);
+#endif
+}
+
+IPAddress netIp() {
+  IPAddress e = ETH.localIP();
+  if (ethUp()) return e;
+#ifndef GW_SIM
+  if (wifiUp()) return WiFi.localIP();
+  if (WiFi.getMode() & WIFI_AP) return WiFi.softAPIP();   // hotspot cài đặt (không dây, chưa Wi-Fi): API vẫn mở ở 192.168.4.1
+#endif
+  return IPAddress(0, 0, 0, 0);   // dây rút và chưa có Wi-Fi: chưa có mạng
+}
+bool netEthUp() { return ethUp(); }
+bool netUp() { return netIp() != IPAddress(0, 0, 0, 0); }
+IPAddress netIpFor(const IPAddress& peer) {
+#ifndef GW_SIM
+  if ((WiFi.getMode() & WIFI_AP) && sameNet(peer, WiFi.softAPIP(), IPAddress(255, 255, 255, 0))) return WiFi.softAPIP();
+#endif
+  if (ethUp() && sameNet(peer, ETH.localIP(), ETH.subnetMask())) return ETH.localIP();   // gói đến từ dây thì trả IP dây
+#ifndef GW_SIM
+  if (wifiUp() && sameNet(peer, WiFi.localIP(), WiFi.subnetMask())) return WiFi.localIP();
+#endif
+  return netIp();
+}
+String netMaskFor(const IPAddress& peer) {
+#ifndef GW_SIM
+  if ((WiFi.getMode() & WIFI_AP) && sameNet(peer, WiFi.softAPIP(), IPAddress(255, 255, 255, 0))) return "255.255.255.0";
+#endif
+  if (ethUp() && sameNet(peer, ETH.localIP(), ETH.subnetMask())) return netMask();
+#ifndef GW_SIM
+  if (wifiUp() && sameNet(peer, WiFi.localIP(), WiFi.subnetMask())) return WiFi.subnetMask().toString();
+#endif
+  return netMask();
 }
 
 String netMask() { NetCfg n = netLoad(); return n.dhcp ? ETH.subnetMask().toString() : n.mask; }

@@ -11,7 +11,7 @@ public sealed partial class MainForm
     {
         var log = new List<string>();
         void Check(string name, bool ok, string detail = "") => log.Add($"{(ok ? "PASS" : "FAIL")} {name}{(detail.Length > 0 ? " — " + detail : "")}");
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var fw = ArgValue(args, "--fw");
         var i = target.LastIndexOf(':');
         var host = i > 0 ? target[..i] : target; var port = i > 0 ? int.Parse(target[(i + 1)..]) : 443;

@@ -17,7 +17,7 @@ public sealed partial class MainForm
         Directory.CreateDirectory(outDir);
         var log = new List<string>();
         void Check(string name, bool ok, string detail = "") => log.Add($"{(ok ? "PASS" : "FAIL")} {name}{(detail.Length > 0 ? " — " + detail : "")}");
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var code = ArgValue(args, "--lan-code");
         var mb = int.TryParse(ArgValue(args, "--lan-mb"), out var m) ? m : 5020;
         var i = target.LastIndexOf(':');

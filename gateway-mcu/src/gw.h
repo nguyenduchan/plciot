@@ -91,6 +91,19 @@ String netValidate(const NetCfg& n);             // "" = hợp lệ
 void netSave(const NetCfg& n);
 void netReset();                                 // về mặc định 192.168.1.200/24
 void netApply();                                 // gọi sau ETH.begin(): IP tĩnh → ETH.config, DHCP → để nguyên
+// wifi.cpp: Wi-Fi station song song với Ethernet (cấu hình qua LAN: API /api/wifi*)
+void wifiBegin();
+void wifiLoop();
+void serialCfgLoop();                            // serialcfg.cpp: cài Wi-Fi qua cáp USB (dòng JSON, trả "@@{…}")                                 // gọi trong loop(): bật/tắt hotspot cài đặt tuỳ có dây / có Wi-Fi hay không
+bool netEthUp();                                 // Ethernet đã cắm dây và có IP
+String wifiScanJson();                           // [{Ssid,Rssi,Open}]
+String wifiStatusJson();                         // {Supported,Saved,Connected,Ssid,Rssi,Ip,Mac} — không có mật khẩu
+bool wifiConnect(const String& ssid, const String& pass, String& err);   // nối thử rồi mới lưu; ssid rỗng = quên mạng
+// Địa chỉ đang dùng: Ethernet nếu có IP, không thì Wi-Fi (board chỉ có Wi-Fi vẫn cài đặt/chạy cloud như khi cắm dây).
+IPAddress netIp();
+bool netUp();
+IPAddress netIpFor(const IPAddress& peer);       // IP của giao diện cùng mạng con với peer (Wi-Fi hay Ethernet) — cho gói tìm thiết bị
+String netMaskFor(const IPAddress& peer);
 String netMask();                                // subnet đang dùng (cho gói tìm thiết bị)
 
 // ---------------------------------------------------------------- crypto.cpp: danh tính ECDSA P-256 (khớp GatewayIdentity.cs)

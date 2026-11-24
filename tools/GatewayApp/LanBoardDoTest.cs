@@ -18,7 +18,7 @@ public sealed partial class MainForm
         var log = new List<string>();
         void L(string s) { log.Add($"{DateTime.Now:HH:mm:ss} {s}"); File.WriteAllLines(Path.Combine(outDir, "boarddo-log.txt"), log); }
         async Task<bool> Until(Func<bool> c, int sec) { for (var i = 0; i < sec * 4 && !c(); i++) await Task.Delay(250); return c(); }
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var ti = target.LastIndexOf(':');
         var host = ti > 0 ? target[..ti] : target; var port = ti > 0 ? int.Parse(target[(ti + 1)..]) : 443;
         var watch = int.TryParse(ArgValue(args, "--watch-sec"), out var w) ? w : 600;

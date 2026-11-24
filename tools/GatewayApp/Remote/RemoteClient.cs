@@ -111,6 +111,11 @@ public sealed class RemoteClient : IDisposable
     public Task<ApiLease> LeaseAsync(bool acquire, int ttlSec = 15) => SendAsync<ApiLease>(HttpMethod.Post, "api/lease", new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec });
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
     public Task<ApiNetwork> NetworkAsync() => SendAsync<ApiNetwork>(HttpMethod.Get, "api/network", null);
+    /// <summary>Board MCU: quét Wi-Fi (~3–5 giây). Trả mạng đã bỏ trùng SSID, mỗi mạng một dòng.</summary>
+    public Task<List<ApiWifiNet>> WifiScanAsync() => SendAsync<List<ApiWifiNet>>(HttpMethod.Get, "api/wifi/scan", null, longOp: true);
+    public Task<ApiWifi> WifiAsync() => SendAsync<ApiWifi>(HttpMethod.Get, "api/wifi", null);
+    /// <summary>Nối Wi-Fi (board thử tối đa ~15 giây rồi mới lưu; sai mật khẩu → lỗi wifi_auth_failed, mạng cũ giữ nguyên). Ssid rỗng = quên mạng đã lưu.</summary>
+    public Task<ApiWifi> PutWifiAsync(string ssid, string password) => SendAsync<ApiWifi>(HttpMethod.Put, "api/wifi", new { Ssid = ssid, Password = password }, longOp: true);
     /// <summary>Đổi IP: board lưu rồi tự khởi động lại sau ~1,5 giây — phiên hiện tại mất, nối lại bằng IP mới.</summary>
     public Task<ApiResult> PutNetworkAsync(ApiNetwork n) => SendAsync<ApiResult>(HttpMethod.Put, "api/network", n);
     /// <summary>Board MCU: các PC quản trị (đang dùng / đang chờ).</summary>
@@ -204,6 +209,12 @@ public sealed class RemoteClient : IDisposable
         "use_https" => "Board chỉ nhận cài đặt qua HTTPS (cổng 443).",
         "offline" => "Không nối được thiết bị (sai IP/cổng, thiết bị tắt hoặc khác mạng LAN).",
         "timeout" => "Thiết bị không trả lời kịp.",
+        "wifi_auth_failed" => "Sai mật khẩu Wi-Fi (hoặc kiểu bảo mật không được hỗ trợ). Mạng cũ vẫn giữ nguyên.",
+        "wifi_not_found" => "Board không thấy mạng này — lại gần router hơn hoặc quét lại.",
+        "wifi_timeout" => "Nối Wi-Fi quá lâu không được (router không cấp IP?). Mạng cũ vẫn giữ nguyên.",
+        "wifi_password_length" => "Mật khẩu Wi-Fi phải từ 8 đến 63 ký tự.",
+        "wifi_ssid_too_long" => "Tên Wi-Fi (SSID) tối đa 32 ký tự.",
+        "wifi_unsupported" => "Thiết bị này không có Wi-Fi.",
         "ota_bad_sha256" => "Board nhận file bị lỗi (sai SHA-256) — đã huỷ, board giữ nguyên firmware cũ. Thử lại.",
         "ota_incomplete" => "Đứt kết nối giữa chừng — board giữ nguyên firmware cũ. Thử lại.",
         "ota_unsupported" => "Thiết bị này không hỗ trợ cập nhật firmware qua mạng.",
@@ -293,6 +304,24 @@ public static class TrustedBoards
     public static bool Contains(string hw) => Load().ContainsKey(hw);
     /// <summary>Địa chỉ IP của các board đã tin cậy.</summary>
     public static HashSet<string> Hosts() => Load().Values.ToHashSet();
+    // Chế độ của từng board đối với GATEWAY PC NÀY (remote-board-modes.json cạnh remote-boards.json): "slave" (mặc định) = board là slave Modbus TCP của gateway C#,
+    // gateway C# giữ lease và là đường báo lên server duy nhất; "standalone" = board tự chạy như gateway độc lập, tự nối cloud — gateway C# chỉ là chương trình
+    // nối vào board (cài đặt / xem), KHÔNG nối lên server thay board và không giữ lease.
+    public const string Slave = "slave", Standalone = "standalone";
+    static string ModesPath => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(FilePath))!, "remote-board-modes.json");
+    static Dictionary<string, string> LoadModes()
+    {
+        try { return File.Exists(ModesPath) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ModesPath)) ?? new() : new(); }
+        catch (Exception) { return new(); }
+    }
+    public static string ModeOf(string hw) => LoadModes().TryGetValue(hw, out var m) && m == Standalone ? Standalone : Slave;
+    public static void SetMode(string hw, string mode)
+    {
+        var d = LoadModes(); d[hw] = mode == Standalone ? Standalone : Slave;
+        try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(ModesPath))!); File.WriteAllText(ModesPath, JsonSerializer.Serialize(d)); } catch (IOException) { }
+    }
+    /// <summary>Board ở địa chỉ này được đặt chạy độc lập (không giữ lease)?</summary>
+    public static bool IsStandalone(string host) => Load().Where(kv => kv.Value == host).Any(kv => ModeOf(kv.Key) == Standalone);
     public static void Add(string hw, string ip)
     {
         var d = Load(); d[hw] = ip;

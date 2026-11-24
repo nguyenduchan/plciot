@@ -46,6 +46,7 @@ public sealed partial class MainForm
     /// <summary>Mặc định TẮT: người dùng bật ở trang "Kết nối admin" khi cần cài đặt. --api hoặc --token bật ngay lúc mở (kiểm thử).</summary>
     void InitRemoteAccess(string[] args)
     {
+        if (!_testMode && !_noAuth && !args.Any(a => a is "--wifisetup" or "--lanui" or "--lanwifi" or "--otatest" or "--boarddo" or "--boardctl" or "--lanadmin" or "--lansweep" or "--lancloud")) InitHotspotWatch();
         _apiPort = int.TryParse(ArgValue(args, "--api-port"), out var p) ? p : 8750;
         _fixedCode = ArgValue(args, "--token");
         _apiLan = IPAddress.TryParse(ArgValue(args, "--bind"), out var ip) && !IPAddress.IsLoopback(ip);

@@ -409,7 +409,7 @@ void cloudRestart() {
 }
 
 bool cloudAction(const String& action, const String& api, const String& value, String& msg) {
-  if (ETH.localIP() == IPAddress(0, 0, 0, 0)) { msg = "Board chưa có mạng."; return false; }
+  if (!netUp()) { msg = "Board chưa có mạng."; return false; }
   if (action == "register") return doRegister(api, value, msg);
   if (action == "enroll") return doEnroll(api, value, msg);
   msg = action == "password" ? "Gateway Waveshare không dùng mật khẩu: PC admin được ghép bằng nút BOOT (hoặc đăng nhập webapp), sau đó vào tự động."
@@ -419,7 +419,7 @@ bool cloudAction(const String& action, const String& api, const String& value, S
 
 bool cloudOwnsBoard(const String& webToken, String& why) {
   if (!mqttIdOk(g_cfg.mqttId)) { why = "board_not_registered"; return false; }   // chưa đăng ký server nào: chỉ ghép được bằng nút BOOT
-  if (ETH.localIP() == IPAddress(0, 0, 0, 0)) { why = "server_unreachable"; return false; }
+  if (!netUp()) { why = "server_unreachable"; return false; }
   String resp;
   int st = httpsJson(apiBase("") + "/api/v1/gateway/mine", "", webToken, resp, true);
   if (st < 0) { why = "server_unreachable"; return false; }
@@ -433,7 +433,7 @@ bool cloudOwnsBoard(const String& webToken, String& why) {
 }
 
 void cloudLoop() {
-  bool hasIp = ETH.localIP() != IPAddress(0, 0, 0, 0);
+  bool hasIp = netUp();
   if (hasIp && !s_ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); s_ntpStarted = true; }
 
   // dữ liệu mới của vòng đọc: cảnh báo + hàng đợi gửi bù + đánh dấu cần gửi telemetry

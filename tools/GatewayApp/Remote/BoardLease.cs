@@ -38,7 +38,7 @@ public sealed class BoardLease : IDisposable
     {
         if (!_running()) return new();
         var trusted = TrustedBoards.Hosts();
-        return _cfg().Connections.Where(c => c.Protocol == PlcSource.ModbusTcp && c.Host.Length > 0 && trusted.Contains(c.Host.Trim())).Select(c => c.Host.Trim()).Distinct().ToList();
+        return _cfg().Connections.Where(c => c.Protocol == PlcSource.ModbusTcp && c.Host.Length > 0 && trusted.Contains(c.Host.Trim()) && !TrustedBoards.IsStandalone(c.Host.Trim())).Select(c => c.Host.Trim()).Distinct().ToList();
     }
 
     public async Task TickAsync()

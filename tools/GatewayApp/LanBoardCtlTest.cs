@@ -18,7 +18,7 @@ public sealed partial class MainForm
         var log = new List<string>();
         void L(string s) { log.Add($"{DateTime.Now:HH:mm:ss} {s}"); File.WriteAllLines(Path.Combine(outDir, "boardctl-log.txt"), log); }
         async Task<bool> Until(Func<bool> c, int sec) { for (var i = 0; i < sec * 4 && !c(); i++) await Task.Delay(250); return c(); }
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var ti = target.LastIndexOf(':');
         var host = ti > 0 ? target[..ti] : target; var port = ti > 0 ? int.Parse(target[(ti + 1)..]) : 443;
         try
@@ -84,7 +84,7 @@ public sealed partial class MainForm
     /// <summary>--lanadmin KQ.txt --lan-target IP:443: PC quản trị hiện tại (khoá của GATEWAYAPP_SETTINGS đang dùng) đồng ý mọi PC đang chờ ghép.</summary>
     public async Task LanAdminAsync(string result)
     {
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var i = target.LastIndexOf(':');
         var host = i > 0 ? target[..i] : target; var port = i > 0 ? int.Parse(target[(i + 1)..]) : 443;
         var lines = new List<string>();

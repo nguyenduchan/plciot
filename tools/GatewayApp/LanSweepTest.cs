@@ -10,7 +10,7 @@ public sealed partial class MainForm
 {
     public async Task LanSweepAsync(string result)
     {
-        var args = Environment.GetCommandLineArgs();
+        var args = RunOptions.Args;
         var target = ArgValue(args, "--lan-target"); var i = target.LastIndexOf(':');
         var host = i > 0 ? target[..i] : target; var port = i > 0 ? int.Parse(target[(i + 1)..]) : 443;
         var ms = int.TryParse(ArgValue(args, "--sweep-ms"), out var m) ? m : 2500;

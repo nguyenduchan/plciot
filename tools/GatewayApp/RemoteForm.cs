@@ -40,6 +40,10 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly FlatButton _adminBtn = new() { Caption = "PC quản trị…", Width = 130, Visible = false };
     /// <summary>Cập nhật firmware board qua LAN (POST /api/ota) — chỉ board MCU.</summary>
     readonly FlatButton _fwBtn = new() { Caption = "Firmware…", Width = 120, Visible = false };
+    /// <summary>Wi-Fi của board (quét, nhập mật khẩu, nối) — chỉ board MCU.</summary>
+    readonly FlatButton _wifiBtn = new() { Caption = "Wi-Fi…", Width = 100, Visible = false };
+    /// <summary>Chế độ board: chạy độc lập (tự nối cloud) hoặc slave của gateway C# này — chỉ board MCU.</summary>
+    readonly FlatButton _modeBtn = new() { Caption = "Chế độ…", Width = 230, Visible = false };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _ui = new() { Interval = 1000 };
     readonly System.Windows.Forms.Timer _toastTimer = new() { Interval = 4000 };
@@ -79,12 +83,14 @@ public sealed class RemoteForm : Form, IGatewayApp
         _side.Controls.Add(new Label { Text = "Đang thiết lập thiết bị qua mạng — không phải gateway trên PC này", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(20, 0, 8, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side });
 
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _fwBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _fwBtn, _wifiBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
         _closeBtn.Click += (_, _) => Close();
         _netBtn.Click += async (_, _) => { if (RequireEdit()) await ChangeNetworkAsync(); };
         _adminBtn.Click += (_, _) => { if (RequireEdit()) AdminsDialog.Run(this, _client); };
         _fwBtn.Click += (_, _) => { if (RequireEdit()) UpdateFirmware(); };
-        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _client.Tls; LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
+        _wifiBtn.Click += (_, _) => { if (RequireEdit()) SetupWifi(); };
+        _modeBtn.Click += async (_, _) => { if (RequireEdit()) await ChooseModeAsync(); };
+        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _wifiBtn.Visible = _modeBtn.Visible = _client.Tls; ShowMode(); LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
         _head.Resize += (_, _) => LayoutHead();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -310,11 +316,52 @@ public sealed class RemoteForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _chipCloud, _chipPlc, _chipLink })
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _wifiBtn, _fwBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink })
         {
-            if (!c.Visible && (c == _netBtn || c == _adminBtn)) continue;
+            if (!c.Visible && (c == _netBtn || c == _adminBtn || c == _fwBtn || c == _wifiBtn || c == _modeBtn)) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
         }
+    }
+
+    bool Standalone => _hello.Hw.Length > 0 && TrustedBoards.ModeOf(_hello.Hw) == TrustedBoards.Standalone;
+    void ShowMode() { _modeBtn.Caption = Standalone ? "Chế độ: Độc lập" : "Chế độ: Slave của gateway PC"; _modeBtn.Invalidate(); }
+
+    /// <summary>Chọn vai trò của board: gateway độc lập (tự nối cloud) hoặc slave của gateway C# (C# giữ lease + nối server).</summary>
+    async Task ChooseModeAsync()
+    {
+        if (_hello.Hw.Length == 0) return;
+        var pick = ModeDialog.Choose(this, Standalone, _host);
+        if (pick == null || pick.Value == Standalone) return;
+        var toStandalone = pick.Value;
+        TrustedBoards.SetMode(_hello.Hw, toStandalone ? TrustedBoards.Standalone : TrustedBoards.Slave);
+        if (toStandalone)
+        {
+            try { await _client.LeaseAsync(false); } catch (RemoteException) { }   // trả lease ngay: board tự nối cloud lại
+            Toast("Board chạy ĐỘC LẬP: tự nối server. Nếu chưa đăng ký, vào trang Cloud để ghép/đăng ký.");
+            Log("INFO", "lan", "đặt board chạy độc lập (không giữ lease)");
+        }
+        else
+        {
+            Toast("Board là SLAVE của gateway C#: thêm thiết bị Modbus TCP trỏ tới " + _host + " trong gateway C#, gateway sẽ giữ lease.");
+            Log("INFO", "lan", "đặt board làm slave của gateway C# (gateway giữ lease khi có kết nối Modbus TCP tới board)");
+        }
+        ShowMode(); LayoutHead();
+    }
+
+    /// <summary>Wi-Fi: quét / nhập mật khẩu / nối. Nối xong có thể "Nối lại qua Wi-Fi": đóng cửa sổ này, mở lại hộp kết nối tới IP Wi-Fi của board.</summary>
+    void SetupWifi()
+    {
+        var ip = WifiDialog.Run(this, _client);
+        if (string.IsNullOrEmpty(ip)) return;
+        Log("INFO", "lan", $"board đã nối Wi-Fi, nối lại qua IP Wi-Fi {ip}");
+        _ui.Stop();
+        var port = _port; var owner = Owner;
+        Hide();
+        BeginInvoke(() =>
+        {
+            Open(owner!, ip, port, "", $"Nối lại board qua Wi-Fi ({ip}). Nếu đã rút dây Ethernet, board cần vài giây để cửa sổ cài đặt hiện lại.");
+            Close();
+        });
     }
 
     /// <summary>Cập nhật firmware: gửi xong board khởi động lại → đóng cửa sổ này, mở lại hộp kết nối cùng IP để nối lại.</summary>

@@ -3,18 +3,17 @@ namespace GatewayApp;
 static class Program
 {
     /// <summary>
-    ///   GatewayApp.exe                 mở giao diện
-    ///   GatewayApp.exe --autostart     tự chạy gateway với cấu hình đã lưu
-    ///   GatewayApp.exe --solshot D     chụp giao diện giải pháp vào thư mục D rồi thoát (dữ liệu từ PlcSim: tools/PlcSim, plcsim-uitest.ps1)
-    ///   GatewayApp.exe --noauth        TẠM THỜI: bỏ qua đăng nhập/OTP (chỉ để test)
+    /// GatewayApp.exe KHÔNG có tuỳ chọn dòng lệnh: chỉ mở bằng double-click (Release bỏ qua mọi tham số).
+    /// Cờ kiểm thử (--selftest, --boarddo, --lanui, --wifisetup…) chỉ có ở bản Debug — xem <see cref="RunOptions"/>.
     /// </summary>
     [STAThread]
-    static void Main(string[] args)
+    static void Main(string[] cmdArgs)
     {
+        var args = RunOptions.Args.Skip(1).ToArray();   // Release: luôn rỗng (chỉ double-click); Debug: cờ kiểm thử
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--devshot" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--lanwifi", "--lanui", "--wifisetup", "--devshot" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -60,6 +59,11 @@ static class Program
                 if (sw >= 0 && sw + 1 < args.Length) form.Shown += async (_, _) => await form.LanSweepAsync(args[sw + 1]);
                 var bd = Array.IndexOf(args, "--boarddo");
                 if (bd >= 0 && bd + 1 < args.Length) form.Shown += async (_, _) => await form.BoardDoTestAsync(args[bd + 1]);
+                var lw = Array.IndexOf(args, "--lanwifi");
+                if (lw >= 0 && lw + 1 < args.Length) form.Shown += async (_, _) => await form.LanWifiAsync(args[lw + 1]);
+                var lu = Array.IndexOf(args, "--lanui");
+                if (lu >= 0) form.Shown += async (_, _) => await form.LanUiAsync();
+                if (args.Contains("--wifisetup")) form.Shown += async (_, _) => { form.Hide(); await form.WifiSetupAsync(); form.Close(); };
                 var ds = Array.IndexOf(args, "--devshot");
                 if (ds >= 0 && ds + 1 < args.Length) form.Shown += async (_, _) => await form.DevShotAsync(args[ds + 1]);
                 var m = Array.IndexOf(args, "--edittest");
@@ -84,7 +88,7 @@ static class Program
         if (err != null || stage == null) { Log("LOI tai: " + err); return; }
         Log("da tai + kiem sha256, goi trinh cai");
         // "bad": cố ý làm hỏng file chạy trong gói để thử đường tự quay về bản cũ của trình cài
-        var bad = Environment.GetCommandLineArgs().Contains("bad");
+        var bad = RunOptions.Args.Contains("bad");
         if (bad) File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(stage, Path.GetFileName(Environment.ProcessPath!)), true);   // exe hợp lệ nhưng thoát ngay = giả lập crash lúc khởi động
         AppUpdate.LaunchInstaller(stage, info.Version, healthCheck: bad);
     }

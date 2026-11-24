@@ -2,7 +2,7 @@
 
 ```powershell
 dotnet run --project tools/GatewayApp            # mở giao diện, mặc định KHÔNG có thiết bị
-dotnet run --project tools/GatewayApp -- --autostart   # tự chạy với cấu hình đã lưu
+dotnet run --project tools/GatewayApp -- --autostart   # (chỉ bản Debug) bản Release không có tuỳ chọn dòng lệnh: mở bằng double-click
 ```
 
 C# thuần (WinForms, vẽ bằng GDI+), không web, không CDN, không cần Internet. Cloud là tuỳ chọn.

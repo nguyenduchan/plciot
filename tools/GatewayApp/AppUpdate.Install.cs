@@ -121,7 +121,7 @@ static partial class AppUpdate
 
     // ---- phần dùng chung của script
     static string BaseDir => AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-    static string Args() => string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+    static string Args() => string.Join(" ", RunOptions.Args.Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
     static string WaitForExit(string nl) =>
         $":wait{nl}tasklist /FI \"PID eq {Environment.ProcessId}\" 2>nul | find \"{Environment.ProcessId}\" >nul && (timeout /t 1 /nobreak >nul & goto wait){nl}";
 

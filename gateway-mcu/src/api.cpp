@@ -287,7 +287,7 @@ void hGetNetwork() {
   NetCfg n = netLoad();
   JsonDocument d;
   d["Dhcp"] = n.dhcp; d["Ip"] = n.ip; d["Mask"] = n.mask; d["Gateway"] = n.gw; d["Dns"] = n.dns;
-  d["Mac"] = ETH.macAddress(); d["Current"] = ETH.localIP().toString();
+  d["Mac"] = ETH.macAddress(); d["Current"] = netIp().toString();
   String s; serializeJson(d, s); send(200, s);
 }
 
@@ -346,6 +346,17 @@ void hOta() {
 #endif
 }
 
+/// Wi-Fi: quét mạng, xem trạng thái, nối (mật khẩu chỉ đi vào, không bao giờ trả ra).
+void hWifiScan() { send(200, wifiScanJson()); }
+void hWifiGet() { send(200, wifiStatusJson()); }
+void hWifiPut() {
+  JsonDocument d; if (!body(d)) return;
+  String ssid = d["Ssid"] | "", pass = d["Password"] | "", e;
+  if (!wifiConnect(ssid, pass, e)) { err(e); return; }
+  JsonDocument o; deserializeJson(o, wifiStatusJson()); o["Ok"] = true; o["Running"] = g_running;
+  String s; serializeJson(o, s); send(200, s);
+}
+
 /// Trang trạng thái (cổng 80 và 443) — không lộ bí mật: để kỹ thuật viên kiểm tra nhanh bằng trình duyệt.
 void hRoot() {
   String h = "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Gateway Waveshare</title>"
@@ -356,7 +367,7 @@ void hRoot() {
   row("Trạng thái", g_running ? g_status : String("đã dừng"));
   row("Cloud", cloudStateName());
   row("Số field", String(g_cfg.pack.size()));
-  { NetCfg n = netLoad(); row("Mạng", n.dhcp ? "DHCP — đang dùng " + ETH.localIP().toString() : "IP tĩnh " + n.ip + " / " + n.mask + ", gateway " + n.gw); }
+  { NetCfg n = netLoad(); row("Mạng", n.dhcp ? "DHCP — đang dùng " + netIp().toString() : "IP tĩnh " + n.ip + " / " + n.mask + ", gateway " + n.gw); }
   row("MAC", ETH.macAddress());
   row("Mã phần cứng", idHw() + " (dấu nhận dạng khi GatewayApp kết nối)");
   { int act = activeAdmins(); int all = loadAdmins().as<JsonArray>().size(); row("PC quản trị", String(act) + " đang dùng" + (all > act ? ", " + String(all - act) + " đang chờ" : String(""))); }
@@ -373,6 +384,7 @@ const Route kRoutes[] = {
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true}, {"POST", "/api/ota", hOta, true},
+  {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
 };
 
 void dispatch(const HttpRequest& q, HttpResponse& r) {
@@ -399,13 +411,13 @@ void udpLoop() {
   char buf[32] = {0};
   int len = s_udp.read(buf, sizeof buf - 1);
   if (len != 15 || strncmp(buf, "PLCIOT-DISCOVER", 15) != 0) return;
+  IPAddress to = s_udp.remoteIP(); uint16_t port = s_udp.remotePort();
   JsonDocument d;
   d["Kind"] = "mcu"; d["Name"] = g_cfg.mqttId.length() ? g_cfg.site + "/" + g_cfg.device : g_cfg.device;
   d["Hw"] = idHw(); d["Port"] = API_PORT; d["Tls"] = true; d["Version"] = FW_VERSION; if (g_locked) d["Locked"] = true;
-  d["Ip"] = ETH.localIP().toString(); d["Mask"] = netMask(); d["Mac"] = ETH.macAddress();
+  d["Ip"] = netIpFor(to).toString(); d["Mask"] = netMaskFor(to); d["Mac"] = ETH.macAddress();
   String s; serializeJson(d, s);
   // trả lời cả unicast lẫn broadcast (như công cụ cấu hình của Waveshare): máy admin KHÁC mạng con vẫn thấy board để đổi IP
-  IPAddress to = s_udp.remoteIP(); uint16_t port = s_udp.remotePort();
   s_udp.beginPacket(to, port); s_udp.print(s); s_udp.endPacket();
   s_udp.beginPacket(IPAddress(255, 255, 255, 255), port); s_udp.print(s); s_udp.endPacket();
 }
@@ -415,7 +427,7 @@ void apiOpenWindow(uint32_t ms) {
   if (g_locked) { logf("Thiết bị bị khoá — nút BOOT không mở ghép PC"); return; }
   s_windowUntil = millis() + ms;
   logf("Mở ghép PC admin %lu giây — GatewayApp → \"Kết nối Waveshare\" (HTTPS %s:%d, mã phần cứng %s)",
-       (unsigned long)(ms / 1000), ETH.localIP().toString().c_str(), API_PORT, idHw().c_str());
+       (unsigned long)(ms / 1000), netIp().toString().c_str(), API_PORT, idHw().c_str());
 }
 
 void apiForgetAdmins() { secretSet("admins", "[]"); }
@@ -429,10 +441,10 @@ void apiBegin() {
 
 void apiLoop() {
   if (!s_started) {
-    if (ETH.localIP() == IPAddress(0, 0, 0, 0)) return;   // chờ có IP mới mở cổng
+    if (!netUp()) return;   // chờ có IP (Ethernet hoặc Wi-Fi) mới mở cổng
     s_https.begin(); s_http.begin(); s_udp.begin(DISCOVER_PORT); s_started = true;
     logf("Cài đặt: https://%s:%d (trang trạng thái http://%s/) — tìm thiết bị UDP %d",
-         ETH.localIP().toString().c_str(), API_PORT, ETH.localIP().toString().c_str(), DISCOVER_PORT);
+         netIp().toString().c_str(), API_PORT, netIp().toString().c_str(), DISCOVER_PORT);
   }
   s_https.handle(dispatch);
   s_http.handle(dispatch);

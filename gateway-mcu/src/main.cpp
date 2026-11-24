@@ -35,7 +35,7 @@ static void ledTick() {
   String cs = cloudStateName();
   static bool blink = false; blink = !blink;
   if (g_locked) ioLed(blink ? 32 : 0, 0, 0);   // bị khoá (báo mất): đỏ nhấp nháy
-  else if (!s_ethUp) ioLed(24, 0, 0);
+  else if (!netUp()) ioLed(24, 0, 0);   // mất cả Ethernet lẫn Wi-Fi
   else if (g_status == "plc_fault" || g_status == "no_devices") ioLed(20, 14, 0);
   else if (cs == "Connecting" || cs == "Disconnected") ioLed(0, 0, 24);
   else ioLed(0, 20, 0);
@@ -50,6 +50,7 @@ void setup() {
   if (!ETH.begin(ETH_PHY_W5500, 1, ETH_CS, ETH_INT, ETH_RST, SPI2_HOST, ETH_SCLK, ETH_MISO, ETH_MOSI))
     logf("Không khởi động được W5500 — kiểm tra chân SPI trong board.h");
   storeBegin();          // sau ETH.begin: tên thiết bị mặc định lấy từ MAC
+  wifiBegin();           // Wi-Fi station song song Ethernet (mạng đã lưu tự nối)
   netApply();            // IP tĩnh mặc định 192.168.1.200 (hoặc DHCP / IP đã đặt) — cần NVS nên sau storeBegin
   cryptoBegin();
   modbusBegin();
@@ -61,6 +62,8 @@ void setup() {
 
 void loop() {
   ioLoop();
+  wifiLoop();
+  serialCfgLoop();
   apiLoop();
   slaveLoop();
   cloudLoop();
