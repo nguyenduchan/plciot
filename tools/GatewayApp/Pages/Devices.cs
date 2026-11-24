@@ -103,6 +103,7 @@ sealed class DeviceDialog : Form
     readonly ComboBox _target = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     readonly List<(string Hw, string Ip)> _boards = new();
     bool _protoBusy;
+    Label _hintLbl = null!;
     bool WaveshareTarget => _board || _target.SelectedIndex > 0;
     bool DioSel => _proto.SelectedIndex >= 0 && _proto.SelectedIndex < _opts.Count && _opts[_proto.SelectedIndex].Dio;
 
@@ -229,7 +230,7 @@ sealed class DeviceDialog : Form
         _child.TextChanged += (_, _) => { if (_child.Focused) _childTouched = true; };
         if (edit != null) _child.Enabled = false;
 
-        var hint = new Label
+        var hint = _hintLbl = new Label
         {
             Text = "Mọi thông số khai báo rõ ở đây — gateway không tự ngầm định. Quyền: chỉ đọc (PLC → gateway), chỉ ghi, hoặc đọc/ghi. Kiểu: UDINT/DINT/REAL chiếm 2 word, LREAL 4 word (D kế tiếp tự tính). " +
                    "Min/Max = khoảng cho phép GHI (thanh trượt cũng dùng khoảng này). Kết nối dùng chung cho mọi thiết bị cùng giao thức.",
@@ -474,6 +475,9 @@ sealed class DeviceDialog : Form
     void WireChrome(bool standalone)
     {
         _addrHint.Visible = !standalone;   // ô Giao thức luôn hiện: chính nó chọn "Digital I/O"
+        // Digital I/O không có thanh ghi Modbus để khai báo: ẩn bảng field (tên field, khoá MQTT, D, hệ số, kiểu…), thứ tự word và lời giải thích của Modbus.
+        // Dữ liệu vẫn nằm trong bảng (dựng từ chân đã chọn) để lưu; chỉ không hiện ra.
+        _g.Visible = !standalone; _hintLbl.Visible = !standalone; if (_swap.Parent != null) _swap.Parent.Visible = !standalone;
         // Digital I/O (standalone): chỉ giữ Lọc rung DI trên board; từ PC không còn gì để nhập (IP lấy từ "Thiết bị đích").
         // IP/cổng chỉ hiện cho giao thức đi qua mạng (Modbus TCP tới thiết bị bất kỳ): giao thức của Waveshare (DI/DO, RS485) không phải nhập IP.
         foreach (var c in _connInputs.Concat(_paramInputs)) if (c.Value.Parent != null) c.Value.Parent.Visible = (!standalone || (_board && c.Key == "difilter")) && !HiddenNet(c.Key);
