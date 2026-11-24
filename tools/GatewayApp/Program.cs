@@ -14,7 +14,7 @@ static class Program
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--devshot" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--devshot" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -58,6 +58,8 @@ static class Program
                 if (la >= 0 && la + 1 < args.Length) form.Shown += async (_, _) => await form.LanAdminAsync(args[la + 1]);
                 var sw = Array.IndexOf(args, "--lansweep");
                 if (sw >= 0 && sw + 1 < args.Length) form.Shown += async (_, _) => await form.LanSweepAsync(args[sw + 1]);
+                var bd = Array.IndexOf(args, "--boarddo");
+                if (bd >= 0 && bd + 1 < args.Length) form.Shown += async (_, _) => await form.BoardDoTestAsync(args[bd + 1]);
                 var ds = Array.IndexOf(args, "--devshot");
                 if (ds >= 0 && ds + 1 < args.Length) form.Shown += async (_, _) => await form.DevShotAsync(args[ds + 1]);
                 var m = Array.IndexOf(args, "--edittest");
