@@ -18,6 +18,10 @@
 #include <ETH.h>
 #include <NetworkUdp.h>
 #include <esp_random.h>
+#ifndef GW_SIM
+#include <Update.h>
+#include <mbedtls/sha256.h>
+#endif
 
 namespace {
 HttpServer s_https(API_PORT, true);
@@ -305,6 +309,43 @@ void hPutNetwork() {
   String s; serializeJson(o, s); send(200, s);
 }
 
+
+/// Cập nhật firmware qua mạng: POST /api/ota, thân = firmware.bin thô, header X-Sha256 = SHA-256 (hex) của file.
+/// Chỉ PC admin đã đăng nhập (kênh HTTPS đã ghim khoá). Ghi vào phân vùng OTA kia, kiểm SHA-256 rồi mới đổi phân vùng khởi động và khởi động lại;
+/// hỏng giữa chừng (đứt mạng, sai SHA) → bản đang chạy giữ nguyên. Lease/khoá cấu hình không đổi.
+void hOta() {
+#ifdef GW_SIM
+  err("ota_unsupported", 501);
+#else
+  if (!q_->readBody || !q_->contentLen) { err("bad_request"); return; }
+  String want = q_->sha256; want.trim(); want.toLowerCase();
+  if (want.length() != 64) { err("thiếu header X-Sha256"); return; }
+  size_t total = q_->contentLen;
+  if (!Update.begin(total, U_FLASH)) { err(String("ota_begin: ") + Update.errorString()); return; }
+  logf("OTA: nhận firmware %u byte từ %s", (unsigned)total, q_->ip.toString().c_str());
+  mbedtls_sha256_context sha; mbedtls_sha256_init(&sha); mbedtls_sha256_starts(&sha, 0);
+  static uint8_t buf[2048];
+  size_t got = 0; uint32_t lastData = millis();
+  while (got < total) {
+    int n = q_->readBody(buf, sizeof buf);
+    if (n < 0) break;
+    if (n == 0) { if (millis() - lastData > 15000) break; delay(1); continue; }
+    lastData = millis();
+    mbedtls_sha256_update(&sha, buf, n);
+    if (Update.write(buf, n) != (size_t)n) { Update.abort(); mbedtls_sha256_free(&sha); err(String("ota_write: ") + Update.errorString()); return; }
+    got += n;
+  }
+  uint8_t dig[32]; mbedtls_sha256_finish(&sha, dig); mbedtls_sha256_free(&sha);
+  if (got != total) { Update.abort(); logf("OTA: đứt giữa chừng (%u/%u)", (unsigned)got, (unsigned)total); err("ota_incomplete"); return; }
+  if (!hex(dig, 32).equalsIgnoreCase(want)) { Update.abort(); logf("OTA: sai SHA-256 — huỷ"); err("ota_bad_sha256"); return; }
+  if (!Update.end(true)) { err(String("ota_end: ") + Update.errorString()); return; }
+  logf("OTA: xong, khởi động lại với firmware mới");
+  s_restartAt = millis() + 1500;
+  JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Msg"] = "Đã nạp firmware, board khởi động lại.";
+  String s; serializeJson(o, s); send(200, s);
+#endif
+}
+
 /// Trang trạng thái (cổng 80 và 443) — không lộ bí mật: để kỹ thuật viên kiểm tra nhanh bằng trình duyệt.
 void hRoot() {
   String h = "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Gateway Waveshare</title>"
@@ -331,7 +372,7 @@ const Route kRoutes[] = {
   {"GET", "/api/challenge", hChallenge, false}, {"POST", "/api/login", hLogin, false},
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
-  {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true},
+  {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true}, {"POST", "/api/ota", hOta, true},
 };
 
 void dispatch(const HttpRequest& q, HttpResponse& r) {

@@ -11,6 +11,7 @@
 #include <mbedtls/error.h>
 #include <mbedtls/net_sockets.h>
 #include <esp_random.h>
+#include <memory>
 #if defined(MBEDTLS_PSA_CRYPTO_C)
 #include <psa/crypto.h>
 #endif
@@ -104,10 +105,27 @@ static bool readRequest(std::function<int(uint8_t*, size_t)> rd, HttpRequest& q,
       while (!v.empty() && v[0] == ' ') v.erase(0, 1);
       if (k == "content-length") len = strtoul(v.c_str(), nullptr, 10);
       if (k == "authorization") q.auth = String(v.c_str());
+      if (k == "x-sha256") q.sha256 = String(v.c_str());
     }
     p = e;
   }
-  if (len > 65536) return false;
+  if (len > 65536) {
+    // thân lớn chỉ cho nâng cấp firmware: để route xác thực rồi tự đọc từng khúc (không giữ trong RAM)
+    if (q.method != "POST" || q.path != "/api/ota" || len > 8u * 1024 * 1024) return false;
+    q.contentLen = len;
+    auto pre = std::make_shared<std::string>(acc.substr(he + 4));
+    auto off = std::make_shared<size_t>(0);
+    auto got = std::make_shared<size_t>(0);
+    q.readBody = [=](uint8_t* out, size_t n) -> int {
+      if (*got >= len) return -1;
+      n = std::min(n, len - *got);
+      if (*off < pre->size()) { size_t k = std::min(n, pre->size() - *off); memcpy(out, pre->data() + *off, k); *off += k; *got += k; return (int)k; }
+      int r = rd(out, n);
+      if (r > 0) *got += r;
+      return r;
+    };
+    return true;
+  }
   std::string body = acc.substr(he + 4);
   while (body.size() < len) {
     if (millis() > deadline) return false;
@@ -154,6 +172,7 @@ void HttpServer::handle(std::function<void(const HttpRequest&, HttpResponse&)> r
     };
     if (readRequest(rd, q, deadline)) {
       route(q, r);
+      deadline = millis() + 8000;   // route có thể chạy lâu (nhận firmware OTA): cho thời gian riêng để trả lời
       String s = r.serialize();
       size_t k = 0;
       while (k < s.length() && millis() < deadline) {

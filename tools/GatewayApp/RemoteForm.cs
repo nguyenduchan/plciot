@@ -38,6 +38,8 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly FlatButton _netBtn = new() { Caption = "Mạng (IP)…", Width = 120, Visible = false };
     /// <summary>PC quản trị của board (đồng ý / từ chối PC đang chờ ghép) — chỉ board MCU.</summary>
     readonly FlatButton _adminBtn = new() { Caption = "PC quản trị…", Width = 130, Visible = false };
+    /// <summary>Cập nhật firmware board qua LAN (POST /api/ota) — chỉ board MCU.</summary>
+    readonly FlatButton _fwBtn = new() { Caption = "Firmware…", Width = 120, Visible = false };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
     readonly System.Windows.Forms.Timer _ui = new() { Interval = 1000 };
     readonly System.Windows.Forms.Timer _toastTimer = new() { Interval = 4000 };
@@ -77,11 +79,12 @@ public sealed class RemoteForm : Form, IGatewayApp
         _side.Controls.Add(new Label { Text = "Đang thiết lập thiết bị qua mạng — không phải gateway trên PC này", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(20, 0, 8, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side });
 
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _fwBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
         _closeBtn.Click += (_, _) => Close();
         _netBtn.Click += async (_, _) => { if (RequireEdit()) await ChangeNetworkAsync(); };
         _adminBtn.Click += (_, _) => { if (RequireEdit()) AdminsDialog.Run(this, _client); };
-        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _client.Tls; LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
+        _fwBtn.Click += (_, _) => { if (RequireEdit()) UpdateFirmware(); };
+        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _client.Tls; LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
         _head.Resize += (_, _) => LayoutHead();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -312,6 +315,21 @@ public sealed class RemoteForm : Form, IGatewayApp
             if (!c.Visible && (c == _netBtn || c == _adminBtn)) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
         }
+    }
+
+    /// <summary>Cập nhật firmware: gửi xong board khởi động lại → đóng cửa sổ này, mở lại hộp kết nối cùng IP để nối lại.</summary>
+    void UpdateFirmware()
+    {
+        if (!FirmwareDialog.Run(this, _client, _hello.Version)) return;
+        Log("INFO", "lan", "đã nạp firmware mới qua LAN, board khởi động lại");
+        _ui.Stop();
+        var host = _host; var port = _port; var owner = Owner;
+        Hide();
+        BeginInvoke(() =>
+        {
+            Open(owner!, host, port, "", "Board đang khởi động lại với firmware mới (khoảng 10–15 giây). Chờ board lên rồi bấm kết nối lại.");
+            Close();
+        });
     }
 
     /// <summary>Đổi IP board: lưu xong board khởi động lại → đóng cửa sổ này, mở hộp kết nối điền sẵn IP mới (DHCP: tìm lại trong danh sách).</summary>

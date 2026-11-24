@@ -26,7 +26,7 @@ static const int DI_PINS[8] = {4, 5, 6, 7, 8, 9, 10, 11};
 #define I2C_SDA 42
 #define I2C_SCL 41
 #define TCA9554_ADDR 0x20
-#define DO_ACTIVE_HIGH 1     // 1: ghi 1 ra EXIO = bật đầu ra.
+#define DO_ACTIVE_HIGH 0     // 0: bản output transistor (8DO) — EXIO thấp = đầu ra BẬT (LED sáng); ghi 1 = tắt. Quan sát trên board thật 2026-11: với 1 thì cả 8 LED sáng khi tắt. Bản relay (8RO) thì đặt 1.
 
 #define PIN_RGB    38        // LED RGB (WS2812)
 #define PIN_BUZZER 46

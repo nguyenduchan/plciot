@@ -33,7 +33,7 @@ public sealed class RemoteClient : IDisposable
                 ObservedHw = HwOf(cert.PublicKey.ExportSubjectPublicKeyInfo());
                 return _pinHw == null || ObservedHw == _pinHw;   // đã ghim: board khác (giả mạo) bị từ chối
             };
-        _http = new HttpClient(handler) { BaseAddress = new Uri($"{(tls ? "https" : "http")}://{host}:{port}/"), Timeout = TimeSpan.FromSeconds(15) };
+        _http = new HttpClient(handler) { BaseAddress = new Uri($"{(tls ? "https" : "http")}://{host}:{port}/"), Timeout = Timeout.InfiniteTimeSpan };   // hạn chờ đặt riêng từng yêu cầu (SendAsync / OtaAsync)
     }
 
     /// <summary>Mã phần cứng: 20 ký tự Crockford đầu của SHA-256(SPKI) — trùng GatewayIdentity.Hw và idHw() của firmware.</summary>
@@ -117,6 +117,47 @@ public sealed class RemoteClient : IDisposable
     public Task<List<ApiAdmin>> AdminsAsync() => SendAsync<List<ApiAdmin>>(HttpMethod.Get, "api/admins", null);
     /// <summary>action = approve (kích hoạt PC đang chờ ngay) | reject (từ chối PC đang chờ) | remove (gỡ PC).</summary>
     public Task<ApiResult> AdminActionAsync(string id, string action) => SendAsync<ApiResult>(HttpMethod.Post, "api/admins", new { Id = id, Action = action });
+    /// <summary>
+    /// Board MCU: nạp firmware qua mạng (POST /api/ota, thân = file .bin thô, X-Sha256 = SHA-256 của file). Board kiểm SHA-256 rồi mới đổi
+    /// phân vùng và tự khởi động lại sau ~1,5 giây — phiên hiện tại mất, nối lại sau 10–15 giây. Lỗi giữa chừng: board giữ nguyên bản cũ.
+    /// </summary>
+    public async Task<ApiResult> OtaAsync(byte[] firmware, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(firmware)).ToLowerInvariant();
+        using var req = new HttpRequestMessage(HttpMethod.Post, "api/ota") { Content = new ProgressContent(firmware, progress) };
+        req.Headers.Add("X-Sha256", sha);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromMinutes(3));
+        try
+        {
+            using var res = await _http.SendAsync(req, cts.Token);
+            var text = await res.Content.ReadAsStringAsync(ct);
+            ApiResult? r = null;
+            try { r = JsonSerializer.Deserialize<ApiResult>(text, J); } catch (JsonException) { }
+            if (!res.IsSuccessStatusCode || r == null || !r.Ok) throw new RemoteException(r?.Err ?? ((int)res.StatusCode).ToString());
+            return r;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new RemoteException("timeout"); }
+        catch (HttpRequestException e) { throw new RemoteException("offline", e.Message); }
+    }
+
+    /// <summary>Gửi mảng byte theo khúc 16 KB và báo tiến độ 0..1.</summary>
+    sealed class ProgressContent : HttpContent
+    {
+        readonly byte[] _data; readonly IProgress<double>? _progress;
+        public ProgressContent(byte[] data, IProgress<double>? progress) { _data = data; _progress = progress; Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream"); }
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            for (var off = 0; off < _data.Length; off += 16384)
+            {
+                var n = Math.Min(16384, _data.Length - off);
+                await stream.WriteAsync(_data.AsMemory(off, n));
+                _progress?.Report((double)(off + n) / _data.Length);
+            }
+        }
+        protected override bool TryComputeLength(out long length) { length = _data.Length; return true; }
+    }
+
     public Task<ApiResult> CloudAsync(string action, string api, string value) => SendAsync<ApiResult>(HttpMethod.Post, "api/cloud", new ApiCloud { Action = action, Api = api, Value = value }, longOp: true);
 
     async Task<T> SendAsync<T>(HttpMethod m, string path, object? body, CancellationToken ct = default, bool longOp = false)
@@ -163,6 +204,9 @@ public sealed class RemoteClient : IDisposable
         "use_https" => "Board chỉ nhận cài đặt qua HTTPS (cổng 443).",
         "offline" => "Không nối được thiết bị (sai IP/cổng, thiết bị tắt hoặc khác mạng LAN).",
         "timeout" => "Thiết bị không trả lời kịp.",
+        "ota_bad_sha256" => "Board nhận file bị lỗi (sai SHA-256) — đã huỷ, board giữ nguyên firmware cũ. Thử lại.",
+        "ota_incomplete" => "Đứt kết nối giữa chừng — board giữ nguyên firmware cũ. Thử lại.",
+        "ota_unsupported" => "Thiết bị này không hỗ trợ cập nhật firmware qua mạng.",
         "bad_json" => "Thiết bị trả dữ liệu không đúng định dạng (phiên bản không khớp?).",
         _ => "Thiết bị báo lỗi: " + r.Code,
     } : e.Message;

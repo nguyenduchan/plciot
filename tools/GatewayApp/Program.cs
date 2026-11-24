@@ -14,7 +14,7 @@ static class Program
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--devshot" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--devshot" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -48,6 +48,16 @@ static class Program
                 if (fbt >= 0 && fbt + 1 < args.Length) form.Shown += async (_, _) => await form.FbTestAsync(args[fbt + 1]);
                 var iot = Array.IndexOf(args, "--iotest");
                 if (iot >= 0 && iot + 1 < args.Length) form.Shown += async (_, _) => await form.IoTestAsync(args[iot + 1]);
+                var ota = Array.IndexOf(args, "--otatest");
+                if (ota >= 0 && ota + 1 < args.Length) form.Shown += async (_, _) => await form.OtaTestAsync(args[ota + 1]);
+                var lc = Array.IndexOf(args, "--lancloud");
+                if (lc >= 0 && lc + 1 < args.Length) form.Shown += async (_, _) => await form.LanCloudAsync(args[lc + 1]);
+                var bc = Array.IndexOf(args, "--boardctl");
+                if (bc >= 0 && bc + 1 < args.Length) form.Shown += async (_, _) => await form.BoardCtlTestAsync(args[bc + 1]);
+                var la = Array.IndexOf(args, "--lanadmin");
+                if (la >= 0 && la + 1 < args.Length) form.Shown += async (_, _) => await form.LanAdminAsync(args[la + 1]);
+                var sw = Array.IndexOf(args, "--lansweep");
+                if (sw >= 0 && sw + 1 < args.Length) form.Shown += async (_, _) => await form.LanSweepAsync(args[sw + 1]);
                 var ds = Array.IndexOf(args, "--devshot");
                 if (ds >= 0 && ds + 1 < args.Length) form.Shown += async (_, _) => await form.DevShotAsync(args[ds + 1]);
                 var m = Array.IndexOf(args, "--edittest");
