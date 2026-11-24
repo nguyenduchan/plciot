@@ -302,6 +302,23 @@ public static class TrustedBoards
         catch (Exception) { return new(); }
     }
     public static bool Contains(string hw) => Load().ContainsKey(hw);
+    // Giao thức board hỗ trợ (firmware báo) nhớ lại để hộp "Thêm thiết bị" dựng danh sách giao thức mà không phải dò lại mạng.
+    static string CapsPath => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(FilePath))!, "remote-board-protocols.json");
+    public static void SetProtocols(string hw, string[] protocols)
+    {
+        if (hw.Length == 0 || protocols.Length == 0) return;
+        Dictionary<string, string[]> d;
+        try { d = File.Exists(CapsPath) ? JsonSerializer.Deserialize<Dictionary<string, string[]>>(File.ReadAllText(CapsPath)) ?? new() : new(); } catch (Exception) { d = new(); }
+        d[hw] = protocols;
+        try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(CapsPath))!); File.WriteAllText(CapsPath, JsonSerializer.Serialize(d)); } catch (IOException) { }
+    }
+    public static string[] ProtocolsOf(string hw)
+    {
+        try { if (File.Exists(CapsPath) && (JsonSerializer.Deserialize<Dictionary<string, string[]>>(File.ReadAllText(CapsPath)) ?? new()).TryGetValue(hw, out var p) && p.Length > 0) return p; } catch (Exception) { }
+        return new[] { "dio", "rs485" };   // firmware cũ chưa báo
+    }
+    /// <summary>Mọi board đã tin cậy: mã phần cứng → IP gần nhất.</summary>
+    public static Dictionary<string, string> All() => Load();
     /// <summary>Địa chỉ IP của các board đã tin cậy.</summary>
     public static HashSet<string> Hosts() => Load().Values.ToHashSet();
     // Chế độ của từng board đối với GATEWAY PC NÀY (remote-board-modes.json cạnh remote-boards.json): "slave" (mặc định) = board là slave Modbus TCP của gateway C#,

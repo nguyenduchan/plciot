@@ -96,6 +96,60 @@ sealed class DeviceDialog : Form
     readonly ComboBox _wDi = new() { DropDownStyle = ComboBoxStyle.DropDownList }, _wDo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     readonly FlowLayoutPanel _wire = new() { AutoSize = true, Dock = DockStyle.Top, BackColor = Theme.Bg, WrapContents = true, Margin = new Padding(0), Visible = false };
     Control _wDiBox = null!, _wDoBox = null!;
+    /// <summary>Danh sách giao thức PHỤ THUỘC loại thiết bị đích. Waveshare: Digital I/O (nối bơm/van/đèn… với chân DO/DI) + RS485 (Modbus RTU; I2C, CAN thêm sau khi firmware hỗ trợ). Thiết bị khác: Modbus TCP / RTU.
+    /// Src = giao thức Modbus thật dùng để nói chuyện (từ PC: Modbus TCP tới IP board, board là slave và là cầu RS485).</summary>
+    sealed record ProtoOpt(string Name, PlcSource Src, bool Dio, bool Usable = true);
+    readonly List<ProtoOpt> _opts = new();
+    readonly ComboBox _target = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    readonly List<(string Hw, string Ip)> _boards = new();
+    bool _protoBusy;
+    bool WaveshareTarget => _board || _target.SelectedIndex > 0;
+    bool DioSel => _proto.SelectedIndex >= 0 && _proto.SelectedIndex < _opts.Count && _opts[_proto.SelectedIndex].Dio;
+
+    /// <summary>Dựng lại danh sách giao thức theo thiết bị đích (Waveshare hay thiết bị Modbus khác).</summary>
+    void RebuildProtos(int select = 0)
+    {
+        _protoBusy = true;
+        _opts.Clear(); _proto.Items.Clear();
+        if (WaveshareTarget)
+        {
+            // danh sách theo firmware báo (ApiHello.Protocols): thêm giao tiếp mới ở firmware là hộp thoại tự hiện thêm
+            var src = _board ? PlcSource.ModbusRtu : PlcSource.ModbusTcp;
+            foreach (var id in BoardProtocols())
+                _opts.Add(id switch
+                {
+                    "dio" => new("Digital I/O — đầu vào / đầu ra số (DI/DO)", src, true),
+                    "rs485" => new(_board ? "RS485 — Modbus RTU (cổng RS485 của board)" : "RS485 — Modbus RTU qua board (Unit = địa chỉ slave)", src, false),
+                    _ => new($"{id.ToUpperInvariant()} — board hỗ trợ, GatewayApp chưa dùng được", src, false, Usable: false),
+                });
+        }
+        else foreach (var s in ProtocolSpec.Streamable) _opts.Add(new(ProtocolSpec.Name(s), s, false));
+        foreach (var o in _opts) _proto.Items.Add(o.Name);
+        _proto.SelectedIndex = Math.Clamp(select, 0, _opts.Count - 1);
+        _protoBusy = false;
+    }
+
+    /// <summary>Giao thức board hỗ trợ: trên board = chính firmware (app.Protocols); từ gateway PC = board đích đã nhớ từ gói tìm thiết bị.</summary>
+    string[] BoardProtocols() => _board ? (_app.Protocols.Length > 0 ? _app.Protocols : new[] { "dio", "rs485" }) : TrustedBoards.ProtocolsOf(_target.SelectedIndex > 0 ? _boards[_target.SelectedIndex - 1].Hw : "");
+
+    void SelectSource(PlcSource s) { var i = _opts.FindIndex(o => o.Src == s && !o.Dio); _protoBusy = true; _proto.SelectedIndex = i >= 0 ? i : 0; _protoBusy = false; }
+
+    /// <summary>Đổi giao thức / thiết bị đích: dựng lại ô kết nối, và các dòng field nếu vào / ra chế độ Digital I/O.</summary>
+    void OnProtoChanged()
+    {
+        if (_protoBusy) return;
+        if (_proto.SelectedIndex >= 0 && _proto.SelectedIndex < _opts.Count && !_opts[_proto.SelectedIndex].Usable)
+        {
+            _err.Text = "Board có giao tiếp này nhưng GatewayApp chưa hỗ trợ — sẽ mở rộng sau.";
+            _protoBusy = true; _proto.SelectedIndex = 0; _protoBusy = false;
+        }
+        if (DioSel && !_tpl.Wire) { _err.Text = "Loại thiết bị này không có công tắc bật/tắt để nối DI/DO — chọn bơm, van, đèn, quạt… hoặc \"Đầu vào số\"."; _protoBusy = true; _proto.SelectedIndex = Math.Min(1, _opts.Count - 1); _protoBusy = false; }
+        else _err.Text = "";
+        RebuildBind(null, null);
+        if (!_board && _target.SelectedIndex > 0 && _connInputs.TryGetValue("host", out var h)) { h.Text = _boards[_target.SelectedIndex - 1].Ip; if (_connInputs.TryGetValue("port", out var p)) p.Text = "502"; }
+        if (_edit == null) PickTemplate(_tpl, true);   // vào / ra chế độ Digital I/O: dựng lại các dòng field theo chân hoặc thanh ghi
+    }
+    bool HwOn => _tpl.Wire && _edit == null && DioSel;
     readonly Label _wNote = new() { ForeColor = Theme.Accent, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 38, Visible = false };
     FlowLayoutPanel _rowProto = null!;
     bool _wBusy; string _autoTitle = "";
@@ -182,11 +236,17 @@ sealed class DeviceDialog : Form
             ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 40,
         };
         var rowProto = _rowProto = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, BackColor = Theme.Bg, WrapContents = true, Margin = new Padding(0) };
-        foreach (var src in ProtocolSpec.Streamable) _proto.Items.Add(ProtocolSpec.Name(src));
+        // thiết bị đích: Waveshare đã ghép (tự điền IP) hoặc thiết bị Modbus khác — quyết định danh sách giao thức
+        _target.Items.Add("PLC / thiết bị Modbus khác");
+        foreach (var kv in TrustedBoards.All()) { _boards.Add((kv.Key, kv.Value)); _target.Items.Add($"Waveshare ESP32-S3 — {kv.Value}"); }
+        _target.SelectedIndex = 0;
+        _target.SelectedIndexChanged += (_, _) => { RebuildProtos(0); OnProtoChanged(); };
+        RebuildProtos(0);
         _swap.Items.AddRange(SwapNames); _swap.SelectedIndex = 0;
         Skin.Input(_proto); Skin.Input(_swap);
-        rowProto.Controls.Add(Field("Giao thức", _proto, 250)); rowProto.Controls.Add(Field("Thứ tự word (kiểu ≥ 32-bit)", _swap, 230));
-        _proto.SelectedIndexChanged += (_, _) => RebuildBind(null, null);
+        if (edit == null && !_board) rowProto.Controls.Add(Field("Thiết bị đích", _target, 290));
+        rowProto.Controls.Add(Field("Giao thức", _proto, 320)); rowProto.Controls.Add(Field("Thứ tự word (kiểu ≥ 32-bit)", _swap, 230));
+        _proto.SelectedIndexChanged += (_, _) => OnProtoChanged();
         Skin.Input(_wDi); Skin.Input(_wDo);
         _wDiBox = Field("Chân DI phản hồi / cảm biến (tuỳ chọn)", _wDi, 300); _wDoBox = Field("Chân DO điều khiển (tuỳ chọn)", _wDo, 300);
         _wire.Controls.Add(_wDoBox); _wire.Controls.Add(_wDiBox);
@@ -239,7 +299,7 @@ sealed class DeviceDialog : Form
         Controls.Add(right); Controls.Add(prev); Controls.Add(left);
 
         if (edit != null) LoadExisting(edit);
-        else { _proto.SelectedIndex = 0; PickTemplate(_board ? _tiles.First().Tpl : DeviceTemplate.All[1], true); }
+        else { _protoBusy = true; _proto.SelectedIndex = 0; _protoBusy = false; RebuildBind(null, null); PickTemplate(DeviceTemplate.All[1], true); if (_board) OnProtoChanged(); }
     }
 
     string IconValue() => _icon.SelectedIndex <= 0 ? "" : IconChoices[_icon.SelectedIndex - 1].Icon;
@@ -280,7 +340,7 @@ sealed class DeviceDialog : Form
         return p;
     }
 
-    PlcSource CurSource => ProtocolSpec.Streamable[Math.Max(0, _proto.SelectedIndex)];
+    PlcSource CurSource => _opts[Math.Clamp(_proto.SelectedIndex, 0, _opts.Count - 1)].Src;   // Digital I/O: I/O của board = Unit 0 qua Modbus (RTU nội bộ trên board, TCP từ gateway PC)
 
     /// <summary>Dựng ô kết nối (địa chỉ, cổng, tuỳ chọn) và ô thông số riêng theo giao thức đang chọn. Giá trị lấy từ cấu hình đã lưu, thiếu thì hiện gợi ý.</summary>
     void RebuildBind(PlcConnection? conn, Dictionary<string, string>? prm)
@@ -293,16 +353,16 @@ sealed class DeviceDialog : Form
         if (ProtocolSpec.UsesHostPort(src))
         {
             var host = new TextBox { Text = conn?.Host ?? "" }; _connInputs["host"] = host;
+            if (rtu && _board) { host.Text = "RS485"; host.Enabled = false; }   // board Waveshare: cổng RS485 gắn cứng trên mạch — không có tên COM để nhập, chỉ chọn baud/parity
             var port = new TextBox { Text = (conn?.Port > 0 ? conn.Port : ProtocolSpec.SuggestPort(src)).ToString() }; _connInputs["port"] = port;
-            _rowConn.Controls.Add(Field(rtu ? "Cổng COM" : _tpl.BoardIo && !_board ? "IP của board Waveshare" : "Địa chỉ PLC (IP/tên máy)", host, 250));
+            _rowConn.Controls.Add(Field(rtu ? (_board ? "Cổng (RS485 cố định trên board)" : "Cổng COM") : _tpl.BoardIo && !_board ? "IP của board Waveshare" : "Địa chỉ PLC (IP/tên máy)", host, 250));
             _rowConn.Controls.Add(Field(rtu ? "Baud" : "Cổng", port, 110));
         }
-        else _rowConn.Controls.Add(Skin.Lbl("Beckhoff ADS đi qua router ADS (AmsNetId bên dưới); không có địa chỉ/cổng IP riêng."));
         foreach (var d in ProtocolSpec.ConnOptions(src)) AddInput(_rowConn, _connInputs, "Kết nối: " + d.Label, d, conn?.Opt(d.Key));
         foreach (var d in ProtocolSpec.Params(src)) AddInput(_rowParam, _paramInputs, d.Label, d, prm != null && prm.TryGetValue(d.Key, out var pv) ? pv : null);
         _rowConn.ResumeLayout(); _rowParam.ResumeLayout();
         _addrHint.Text = DeviceTemplate.AddressHint(src);
-        WireChrome(_tpl.Wire && _edit == null);
+        WireChrome(HwOn);   // cũng áp dụng việc ẩn IP/cổng theo thiết bị đích
     }
 
     void AddInput(FlowLayoutPanel row, Dictionary<string, Control> map, string label, ParamDef d, string? value)
@@ -378,17 +438,19 @@ sealed class DeviceDialog : Form
     void PickTemplate(DeviceTemplate t, bool fill)
     {
         _tpl = t;
+        if (!t.Wire && DioSel) { _proto.SelectedIndex = Math.Min(1, _opts.Count - 1); return; }   // handler gọi lại PickTemplate với giao thức thường (RS485 / Modbus)
         foreach (var x in _tiles) { x.Selected = x.Tpl == t; x.Invalidate(); }
         if (!fill) return;
         if (!_childTouched || string.IsNullOrWhiteSpace(_child.Text)) { _child.Text = UniqueChild(t.IdPrefix); _childTouched = false; }
         _title.Text = t.DefaultTitle;
         _g.Rows.Clear();
-        _wire.Visible = _wNote.Visible = t.Wire && _edit == null;
-        if (!(t.Wire && _edit == null)) WireChrome(false);
-        if (t.Wire && _edit == null)
+        _wire.Visible = HwOn; _wNote.Visible = _wDoBox.Visible = _wDiBox.Visible = HwOn;
+        if (HwOn && t.HwInputOnly) _wDoBox.Visible = false;
+        if (!HwOn) WireChrome(false);
+        if (HwOn)
         {
             BoardProto();
-            _wBusy = true; FillPins(); _wBusy = false;
+            _wBusy = true; FillPins(t.HwInputOnly); _wBusy = false;
             UpdateWireUi(); ApplyWire();
             return;
         }
@@ -406,18 +468,21 @@ sealed class DeviceDialog : Form
     }
 
     /// <summary>Chân DI/DO của board là I/O nội bộ — gateway chạy độc lập, không cần PLC. Ẩn giao thức/cổng/baud/unit (đã tự đặt), chỉ giữ Lọc rung DI.</summary>
+    /// <summary>Waveshare: IP do ô "Thiết bị đích" quyết định (cổng 502 cố định từ PC); trên board RS485 gắn cứng (không có tên cổng) — các ô này ẩn.</summary>
+    bool HiddenNet(string key) => key switch { "host" => WaveshareTarget, "port" => WaveshareTarget && !_board, _ => false };
+
     void WireChrome(bool standalone)
     {
-        _rowProto.Visible = _addrHint.Visible = !standalone;
-        // trên board: chỉ giữ Lọc rung DI. Từ gateway PC (Modbus TCP tới board): giữ IP + cổng, ẩn unit (luôn 0)
-        foreach (var c in _connInputs.Concat(_paramInputs)) if (c.Value.Parent != null) c.Value.Parent.Visible = !standalone || (_board ? c.Key == "difilter" : c.Key is "host" or "port");
+        _addrHint.Visible = !standalone;   // ô Giao thức luôn hiện: chính nó chọn "Digital I/O"
+        // Digital I/O (standalone): chỉ giữ Lọc rung DI trên board; từ PC không còn gì để nhập (IP lấy từ "Thiết bị đích").
+        // IP/cổng chỉ hiện cho giao thức đi qua mạng (Modbus TCP tới thiết bị bất kỳ): giao thức của Waveshare (DI/DO, RS485) không phải nhập IP.
+        foreach (var c in _connInputs.Concat(_paramInputs)) if (c.Value.Parent != null) c.Value.Parent.Visible = (!standalone || (_board && c.Key == "difilter")) && !HiddenNet(c.Key);
         _rowParam.Visible = !standalone;
     }
 
     /// <summary>I/O của board = Unit ID 0. Cấu hình trên board: Modbus RTU (nội bộ). Từ gateway PC: Modbus TCP tới IP board (cổng 502) — board là slave, PC tự giữ lease.</summary>
     void BoardProto()
     {
-        _proto.SelectedIndex = Array.IndexOf(ProtocolSpec.Streamable, _board ? PlcSource.ModbusRtu : PlcSource.ModbusTcp);
         if (_paramInputs.TryGetValue("unit", out var u)) u.Text = "0";
         if (_board && _connInputs.TryGetValue("host", out var h) && string.IsNullOrWhiteSpace(h.Text)) h.Text = "RS485";
         if (!_board && _connInputs.TryGetValue("port", out var p) && (p.Text.Trim() is "" or "0")) p.Text = "502";
@@ -426,7 +491,7 @@ sealed class DeviceDialog : Form
     static string[] PinNames(string p) => Enumerable.Range(1, 8).Select(i => p + i).ToArray();
 
     /// <summary>Danh sách DI1..DI8 / DO1..DO8; chân đã có thiết bị khác dùng (cùng Modbus RTU Unit 0) được đánh dấu và không chọn mặc định.</summary>
-    void FillPins()
+    void FillPins(bool inputOnly = false)
     {
         var used = UsedElsewhere();
         void Fill(ComboBox cb, string p, int baseAddr, bool pick)
@@ -434,9 +499,9 @@ sealed class DeviceDialog : Form
             cb.Items.Clear(); cb.Items.Add(NoPin);
             for (var i = 0; i < 8; i++) cb.Items.Add(used.Contains(baseAddr + i) ? $"{p}{i + 1}  (đã dùng)" : $"{p}{i + 1}");
             var free = Enumerable.Range(0, 8).Where(i => !used.Contains(baseAddr + i)).Select(i => i + 1).FirstOrDefault();
-            cb.SelectedIndex = pick ? free : 0;   // mặc định: có DO điều khiển, DI phản hồi để trống
+            cb.SelectedIndex = pick ? free : 0;   // mặc định: có DO điều khiển, DI phản hồi để trống (loại chỉ đọc: DI đầu tiên còn rảnh)
         }
-        Fill(_wDi, "DI", 10, false); Fill(_wDo, "DO", 20, true);
+        Fill(_wDi, "DI", 10, inputOnly); Fill(_wDo, "DO", 20, !inputOnly);
     }
 
     void UpdateWireUi()
@@ -447,21 +512,31 @@ sealed class DeviceDialog : Form
             (true, true) => "Điều khiển + phản hồi: 1 thiết bị gồm công tắc ghi DO (lệnh) và DI (kết quả thật nhận về). Webapp so lệnh với DI sau khi gửi: khớp = đã xác nhận, lệch = cảnh báo.",
             (true, false) => "Điều khiển: chỉ GHI chân DO, không có tín hiệu xác nhận trở lại (bỏ chọn DI).",
             (false, true) => "Cảm biến: chỉ ĐỌC tín hiệu 0/1 từ chân DI đã chọn.",
-            _ => "Chọn ít nhất một chân: DO để điều khiển, DI để đọc / phản hồi.",
+            _ => _tpl.HwInputOnly ? "Chọn chân DI để đọc tín hiệu." : "Chọn ít nhất một chân: DO để điều khiển, DI để đọc / phản hồi. Chỉ nối công tắc bật/tắt; các field khác (tốc độ…) cần khai báo PLC — bỏ tick để khai báo đầy đủ.",
         };
     }
 
     /// <summary>Dựng lại các dòng field theo kiểu và chân đã chọn: DIn = D10+n−1 (đọc), DOn = D20+n−1 (đọc/ghi).</summary>
     void ApplyWire()
     {
-        if (!_tpl.Wire || _edit != null) return;
+        if (!HwOn) return;
         var di = _wDi.SelectedIndex; var dout = _wDo.SelectedIndex;   // 0 = không dùng, n = chân n
         var tk = Array.IndexOf(FieldMeta.Kinds, "toggle"); var kn = FieldMeta.KindNames[Math.Max(0, tk)];
+        var f = _tpl.Fields.First(x => x.Field == _tpl.HwField);   // field chính của loại thiết bị (run / on / open / out / in): giữ đúng tên để thẻ + webapp hiện như thiết bị thật
+        var fb = f.Field + "_fb";
         _g.Rows.Clear();
-        if (dout > 0) _g.Rows.Add($"do{dout}", "", $"Điều khiển DO{dout}", "Đọc/ghi", "UINT", (20 + dout - 1).ToString(), "1", "", "0", "1", kn, "Bật", "Tắt", "", "", di > 0 ? $"di{di}" : "");
-        if (di > 0) _g.Rows.Add($"di{di}", "", dout > 0 ? $"Phản hồi DI{di}" : $"Tín hiệu DI{di}", "Chỉ đọc", "UINT", (10 + di - 1).ToString(), "1", "", "", "", kn, "Có tín hiệu", "Không", "", "", "");
-        var t = dout > 0 && di > 0 ? $"Thiết bị DO{dout} / DI{di}" : dout > 0 ? $"Thiết bị DO{dout}" : di > 0 ? $"Cảm biến DI{di}" : _tpl.DefaultTitle;
-        if (_title.Text == _autoTitle || _title.Text == _tpl.DefaultTitle) { _title.Text = t; _autoTitle = t; }
+        if (_tpl.HwInputOnly)
+        {
+            if (di > 0) _g.Rows.Add(f.Field, "", f.Label, "Chỉ đọc", "UINT", (10 + di - 1).ToString(), "1", "", "", "", kn, "Có tín hiệu", "Không", "", "", "");
+        }
+        else
+        {
+            if (dout > 0) _g.Rows.Add(f.Field, "", f.Label, "Đọc/ghi", "UINT", (20 + dout - 1).ToString(), "1", "", "0", "1", kn, f.On, f.Off, "", "", di > 0 ? fb : "");
+            if (di > 0) _g.Rows.Add(dout > 0 ? fb : f.Field, "", dout > 0 ? $"Phản hồi DI{di}" : f.Label, "Chỉ đọc", "UINT", (10 + di - 1).ToString(), "1", "", "", "", kn, f.On, f.Off, "", "", "");
+        }
+        var pin = _tpl.HwInputOnly ? (di > 0 ? $"DI{di}" : "") : dout > 0 && di > 0 ? $"DO{dout} / DI{di}" : dout > 0 ? $"DO{dout}" : di > 0 ? $"DI{di}" : "";
+        var t = pin.Length > 0 ? $"{_tpl.DefaultTitle} ({pin})" : _tpl.DefaultTitle;
+        if (_title.Text == _autoTitle || _title.Text == _tpl.DefaultTitle || _title.Text.StartsWith(_tpl.DefaultTitle + " (")) { _title.Text = t; _autoTitle = t; }
         WireChrome(true);
     }
 
@@ -492,8 +567,7 @@ sealed class DeviceDialog : Form
         _icon.SelectedIndex = string.IsNullOrEmpty(dm?.Icon) || ii < 0 ? 0 : ii + 1;
         _color.SelectedIndex = Math.Max(0, Array.IndexOf(DeviceStyle.ColorKeys, dm?.Color ?? ""));
         var first = _app.Config.Pack.First(x => x.Child == child);
-        if (first.Source is { } fs) _proto.SelectedIndex = Math.Max(0, Array.IndexOf(ProtocolSpec.Streamable, fs));
-        else _proto.SelectedIndex = Math.Max(0, Array.IndexOf(ProtocolSpec.Streamable, _app.Config.Source));
+        SelectSource(first.Source ?? _app.Config.Source);
         RebuildBind(null, first.IsBound ? first.Params : null);
         _swap.SelectedIndex = first.WordSwap ? 1 : 0;
         foreach (var p in _app.Config.Pack.Where(x => x.Child == child))

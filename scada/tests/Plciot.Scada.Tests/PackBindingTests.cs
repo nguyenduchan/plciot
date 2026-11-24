@@ -76,11 +76,6 @@ public class PackBindingTests
         Assert.Contains("Unit ID", c.Validate());
         c = Cfg(P("a", "x", 10, prm: new() { ["unit"] = "abc" }));
         Assert.Contains("số nguyên", c.Validate());
-        c = Cfg(P("a", "x", 10, src: PlcSource.S7, prm: new() { ["cpu"] = "S71500", ["rack"] = "0", ["slot"] = "1" }));   // thiếu db
-        c.Connections.Add(new PlcConnection { Protocol = PlcSource.S7, Host = "h", Port = 102 });
-        Assert.Contains("Số DB", c.Validate());
-        c = Cfg(P("a", "x", 10, src: PlcSource.MitsubishiMc, prm: new() { ["plc"] = "ZZ" }));
-        Assert.Contains("phải là một trong", c.Validate());
     }
 
     [Fact]
@@ -233,5 +228,20 @@ public class PackBindingTests
         Assert.Equal(12.5, doc.RootElement.GetProperty("d").GetProperty("s").GetProperty("temp").GetDouble());
         Assert.Equal(-2, doc.RootElement.GetProperty("d").GetProperty("s").GetProperty("n").GetDouble());
         Assert.DoesNotContain(drv.Reads, x => x.A < 20);
+    }
+}
+
+public class RemovedProtocolConfigTests
+{
+    [Fact]
+    public void Config_with_a_removed_protocol_loads_instead_of_failing()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "cfgrm-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, "{\"Site\":\"s1\",\"Source\":\"OpcUa\",\"Connections\":[{\"Protocol\":\"S7\",\"Host\":\"a\"},{\"Protocol\":\"ModbusTcp\",\"Host\":\"b\",\"Port\":502}]}");
+        var cfg = ConfigStore.Load(path);
+        Assert.Equal("s1", cfg.Site);
+        Assert.Equal(PlcSource.Gateway, cfg.Source);                       // giao thức đã gỡ → không dùng
+        Assert.Equal(new[] { PlcSource.Gateway, PlcSource.ModbusTcp }, cfg.Connections.Select(c => c.Protocol).ToArray());
+        File.Delete(path);
     }
 }

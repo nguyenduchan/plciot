@@ -70,44 +70,6 @@ public class ModbusServerTests
     }
 }
 
-public class OpcUaTests
-{
-    [Fact]
-    public async Task Opc_ua_server_exposes_the_image_and_our_own_client_reads_it()
-    {
-        using var plc = new FakeModbusPlc();
-        var port = Net.FreePort();
-        var cfg = new ScadaConfig
-        {
-            Site = "f1", Device = "plc01", Source = PlcSource.ModbusTcp, PlcHost = "127.0.0.1", PlcPort = plc.Port, PollMs = 150, HistoryMs = 300,
-            WebEnabled = false, Mobile = MobileAccess.Off, ServerBind = "127.0.0.1", OpcUaServerEnabled = true, OpcUaServerPort = port,
-        };
-        await using var host = new ScadaHost(cfg);
-        await host.StartAsync();
-        Assert.True(await Net.WaitFor(() => host.Core.State.Fresh));
-        Assert.Contains($":{port}/plciot", host.OpcUaServerEndpoint);
-
-        // Host thứ hai KHÔNG nối PLC mà nối OPC UA của host thứ nhất: đủ cả client lẫn server
-        var cfg2 = new ScadaConfig
-        {
-            Site = "f1", Device = "plc01", Source = PlcSource.OpcUa, OpcUaEndpoint = $"opc.tcp://127.0.0.1:{port}/plciot", OpcUaImageNode = "ns=2;s=PLC_D",
-            PollMs = 200, HistoryMs = 500, WebEnabled = false, Mobile = MobileAccess.Off,
-        };
-        await using var core2 = new ScadaCore(cfg2, DriverFactory.Create(cfg2));
-        await core2.StartAsync();
-        Assert.True(await Net.WaitFor(() => core2.State.Fresh && core2.State.Status == "online", 30000), "client OPC UA đọc được ảnh thanh ghi");
-        Assert.Equal(5, core2.State.Inputs);
-        Assert.Equal(7, core2.State.Count);
-        lock (plc.Regs) plc.Regs[14] = 1234;
-        Assert.True(await Net.WaitFor(() => core2.State.Count == 1234, 8000), "giá trị đổi ở PLC tới được client OPC UA");
-
-        // server chỉ đọc: ghi qua OPC UA bị từ chối, PLC không đổi
-        Assert.NotNull(await core2.WriteAsync(6, 1));
-        await Task.Delay(400);
-        Assert.Equal(0, plc.Get(6));
-    }
-}
-
 public class InfluxTests
 {
     static ScadaConfig Cfg() => new() { Site = "f1", Device = "plc01", InfluxUrl = "http://x", InfluxToken = "t", Mobile = MobileAccess.Off, WebEnabled = false };

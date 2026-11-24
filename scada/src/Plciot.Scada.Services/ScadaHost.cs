@@ -24,7 +24,6 @@ public sealed class ScadaHost : IAsyncDisposable
     LocalBroker? _broker;
     LocalWebServer? _web;
     ModbusTcpServer? _mbServer;
-    OpcUaServerHost? _uaServer;
     InfluxWriter? _influx;
     CancellationTokenSource? _cts;
     Task? _bridgeTask;
@@ -37,7 +36,6 @@ public sealed class ScadaHost : IAsyncDisposable
     public int LocalClients => _broker?.ClientCount ?? 0;
     public int WebPort => _web?.Port ?? 0;
     public int ModbusServerPort => _mbServer?.Port ?? 0;
-    public string OpcUaServerEndpoint => _uaServer?.Endpoint ?? "";
     public bool RemoteControlAllowed => _cfg.AllowRemoteControl;
     public IScadaView View => Core;
     public event Action<string>? Log;
@@ -82,12 +80,6 @@ public sealed class ScadaHost : IAsyncDisposable
             _mbServer.Start();
             Core.Emit($"Modbus TCP server (chỉ đọc) nghe {_cfg.ServerBind}:{_mbServer.Port}");
         }
-        if (_cfg.OpcUaServerEnabled)
-        {
-            _uaServer = new OpcUaServerHost(_cfg, () => { var s = Core.State; return (s, DeviceState.ImageOf(s)); });
-            await _uaServer.StartAsync();
-            Core.Emit($"OPC UA server (chỉ đọc) {_uaServer.Endpoint}");
-        }
         if (_cfg.InfluxEnabled)
         {
             _influx = new InfluxWriter(_cfg, () => Core.State);
@@ -129,7 +121,6 @@ public sealed class ScadaHost : IAsyncDisposable
         await Core.StopAsync();
         if (_web != null) { await _web.DisposeAsync(); _web = null; }
         if (_mbServer != null) { await _mbServer.DisposeAsync(); _mbServer = null; }
-        if (_uaServer != null) { await _uaServer.DisposeAsync(); _uaServer = null; }
         if (_influx != null) { await _influx.DisposeAsync(); _influx = null; }
         if (_broker != null) { await _broker.StopAsync(); }
     }

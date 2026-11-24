@@ -93,6 +93,7 @@ sealed class ConnectDialog : Form
             {
                 var key = $"{ip}:{h.Port}";
                 _found[key] = h;
+                if (h.Kind == "mcu") TrustedBoards.SetProtocols(h.Hw, h.Protocols);
                 var net = h.Ip.Length == 0 ? "" : RemoteClient.SameSubnetAsThisPc(ip.ToString()) ? "cùng mạng" : "⚠ khác mạng con";
                 var trusted = h.Locked ? " 🔒 bị khoá" : h.Kind == "mcu" && TrustedBoards.Contains(h.Hw) ? " ✓" : "";
                 var it = new ListViewItem(new[] { (h.Kind == "mcu" ? "Waveshare" : "Gateway PC") + trusted, h.Name, key, net, h.Version }) { Tag = key };

@@ -8,6 +8,8 @@ public interface IGatewayApp
 {
     /// <summary>Loại gateway đang được cấu hình, tự nhận diện: "mcu" = board Waveshare ESP32 (qua LAN), còn lại = gateway PC. Quyết định mẫu thiết bị được đề nghị.</summary>
     string GatewayKind => "";
+    /// <summary>Giao thức phần cứng của board (firmware báo, vd. "dio", "rs485"); rỗng với gateway PC.</summary>
+    string[] Protocols => Array.Empty<string>();
     ScadaConfig Config { get; }
     UiMetaStore Meta { get; }
     HistoryStore History { get; }

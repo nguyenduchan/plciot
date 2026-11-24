@@ -48,6 +48,8 @@ public sealed class ApiHello
     public bool Tls { get; set; }
     /// <summary>true = board bị khoá (báo mất trộm, admin khoá theo mã phần cứng) — không cài đặt được tới khi server mở khoá.</summary>
     public bool Locked { get; set; }
+    /// <summary>Giao thức / giao tiếp phần cứng board hỗ trợ (firmware báo): "dio", "rs485", sau này "i2c", "can"… Rỗng = firmware cũ chưa báo (coi như dio + rs485).</summary>
+    public string[] Protocols { get; set; } = Array.Empty<string>();
 }
 /// <summary>Board MCU: một PC quản trị (GET /api/admins). Active=false: đang chờ — PC quản trị cũ đồng ý/từ chối, hoặc tự kích hoạt sau RemainMin phút.</summary>
 public sealed class ApiAdmin { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public string How { get; set; } = ""; public bool Active { get; set; } public int RemainMin { get; set; } public bool Self { get; set; } }

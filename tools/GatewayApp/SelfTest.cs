@@ -76,9 +76,6 @@ public sealed partial class MainForm
                 if (Convert.ToString(r.Cells[0].Value) == "h") r.Cells[5].Value = "57";
             }
         }) is { Length: > 0 } e3 ? "LOI " + e3 : "ok")}");
-        // van: giao thức KHÁC (OPC UA) trên cùng chương trình, thanh ghi D60
-        log.Add($"add valve(opcua): {(AddDeviceViaDialog("valve", PlcSource.OpcUa, "127.0.0.1", 4841, new() { ["path"] = "plcsim", ["security"] = "none" },
-            new() { ["ns"] = "2", ["image"] = "PLC_D", ["prefix"] = "PLC_W" }, g => g.Rows[0].Cells[5].Value = "60") is { Length: > 0 } e4 ? "LOI " + e4 : "ok")}");
         // thêm trùng thanh ghi trên cùng PLC phải bị từ chối
         log.Add($"dup_word_rejected={AddDeviceViaDialog("tank", PlcSource.ModbusTcp, "127.0.0.1", 1502, none, modbus, g => g.Rows[0].Cells[5].Value = "52").Contains("D52")}");
         // thiếu kết nối / thông số phải bị từ chối

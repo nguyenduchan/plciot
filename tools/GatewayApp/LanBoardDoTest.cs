@@ -40,10 +40,18 @@ public sealed partial class MainForm
             L($"PC test đã ghép với board: {(paired ? "OK" : "LỖI")}");
             if (!paired) { L("RESULT=FAIL"); Application.Exit(); return; }
 
-            // 8 thiết bị, mỗi cái một chân DO (hộp thoại tự chọn chân DO còn rảnh đầu tiên)
+            // 8 thiết bị thật (bơm, van, đèn, quạt…) mỗi cái tick "Nối với phần cứng Waveshare" (hộp thoại tự chọn chân DO còn rảnh đầu tiên)
+            var hwTpl = new[] { "pump", "valve", "bulb", "fan", "alarm", "door", "motor", "conveyor" };
             for (var n = 1; n <= 8; n++)
             {
-                var e = AddDeviceViaDialog("diboard", PlcSource.ModbusTcp, host, 502, new(), new() { ["unit"] = "0" });
+                var e = AddDeviceViaDialog(hwTpl[n - 1], PlcSource.ModbusTcp, host, 502, new(), new() { ["unit"] = "0" }, null, dlg =>
+                {
+                    var f = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance; var ty = dlg.GetType();
+                    var target = (ComboBox)ty.GetField("_target", f)!.GetValue(dlg)!; target.SelectedIndex = 1;   // thiết bị đích = Waveshare đã ghép → danh sách giao thức của board, mục đầu = Digital I/O
+                    var conn = (Dictionary<string, Control>)ty.GetField("_connInputs", f)!.GetValue(dlg)!;
+                    if (conn.TryGetValue("host", out var h)) h.Text = host; if (conn.TryGetValue("port", out var p)) p.Text = "502";
+                    var prm = (Dictionary<string, Control>)ty.GetField("_paramInputs", f)!.GetValue(dlg)!; if (prm.TryGetValue("unit", out var u)) u.Text = "0";
+                });
                 L($"thêm thiết bị #{n} (nối chân DO): {(e.Length == 0 ? "OK" : "LỖI " + e)}");
                 if (e.Length > 0) break;
             }

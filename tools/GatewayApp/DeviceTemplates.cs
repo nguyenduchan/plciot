@@ -8,8 +8,14 @@ public sealed record FieldTpl(
     bool Writable = false, string On = "", string Off = "", double? Low = null, double? High = null, int Addr = -1);   // Addr >= 0: địa chỉ D cố định (I/O trên board)
 
 /// <summary>Mẫu theo loại thiết bị vật lý: chọn mẫu → có sẵn các field, nhãn, đơn vị, chữ trạng thái đúng loại.</summary>
-public sealed record DeviceTemplate(string Id, string Name, string Icon, string Desc, string IdPrefix, string DefaultTitle, FieldTpl[] Fields, bool BoardIo = false, bool Wire = false)
+public sealed record DeviceTemplate(string Id, string Name, string Icon, string Desc, string IdPrefix, string DefaultTitle, FieldTpl[] Fields, bool BoardIo = false)
 {
+    /// <summary>Field chính có thể nối thẳng với chân của board Waveshare: công tắc bật/tắt (điều khiển DO + phản hồi DI) hoặc, với "Đầu vào số", tín hiệu DI. null = loại này không có tuỳ chọn phần cứng.</summary>
+    public string? HwField => Fields.FirstOrDefault(f => f.Writable && f.Kind == "toggle")?.Field ?? (Id == "di" ? Fields[0].Field : null);
+    public bool Wire => HwField != null;
+    /// <summary>Chỉ đọc tín hiệu vào (không có DO).</summary>
+    public bool HwInputOnly => Wire && !Fields.Any(f => f.Writable && f.Kind == "toggle");
+
     public static readonly DeviceTemplate[] All =
     {
         new("tank", "Bồn nước / cảm biến mức", "≋", "Đo mực chất lỏng, cảnh báo thấp / cao", "tank", "Bồn nước", new[]
@@ -127,6 +133,10 @@ public sealed record DeviceTemplate(string Id, string Name, string Icon, string 
         {
             new FieldTpl("ppm", "Nồng độ", "gauge", "ppm", 0, 5000, 1, High: 1000),
         }),
+        new("bulb", "Đèn chiếu sáng", "◐", "Bật tắt đèn, trạng thái sáng", "light", "Đèn", new[]
+        {
+            new FieldTpl("on", "Đèn", "toggle", "", 0, 1, 1, true, "Sáng", "Tắt"),
+        }),
         new("alarm", "Còi / đèn cảnh báo", "⚠", "Bật tắt còi, trạng thái cảnh báo", "alarm", "Cảnh báo", new[]
         {
             new FieldTpl("on", "Còi", "toggle", "", 0, 1, 1, true, "Đang kêu", "Tắt"),
@@ -143,11 +153,7 @@ public sealed record DeviceTemplate(string Id, string Name, string Icon, string 
         {
             new FieldTpl("out", "Tín hiệu ra", "toggle", "", 0, 1, 1, true, "Bật", "Tắt"),
         }),
-        // ---- I/O trên board Waveshare (Modbus RTU Unit ID 0): chọn kiểu đọc DI khi thêm thiết bị ----
-        new("diboard", "Nối chân DI / DO của board", "⏚", "Chọn DI1–DI8 / DO1–DO8: cảm biến (đầu vào), hoặc điều khiển (đầu ra DO + đầu vào DI phản hồi — cùng một thiết bị)", "io", "Thiết bị DI/DO", new[]
-        {
-            new FieldTpl("di1", "Đầu vào DI1", "toggle", "", 0, 1, 1, false, "Có tín hiệu", "Không", Addr: 10),
-        }, BoardIo: true, Wire: true),
+        // ---- DI/DO của board Waveshare KHÔNG phải mục riêng: là tuỳ chọn "Nối với phần cứng Waveshare" khi thêm bơm, van, đèn, quạt… (Wire/HwField) ----
         new("dicount", "Đầu vào số (DI) trên board — bộ đếm cạnh lên", "#", "Đếm số lần DI chuyển 0→1 (xung đồng hồ, đếm sản phẩm); ghi 0 để đặt lại. Không mất xung dù đọc chậm", "cnt", "Bộ đếm xung", new[]
         {
             new FieldTpl("cnt1", "Đếm xung DI1", "number", "xung", 0, 65535, 1, true, Addr: 30),
@@ -171,18 +177,11 @@ public sealed record DeviceTemplate(string Id, string Name, string Icon, string 
     public static string AddressHint(PlcSource s) => s switch
     {
         PlcSource.ModbusTcp or PlcSource.ModbusRtu => "Modbus: D n = thanh ghi giữ (holding register) số n của trạm.",
-        PlcSource.S7 => "Siemens S7: D n = DBW(2·n) trong DB đã chọn (INT[300]).",
-        PlcSource.EtherNetIp => "EtherNet/IP: D n = phần tử [n] của tag INT[300].",
-        PlcSource.MitsubishiMc => "Mitsubishi MC: D n = thiết bị D n.",
-        PlcSource.OmronFins => "Omron FINS: D n = vùng DM, ô DM n.",
-        PlcSource.BeckhoffAds => "Beckhoff ADS: D n = phần tử [n] của symbol ARRAY[0..299] OF INT.",
-        PlcSource.OpcUa => "OPC UA: D n = phần tử [n] của node ảnh thanh ghi (UInt16[300]); ghi qua node PLC_W{n}.",
         _ => "Gateway ESP32: D n là thanh ghi D n của PLC phía sau ESP32.",
     };
 
     public static string ProtocolName(PlcSource s) => s switch
     {
-        PlcSource.ModbusTcp => "Modbus TCP", PlcSource.ModbusRtu => "Modbus RTU", PlcSource.S7 => "Siemens S7", PlcSource.EtherNetIp => "EtherNet/IP",
-        PlcSource.MitsubishiMc => "Mitsubishi MC", PlcSource.OmronFins => "Omron FINS", PlcSource.BeckhoffAds => "Beckhoff ADS", PlcSource.OpcUa => "OPC UA", _ => "Gateway ESP32",
+        PlcSource.ModbusTcp => "Modbus TCP", PlcSource.ModbusRtu => "Modbus RTU", _ => "Gateway ESP32",
     };
 }

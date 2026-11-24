@@ -5,7 +5,7 @@
 ## Bản đồ thư mục
 ```
 src/Plciot.Scada.Core        CỐ ĐỊNH. Driver PLC, ScadaCore (đọc + điều khiển trực tiếp), DeviceState, IScadaView, ScadaConfig, CommandPolicy
-src/Plciot.Scada.Services    CỐ ĐỊNH. Cloud/điện thoại, web + RemoteScreenClient (nhiều màn hình), server Modbus/OPC UA, InfluxDB, broker LAN, ScadaHost
+src/Plciot.Scada.Services    CỐ ĐỊNH. Cloud/điện thoại, web + RemoteScreenClient (nhiều màn hình), server Modbus, InfluxDB, broker LAN, ScadaHost
 src/Plciot.Scada.Framework   CỐ ĐỊNH. IScadaSolution/IScadaModule/IScadaUi, SolutionRunner (vòng đời), ScadaConfigExtensions (UseSingleScreen…)
 src/Plciot.Scada.Host        Chạy nền với DefaultSolution (thử nhanh)
 solutions/Plciot.Solution.*  RIÊNG TỪNG KHÁCH HÀNG. Mỗi thư mục là một dự án độc lập + SOLUTION.md
@@ -14,7 +14,7 @@ tests/Plciot.Scada.Tests     Kiểm thử cho framework và giải pháp mẫu
 
 ## Quy tắc vàng
 1. **Yêu cầu của một khách hàng → chỉ sửa trong `solutions/<TenKhach>/`.** Không sửa Core/Services/Framework cho nhu cầu riêng. Cần một khả năng mới dùng chung được → thêm vào framework, kèm test, và nói rõ trong câu trả lời.
-2. **Giải pháp chỉ tham chiếu `Plciot.Scada.Framework`.** Không tham chiếu MQTTnet/ASP.NET/OPC trực tiếp (có test `SolutionIsolationTests` canh việc này). Framework không bao giờ tham chiếu `Plciot.Solution.*`.
+2. **Giải pháp chỉ tham chiếu `Plciot.Scada.Framework`.** Không tham chiếu MQTTnet/ASP.NET trực tiếp (có test `SolutionIsolationTests` canh việc này). Framework không bao giờ tham chiếu `Plciot.Solution.*`.
 3. **Giao diện chỉ dùng `IScadaView`** (`ctx.View`): `State`, `CanControl`, `WriteAsync`. Giao diện KHÔNG tự quyết quyền điều khiển — đọc `CanControl`.
 4. **Quyền điều khiển có đúng một nơi kiểm soát:** `ScadaCore.ExecuteAsync(payload, ControlSource, actor)` + `ScadaConfig.AllowsControl`. Không thêm kiểm tra rải rác ở giao diện/dịch vụ; nếu cần nguồn mới, thêm vào `ControlSource` và `AllowsControl`.
 5. **Mọi ghi xuống PLC đi qua `CommandPolicy`** (danh sách `WritableRegisters`). Không ghi thẳng driver từ module/giao diện.
@@ -31,7 +31,7 @@ tests/Plciot.Scada.Tests     Kiểm thử cho framework và giải pháp mẫu
 | Logic riêng (cảnh báo, báo cáo ca, thông báo…) | một file trong `solutions/<Ten>/Modules/` implement `IScadaModule`, thêm vào `CreateModules()` |
 | Giao diện riêng | implement `IScadaUi` (xem `Plciot.Solution.Conveyor`), trả về từ `CreateUi()` |
 | PC ghép cặp với cloud (không mật khẩu) | `StationClient` trong Services: `PairAsync(mã)` rồi `WriteAsync/PingAsync` (ký bằng khoá thiết bị, xem docs/CONTROL-SECURITY.md) |
-| Giao thức PLC khác | `.UsePlc(PlcSource.X, host)`; giao thức mới → thêm `IRegisterDriver` trong Core + `DriverFactory` + test |
+| Giao thức PLC khác | Hiện CHỈ có Modbus TCP/RTU (+ Digital I/O của board Waveshare qua Modbus Unit 0). S7, EtherNet/IP, MC, FINS, ADS, OPC UA đã gỡ để mở rộng sau: thêm giá trị `PlcSource`, `IRegisterDriver` trong Core, dòng trong `DriverFactory` + `ProtocolSpec` (Streamable/Name/Params/SuggestPort) + test (và bước trong `ConfigMigrations` nếu đổi cấu hình) |
 | Máy màn hình phụ | chạy cùng giải pháp với `--station screen` và file cấu hình có `ScreenServerUrl/User/Password` |
 
 ## Cách làm việc (LLM)

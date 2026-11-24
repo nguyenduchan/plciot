@@ -11,12 +11,6 @@ dotnet run --project tools/PlcSim
 | Giao thức | Vai trò simulator | Cấu hình gateway C# (`ScadaConfig`) |
 |---|---|---|
 | Modbus TCP | slave, cổng 502 | `Source=ModbusTcp`, `PlcHost=<IP máy này>` |
-| Mitsubishi MC 3E | server, cổng 5001 (Q/L và iQ-R) | `Source=MitsubishiMc`, `McPlcType` |
-| Omron FINS UDP / TCP | server, cổng 9600 (DM) | `Source=OmronFins`, `FinsProtocol` |
-| Siemens S7 | server ISO-on-TCP, cổng 102, DBW(2n) = D n | `Source=S7`, `S7Cpu`, `S7Db` |
-| EtherNet/IP | server CIP, cổng 44818, tag INT[300] | `Source=EtherNetIp`, `EipTag` |
-| OPC UA | server, cổng 4840 (`PLC_D`, `PLC_W<a>` ghi được) | `Source=OpcUa` |
-| Beckhoff ADS | AMS router + PLC, cổng 48898 (gateway cùng máy, không cài TwinCAT) | `Source=BeckhoffAds` |
 | MQTT → gateway | client, cổng 1883 | `Source=Gateway`, `LocalBrokerEnabled`, `LocalUsers` có `Role=Device` |
 
 Ba giao thức đầu: gateway **poll** D0..D39 và **ghi** lệnh (D3/D4/D6/D7/D9) vào simulator — simulator log và cập nhật lưới ngay.
@@ -41,7 +35,7 @@ Thanh **Giải pháp** trên cùng: chọn cùng danh sách giải pháp như ga
 
 Mặc định **rỗng**. Chỉ có giao thức qua Ethernet (chưa có RS232/RS485 và digital).
 
-- **＋ Thêm luồng dữ liệu**: **giao thức** (Modbus, MC, FINS, S7, EtherNet/IP, OPC UA, ADS, MQTT), **quyền** (chỉ đọc / chỉ ghi / đọc và ghi), **thông số riêng của giao thức** (cùng khoá với gateway: Unit ID, dòng PLC, node FINS, CPU/rack/slot/DB, tag/slot, AMS NetId/port/symbol, namespace/node OPC UA; hiện luôn địa chỉ gateway sẽ dùng), thiết bị (child), field, thanh ghi D, hệ số (D = giá trị × hệ số) và cách sinh giá trị: cố định, ngẫu nhiên trong khoảng Min–Max, sóng sin (chu kỳ), tăng dần (bước/giây). Trùng D bị từ chối. Chỉ đọc: gateway ghi vào bị từ chối (ghi vào nhật ký); chỉ ghi: không sinh giả lập, giữ giá trị gateway ghi. Sửa / **Xoá (có xác nhận, mặc định "Không")** hoặc phím Delete.
+- **＋ Thêm luồng dữ liệu**: **giao thức** (Modbus, MQTT; giao thức khác đã gỡ, mở rộng sau), **quyền** (chỉ đọc / chỉ ghi / đọc và ghi), **thông số riêng của giao thức** (cùng khoá với gateway: Unit ID, dòng PLC, node FINS, CPU/rack/slot/DB, tag/slot, AMS NetId/port/symbol, namespace/node OPC UA; hiện luôn địa chỉ gateway sẽ dùng), thiết bị (child), field, thanh ghi D, hệ số (D = giá trị × hệ số) và cách sinh giá trị: cố định, ngẫu nhiên trong khoảng Min–Max, sóng sin (chu kỳ), tăng dần (bước/giây). Trùng D bị từ chối. Chỉ đọc: gateway ghi vào bị từ chối (ghi vào nhật ký); chỉ ghi: không sinh giả lập, giữ giá trị gateway ghi. Sửa / **Xoá (có xác nhận, mặc định "Không")** hoặc phím Delete.
 - **⚙ Kết nối…**: chọn một giao thức rồi sửa thông số kết nối của nó (mỗi giao thức một bộ; bấm Bắt đầu sẽ mở một máy chủ cho mỗi giao thức đang có luồng): địa chỉ/cổng, Site, Device, MQTT user/password, chu kỳ gửi, tên tag (EtherNet/IP, ADS).
 - Tab **Thanh ghi D**: sửa D0..D39, hoặc ghi D bất kỳ (0–299). Ô **Chạy mô phỏng giá trị** bật/tắt mọi bộ sinh giá trị.
 

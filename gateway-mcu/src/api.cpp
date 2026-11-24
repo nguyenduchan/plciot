@@ -10,7 +10,7 @@
 //        còn lại → 403 not_paired
 //   → {Ok, Token, Paired}; mọi yêu cầu sau gửi "Authorization: Bearer <Token>".
 //   GET /api/state · GET/PUT /api/config · POST /api/write · /api/run · /api/device · /api/cloud · GET/PUT /api/network
-// Tìm thiết bị: UDP 8751 "PLCIOT-DISCOVER" → ApiHello {Kind:"mcu",Name,Hw,Port:443,Tls:true,Ip,Mask,Mac,Version}
+// Tìm thiết bị: UDP 8751 "PLCIOT-DISCOVER" → ApiHello {Kind:"mcu",Name,Hw,Port:443,Tls:true,Ip,Mask,Mac,Version,Protocols:["dio","rs485"]}
 //   (trả cả broadcast: khác mạng con vẫn thấy). Giữ BOOT 10 giây = reset: xoá danh sách PC đã ghép.
 #include "gw.h"
 #include "board.h"
@@ -24,6 +24,7 @@
 #endif
 
 namespace {
+const char* const kProtocols[] = BOARD_PROTOCOLS;
 HttpServer s_https(API_PORT, true);
 HttpServer s_http(STATUS_PORT, false);
 NetworkUDP s_udp;
@@ -416,6 +417,7 @@ void udpLoop() {
   d["Kind"] = "mcu"; d["Name"] = g_cfg.mqttId.length() ? g_cfg.site + "/" + g_cfg.device : g_cfg.device;
   d["Hw"] = idHw(); d["Port"] = API_PORT; d["Tls"] = true; d["Version"] = FW_VERSION; if (g_locked) d["Locked"] = true;
   d["Ip"] = netIpFor(to).toString(); d["Mask"] = netMaskFor(to); d["Mac"] = ETH.macAddress();
+  { JsonArray pr = d["Protocols"].to<JsonArray>(); for (const char* p : kProtocols) pr.add(p); }
   String s; serializeJson(d, s);
   // trả lời cả unicast lẫn broadcast (như công cụ cấu hình của Waveshare): máy admin KHÁC mạng con vẫn thấy board để đổi IP
   s_udp.beginPacket(to, port); s_udp.print(s); s_udp.endPacket();

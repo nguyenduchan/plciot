@@ -6,6 +6,7 @@
 //   {"cmd":"wifi.set","Ssid":"..","Password":".."} → @@{"Ok":true,"Wifi":{…}}  hoặc  @@{"Ok":false,"Err":"wifi_auth_failed"}   (Ssid rỗng = quên mạng)
 // An toàn: cắm được cáp USB vào board = có quyền vật lý (nạp lại firmware cũng làm được), nên không cần đăng nhập. Mật khẩu không bao giờ được in ra log.
 #include "gw.h"
+#include "board.h"
 #include <ArduinoJson.h>
 
 #ifndef GW_SIM
@@ -23,6 +24,7 @@ void handle(const String& line) {
   String cmd = q["cmd"] | "";
   if (cmd == "info") {
     r["Ok"] = true; r["Version"] = FW_VERSION; r["Hw"] = idHw();
+    { static const char* const kP[] = BOARD_PROTOCOLS; JsonArray pr = r["Protocols"].to<JsonArray>(); for (const char* p : kP) pr.add(p); }
     deserializeJson(r["Wifi"].to<JsonVariant>(), wifiStatusJson());
   } else if (cmd == "wifi.scan") {
     r["Ok"] = true; deserializeJson(r["Nets"].to<JsonVariant>(), wifiScanJson());

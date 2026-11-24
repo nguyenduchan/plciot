@@ -10,12 +10,18 @@ namespace GatewayApp;
 /// </summary>
 static class ConfigMigrations
 {
-    public const int Current = 1;
+    public const int Current = 2;
 
     /// <summary>Steps[i]: nâng cấu hình từ schema i lên i+1. Schema 0 → 1: chỉ đánh dấu (chưa có thay đổi định dạng).</summary>
     static readonly Action<ScadaConfig>[] Steps =
     {
         _ => { },
+        // 1 → 2: gỡ giao thức S7 / EtherNet/IP / Mitsubishi MC / Omron FINS / Beckhoff ADS / OPC UA — bỏ kết nối + field dùng chúng (chỉ còn Modbus TCP/RTU)
+        cfg =>
+        {
+            cfg.Connections.RemoveAll(c => c.Protocol is not (PlcSource.ModbusTcp or PlcSource.ModbusRtu));
+            cfg.Pack.RemoveAll(p => p.Protocol.Length > 0 && p.Source is not (PlcSource.ModbusTcp or PlcSource.ModbusRtu));
+        },
     };
 
     /// <summary>Nâng <paramref name="cfg"/> (đã đọc từ <paramref name="path"/>) lên schema hiện tại. Trả true nếu có thay đổi (cần lưu lại).</summary>

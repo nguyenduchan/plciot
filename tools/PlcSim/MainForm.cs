@@ -16,20 +16,6 @@ public sealed partial class MainForm : Form
     {
         new("Modbus TCP (slave)", "modbus", 502, "Địa chỉ nghe (bind)",
             "Gateway C#: Source = ModbusTcp, PlcHost = IP máy này, PlcPort = cổng bên cạnh. Gateway poll D0..D39 và ghi lệnh FC06."),
-        new("Mitsubishi MC 3E (server)", "mc", 5001, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = MitsubishiMc, PlcHost = IP máy này, McPlcType = Q hoặc iQ-R."),
-        new("Omron FINS/UDP (server)", "fins-udp", 9600, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = OmronFins, FinsProtocol = udp, PlcHost = IP máy này (FinsDestNode = octet cuối IP)."),
-        new("Omron FINS/TCP (server)", "fins-tcp", 9600, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = OmronFins, FinsProtocol = tcp, PlcHost = IP máy này."),
-        new("Siemens S7 (ISO-on-TCP server)", "s7", 102, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = S7, PlcHost = IP máy này, S7Cpu = S71500 (hoặc S71200…), S7Db = DB bất kỳ (DBW(2n) = D n)."),
-        new("EtherNet/IP Rockwell (server)", "eip", 44818, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = EtherNetIp, PlcHost = IP máy này, EipTag = tên tag bên dưới (INT[300]), EipSlot = 0."),
-        new("OPC UA (server)", "opcua", 4840, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = OpcUa, OpcUaEndpoint = opc.tcp://<IP máy này>:<cổng>/plcsim, OpcUaImageNode = ns=2;s=PLC_D, OpcUaWriteNode = ns=2;s=PLC_W{a}."),
-        new("Beckhoff ADS (AMS router + PLC)", "ads", 48898, "Địa chỉ nghe (bind)",
-            "Gateway C#: Source = BeckhoffAds, AdsNetId = AmsNetId bên dưới, AdsPort = 851, AdsSymbol = symbol bên dưới. Máy gateway phải trỏ router ADS (cổng 48898) tới simulator."),
         new("MQTT → broker LAN của gateway", "mqtt", 1883, "Địa chỉ gateway (broker LAN)",
             "Gateway C#: Source = Gateway + LocalBrokerEnabled; thêm LocalUsers {User, Password, Role = Device}. Site/Device phải trùng cấu hình gateway. Gửi schema:2 + d tới webapp."),
     };
@@ -46,7 +32,7 @@ public sealed partial class MainForm : Form
     {
         if (_cfg.TryGetValue(kind, out var c)) return c;
         var p = Protos.First(x => x.Kind == kind);
-        return _cfg[kind] = new ProtoCfg { Port = p.Port, Host = kind == "mqtt" ? "127.0.0.1" : "0.0.0.0", Tag = kind == "ads" ? "GVL_PLC.D" : kind == "eip" ? "PLC_D" : "" };
+        return _cfg[kind] = new ProtoCfg { Port = p.Port, Host = kind == "mqtt" ? "127.0.0.1" : "0.0.0.0", Tag = "" };
     }
 
     static string Short(ProtoInfo p) => p.Label.Split(" (")[0].Split(" →")[0];
@@ -355,19 +341,9 @@ public sealed partial class MainForm : Form
     {
         void Log(string s) => AppendLog(s);
         var c = Cfg(kind); var host = c.Host.Trim();
-        // tag/symbol: lấy từ thông số của luồng đầu tiên dùng giao thức này, không có thì dùng mặc định ở "Kết nối…"
-        var key = kind == "eip" ? "tag" : kind == "ads" ? "symbol" : null;
-        var tag = key == null ? c.Tag : Streams().Where(x => x.Kind == kind).Select(x => ProtoParams.Get(x.Param, kind, key)).FirstOrDefault(v => v.Length > 0) ?? c.Tag;
         return kind switch
         {
             "modbus" => new ModbusTcpSlave(_model, host, c.Port, Log),
-            "mc" => new MitsubishiMcServer(_model, host, c.Port, Log),
-            "fins-udp" => new OmronFinsServer(_model, host, c.Port, false, Log),
-            "fins-tcp" => new OmronFinsServer(_model, host, c.Port, true, Log),
-            "s7" => new S7Server(_model, host, c.Port, Log),
-            "eip" => new EtherNetIpServer(_model, host, c.Port, tag, Log),
-            "ads" => new BeckhoffAdsServer(_model, host, c.Port, tag, Log),
-            "opcua" => new OpcUaPlcServer(_model, host, c.Port, Log),
             "mqtt" => new MqttGatewayLink(_model, host, c.Port, c.User.Trim(), c.Pass, c.Site.Trim(), c.Device.Trim(), Log),
             _ => throw new InvalidOperationException(),
         };

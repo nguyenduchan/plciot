@@ -118,18 +118,12 @@ sealed record PDef(string Key, string Label, string Default, string[]? Choices =
 /// <summary>Thông số địa chỉ riêng của từng giao thức (lưu trong Param dạng "khoá=giá trị|khoá=giá trị").</summary>
 static class ProtoParams
 {
-    public static string Group(string kind) => kind.StartsWith("fins") ? "fins" : kind;
+    public static string Group(string kind) => kind;
 
     public static PDef[] Defs(string kind) => Group(kind) switch
     {
         // Khoá và lựa chọn KHỚP với Plciot.Scada.ProtocolSpec của gateway: gateway khai báo đúng các thông số này cho từng luồng.
         "modbus" => new PDef[] { new("unit", "Unit ID (slave)", "1") },
-        "mc" => new PDef[] { new("plc", "Dòng PLC", "Q", new[] { "Q", "L", "QnA", "iQ-R", "iQ-L" }) },
-        "fins" => new PDef[] { new("node", "Node đích (DA1)", "1"), new("srcnode", "Node nguồn (SA1)", "0") },
-        "s7" => new PDef[] { new("cpu", "CPU", "S71500", new[] { "S7200", "S7300", "S7400", "S71200", "S71500" }), new("rack", "Rack", "0"), new("slot", "Slot", "1"), new("db", "Số DB", "1") },
-        "eip" => new PDef[] { new("tag", "Tên tag (INT[])", "PLC_D"), new("slot", "Slot CPU", "0") },
-        "opcua" => new PDef[] { new("ns", "Namespace index", "2"), new("image", "Node ảnh thanh ghi", "PLC_D"), new("prefix", "Tiền tố node ghi", "PLC_W") },
-        "ads" => new PDef[] { new("netid", "AMS NetId", "127.0.0.1.1.1"), new("port", "AMS port", "851"), new("symbol", "Symbol (INT[])", "GVL_PLC.D") },
         "mqtt" => new PDef[] { new("qos", "QoS", "0", new[] { "0", "1", "2" }), new("retain", "Retain", "off", new[] { "off", "on" }) },
         _ => Array.Empty<PDef>(),
     };
@@ -137,12 +131,6 @@ static class ProtoParams
     public static string Hint(string kind) => Group(kind) switch
     {
         "modbus" => "Modbus TCP: thanh ghi holding = D n; gateway khai báo cùng Unit ID.",
-        "mc" => "Mitsubishi MC 3E (nhị phân): thiết bị D n; gateway khai báo cùng dòng PLC.",
-        "fins" => "Omron FINS: vùng DM = ảnh D; gateway khai báo cùng node đích/nguồn.",
-        "s7" => "Siemens S7: DBW(2n) của DB bất kỳ = D n; server nhận mọi số DB/rack/slot.",
-        "eip" => "EtherNet/IP: mảng INT theo tên tag; tên tag của luồng đầu tiên được dùng khi khởi động.",
-        "opcua" => "OPC UA: node ảnh ns=<ns>;s=PLC_D và các node ghi theo tiền tố + số thanh ghi.",
-        "ads" => "Beckhoff ADS: AmsNetId/port/symbol mà gateway phải trỏ tới; symbol của luồng đầu tiên được dùng.",
         "mqtt" => "MQTT: gửi d.<thiết bị>.<field> lên broker của gateway; bỏ qua thanh ghi D và hệ số.",
         _ => "",
     };
@@ -171,12 +159,6 @@ static class ProtoParams
         return Group(kind) switch
         {
             "modbus" => $"Holding {40001 + a} (offset {a}), unit {p["unit"]}",
-            "mc" => $"D{a}  ({p["plc"]}, MC 3E)",
-            "fins" => $"DM{a}, node {p["node"]}←{p["srcnode"]}",
-            "s7" => $"DB{p["db"]}.DBW{a * 2}  ({p["cpu"]}, rack {p["rack"]}, slot {p["slot"]})",
-            "eip" => $"{p["tag"]}[{a}] (INT), slot {p["slot"]}",
-            "opcua" => $"ns={p["ns"]};s={p["prefix"]}{a}  (ghi) · ns={p["ns"]};s={p["image"]}  (ảnh)",
-            "ads" => $"{p["netid"]}:{p["port"]}  {p["symbol"]}[{a}]",
             "mqtt" => $"d.{child}.{field}  (QoS {p["qos"]}, retain {p["retain"]}; bỏ qua D)",
             _ => $"D{a}",
         };
@@ -600,8 +582,8 @@ sealed class ProtocolDialog : IDisposable
         _host.Text = c.Host; _port.Value = Math.Clamp(c.Port <= 0 ? p.Port : c.Port, 1, 65535); _site.Text = c.Site; _device.Text = c.Device;
         _user.Text = c.User; _pass.Text = c.Pass; _tag.Text = c.Tag; _interval.Value = Math.Clamp(c.Interval, 200, 600000);
         foreach (var m in _mqttOnly) m.Visible = p.Kind == "mqtt";
-        foreach (var m in _tagOnly) m.Visible = p.Kind is "eip" or "ads";
-        if (_tag.Text.Length == 0) _tag.Text = p.Kind == "ads" ? "GVL_PLC.D" : p.Kind == "eip" ? "PLC_D" : "";
+        foreach (var m in _tagOnly) m.Visible = false;   // tag/symbol chỉ cho EtherNet/IP, ADS (đã gỡ)
+        if (_tag.Text.Length == 0) _tag.Text = "";
     }
 
     public DialogResult ShowDialog(IWin32Window owner) => _f.ShowDialog(owner);

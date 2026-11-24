@@ -56,3 +56,7 @@ static const int DI_PINS[8] = {4, 5, 6, 7, 8, 9, 10, 11};
 #define NET_DEFAULT_MASK "255.255.255.0"
 #define NET_DEFAULT_GW   "192.168.1.1"
 #define NET_DEFAULT_DNS  "8.8.8.8"
+
+// Giao thức/giao tiếp phần cứng board HỖ TRỢ THẬT (firmware báo cho gateway qua gói tìm thiết bị UDP → ApiHello.Protocols; GatewayApp dựng danh sách giao thức theo đây).
+// Id: "dio" = Digital I/O (DI/DO), "rs485" = Modbus RTU master RS485. Thêm "i2c", "can" CHỈ khi firmware đã làm xong — gateway tự hiện, không phải sửa hộp thoại.
+#define BOARD_PROTOCOLS { "dio", "rs485" }

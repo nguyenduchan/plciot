@@ -17,15 +17,13 @@ public class SuppliedDriverTests
     // giống cấu hình mặc định của GatewayApp lúc mới cài: chưa có PLC
     static ScadaConfig NoPlc(PlcSource src = PlcSource.ModbusTcp) => new()
     {
-        Site = "factory1", Device = "plc01", Source = src, PlcHost = "", OpcUaEndpoint = "", PollMs = 150,
+        Site = "factory1", Device = "plc01", Source = src, PlcHost = "", PollMs = 150,
         Mobile = MobileAccess.Off, LocalBrokerEnabled = false, WebEnabled = false,
         Pack = { new PackMap { Child = "tank1", Field = "level", Address = 50, Scale = 10 } },
     };
 
     [Theory]
     [InlineData(PlcSource.ModbusTcp, "Thiếu địa chỉ PLC")]
-    [InlineData(PlcSource.S7, "Thiếu địa chỉ PLC")]
-    [InlineData(PlcSource.OpcUa, "Thiếu OPC UA endpoint")]
     public void Missing_plc_address_is_only_allowed_when_the_driver_is_supplied(PlcSource src, string err)
     {
         var cfg = NoPlc(src);

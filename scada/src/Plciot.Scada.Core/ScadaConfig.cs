@@ -77,7 +77,7 @@ public sealed class PackMap
     public string Param(string key) => Params.TryGetValue(key, out var v) ? v : "";
 }
 
-public enum PlcSource { Gateway, ModbusTcp, ModbusRtu, S7, EtherNetIp, MitsubishiMc, OmronFins, BeckhoffAds, OpcUa }
+public enum PlcSource { Gateway, ModbusTcp, ModbusRtu }   // giao thức khác (S7, EtherNet/IP, MC, FINS, ADS, OPC UA) đã gỡ; mở rộng sau
 public enum LocalRole { Device, Monitor, Operator }
 
 public sealed class LocalUser
@@ -125,38 +125,14 @@ public sealed class ScadaConfig
     };
 
     // ---- Nguồn dữ liệu PLC
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(TolerantPlcSourceConverter))]
     public PlcSource Source { get; set; } = PlcSource.Gateway;
     public string PlcHost { get; set; } = "192.168.1.10";
-    /// <summary>0 = cổng mặc định của giao thức (Modbus 502, S7 102, EtherNet/IP 44818, MC 5001, FINS 9600, ADS 48898).</summary>
+    /// <summary>0 = cổng mặc định của giao thức (Modbus 502).</summary>
     public int PlcPort { get; set; } = 0;
     public int ModbusUnit { get; set; } = 1;
     // Modbus RTU (RS485): PlcHost = tên cổng (COM3), PlcPort = baud (0 = 19200), parity Even/None/Odd (PLC Xinje: 19200 8E1)
     public string SerialParity { get; set; } = "Even";
-    // Siemens S7 (DB chứa INT[300]: thanh ghi D n = DBW(2*n))
-    public string S7Cpu { get; set; } = "S71500";      // S7200 | S7300 | S7400 | S71200 | S71500
-    public int S7Rack { get; set; } = 0;
-    public int S7Slot { get; set; } = 1;
-    public int S7Db { get; set; } = 1;
-    // Rockwell EtherNet/IP: tag INT[300]
-    public string EipTag { get; set; } = "PLC_D";
-    public int EipSlot { get; set; } = 0;
-    // Mitsubishi MC (3E nhị phân, TCP): thiết bị D
-    public string McPlcType { get; set; } = "Q";        // Q | L | QnA | iQ-R | iQ-L
-    // Omron FINS: vùng DM
-    public string FinsProtocol { get; set; } = "udp";   // udp | tcp
-    public int FinsDestNode { get; set; } = 0;           // 0 = lấy octet cuối của PlcHost
-    public int FinsSourceNode { get; set; } = 0;
-    // Beckhoff ADS (cần router ADS: TwinCAT hoặc AdsRouter trên máy này)
-    public string AdsNetId { get; set; } = "127.0.0.1.1.1";
-    public int AdsPort { get; set; } = 851;
-    public string AdsSymbol { get; set; } = "GVL_PLC.D";   // ARRAY[0..299] OF INT
-    // OPC UA client
-    public string OpcUaEndpoint { get; set; } = "opc.tcp://127.0.0.1:4840";
-    public string OpcUaImageNode { get; set; } = "ns=2;s=PLC_D";          // UInt16[300]
-    public string OpcUaWriteNode { get; set; } = "ns=2;s=PLC_W{a}";        // {a} = số thanh ghi D
-    public bool OpcUaSecurity { get; set; } = false;                      // true = Sign&Encrypt
-    public bool OpcUaAcceptUntrusted { get; set; } = false;
     public int PollMs { get; set; } = 1000;
     public int HistoryMs { get; set; } = 60000;
 
@@ -230,8 +206,6 @@ public sealed class ScadaConfig
     public string ServerBind { get; set; } = "0.0.0.0";
     public bool ModbusServerEnabled { get; set; } = false;
     public int ModbusServerPort { get; set; } = 1502;
-    public bool OpcUaServerEnabled { get; set; } = false;
-    public int OpcUaServerPort { get; set; } = 4840;
 
     // ---- InfluxDB 2 (cho Grafana; cùng sơ đồ với luồng Node-RED)
     public bool InfluxEnabled { get; set; } = false;
@@ -320,10 +294,8 @@ public sealed class ScadaConfig
         if (LocalPort is < 1 or > 65535) return "Cổng broker nội bộ không hợp lệ.";
         if (WebActive && (WebPort is < 1 or > 65535 || WebPort == LocalPort)) return "Cổng web không hợp lệ hoặc trùng cổng broker.";
         var bound = PackBound || driverSupplied;   // Pack đã gán giao thức hoặc driver do app cấp: nguồn chung không cần địa chỉ
-        if (!bound && Source is not (PlcSource.Gateway or PlcSource.OpcUa) && string.IsNullOrWhiteSpace(PlcHost)) return "Thiếu địa chỉ PLC.";
-        if (!bound && Source == PlcSource.OpcUa && string.IsNullOrWhiteSpace(OpcUaEndpoint)) return "Thiếu OPC UA endpoint.";
+        if (!bound && Source != PlcSource.Gateway && string.IsNullOrWhiteSpace(PlcHost)) return "Thiếu địa chỉ PLC.";
         if (ModbusServerEnabled && (ModbusServerPort is < 1 or > 65535)) return "Cổng Modbus server không hợp lệ.";
-        if (OpcUaServerEnabled && (OpcUaServerPort is < 1 or > 65535)) return "Cổng OPC UA server không hợp lệ.";
         if (InfluxEnabled && (string.IsNullOrWhiteSpace(InfluxUrl) || string.IsNullOrWhiteSpace(InfluxToken))) return "Thiếu URL/token InfluxDB.";
         if (Source == PlcSource.ModbusRtu && !Enum.TryParse<System.IO.Ports.Parity>(SerialParity, true, out _)) return "SerialParity phải là None, Even hoặc Odd.";
         if (PollMs < 100) return "Chu kỳ đọc tối thiểu 100 ms.";

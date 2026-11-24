@@ -12,13 +12,21 @@ public enum PlcDataType { UInt16, Int16, Bool, UInt32, Int32, Float32, Float64 }
 /// Kết nối tới MỘT PLC theo một giao thức (địa chỉ, cổng, tuỳ chọn mức kết nối). Mọi giá trị đều khai báo rõ — không có "0 = mặc định".
 /// Các field của <see cref="ScadaConfig.Pack"/> đã gán giao thức dùng kết nối cùng giao thức này.
 /// </summary>
+/// <summary>Đọc PlcSource từ cấu hình cũ: giao thức đã gỡ (S7, EtherNet/IP, MC, FINS, ADS, OPC UA) không làm hỏng cả file — trả Gateway (không dùng), bước nâng cấp cấu hình sẽ dọn các kết nối/field đó.</summary>
+public sealed class TolerantPlcSourceConverter : System.Text.Json.Serialization.JsonConverter<PlcSource>
+{
+    public override PlcSource Read(ref System.Text.Json.Utf8JsonReader r, Type t, System.Text.Json.JsonSerializerOptions o)
+        => r.TokenType == System.Text.Json.JsonTokenType.String && Enum.TryParse<PlcSource>(r.GetString(), true, out var v) && Enum.IsDefined(v) ? v : PlcSource.Gateway;
+    public override void Write(System.Text.Json.Utf8JsonWriter w, PlcSource v, System.Text.Json.JsonSerializerOptions o) => w.WriteStringValue(v.ToString());
+}
+
 public sealed class PlcConnection
 {
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(TolerantPlcSourceConverter))]
     public PlcSource Protocol { get; set; } = PlcSource.ModbusTcp;
     /// <summary>Địa chỉ IP/tên máy (Modbus RTU: tên cổng COM). Beckhoff ADS không dùng (đi qua router ADS theo AmsNetId).</summary>
     public string Host { get; set; } = "";
-    /// <summary>Cổng TCP/UDP (Modbus RTU: baud). Beckhoff ADS không dùng; EtherNet/IP do thư viện libplctag cố định 44818.</summary>
+    /// <summary>Cổng TCP (Modbus RTU: baud).</summary>
     public int Port { get; set; }
     /// <summary>Tuỳ chọn mức kết nối theo <see cref="ProtocolSpec.ConnOptions"/> (OPC UA: path; Modbus RTU: parity).</summary>
     public Dictionary<string, string> Options { get; set; } = new();
@@ -39,36 +47,25 @@ public static class ProtocolSpec
     /// <summary>Các giao thức dùng được cho từng luồng (Gateway ESP32 là nguồn khác, không có luồng riêng).</summary>
     public static readonly PlcSource[] Streamable =
     {
-        PlcSource.ModbusTcp, PlcSource.ModbusRtu, PlcSource.S7, PlcSource.EtherNetIp, PlcSource.MitsubishiMc, PlcSource.OmronFins, PlcSource.BeckhoffAds, PlcSource.OpcUa,
+        PlcSource.ModbusTcp, PlcSource.ModbusRtu,   // mở rộng giao thức khác sau: thêm vào đây + DriverFactory + Name/Params/SuggestPort
     };
 
     public static string Name(PlcSource s) => s switch
     {
-        PlcSource.ModbusTcp => "Modbus TCP", PlcSource.ModbusRtu => "Modbus RTU (RS485)", PlcSource.S7 => "Siemens S7", PlcSource.EtherNetIp => "EtherNet/IP",
-        PlcSource.MitsubishiMc => "Mitsubishi MC 3E", PlcSource.OmronFins => "Omron FINS", PlcSource.BeckhoffAds => "Beckhoff ADS", PlcSource.OpcUa => "OPC UA",
+        PlcSource.ModbusTcp => "Modbus TCP", PlcSource.ModbusRtu => "Modbus RTU (RS485)",
         _ => "Gateway ESP32 (MQTT)",
     };
-
-    public static readonly string[] S7Cpus = { "S7200", "S7300", "S7400", "S71200", "S71500" };
-    public static readonly string[] McTypes = { "Q", "L", "QnA", "iQ-R", "iQ-L" };
 
     /// <summary>Thông số riêng từng luồng (cùng khoá với PlcSim).</summary>
     public static ParamDef[] Params(PlcSource s) => s switch
     {
         PlcSource.ModbusTcp or PlcSource.ModbusRtu => new ParamDef[] { new("unit", "Unit ID (slave)", "1", Int: true) },
-        PlcSource.S7 => new ParamDef[] { new("cpu", "CPU", "S71500", S7Cpus), new("rack", "Rack", "0", Int: true), new("slot", "Slot", "1", Int: true), new("db", "Số DB", "1", Int: true) },
-        PlcSource.EtherNetIp => new ParamDef[] { new("tag", "Tên tag (INT[])", "PLC_D"), new("slot", "Slot CPU", "0", Int: true) },
-        PlcSource.MitsubishiMc => new ParamDef[] { new("plc", "Dòng PLC", "Q", McTypes) },
-        PlcSource.OmronFins => new ParamDef[] { new("transport", "Giao vận", "udp", new[] { "udp", "tcp" }), new("node", "Node đích (DA1)", "1", Int: true), new("srcnode", "Node nguồn (SA1)", "0", Int: true) },
-        PlcSource.BeckhoffAds => new ParamDef[] { new("netid", "AMS NetId", "127.0.0.1.1.1"), new("port", "AMS port", "851", Int: true), new("symbol", "Symbol (INT[])", "GVL_PLC.D") },
-        PlcSource.OpcUa => new ParamDef[] { new("ns", "Namespace index", "2", Int: true), new("image", "Node ảnh thanh ghi", "PLC_D"), new("prefix", "Tiền tố node ghi", "PLC_W") },
         _ => Array.Empty<ParamDef>(),
     };
 
     /// <summary>Tuỳ chọn mức kết nối.</summary>
     public static ParamDef[] ConnOptions(PlcSource s) => s switch
     {
-        PlcSource.OpcUa => new ParamDef[] { new("path", "Đường dẫn endpoint", "plcsim"), new("security", "Bảo mật", "none", new[] { "none", "signencrypt" }) },
         PlcSource.ModbusRtu => new ParamDef[]
         {
             new("parity", "Parity", "Even", new[] { "Even", "None", "Odd" }),
@@ -81,11 +78,10 @@ public static class ProtocolSpec
     /// <summary>Gợi ý cổng cho ô nhập (cấu hình lưu luôn có cổng rõ ràng).</summary>
     public static int SuggestPort(PlcSource s) => s switch
     {
-        PlcSource.ModbusTcp => 502, PlcSource.ModbusRtu => 19200, PlcSource.S7 => 102, PlcSource.EtherNetIp => 44818, PlcSource.MitsubishiMc => 5001,
-        PlcSource.OmronFins => 9600, PlcSource.OpcUa => 4840, PlcSource.BeckhoffAds => 48898, _ => 1883,
+        PlcSource.ModbusTcp => 502, PlcSource.ModbusRtu => 19200, _ => 1883,
     };
 
-    public static bool UsesHostPort(PlcSource s) => s != PlcSource.BeckhoffAds;
+    public static bool UsesHostPort(PlcSource s) => true;
 
     /// <summary>Kiểm tra mọi khoá thông số đều có mặt và hợp lệ; trả về thông báo lỗi hoặc null.</summary>
     public static string? ValidateParams(PlcSource s, IReadOnlyDictionary<string, string> p, string what, IEnumerable<ParamDef>? defs = null)
@@ -98,7 +94,6 @@ public static class ProtocolSpec
             if (d.Int && (!int.TryParse(v, out var n) || n < 0)) return $"{what}: \"{d.Label}\" phải là số nguyên không âm.";
         }
         if (s == PlcSource.ModbusRtu && p.TryGetValue("difilter", out var dfv) && int.TryParse(dfv, out var dfn) && dfn > 500) return $"{what}: lọc rung DI tối đa 500 ms.";
-        if (s == PlcSource.OmronFins && int.TryParse(p["node"], out var node) && (node < 1 || node > 254)) return $"{what}: node đích FINS phải từ 1 đến 254.";
         return null;
     }
 }
