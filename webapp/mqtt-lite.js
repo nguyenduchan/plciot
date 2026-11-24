@@ -12,11 +12,18 @@ class MqttLite {
 
   connect() {
     this.closed = false;
+    this._detach();
+    this.buf = new Uint8Array(0);   // byte dở dang của kết nối trước sẽ làm lệch CONNACK/gói đầu của kết nối sau
+    this._ready = false;
     let ws;
     try { ws = this.ws = new WebSocket(this.url, 'mqtt'); }
     catch (e) { this._emit('error', e); return this._retry(); }
     ws.binaryType = 'arraybuffer';
+    this.lastRx = Date.now();
+    // Mọi sự kiện của socket đã bị thay/đóng (vd. socket "zombie" của iOS sau khi app ở nền) bị bỏ qua: nếu không, 'close' đến trễ
+    // sẽ ghi đè trạng thái "trực tuyến" của kết nối mới thành "offline".
     ws.onopen = () => {
+      if (ws !== this.ws) return;
       const flags = 0x02 | (this.user ? 0x80 : 0) | (this.user && this.pass ? 0x40 : 0);
       const body = [0, 4, 77, 81, 84, 84, 4, flags, this.keepalive >> 8, this.keepalive & 255,
         ...MqttLite._str(this.clientId)];
@@ -24,16 +31,27 @@ class MqttLite {
       if (this.user && this.pass) body.push(...MqttLite._str(this.pass));
       this._send(MqttLite._pkt(0x10, body));
     };
-    ws.onmessage = (e) => this._rx(new Uint8Array(e.data));
-    ws.onclose = () => {
-      clearInterval(this.ping); this.ping = null;
-      this._emit('close');
-      if (ws === this.ws) this._retry();
-    };
+    ws.onmessage = (e) => { if (ws !== this.ws) return; this.lastRx = Date.now(); this._rx(new Uint8Array(e.data)); };
+    ws.onclose = () => { if (ws === this.ws) this._lost(); };
     ws.onerror = () => {};
+    // Không có CONNACK trong 10 giây, hoặc đang nối mà im lặng quá 1,5 × keepalive: coi như mất kết nối rồi nối lại.
+    clearInterval(this.wd);
+    this.wd = setInterval(() => {
+      if (ws !== this.ws) return;
+      const quiet = Date.now() - this.lastRx;
+      if (this._ready ? quiet > this.keepalive * 1500 : quiet > 10000) this._lost();
+    }, 1000);
   }
+  /** Bỏ socket hiện tại (không còn nhận sự kiện của nó) và dừng các bộ đếm. */
+  _detach() {
+    clearInterval(this.ping); this.ping = null;
+    clearInterval(this.wd); this.wd = null;
+    const ws = this.ws; this.ws = null; this._ready = false;
+    if (ws) { ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null; try { ws.close(); } catch {} }
+  }
+  _lost() { this._detach(); this._emit('close'); this._retry(); }
   _retry() { if (!this.closed) { clearTimeout(this.rt); this.rt = setTimeout(() => this.connect(), 3000); } }
-  close() { this.closed = true; clearTimeout(this.rt); clearInterval(this.ping); if (this.ws) this.ws.close(); }
+  close() { this.closed = true; clearTimeout(this.rt); this._detach(); }
 
   subscribe(topic) { this.subs.push(topic); if (this.ready) this._sub(topic); }
   _sub(topic) { this._send(MqttLite._pkt(0x82, [0, 1, ...MqttLite._str(topic), 0])); }
@@ -62,7 +80,7 @@ class MqttLite {
   _pkt(first, body) {
     const type = first >> 4;
     if (type === 2) {                                   // CONNACK
-      if (body[1] !== 0) { this._emit('error', new Error('CONNACK ' + body[1])); this.ws.close(); return; }
+      if (body[1] !== 0) { this._emit('error', new Error('CONNACK ' + body[1])); this._lost(); return; }
       this.ready = true;
       this.subs.forEach((t) => this._sub(t));
       this.ping = setInterval(() => this._send(new Uint8Array([0xC0, 0])), this.keepalive * 500);
@@ -87,3 +105,5 @@ Object.defineProperty(MqttLite.prototype, 'ready', {
   get() { return this._ready && this.ws && this.ws.readyState === 1; },
   set(v) { this._ready = v; },
 });
+
+if (typeof module !== 'undefined' && module.exports) module.exports = MqttLite;   // cho test chạy bằng Node

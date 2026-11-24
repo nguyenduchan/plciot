@@ -38,24 +38,25 @@ const hms = (s) => `${Math.floor(s / 3600)} giờ ${String(Math.floor(s / 60) % 
 /* ------------------------------------------------------------- links */
 class MqttLink {
   constructor(h) {
-    this.h = h;
+    this.h = h; this.stopped = false;
     // topic do server cấp: gw/<mqttId> (id ngẫu nhiên của gateway). Không còn đoán topic từ tên site/device.
     this.bases = (Array.isArray(cfg.topicBases) && cfg.topicBases.length)
       ? cfg.topicBases
       : (cfg.topicBase ? [cfg.topicBase] : []);
     this.base = this.bases[0] || '';
     this.c = new MqttLite({ url: cfg.url, user: cfg.user, pass: cfg.pass })
-      .on('connect', () => { h.status('connecting'); })
-      .on('close', () => h.status('offline'))
-      .on('error', () => h.status('offline'))
+      .on('connect', () => { if (!this.stopped) h.status('connecting'); })
+      .on('close', () => { if (!this.stopped) h.status('offline'); })
+      .on('error', () => { if (!this.stopped) h.status('offline'); })
       .on('message', (t, p) => this.msg(t, p));
     this.bases.forEach((b) => {
       ['telemetry', 'status', 'ack', 'history', 'config'].forEach((k) => this.c.subscribe(`${b}/${k}`));
     });
   }
   start() { this.h.status('offline'); this.c.connect(); }
-  stop() { this.c.close(); }
+  stop() { this.stopped = true; this.c.close(); }   // link đã dừng thì không được ghi đè trạng thái của link mới
   msg(t, p) {
+    if (this.stopped) return;
     const base = this.bases.find((b) => t === b || t.startsWith(b + '/')) || this.base;
     if (!base) return;
     const k = t.slice(base.length + 1);
@@ -694,14 +695,16 @@ $('#logout').onclick = async () => {
   try { ['session', 'ctl', 'enroll', 'devReq'].forEach((k) => localStorage.removeItem(k)); } catch {}
   location.replace('login.html?out=1'); // out=1: người dùng chủ động đăng xuất → không tự đăng nhập lại bằng vân tay
 };
-let hideTimer = null;   // hidden tab for 5 min -> release the broker connection; reconnect on return
+let hideTimer = null, hiddenAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline'; });
 document.addEventListener('visibilitychange', () => {
   if (window.AppLock?.isLocked()) return;
   clearTimeout(hideTimer);
-  if (document.hidden) { hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
+  if (document.hidden) { hiddenAt = Date.now(); hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
   else {
-    if (S.status === 'offline') connect();
+    // iOS đóng băng trang ở nền: socket có thể đã chết mà vẫn báo "mở". Ẩn quá 30 giây thì luôn dựng kết nối mới khi quay lại.
+    if (S.status === 'offline' || (hiddenAt && Date.now() - hiddenAt > 30000)) connect();
+    hiddenAt = 0;
     syncCloudHistory().then(() => DB.range('raw', Date.now() - 3600e3, Date.now())).then((rows) => {
       if (rows?.length) hist = rows.map((r) => [r.t, r.o, r.i, r.a, r.c]);
     }).catch(() => {});
