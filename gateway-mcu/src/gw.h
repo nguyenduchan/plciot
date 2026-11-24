@@ -178,6 +178,7 @@ void apiForgetAdmins();                          // reset: xoá danh sách PC ad
 void cloudBegin();
 void cloudLoop();
 void cloudRestart();                             // cấu hình cloud đổi: nối lại
+bool cloudLinkOk();                              // MQTT đang nối (đường mạng hiện tại ra được Internet)
 String cloudStateName();                         // Disabled | Disconnected | Connecting | Connected (CloudState của C#)
 // Việc cloud do admin yêu cầu (POST /api/cloud): register (value = LoginResult JSON) | enroll (value = QR). Trả (ok, câu báo).
 bool cloudAction(const String& action, const String& api, const String& value, String& msg);

@@ -403,6 +403,7 @@ void cloudBegin() {
 
 /// Cấu hình đổi: CHỈ nối lại khi thông số kết nối cloud đổi (như gateway C# không ngắt cloud khi tạm dừng thiết bị) —
 /// đổi khác (thiết bị, nhãn, chu kỳ…) chỉ gửi lại bản tin config, webapp không thấy gateway "offline" chớp nhoáng.
+bool cloudLinkOk() { return s_mqtt.connected(); }   // MQTT đang nối = đường mạng hiện tại ra được Internet
 void cloudRestart() {
   String k = connKey();
   if (k != s_connKey) s_restart = true; else s_republish = true;

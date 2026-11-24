@@ -22,6 +22,22 @@ namespace {
 const uint32_t kConnectMs = 15000;
 }
 
+namespace {
+/// Đường ra Internet của netif MẶC ĐỊNH có thông không: TCP :443 tới 8.8.8.8 / 1.1.1.1 (không cần DNS, không tốn băng thông).
+bool internetReachable() {
+  static const IPAddress hosts[] = { IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1) };
+  for (const IPAddress& h : hosts) {
+    WiFiClient c;
+    if (c.connect(h, 443, 2500)) { c.stop(); return true; }
+  }
+  return false;
+}
+void setDefaultNetif(int which) {   // 1 = Ethernet, 2 = Wi-Fi
+  esp_netif_t* h = esp_netif_get_handle_from_ifkey(which == 1 ? "ETH_DEF" : "WIFI_STA_DEF");
+  if (h) esp_netif_set_default_netif(h);
+}
+}  // namespace
+
 static bool s_apOn = false;
 static uint32_t s_bootAt = 0, s_okSince = 0;
 
@@ -50,12 +66,36 @@ void wifiLoop() {
   bool eth = netEthUp(), sta = WiFi.status() == WL_CONNECTED;
   // ƯU TIÊN: Ethernet (khi dây cắm, link lên) > Wi-Fi. Không chọn theo "chất lượng": dây ổn định/độ trễ thấp hơn, RSSI không so được với dây, và chọn theo đo đạc
   // sẽ nhảy qua lại làm đứt MQTT/Modbus. Wi-Fi luôn nối sẵn làm dự phòng nóng: rút dây → chuyển sang Wi-Fi ngay, cắm lại → quay về dây.
+  // NGOẠI LỆ: dây có link nhưng KHÔNG ra Internet (vd. cắm thẳng vào PC để cài đặt) mà Wi-Fi đang nối → cloud phải đi bằng Wi-Fi.
+  //   Chỉ thăm dò khi cả hai cùng lên và cloud đang không nối được (cloud nối được = dây ra Internet tốt): 3 lần liền (mỗi 10 giây) không thông
+  //   → chuyển sang Wi-Fi; mỗi 5 phút thử lại dây một lần (chuyển tạm, thăm dò, không thông thì trả về Wi-Fi) để dây ra Internet thì quay lại.
   // Đặt rõ netif mặc định (đường ra Internet/cloud) thay vì để lwIP tự chọn theo thứ tự thiết lập.
-  static int s_pref = 0;
-  int want = eth ? 1 : (sta ? 2 : 0);
+  static int s_pref = 0, s_fails = 0;
+  static bool s_ethBad = false;
+  static uint32_t s_nextProbe = 0, s_ethRetryAt = 0;
+  uint32_t now = millis();
+  if (!eth) { s_ethBad = false; s_fails = 0; }
+  if (eth && sta) {
+    if (s_ethBad) {
+      if ((int32_t)(now - s_ethRetryAt) >= 0) {
+        setDefaultNetif(1);
+        if (internetReachable()) { s_ethBad = false; s_fails = 0; logf("Ethernet đã ra được Internet — quay về dây"); }
+        else { setDefaultNetif(2); s_ethRetryAt = millis() + 300000; }
+      }
+    } else if (s_pref == 1 && cloudLinkOk()) {
+      s_fails = 0;
+    } else if (s_pref == 1 && (int32_t)(now - s_nextProbe) >= 0) {
+      s_nextProbe = now + 10000;
+      if (internetReachable()) s_fails = 0;
+      else if (++s_fails >= 3) {
+        s_ethBad = true; s_fails = 0; s_ethRetryAt = millis() + 300000;
+        logf("Ethernet có link nhưng không ra được Internet — chuyển cloud sang Wi-Fi");
+      }
+    }
+  }
+  int want = eth ? ((s_ethBad && sta) ? 2 : 1) : (sta ? 2 : 0);
   if (want && want != s_pref) {
-    esp_netif_t* h = esp_netif_get_handle_from_ifkey(want == 1 ? "ETH_DEF" : "WIFI_STA_DEF");
-    if (h) esp_netif_set_default_netif(h);
+    setDefaultNetif(want);
     logf("Mạng chính: %s", want == 1 ? "Ethernet" : "Wi-Fi");
     if (s_pref) cloudRestart();   // đổi đường: nối MQTT lại để khỏi chờ timeout của socket cũ
     s_pref = want;
