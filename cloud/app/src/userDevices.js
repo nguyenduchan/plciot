@@ -22,7 +22,7 @@ import { notifyGateway } from './gatewayNotify.js';
 import { DEFAULT_TENANT } from './contract.js';
 import { rateLimit } from '@plciot/security';
 import { releaseSiteIfEmpty } from './sites.js';
-import { deviceOf, migrateGatewayConfigs } from './gatewayConfig.js';
+import { deviceOf, migrateGatewayConfigs, dropHubPlaceholders } from './gatewayConfig.js';
 import { gatewaySolution } from './gatewaySolution.js';
 import { defaultSolution } from './solutions.js';
 
@@ -33,6 +33,7 @@ const SAFE = /^[a-zA-Z0-9_-]{1,48}$/;
 
 export function migrateUserDevices(db) {
   migrateGatewayConfigs(db);
+  try { dropHubPlaceholders(db); } catch { /* bảng user_devices chưa tạo/đang đổi schema: lần khởi động sau */ }
   // Bảng cùng tên từ schema cũ (user_id/site/device/role…) không có cột id: CREATE IF NOT EXISTS sẽ bỏ qua
   // và mọi truy vấn lỗi "no such column: id". Đổi tên (giữ dữ liệu) để tạo bảng đúng schema.
   const old = db.prepare("PRAGMA table_info('user_devices')").all();

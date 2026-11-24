@@ -173,6 +173,20 @@ export function applyGatewayConfig(db, { tenantId = 'default', site, device, pay
 }
 
 /**
+ * Gateway đăng ký lúc chưa có thiết bị nào được server gắn một thẻ "hub" giữ chỗ (child_id = tên gateway, type iot-hub, widget `online` đọc d.online).
+ * Gateway không bao giờ gửi d.<tên gateway>.online nên thẻ đó báo offline mãi. Khi gateway đã khai báo thiết bị thật thì xoá thẻ giữ chỗ
+ * (gateway còn sống hay không đã có trạng thái gateway/telemetry của các thiết bị con).
+ */
+export function dropHubPlaceholders(db, { site = null, device = null } = {}) {
+  const where = site ? 'AND site = ? AND gateway_device = ?' : '';
+  const args = site ? [site, device] : [];
+  return db.prepare(`DELETE FROM user_devices
+    WHERE type = 'iot-hub' AND child_id = gateway_device ${where}
+      AND EXISTS (SELECT 1 FROM user_devices d WHERE d.user_id = user_devices.user_id AND d.site = user_devices.site
+                  AND d.gateway_device = user_devices.gateway_device AND d.type = 'dynamic')`).run(...args).changes;
+}
+
+/**
  * Chủ gateway (users.notify_site/notify_device) nhận thiết bị con khai báo: thêm mới / đổi tên,
  * và gỡ các thiết bị 'dynamic' không còn trong config. Thiết bị gắn bằng QR (type khác) giữ nguyên.
  */
@@ -207,5 +221,6 @@ function syncUserDevices(db, { site, device, devices }) {
       removed += 1;
     }
   }
+  if (devices.length) removed += dropHubPlaceholders(db, { site, device });
   return { users: users.length, added, removed };
 }
