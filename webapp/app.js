@@ -54,6 +54,7 @@ class MqttLink {
     });
   }
   start() { this.h.status('offline'); this.c.connect(); }
+  kick() { this.c.kick(); }
   stop() { this.stopped = true; this.c.close(); }   // link đã dừng thì không được ghi đè trạng thái của link mới
   msg(t, p) {
     if (this.stopped) return;
@@ -697,6 +698,7 @@ $('#logout').onclick = async () => {
 };
 let hideTimer = null, hiddenAt = 0, visSyncAt = 0, visConnectAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline'; });
+window.addEventListener('online', () => { if (link && !link.stopped) link.kick(); });   // mạng vừa có lại: nối ngay, không chờ hết thời gian giãn
 document.addEventListener('visibilitychange', () => {
   if (window.AppLock?.isLocked()) return;
   clearTimeout(hideTimer);
@@ -704,7 +706,11 @@ document.addEventListener('visibilitychange', () => {
   else {
     // iOS đóng băng trang ở nền: socket có thể đã chết mà vẫn báo "mở". Ẩn quá 30 giây thì luôn dựng kết nối mới khi quay lại.
     // Tab chớp ẩn/hiện liên tục (khung xem trước) không được dựng lại kết nối MQTT mỗi lần: tối đa 1 lần / 8 giây
-    if ((S.status === 'offline' || (hiddenAt && Date.now() - hiddenAt > 30000)) && Date.now() - (visConnectAt || 0) > 8000) { visConnectAt = Date.now(); connect(); }
+    // KHÔNG dựng lại kết nối chỉ vì đã ẩn lâu (mỗi lần = bắt tay TLS mới, chậm trên 4G): MqttLite tự ping thử socket cũ khi vừa thức dậy
+    // và chỉ nối lại khi không ai trả lời (socket zombie của iOS). Ở đây chỉ dựng mới khi link đã bị dừng (ẩn > 5 phút / khoá app),
+    // hoặc nối ngay nếu đang chờ thử lại.
+    if (!link || link.stopped) { if (Date.now() - (visConnectAt || 0) > 8000) { visConnectAt = Date.now(); connect(); } }
+    else link.kick();
     hiddenAt = 0;
     // Tab chớp ẩn/hiện liên tục (khung xem trước, đổi cửa sổ nhanh) không được kéo lịch sử mỗi lần: tối đa 1 lần / 60 giây
     if (Date.now() - (visSyncAt || 0) < 60000) return;

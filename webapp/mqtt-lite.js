@@ -2,7 +2,9 @@
    No dependencies so the whole app works offline from local files. */
 'use strict';
 class MqttLite {
-  constructor({ url, user, pass, clientId, keepalive = 30 }) {
+  // keepalive 60 s (broker cho tối đa 120): app ở nền trên Android/desktop bị trình duyệt giãn hẹn giờ tới ~1 lần/phút — với 30 s, PINGREQ
+  // không kịp gửi, broker cắt sau 45 s rồi lúc quay lại phải bắt tay TLS lại. Ping mỗi 30 s, broker chờ 90 s → sống qua khi bị giãn.
+  constructor({ url, user, pass, clientId, keepalive = 60 }) {
     Object.assign(this, { url, user, pass, keepalive });
     this.clientId = clientId || 'app-' + Math.random().toString(16).slice(2, 10);
     this.subs = []; this.h = {}; this.buf = new Uint8Array(0); this.closed = false;
@@ -35,10 +37,17 @@ class MqttLite {
     ws.onclose = () => { if (ws === this.ws) this._lost(); };
     ws.onerror = () => {};
     // Không có CONNACK trong 10 giây, hoặc đang nối mà im lặng quá 1,5 × keepalive: coi như mất kết nối rồi nối lại.
+    // Bộ đếm này bị ĐÓNG BĂNG khi app ở nền (iOS) / bị giãn (Android): lần chạy đầu sau khoảng hở dài KHÔNG kết luận "im lặng = chết"
+    // (đó là do ta ngủ, không phải do mạng) mà ping thử và chờ 3 giây — socket còn sống thì dùng tiếp, khỏi bắt tay TLS lại.
     clearInterval(this.wd);
+    let tick = Date.now(), grace = 0, pingAt = 0;
     this.wd = setInterval(() => {
       if (ws !== this.ws) return;
-      const quiet = Date.now() - this.lastRx;
+      const t = Date.now(), gap = t - tick; tick = t;
+      if (gap > 5000 && this._ready) { grace = t + 3000; pingAt = t; this._send(new Uint8Array([0xC0, 0])); return; }
+      if (t < grace) return;
+      if (pingAt) { const alive = this.lastRx >= pingAt; pingAt = 0; if (!alive) return this._lost(); }   // ping thử không ai trả lời: socket đã chết
+      const quiet = t - this.lastRx;
       if (this._ready ? quiet > this.keepalive * 1500 : quiet > 10000) this._lost();
     }, 1000);
   }
@@ -50,7 +59,16 @@ class MqttLite {
     if (ws) { ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null; try { ws.close(); } catch {} }
   }
   _lost() { this._detach(); this._emit('close'); this._retry(); }
-  _retry() { if (!this.closed) { clearTimeout(this.rt); this.rt = setTimeout(() => this.connect(), 3000); } }
+  // Mỗi lần nối lại = TCP + bắt tay TLS + nâng cấp WebSocket + CONNECT/SUBSCRIBE: thử lại GIÃN dần 1 → 2 → 4 → 8 → 16 giây (± ngẫu nhiên,
+  // tránh cả xưởng sau một NAT cùng nối lại một lúc và vượt giới hạn 60 kết nối/phút/IP của HAProxy). Nối được (CONNACK) thì về lại 1 giây.
+  _retry() {
+    if (this.closed) return;
+    clearTimeout(this.rt);
+    const base = Math.min(30000, 1000 * 2 ** Math.min(this.fails = (this.fails || 0) + 1, 5) / 2);
+    this.rt = setTimeout(() => this.connect(), base * (0.8 + Math.random() * 0.4));
+  }
+  /** Nối lại ngay (mạng vừa có lại / người dùng quay lại app) thay vì chờ hết thời gian giãn. Đang nối/đang sống thì thôi. */
+  kick() { if (!this.closed && !this.ws) { this.fails = 0; clearTimeout(this.rt); this.connect(); } }
   close() { this.closed = true; clearTimeout(this.rt); this._detach(); }
 
   subscribe(topic) { this.subs.push(topic); if (this.ready) this._sub(topic); }
@@ -81,7 +99,7 @@ class MqttLite {
     const type = first >> 4;
     if (type === 2) {                                   // CONNACK
       if (body[1] !== 0) { this._emit('error', new Error('CONNACK ' + body[1])); this._lost(); return; }
-      this.ready = true;
+      this.ready = true; this.fails = 0;
       this.subs.forEach((t) => this._sub(t));
       this.ping = setInterval(() => this._send(new Uint8Array([0xC0, 0])), this.keepalive * 500);
       this._emit('connect');

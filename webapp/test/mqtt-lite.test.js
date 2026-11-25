@@ -19,6 +19,8 @@ function advance(ms) {
   }
   now = end;
 }
+// App ở nền: hẹn giờ không chạy; quay lại thì mỗi hẹn giờ trễ chạy MỘT lần (như trình duyệt), không "bù" từng nhịp đã lỡ
+function freeze(ms) { now += ms; timers.forEach((t) => { if (t.at < now) t.at = now; }); }
 const sockets = [];
 class FakeWS {
   constructor() { this.readyState = 0; this.sent = []; sockets.push(this); }
@@ -50,7 +52,7 @@ test('đóng chủ động rồi không tự nối lại', () => {
   const m = mk(); const ws = up(m.c); m.c.close(); ws.fireClose(); advance(10000);
   assert.strictEqual(sockets.length, 1);
 });
-test('mất kết nối thật thì phát close và nối lại sau 3 giây', () => {
+test('mất kết nối thật thì phát close và nối lại sau ~1 giây', () => {
   const m = mk(); const ws = up(m.c); ws.fireClose(); advance(3100);
   assert.deepStrictEqual(m.ev, ['connect', 'close']); assert.strictEqual(sockets.length, 2);
 });
@@ -61,12 +63,41 @@ test('bộ đệm gói dở dang không làm lệch CONNACK của lần nối sa
   const ws2 = sockets[1]; ws2.open(); ws2.rx(CONNACK_OK);
   assert.deepStrictEqual(m.ev, ['connect', 'close', 'connect']);
 });
-test('socket im lặng quá 45 giây (half-open) thì tự phát close và nối lại', () => {
-  const m = mk(); up(m.c); advance(50000);
+test('socket im lặng quá 90 giây (half-open) thì tự phát close và nối lại', () => {
+  const m = mk(); up(m.c); advance(95000);
   assert.ok(m.ev.includes('close')); advance(3100); assert.ok(sockets.length >= 2);
 });
 test('không có CONNACK trong 10 giây thì nối lại', () => {
   const m = mk(); m.c.connect(); sockets[0].open(); advance(11000); advance(3100);
   assert.ok(sockets.length >= 2);
 });
-process.exit(fail ? 1 : 0);
+test('mất mạng kéo dài: thử lại GIÃN dần (không bắt tay TLS mỗi 3 giây), nối được thì về lại 1 giây', () => {
+  const m = mk(); m.c.connect();                       // không bao giờ mở: mỗi lần là một lần bắt tay thất bại
+  const at = [];
+  for (let k = 0; k < 7; k++) { const n = sockets.length; sockets[n - 1].fireClose(); const t0 = now; while (sockets.length === n) advance(100); at.push(now - t0); }
+  for (let k = 1; k < at.length; k++) assert.ok(at[k] >= at[k - 1] * 0.6, `khoảng thử lại phải tăng dần: ${at}`);
+  assert.ok(at[0] <= 1300 && at[at.length - 1] >= 12000 && at[at.length - 1] <= 20000, `${at}`);
+  const ws = sockets[sockets.length - 1]; ws.open(); ws.rx(CONNACK_OK);
+  ws.fireClose(); const t0 = now, n = sockets.length; while (sockets.length === n) advance(100);
+  assert.ok(now - t0 <= 1300, 'sau khi đã nối được: lần rớt kế tiếp thử lại nhanh');
+});
+test('kick(): mạng có lại → nối ngay, không chờ hết thời gian giãn; đang sống thì không làm gì', () => {
+  const m = mk(); const ws = up(m.c);
+  m.c.kick(); assert.strictEqual(sockets.length, 1);
+  ws.fireClose(); m.c.kick(); assert.strictEqual(sockets.length, 2);
+});
+(async () => {
+  async function atest(name, fn) { try { sockets.length = 0; timers = []; await fn(); console.log('ok   -', name); } catch (e) { fail++; console.log('FAIL -', name, e.message); } }
+  const settle = async (p) => { let v; let done = false; p.then((x) => { v = x; done = true; }); for (let k = 0; k < 60 && !done; k++) { advance(50); await null; } return v; };
+  await atest('quay lại sau 2 phút đóng băng: watchdog ping thử, socket còn sống → KHÔNG nối lại', async () => {
+    const m = mk(); const ws = up(m.c); freeze(120000);   // hẹn giờ không chạy trong lúc ở nền
+    advance(0); assert.deepStrictEqual([...ws.sent.at(-1)], [0xC0, 0]);
+    ws.rx([0xD0, 0]); advance(10000);
+    assert.strictEqual(sockets.length, 1); assert.ok(!m.ev.includes('close'));
+  });
+  await atest('quay lại sau 2 phút: socket zombie không trả lời ping → nối lại sau ~3 giây', async () => {
+    const m = mk(); up(m.c); freeze(120000);
+    advance(5000); assert.ok(m.ev.includes('close')); advance(1500); assert.strictEqual(sockets.length, 2);
+  });
+  process.exit(fail ? 1 : 0);
+})();
