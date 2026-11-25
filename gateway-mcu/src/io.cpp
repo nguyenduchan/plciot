@@ -40,14 +40,86 @@ void diStep(uint32_t now) {
   }
 }
 void diTask(void*) {
-  for (;;) { diStep(millis()); delay(2); }
+  wdtArm(WD_DI, 2000);
+  for (;;) { wdtFeed(WD_DI); diStep(millis()); delay(2); }
 }
+
+// ---- TCA9554 (DO1..DO8). Thanh ghi: 0x01 = output, 0x03 = cấu hình (0 = chân ra). Mọi truy cập giữ IoLock.
+// Không tin một lần ghi I2C thành công: đọc lại thanh ghi để chắc chip đang giữ đúng trạng thái (nhiễu, chip bị reset do sụt áp
+// sẽ quay về "toàn bộ là input" = DO tắt mà firmware không hay). Task "io" kiểm lại mỗi 500 ms và ghi lại khi lệch.
+uint8_t tcaOut(uint8_t mask) { return DO_ACTIVE_HIGH ? mask : (uint8_t)~mask; }
 
 bool tcaWrite(uint8_t reg, uint8_t v) {
   Wire.beginTransmission(TCA9554_ADDR); Wire.write(reg); Wire.write(v);
   return Wire.endTransmission() == 0;
 }
+
+bool tcaRead(uint8_t reg, uint8_t& v) {
+  Wire.beginTransmission(TCA9554_ADDR); Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((int)TCA9554_ADDR, 1) != 1 || !Wire.available()) return false;
+  v = (uint8_t)Wire.read();
+  return true;
 }
+
+/// Ghi output TRƯỚC rồi mới đặt chân là output (không bật nhầm tải), sau đó đọc lại cả hai thanh ghi.
+bool tcaApply(uint8_t mask) {
+  uint8_t o = 0, c = 0xFF;
+  return tcaWrite(0x01, tcaOut(mask)) && tcaWrite(0x03, 0x00) && tcaRead(0x01, o) && tcaRead(0x03, c) && o == tcaOut(mask) && c == 0x00;
+}
+
+void wireStart() {
+  Wire.begin(I2C_SDA, I2C_SCL, 100000);
+  Wire.setTimeOut(20);   // một thiết bị giữ SCL không làm treo task quá 20 ms
+}
+
+/// Gỡ kẹt bus I2C: một slave đang giữ SDA thấp (bị reset giữa chừng một byte) → phát tối đa 9 xung SCL cho nó nhả, rồi STOP.
+void i2cRecover() {
+#ifndef GW_SIM
+  Wire.end();
+  pinMode(I2C_SDA, INPUT_PULLUP);
+  pinMode(I2C_SCL, OUTPUT_OPEN_DRAIN);
+  for (int i = 0; i < 9 && digitalRead(I2C_SDA) == LOW; i++) {
+    digitalWrite(I2C_SCL, LOW); delayMicroseconds(5);
+    digitalWrite(I2C_SCL, HIGH); delayMicroseconds(5);
+  }
+  pinMode(I2C_SDA, OUTPUT_OPEN_DRAIN);
+  digitalWrite(I2C_SDA, LOW); delayMicroseconds(5);
+  digitalWrite(I2C_SCL, HIGH); delayMicroseconds(5);
+  digitalWrite(I2C_SDA, HIGH); delayMicroseconds(5);
+  pinMode(I2C_SDA, INPUT_PULLUP); pinMode(I2C_SCL, INPUT_PULLUP);
+#endif
+  wireStart();
+}
+
+uint32_t s_tcaFaults = 0;
+
+void tcaSetOk(bool ok) {
+  if (ok == s_tca) return;
+  s_tca = ok;
+  if (ok) logf("TCA9554: DO hoạt động lại (đã ghi lại trạng thái 0x%02X)", s_do);
+  else { s_tcaFaults++; logf("TCA9554 không trả lời / thanh ghi lệch — DO KHÔNG tin được (lần %lu)", (unsigned long)s_tcaFaults); }
+}
+
+/// Task nền: kiểm thanh ghi TCA9554 mỗi 500 ms, lệch thì ghi lại, mất thì gỡ kẹt bus và dò lại.
+void ioTask(void*) {
+  wdtArm(WD_IO, 5000);
+  for (;;) {
+    wdtFeed(WD_IO);
+    {
+      IoLock l;
+      uint8_t o = 0, c = 0xFF;
+      bool ok = tcaRead(0x01, o) && tcaRead(0x03, c);
+      if (ok && (o != tcaOut(s_do) || c != 0x00)) { logf("TCA9554 lệch (out 0x%02X cfg 0x%02X, cần 0x%02X) — ghi lại", o, c, tcaOut(s_do)); ok = tcaApply(s_do); }
+      if (!ok) { i2cRecover(); ok = tcaApply(s_do); }
+      tcaSetOk(ok);
+    }
+    delay(500);
+  }
+}
+}
+
+SemaphoreHandle_t g_io = xSemaphoreCreateRecursiveMutex();
 
 void ioBegin() {
   for (int p : DI_PINS) pinMode(p, INPUT);
@@ -55,10 +127,17 @@ void ioBegin() {
   xTaskCreatePinnedToCore(diTask, "di", 3072, nullptr, 2, nullptr, 0);
   pinMode(PIN_BOOT, INPUT_PULLUP);
   pinMode(PIN_BUZZER, OUTPUT); digitalWrite(PIN_BUZZER, LOW);
-  Wire.begin(I2C_SDA, I2C_SCL, 100000);
-  // tắt mọi đầu ra trước khi chuyển chân sang chế độ ra (không bật nhầm tải lúc khởi động)
-  s_tca = tcaWrite(0x01, DO_ACTIVE_HIGH ? 0x00 : 0xFF) && tcaWrite(0x03, 0x00);
-  if (!s_tca) logf("Không thấy TCA9554 (0x%02X) trên I2C SDA%d/SCL%d — DO không dùng được", TCA9554_ADDR, I2C_SDA, I2C_SCL);
+  {
+    IoLock l;
+    wireStart();
+    // tắt mọi đầu ra trước khi chuyển chân sang chế độ ra (không bật nhầm tải lúc khởi động); TCA9554 không bị reset theo ESP32
+    // nên tới đây DO vẫn giữ trạng thái trước lúc khởi động lại
+    s_do = 0;
+    s_tca = tcaApply(0);
+    if (!s_tca) { i2cRecover(); s_tca = tcaApply(0); }
+  }
+  if (!s_tca) logf("Không thấy TCA9554 (0x%02X) trên I2C SDA%d/SCL%d — DO không dùng được (task io sẽ dò lại)", TCA9554_ADDR, I2C_SDA, I2C_SCL);
+  xTaskCreatePinnedToCore(ioTask, "io", 3072, nullptr, 2, nullptr, 0);
   ioLed(0, 0, 16);
 }
 
@@ -81,9 +160,16 @@ uint32_t ioDoWaitMs(uint8_t mask) {
   return wait;
 }
 
+bool ioDoOk() { return s_tca; }
+
 bool ioSetDo(uint8_t mask) {
+  IoLock l;
   if (!s_tca) return false;
-  if (!tcaWrite(0x01, DO_ACTIVE_HIGH ? mask : (uint8_t)~mask)) return false;
+  bool ok = tcaWrite(0x01, tcaOut(mask));
+  uint8_t o = 0;
+  ok = ok && tcaRead(0x01, o) && o == tcaOut(mask);
+  if (!ok) { i2cRecover(); ok = tcaApply(mask); }   // thử lại MỘT lần sau khi gỡ kẹt bus
+  if (!ok) { tcaSetOk(false); return false; }        // trạng thái chip không rõ: task io sẽ dò lại và ghi s_do (trạng thái cũ)
   uint8_t changed = mask ^ s_do; uint32_t now = millis();
   for (int i = 0; i < 8; i++) if (changed & (1 << i)) { s_doLast[i] = now; s_doEver |= 1 << i; }
   s_do = mask;

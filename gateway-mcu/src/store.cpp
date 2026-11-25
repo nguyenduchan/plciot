@@ -15,6 +15,7 @@ struct PsramAlloc : ArduinoJson::Allocator {
 } s_alloc;
 Preferences s_nvs;
 const char* kPath = "/config.json";
+const char* kTmp = "/config.tmp";   // bản đang ghi: rename đè lên kPath là NGUYÊN TỬ (LittleFS) nên lúc nào cũng còn một bản đầy đủ
 }
 
 JsonDocument g_raw(&s_alloc);
@@ -59,30 +60,44 @@ static void defaults() {
   g_raw["Devices"].to<JsonObject>();
 }
 
+static bool loadJson(const char* path) {
+  File f = LittleFS.open(path, "r");
+  if (!f) return false;
+  bool ok = !deserializeJson(g_raw, f) && g_raw["Config"].is<JsonObject>();
+  f.close();
+  return ok;
+}
+
 void storeBegin() {
   s_nvs.begin("gw", false);
   g_lockReason = s_nvs.getString("lock", ""); g_locked = g_lockReason.length() > 0;
   if (g_locked) logf("⚠ Thiết bị đang bị KHOÁ (%s) — chờ server mở khoá", g_lockReason.c_str());
   if (!LittleFS.begin(true)) logf("LittleFS lỗi — chạy với cấu hình mặc định (không lưu được)");
-  File f = LittleFS.open(kPath, "r");
+  // config.tmp còn lại và đọc được = lần lưu trước mất điện sau khi ghi xong nhưng trước khi đổi tên → bản MỚI hơn, dùng nó.
+  // File ghi dở thì JSON thiếu ngoặc đóng → không đọc được → bỏ, dùng config.json (bản cũ nhưng đầy đủ).
   bool ok = false;
-  if (f) { ok = !deserializeJson(g_raw, f) && g_raw["Config"].is<JsonObject>(); f.close(); }
-  if (!ok) { if (f) logf("config.json hỏng — dùng mặc định"); defaults(); }
+  if (LittleFS.exists(kTmp)) {
+    if (loadJson(kTmp) && LittleFS.rename(kTmp, kPath)) { ok = true; logf("Khôi phục cấu hình từ config.tmp (lần lưu trước bị ngắt giữa chừng)"); }
+    else LittleFS.remove(kTmp);
+  }
+  if (!ok) ok = loadJson(kPath);
+  if (!ok) { if (LittleFS.exists(kPath)) logf("config.json hỏng — dùng mặc định"); defaults(); }
   storeApply();
 }
 
 bool storeSave() {
   g_raw["Config"]["CloudPassword"] = "";
   g_raw["Config"].remove("GatewayKey");
-  File f = LittleFS.open("/config.tmp", "w");
+  File f = LittleFS.open(kTmp, "w");
   if (!f) return false;
   size_t n = serializeJson(g_raw, f); f.close();
-  if (n == 0) return false;
-  LittleFS.remove(kPath);
-  return LittleFS.rename("/config.tmp", kPath);
+  if (n == 0) { LittleFS.remove(kTmp); return false; }
+  // KHÔNG xoá config.json trước: mất điện giữa "xoá" và "đổi tên" sẽ mất hết cấu hình. rename của LittleFS ghi đè nguyên tử.
+  return LittleFS.rename(kTmp, kPath);
 }
 
 void storeReset() {
+  LittleFS.remove(kTmp);
   LittleFS.remove(kPath);
   s_nvs.remove("cloud_pw");
   netReset();   // quên IP đã đặt vẫn tìm lại được board: về 192.168.1.200

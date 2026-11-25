@@ -89,6 +89,7 @@ bool localRead(int addr, int count, uint16_t* out, String& err) {
 }
 
 bool localWrite(int addr, const uint16_t* w, int count, String& err) {
+  IoLock io;   // đọc-sửa-ghi DO nguyên khối: hai nguồn ghi (cloud, API LAN, slave) không đè nhau
   uint8_t m = ioDo();
   for (int i = 0; i < count; i++) {
     int a = addr + i;

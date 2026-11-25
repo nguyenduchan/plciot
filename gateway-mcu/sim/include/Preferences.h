@@ -10,4 +10,6 @@ class Preferences {
   String getString(const char* key, const char* def);
   size_t putString(const char* key, const String& v);
   bool remove(const char* key);
+  bool isKey(const char* key) { return getString(key, "") != ""; }
+  void end() {}
 };

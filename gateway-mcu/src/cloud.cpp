@@ -155,6 +155,7 @@ void timeFromDate(const String& date) {
   setenv("TZ", "UTC0", 1); tzset();
   struct timeval tv = {mktime(&t), 0};
   settimeofday(&tv, nullptr);
+  rtcNoteNetTime();   // RTC chưa có giờ hợp lệ (nên mới tới đây) → ghi giờ server xuống RTC
   logf("Đặt giờ theo server: %s", date.c_str());
 }
 

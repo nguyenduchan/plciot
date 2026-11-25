@@ -109,7 +109,15 @@ Nguyên tắc: **ai cầm thiết bị được setup** (người cầm thiết 
 
 ## LED
 
-xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị · xanh dương = đang nối cloud · đỏ = mất mạng.
+xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị · xanh dương = đang nối cloud · đỏ = mất mạng · **tím nhấp nháy = TCA9554 (DO) không trả lời**.
+
+## Độ tin cậy khi chạy độc lập (trạm không người trông)
+
+- **Watchdog** (`wdt.cpp`): mỗi task một hạn — `loop` 90 s, `poll` PollMs + 30 s, `di` 2 s, `io` 5 s. Quá hạn → ghi `wdt:<task>` vào NVS → khởi động lại (DO về TẮT). Task giám sát được Task WDT phần cứng canh. Lý do khởi động: log đầu tiên + `BootReason` trong `GET /api/state`.
+- **DO** (`io.cpp`): mỗi lần ghi TCA9554 đều đọc lại thanh ghi; lỗi → gỡ kẹt I2C (9 xung SCL + STOP), thử lại một lần. Task `io` kiểm lại mỗi 500 ms (chip bị reset do sụt áp → ghi lại). `DoOk` trong `/api/state`.
+- **Khoá**: I/O trên board dùng `IoLock` riêng (I2C + trạng thái DO), không chờ `BusLock` của RS485/TCP. Vòng đọc PLC khoá bus theo từng giao dịch, không giữ cả vòng.
+- **Giờ** (`rtc.cpp`): khởi động đọc RTC PCF85063 (0x51) → có giờ cả khi mất mạng; NTP / header `Date` → ghi lại RTC (tối đa 1 lần/giờ). Cờ OS bật (mất nguồn nuôi) = giờ không tin. `timeTrusted()`, `TimeSource` (`ntp`/`rtc`/`none`).
+- **Cấu hình**: ghi `config.tmp` rồi `rename` đè (nguyên tử) — không xoá `config.json` trước. Khởi động thấy `config.tmp` đọc được → dùng (bản mới hơn); ghi dở → bỏ.
 
 ## Chưa kiểm chứng trên phần cứng (cần board thật)
 
@@ -117,6 +125,8 @@ xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị
 - Hướng RS485 bằng RTS (GPIO21) ở chế độ `UART_MODE_RS485_HALF_DUPLEX`.
 - HTTPS tới server dùng bộ CA có sẵn của ESP-IDF (`esp_crt_bundle_attach`); MQTTS chỉ chạy khi server trao `pinSha256` (broker tự ký).
 - Đồng hồ: NTP; chưa có NTP thì lấy giờ từ header `Date` của server. Lệnh cloud có `ts` bị từ chối (`clock_not_synced`) cho tới khi có giờ.
+- RTC: chip **giả định PCF85063 @ 0x51** (wiki không ghi tên chip), có pin nuôi hay không. Thử: rút mạng + khởi động lại → log "Giờ lấy từ RTC".
+- Watchdog bắn thật, gỡ kẹt I2C, đọc lại thanh ghi TCA9554 (bản giả lập chỉ thử được "không thấy TCA9554" bằng `SIM_TCA_FAIL=1`).
 
 ## Báo mất / khoá
 

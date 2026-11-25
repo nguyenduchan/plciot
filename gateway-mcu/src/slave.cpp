@@ -42,7 +42,7 @@ size_t handle(uint8_t unit, const uint8_t* q, size_t qn, uint8_t* r) {
     int a = (q[1] << 8) | q[2], c = (q[3] << 8) | q[4];
     if (c < 1 || c > 125) return fail(3);
     uint16_t w[125];
-    { BusLock b; if (!mbRead(f, a, c, w, e)) return fail(exCode(e)); }
+    { BusLockIf b(unit != 0); if (!mbRead(f, a, c, w, e)) return fail(exCode(e)); }
     r[0] = fc; r[1] = c * 2;
     for (int i = 0; i < c; i++) { r[2 + i * 2] = w[i] >> 8; r[3 + i * 2] = w[i]; }
     return 2 + c * 2;
@@ -51,7 +51,7 @@ size_t handle(uint8_t unit, const uint8_t* q, size_t qn, uint8_t* r) {
     if (qn < 5) return fail(3);
     if (g_locked) return fail(4);
     int a = (q[1] << 8) | q[2]; uint16_t v = (q[3] << 8) | q[4];
-    { BusLock b; if (!mbWrite(f, a, &v, 1, e)) return fail(exCode(e)); }
+    { BusLockIf b(unit != 0); if (!mbWrite(f, a, &v, 1, e)) return fail(exCode(e)); }
     memcpy(r, q, 5); logf("Modbus TCP: ghi Unit %d D%d = %u", unit, a, v); return 5;
   }
   if (fc == 16) {
@@ -60,7 +60,7 @@ size_t handle(uint8_t unit, const uint8_t* q, size_t qn, uint8_t* r) {
     if (c < 1 || c > 123 || q[5] != c * 2 || qn < (size_t)(6 + c * 2)) return fail(3);
     if (g_locked) return fail(4);
     uint16_t w[123]; for (int i = 0; i < c; i++) w[i] = (q[6 + i * 2] << 8) | q[7 + i * 2];
-    { BusLock b; if (!mbWrite(f, a, w, c, e)) return fail(exCode(e)); }
+    { BusLockIf b(unit != 0); if (!mbWrite(f, a, w, c, e)) return fail(exCode(e)); }
     memcpy(r, q, 5); logf("Modbus TCP: ghi Unit %d D%d..%d", unit, a, a + c - 1); return 5;
   }
   // coil / discrete input: chỉ I/O của board (Unit 0)
@@ -74,14 +74,14 @@ size_t handle(uint8_t unit, const uint8_t* q, size_t qn, uint8_t* r) {
       if (raw != 0xFF00 && raw != 0x0000) return fail(3);
       if (a < 0 || a > 7) return fail(2);
       uint16_t v = raw ? 1 : 0;
-      { BusLock b; if (!mbWrite(f, 20 + a, &v, 1, e)) return fail(exCode(e)); }
+      { BusLockIf b(unit != 0); if (!mbWrite(f, 20 + a, &v, 1, e)) return fail(exCode(e)); }
       memcpy(r, q, 5); logf("Modbus TCP: coil DO%d = %u", a + 1, v); return 5;
     }
     int c = (q[3] << 8) | q[4];
     if (c < 1 || c > 8) return fail(3);
     if (a < 0 || a + c > 8) return fail(2);
     uint16_t w[1];
-    { BusLock b; if (!mbRead(f, fc == 1 ? 1 : 0, 1, w, e)) return fail(exCode(e)); }   // D1 = DO gộp, D0 = DI gộp
+    { BusLockIf b(unit != 0); if (!mbRead(f, fc == 1 ? 1 : 0, 1, w, e)) return fail(exCode(e)); }   // D1 = DO gộp, D0 = DI gộp
     r[0] = fc; r[1] = 1; r[2] = (w[0] >> a) & ((1 << c) - 1);
     return 3;
   }

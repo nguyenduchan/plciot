@@ -66,6 +66,12 @@ struct Lock { Lock() { xSemaphoreTakeRecursive(g_lock, portMAX_DELAY); } ~Lock()
 // Thứ tự luôn là BusLock trước rồi mới Lock.
 extern SemaphoreHandle_t g_bus;
 struct BusLock { BusLock() { xSemaphoreTakeRecursive(g_bus, portMAX_DELAY); } ~BusLock() { xSemaphoreGiveRecursive(g_bus); } };
+/// BusLock chỉ khi cần (on = false: không khoá). I/O trên board (Unit 0) KHÔNG đi qua bus RS485/TCP → không chờ PLC chậm, dùng IoLock.
+struct BusLockIf { bool on; explicit BusLockIf(bool o) : on(o) { if (on) xSemaphoreTakeRecursive(g_bus, portMAX_DELAY); } ~BusLockIf() { if (on) xSemaphoreGiveRecursive(g_bus); } };
+// Khoá I/O trên board: bus I2C (TCA9554 + RTC dùng chung) + trạng thái DO. Giữ rất ngắn (một giao dịch I2C ~1 ms, Wire có timeout).
+// Có thể lấy khi đang giữ BusLock/Lock; ngược lại KHÔNG lấy BusLock/Lock khi đang giữ IoLock.
+extern SemaphoreHandle_t g_io;
+struct IoLock { IoLock() { xSemaphoreTakeRecursive(g_io, portMAX_DELAY); } ~IoLock() { xSemaphoreGiveRecursive(g_io); } };
 /// CHẾ ĐỘ KHOÁ (thiết bị báo mất trộm, admin khoá theo mã phần cứng trên server): dừng đọc/điều khiển PLC, từ chối mọi đăng nhập và ghép PC
 /// (kể cả nút BOOT), ngừng gửi dữ liệu. Lưu NVS "lock" — reset bằng BOOT KHÔNG xoá được; chỉ server mở (sys:unlock có chữ ký / hết bị chặn).
 extern bool g_locked;
@@ -128,7 +134,8 @@ uint8_t ioDi();                                  // DI đã lọc rung (task n�
 uint32_t ioDiCount(int ch);                      // số lần chuyển 0→1 (cạnh lên) của DI ch (0..7) sau lọc, 32 bit vòng
 void ioDiCountSet(int ch, uint32_t v);           // đặt lại bộ đếm
 uint8_t ioDo();
-bool ioSetDo(uint8_t mask);
+bool ioSetDo(uint8_t mask);                      // ghi TCA9554 rồi ĐỌC LẠI để xác nhận; lỗi I2C → gỡ kẹt bus, thử lại một lần
+bool ioDoOk();                                   // TCA9554 đang trả lời và thanh ghi khớp trạng thái mong muốn (false = DO không tin được)
 // Bảo vệ tiếp điểm relay: thời gian tối thiểu giữa hai lần ĐỔI trạng thái của từng DO. Nguồn: cấu hình board (field Unit 0 có MinToggleMs)
 // và PC đang giữ lease (DoMinMs gửi kèm nhịp tim); lấy giá trị LỚN hơn. Chặn mọi đường ghi DO: engine/cloud, API LAN, Modbus TCP slave.
 void ioDoMinCfg(const uint32_t* ms8);           // từ cấu hình board (storeApply)
@@ -193,6 +200,23 @@ bool cloudAction(const String& action, const String& api, const String& value, S
 bool cloudOwnsBoard(const String& webToken, String& why);
 bool timeSynced();
 int64_t nowMs();
+
+// ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó
+// Mỗi task gọi wdtFeed() mỗi vòng; quá hạn → ghi tên task vào NVS ("wdt") rồi khởi động lại (DO về TẮT ở ioBegin).
+// Task giám sát được Task WDT của ESP-IDF canh: chính nó treo (hoặc cả scheduler) thì chip tự reset.
+enum WdId { WD_LOOP, WD_POLL, WD_DI, WD_IO, WD_COUNT };
+void wdtBegin();                                 // gọi ĐẦU TIÊN trong setup(): ghi nhận lý do khởi động, chạy task giám sát
+void wdtArm(int id, uint32_t timeoutMs);         // bắt đầu canh (hoặc đổi hạn) — gọi trong chính task đó
+void wdtFeed(int id);
+String bootReason();                             // lý do lần khởi động này: power_on | sw | panic | wdt:<task> | brownout …
+
+// ---------------------------------------------------------------- rtc.cpp: đồng hồ PCF85063 trên board (I2C chung với TCA9554)
+// Khởi động: RTC hợp lệ → đặt giờ hệ thống ngay (có giờ cả khi mất mạng). Có giờ mạng (NTP / header Date của server) → ghi lại vào RTC.
+void rtcBegin();                                 // sau ioBegin (Wire đã chạy)
+void rtcLoop();                                  // trong loop(): ghi giờ mạng xuống RTC khi cần
+void rtcNoteNetTime();                           // giờ hệ thống vừa được đặt theo mạng
+bool timeTrusted();                              // có giờ tin được (mạng hoặc RTC hợp lệ) — logic theo lịch dùng cờ này
+const char* timeSource();                        // ntp | rtc | none
 
 // ---------------------------------------------------------------- tiện ích
 void logf(const char* fmt, ...);

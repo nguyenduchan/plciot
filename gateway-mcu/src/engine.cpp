@@ -47,8 +47,8 @@ bool encode(double raw, DType t, bool swap, uint16_t* w, int& n) {
 String keyOf(const Field& f) { return f.protocol + "|" + String(f.unit); }
 
 /// Một chu kỳ đọc: gom field cùng PLC (giao thức + unit), cách nhau ≤ 8 word, tối đa 100 word/lần.
+/// Khoá bus theo TỪNG giao dịch (không giữ cả vòng): lệnh ghi chen vào giữa hai lần đọc, không phải chờ hết vòng có PLC chậm/mất.
 void pollOnce() {
-  BusLock bus;
   std::vector<Field> fields;
   { Lock l; fields = g_cfg.pack; }   // bản sao: trao đổi với PLC mà không giữ khoá chung
   std::vector<const Field*> rd;
@@ -64,7 +64,10 @@ void pollOnce() {
       j++; end = max(end, rd[j]->addr + rd[j]->words());
     }
     uint16_t buf[100]; String err;
-    if (mbRead(*rd[i], start, end - start, buf, err)) {
+    wdtFeed(WD_POLL);
+    bool ok;
+    { BusLockIf bus(!rd[i]->localIo()); ok = mbRead(*rd[i], start, end - start, buf, err); }
+    if (ok) {
       okReads++;
       for (size_t k = i; k <= j; k++) {
         const Field& f = *rd[k];
@@ -85,6 +88,7 @@ void pollOnce() {
 
 void task(void*) {
   for (;;) {
+    wdtArm(WD_POLL, (uint32_t)max(0, g_cfg.pollMs) + 30000);   // một giao dịch Modbus tối đa vài giây (TCP connect 2 s) + chờ PollMs
     uint32_t t0 = millis();
     if (g_running && !g_locked) pollOnce();   // thiết bị bị khoá (báo mất): không đọc PLC
     int wait = max(20, g_cfg.pollMs - (int)(millis() - t0));
@@ -104,7 +108,6 @@ void engineRestart() {
 uint32_t engineSeq() { return s_seq; }
 
 String engineWrite(const String& child, const String& key, double v, bool byWire) {
-  BusLock bus;
   Field copy; bool found = false;
   {
     Lock l;
@@ -122,7 +125,9 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   uint16_t w[4]; int n = 0;
   if (!encode(v * f->scale, f->type, f->swap, w, n)) return "bad_value";
   String err;
-  if (!mbWrite(*f, f->addr, w, n, err)) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" ? err : "plc_error"; }
+  bool ok;
+  { BusLockIf bus(!f->localIo()); ok = mbWrite(*f, f->addr, w, n, err); }   // DO trên board: không chờ vòng đọc PLC
+  if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" ? err : "plc_error"; }
   logf("Điều khiển: %s.%s = %g → D%d", f->child.c_str(), f->field.c_str(), v, f->addr);
   if (s_task) xTaskNotifyGive(s_task);
   return "";

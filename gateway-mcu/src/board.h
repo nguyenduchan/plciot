@@ -26,6 +26,9 @@ static const int DI_PINS[8] = {4, 5, 6, 7, 8, 9, 10, 11};
 #define I2C_SDA 42
 #define I2C_SCL 41
 #define TCA9554_ADDR 0x20
+// RTC trên board (wiki: RTC_SDA 42, RTC_SCL 41, RTC_INT 40 — KHÔNG ghi tên chip). Giả định PCF85063 (chip Waveshare dùng trên các board
+// ESP32-S3 cùng dòng) — kiểm lại trên sơ đồ nguyên lý; log khởi động báo "Không thấy RTC" nếu sai địa chỉ. Pin nuôi RTC: chưa rõ.
+#define PCF85063_ADDR 0x51
 #define DO_ACTIVE_HIGH 0     // 0: bản output transistor (8DO) — EXIO thấp = đầu ra BẬT (LED sáng); ghi 1 = tắt. Quan sát trên board thật 2026-11: với 1 thì cả 8 LED sáng khi tắt. Bản relay (8RO) thì đặt 1.
 
 #define PIN_RGB    38        // LED RGB (WS2812)

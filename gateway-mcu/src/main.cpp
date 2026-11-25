@@ -35,6 +35,7 @@ static void ledTick() {
   String cs = cloudStateName();
   static bool blink = false; blink = !blink;
   if (g_locked) ioLed(blink ? 32 : 0, 0, 0);   // bị khoá (báo mất): đỏ nhấp nháy
+  else if (!ioDoOk()) ioLed(blink ? 24 : 0, 0, blink ? 24 : 0);   // TCA9554 không trả lời: tím nhấp nháy — DO không tin được
   else if (!netUp()) ioLed(24, 0, 0);   // mất cả Ethernet lẫn Wi-Fi
   else if (g_status == "plc_fault" || g_status == "no_devices") ioLed(20, 14, 0);
   else if (cs == "Connecting" || cs == "Disconnected") ioLed(0, 0, 24);
@@ -45,7 +46,9 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   logf("Gateway Waveshare %s khởi động", FW_VERSION);
-  ioBegin();
+  wdtBegin();            // trước mọi task: ghi nhận lý do khởi động, chạy task giám sát
+  ioBegin();             // DO về TẮT ngay, càng sớm càng tốt
+  rtcBegin();            // có giờ từ RTC trước khi mạng lên (trạm mất mạng vẫn có lịch đúng)
   Network.onEvent(onNet);
   if (!ETH.begin(ETH_PHY_W5500, 1, ETH_CS, ETH_INT, ETH_RST, SPI2_HOST, ETH_SCLK, ETH_MISO, ETH_MOSI))
     logf("Không khởi động được W5500 — kiểm tra chân SPI trong board.h");
@@ -58,15 +61,18 @@ void setup() {
   cloudBegin();
   engineBegin();
   logf("Thiết bị %s/%s · mã phần cứng %s · %u field", g_cfg.site.c_str(), g_cfg.device.c_str(), idHw().c_str(), (unsigned)g_cfg.pack.size());
+  wdtArm(WD_LOOP, 90000);   // loop() có thể bận lâu hợp lệ: HTTPS tới server (timeout 30 s) + bắt tay TLS
 }
 
 void loop() {
+  wdtFeed(WD_LOOP);
   ioLoop();
   wifiLoop();
   serialCfgLoop();
   apiLoop();
   slaveLoop();
   cloudLoop();
+  rtcLoop();
   ledTick();
   delay(2);
 }

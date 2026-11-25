@@ -196,6 +196,7 @@ void hState() {
   d["Running"] = g_running; d["Status"] = g_running ? g_status : String("đã dừng");
   d["Mode"] = leaseActive() ? "gateway" : "standalone"; if (leaseActive()) d["LeaseHolder"] = leaseHolder().toString();
   d["Cloud"] = cloudStateName(); d["Rev"] = g_rev; d["Customer"] = true; d["Fingerprint"] = fingerprint();
+  d["DoOk"] = ioDoOk(); d["TimeSource"] = timeSource(); d["BootReason"] = bootReason();   // độ tin cậy khi chạy độc lập (GatewayApp chưa hiện, bỏ qua trường lạ)
   engineValues(d["Values"].to<JsonObject>());
   String s; serializeJson(d, s); send(200, s);
 }
@@ -333,6 +334,7 @@ void hOta() {
   while (got < total) {
     int n = q_->readBody(buf, sizeof buf);
     if (n < 0) break;
+    wdtFeed(WD_LOOP);   // nhận firmware chạy trong loop(): có thể lâu hơn hạn watchdog của loop
     if (n == 0) { if (millis() - lastData > 15000) break; delay(1); continue; }
     lastData = millis();
     mbedtls_sha256_update(&sha, buf, n);
