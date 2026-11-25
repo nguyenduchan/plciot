@@ -570,6 +570,33 @@ ok(jwtTtlSeconds() === 72 * 3600, 'JWT mặc định 72 giờ (trượt), không
   ok(!('gw' in (last?.cmd || {})), 'trường gw không lọt vào bản tin MQTT gửi gateway');
 }
 
+/* ---- Đầu ra số có toggleMs (gateway khai PackMap.MinToggleMs): chặn bật/tắt quá nhanh từ webapp/script ---- */
+{
+  const { applyGatewayConfig, sanitizeConfig } = await import('../src/gatewayConfig.js');
+  const { _resetToggleGuard } = await import('../src/toggleGuard.js');
+  const san = sanitizeConfig({ devices: [{ id: 'relay9', name: 'Relay', fields: [
+    { key: 'on', lbl: 'Relay', widget: 'switch', writable: true, toggleMs: 60000 },
+    { key: 'fb', lbl: 'Phản hồi', widget: 'switch', toggleMs: 5000 },                   // chỉ đọc: bỏ toggleMs
+    { key: 'x', lbl: 'X', widget: 'switch', writable: true, toggleMs: -3 },             // âm: bỏ
+  ] }] });
+  const fs9 = san.devices[0].fields;
+  ok(fs9[0].toggleMs === 60000 && fs9[1].toggleMs === undefined && fs9[2].toggleMs === undefined, 'sanitizeConfig: toggleMs chỉ giữ cho field ghi được, số dương');
+  applyGatewayConfig(db, { site: 'siteA', device: 'plc01', payload: { devices: [{ id: 'relay9', name: 'Relay', fields: [{ key: 'on', lbl: 'Relay', widget: 'switch', writable: true, toggleMs: 60000 }] }] } });
+  db.prepare(`INSERT OR IGNORE INTO user_devices (id, user_id, site, gateway_device, child_id, type, title, binds, created_at)
+    VALUES ('ud_relay9', ?, 'siteA', 'plc01', 'relay9', 'dynamic', 'Relay', NULL, ?)`).run(uPk, Date.now());
+  _resetToggleGuard();
+  const o9 = (await call('POST', '/api/webauthn/auth/options', uPk)).body;
+  const tok9 = (await call('POST', '/api/webauthn/auth/verify', uPk, { credential: assertion(o9) })).body.controlToken;
+  const before = published.length;
+  let q = await cmd(uPk, { child: 'relay9', key: 'on', v: 1 }, { 'x-control-token': tok9 });
+  ok(q.status === 200 && published.length === before + 1, 'bật relay lần đầu: phát lệnh');
+  q = await cmd(uPk, { child: 'relay9', key: 'on', v: 1 }, { 'x-control-token': tok9 });
+  ok(q.status === 200, 'gửi lại đúng trạng thái: không bị chặn');
+  q = await cmd(uPk, { child: 'relay9', key: 'on', v: 0 }, { 'x-control-token': tok9 });
+  ok(q.status === 429 && q.body.error === 'toggle_too_fast' && q.body.waitMs > 55000 && q.body.toggleMs === 60000, 'tắt ngay sau khi bật: 429 toggle_too_fast kèm waitMs');
+  ok(published.length === before + 2 && published.at(-1).cmd.v === 1, 'lệnh bị chặn không lọt ra MQTT');
+}
+
 /* ---- Thu hồi ---- */
 r = await call('POST', '/api/control/lock', uPk, {}, { 'x-control-token': tokPk });
 r = await cmd(uPk, { a: 7, v: 9 }, { 'x-control-token': tokPk });

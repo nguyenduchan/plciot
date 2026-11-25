@@ -137,6 +137,7 @@ Xem ví dụ trong plan / response thực tế. Trường chính:
 - `devices[].type`, `childId`, `title`
 - `devices[].source.path` — vd `d.env01` hoặc `r` (conveyor)
 - `devices[].widgets[]` — `{ id, kind, bind, label, unit?, min?, max?, cmd? }`
+  - `toggle` có thể thêm `fb?` (khoá đầu vào phản hồi) và `toggleMs?` (ms tối thiểu giữa hai lần đổi trạng thái — webapp khoá nút + đếm ngược; server trả 429 `toggle_too_fast` kèm `waitMs`). Client C# đọc cùng trường.
 - `layout.simple` / `layout.pro`
 
 ### `kind` ổn định

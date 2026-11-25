@@ -98,7 +98,11 @@ bool localWrite(int addr, const uint16_t* w, int count, String& err) {
     else if (a >= 40 && a <= 55) { int ch = (a - 40) / 2; uint32_t c = ioDiCount(ch); ioDiCountSet(ch, ((a - 40) & 1) ? ((c & 0xFFFF0000u) | w[i]) : ((c & 0xFFFFu) | ((uint32_t)w[i] << 16))); }
     else { err = "illegal_address"; return false; }   // DI chỉ đọc; ô khác không có
   }
-  if (m != ioDo() && !ioSetDo(m)) { err = "do_unavailable"; return false; }
+  if (m != ioDo()) {
+    uint32_t wait = ioDoWaitMs(m);
+    if (wait) { err = "toggle_too_fast"; logf("Từ chối đổi DO quá nhanh (còn %lu ms)", (unsigned long)wait); return false; }   // bảo vệ tiếp điểm relay
+    if (!ioSetDo(m)) { err = "do_unavailable"; return false; }
+  }
   return true;
 }
 }  // namespace

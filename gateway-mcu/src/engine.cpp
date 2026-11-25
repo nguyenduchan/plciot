@@ -122,7 +122,7 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   uint16_t w[4]; int n = 0;
   if (!encode(v * f->scale, f->type, f->swap, w, n)) return "bad_value";
   String err;
-  if (!mbWrite(*f, f->addr, w, n, err)) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return "plc_error"; }
+  if (!mbWrite(*f, f->addr, w, n, err)) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" ? err : "plc_error"; }
   logf("Điều khiển: %s.%s = %g → D%d", f->child.c_str(), f->field.c_str(), v, f->addr);
   if (s_task) xTaskNotifyGive(s_task);
   return "";

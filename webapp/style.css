@@ -547,6 +547,9 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dw.pending { outline: 2px solid var(--warn, #f59e0b); outline-offset: 2px; border-radius: 14px; }
 .dw.pending .dw-pendinfo { opacity: 1; font-weight: 600; color: var(--warn, #f59e0b); }
 .dw-toggle small { opacity: .75; font-weight: 400; margin-left: 6px; }
+/* đầu ra số đang trong thời gian tối thiểu giữa 2 lần bật/tắt (bảo vệ tiếp điểm): mờ, con trỏ chờ, vẫn bấm được để nghe giải thích */
+.dw-toggle.cool { opacity: .6; cursor: progress; }
+.dw-toggle.cool small { opacity: 1; font-variant-numeric: tabular-nums; }
 
 /* ===== kiểu hiển thị thiết bị: 3D / hiện đại / SCADA ===== */
 /* 3D: ô icon nổi khối */

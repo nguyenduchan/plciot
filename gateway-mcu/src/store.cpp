@@ -134,9 +134,17 @@ void storeApply() {
     f.access = accessOf(p["Access"]); f.type = typeOf(p["DataType"]);
     f.swap = p["WordSwap"] | false; f.enabled = p["Enabled"] | true;
     f.unit = String(p["Params"]["unit"] | "1").toInt();
+    f.minToggleMs = constrain((long)(p["MinToggleMs"] | 0), 0L, 3600000L);
     n.pack.push_back(f);
   }
   g_cfg = n;
+  // DO của board (Unit 0: D20..D27 từng kênh, D1 = cả 8) → thời gian tối thiểu giữa hai lần đổi trạng thái theo từng kênh
+  uint32_t mins[8] = {0};
+  for (auto& f : n.pack) {
+    if (!f.localIo() || f.access == Access::Read || !f.minToggleMs) continue;
+    for (int i = 0; i < 8; i++) if (f.addr == 1 || f.addr == 20 + i) mins[i] = max(mins[i], f.minToggleMs);
+  }
+  ioDoMinCfg(mins);
 }
 
 // ---------------------------------------------------------------- kiểm tra cấu hình admin gửi (tập con của ScadaConfig.Validate + giới hạn của board)
@@ -175,6 +183,7 @@ String storeValidate(JsonObjectConst c) {
     if (seenWire.count(wk)) return "Pack: khoá MQTT \"" + wire + "\" bị trùng trong thiết bị " + child + ".";
     seenWire[wk] = what;
     if (!p["Min"].isNull() && !p["Max"].isNull() && (double)p["Min"] > (double)p["Max"]) return "Pack: Min không được lớn hơn Max.";
+    { long mt = p["MinToggleMs"] | 0L; if (mt < 0 || mt > 3600000L) return what + ": thời gian tối thiểu giữa 2 lần bật/tắt phải từ 0 đến 3600 giây."; }
   }
   bool hasRtu = false, hasTcp = false;
   for (JsonObjectConst k : c["Connections"].as<JsonArrayConst>()) {
@@ -267,6 +276,7 @@ String configMessage() {
       if (ranged) { o["min"] = r.min; o["max"] = r.max; }
       else { if (p.hasMin) o["min"] = p.min; if (p.hasMax) o["max"] = p.max; }
       if (r.kind == "toggle") { String on = m["OnText"] | "", off = m["OffText"] | ""; if (on.length()) o["on"] = on; if (off.length()) o["off"] = off; }
+      if (writable && p.minToggleMs) o["toggleMs"] = p.minToggleMs;   // giống ConfigBuilder.cs: server/webapp chặn bật/tắt quá nhanh
       // Phản hồi thật: field đầu vào (DI nối cảm biến/relay) cùng thiết bị → gửi khoá wire để webapp đối chiếu lệnh với trạng thái thực.
       if (r.kind == "toggle" && writable) {
         String fbf = m["Feedback"] | "";

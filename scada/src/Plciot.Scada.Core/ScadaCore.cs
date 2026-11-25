@@ -19,6 +19,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     readonly PackDriverPool? _pool;
     readonly DeviceState _state = new();
     readonly SemaphoreSlim _pollNow = new(0, 1);
+    /// <summary>Thời gian tối thiểu giữa hai lần đổi trạng thái đầu ra số (<see cref="PackMap.MinToggleMs"/>), chung mọi nguồn lệnh.</summary>
+    public ToggleGuard Toggle { get; } = new();
     readonly IReadOnlySet<int> _writable;
     readonly Queue<string> _log = new();
     CancellationTokenSource? _cts;
@@ -304,6 +306,13 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             Emit($"Từ chối lệnh {child}.{key} = {v}: ngoài khoảng {field.Min}–{field.Max}");
             return CommandPolicy.AckJson(id, false, "value_out_of_range");
         }
+        // bảo vệ tiếp điểm: đổi trạng thái đầu ra số quá sớm sau lần đổi trước → từ chối, báo còn phải chờ bao lâu
+        var prevToggle = field != null ? Toggle.Peek(field) : (null, 0);
+        if (field != null && field.Access != PackAccess.Read && !Toggle.TryTake(field, v, out var waitMs))
+        {
+            Emit($"Từ chối lệnh {field.Child}.{field.Field} = {v}: đổi trạng thái quá nhanh (tối thiểu {field.MinToggleMs} ms giữa hai lần, còn {waitMs} ms)");
+            return CommandPolicy.AckJson(id, false, "toggle_too_fast", waitMs: waitMs);
+        }
         if (_pool != null)
         {
             if (field == null) return CommandPolicy.AckJson(id, false, "unknown_key");
@@ -321,9 +330,10 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
                 ackB = CommandPolicy.AckJson(id, true);
                 if (_pollNow.CurrentCount == 0) { try { _pollNow.Release(); } catch (SemaphoreFullException) { } }
             }
-            catch (ArgumentOutOfRangeException) { return CommandPolicy.AckJson(id, false, "bad_value"); }
+            catch (ArgumentOutOfRangeException) { Toggle.Undo(field, prevToggle.Value, prevToggle.At); return CommandPolicy.AckJson(id, false, "bad_value"); }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
+                Toggle.Undo(field, prevToggle.Value, prevToggle.At);   // chưa ghi được → lần thử lại không bị chặn oan
                 Emit($"Lệnh PLC lỗi ({actor}): {ex.Message}");
                 ackB = CommandPolicy.AckJson(id, false, "plc_error");
             }

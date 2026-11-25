@@ -5,6 +5,11 @@
 
 namespace {
 uint8_t s_do = 0;          // trạng thái logic của DO (bit n = DOn+1 bật)
+// Thời gian tối thiểu giữa hai lần đổi trạng thái DO (bảo vệ tiếp điểm). s_doEver: kênh đã đổi ít nhất một lần từ lúc khởi động
+// (lần đổi ĐẦU sau khởi động luôn được — mọi DO đều tắt lúc khởi động nên không có chuyện bật/tắt dồn dập).
+uint32_t s_doMinCfg[8] = {0}, s_doMinLease[8] = {0}, s_doLast[8] = {0};
+uint8_t s_doEver = 0;
+uint32_t doMin(int ch) { uint32_t a = s_doMinCfg[ch], b = leaseActive() ? s_doMinLease[ch] : 0; return a > b ? a : b; }
 bool s_tca = false;
 uint32_t s_btnDown = 0;
 bool s_btnWas = false, s_resetArmed = false;
@@ -63,9 +68,24 @@ void ioDiCountSet(int ch, uint32_t v) { if (ch >= 0 && ch < 8) s_diCount[ch] = v
 
 uint8_t ioDo() { return s_do; }
 
+void ioDoMinCfg(const uint32_t* ms8) { for (int i = 0; i < 8; i++) s_doMinCfg[i] = ms8[i]; }
+void ioDoMinLease(const uint32_t* ms8) { for (int i = 0; i < 8; i++) s_doMinLease[i] = ms8[i]; }
+
+uint32_t ioDoWaitMs(uint8_t mask) {
+  uint8_t changed = mask ^ s_do; uint32_t now = millis(), wait = 0;
+  for (int i = 0; i < 8; i++) {
+    if (!(changed & (1 << i)) || !(s_doEver & (1 << i))) continue;
+    uint32_t mn = doMin(i), el = now - s_doLast[i];
+    if (mn && el < mn && mn - el > wait) wait = mn - el;
+  }
+  return wait;
+}
+
 bool ioSetDo(uint8_t mask) {
   if (!s_tca) return false;
   if (!tcaWrite(0x01, DO_ACTIVE_HIGH ? mask : (uint8_t)~mask)) return false;
+  uint8_t changed = mask ^ s_do; uint32_t now = millis();
+  for (int i = 0; i < 8; i++) if (changed & (1 << i)) { s_doLast[i] = now; s_doEver |= 1 << i; }
   s_do = mask;
   return true;
 }

@@ -252,13 +252,15 @@
       const star = c.key != null
         ? `<button type="button" class="dw-star ${c.critical ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" data-key="${esc(c.key)}" data-crit="${c.critical ? 1 : 0}" ${c.criticalLocked ? 'disabled' : ''} title="${c.critical ? (c.criticalLocked ? 'Lệnh nguy hiểm do tem đặt' : 'Bỏ đánh dấu nguy hiểm') : 'Đánh dấu lệnh nguy hiểm'}">${c.critical ? '★' : '☆'}</button>`
         : '';
-      const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : ''].filter(Boolean).join(' · ');
+      const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : '',
+        w.toggleMs > 0 ? `Tối thiểu ${secTxt(w.toggleMs)} giữa 2 lần bật/tắt` : ''].filter(Boolean).join(' · ');
+      const left = coolLeft(dev, w);
       // Huy hiệu độ tin cậy: có đầu vào phản hồi (cảm biến / tiếp điểm) = lệnh được kiểm chứng bằng tín hiệu thật; không có = chỉ biết gateway đã ghi lệnh
       const trust = w.fb
         ? '<span class="dw-trust ok" title="Có tín hiệu phản hồi: lệnh được kiểm chứng bằng đầu vào thật"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Có xác nhận</span>'
         : '<span class="dw-trust" title="Không có tín hiệu phản hồi: chỉ biết gateway đã ghi lệnh"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="dash" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>Không xác nhận</span>';
       return `<div class="dw ctlw ${c.critical ? 'crit' : ''}${w.fb ? ' verified' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}${trust}</div>
-        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}</small></button><div class="dw-status">${cmdHtml(dev, w)}${fbHtml(dev, w, on)}</div>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
+        <button type="button" class="fit dw-toggle ${on ? 'on' : ''}${left ? ' cool' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" aria-disabled="${left ? 'true' : 'false'}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>${left ? `⏳ chờ ${secTxt(left)}` : `bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}`}</small></button><div class="dw-status">${cmdHtml(dev, w)}${fbHtml(dev, w, on)}</div>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'slider') {
       // thanh trượt đặt giá trị (vd tốc độ bơm): thả tay mới gửi lệnh {child,key,v}, giá trị thật hiện qua telemetry
@@ -335,6 +337,22 @@
   const holdKey = (dev, w) => `${lk(dev)}|${w.bind}`;
   const setHold = (dev, w, v) => hold.set(holdKey(dev, w), { v: Number(v), until: Date.now() + 3500 });
   const clearHold = (dev, w) => hold.delete(holdKey(dev, w));
+  // ---- Bảo vệ tiếp điểm: đầu ra số có w.toggleMs (gateway khai) → sau mỗi lần đổi trạng thái, nút khoá + đếm ngược tới khi được đổi lại.
+  // Chỉ là lớp nhắc trên giao diện: server (429 toggle_too_fast) và gateway/firmware mới là chốt chặn thật (chặn cả script / API).
+  const cool = new Map();                  // holdKey → mốc ms được đổi lại
+  const coolLeft = (dev, w) => Math.max(0, (cool.get(holdKey(dev, w)) || 0) - Date.now());
+  const setCool = (dev, w, ms) => { if (ms > 0) { cool.set(holdKey(dev, w), Date.now() + ms); coolTick(); } };
+  let coolTimer = null;
+  function coolTick() {
+    if (coolTimer) return;
+    coolTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [k, t] of cool) if (t <= now) cool.delete(k);
+      if (!cool.size) { clearInterval(coolTimer); coolTimer = null; }
+      if (!document.hidden) render();   // vá (morph) số giây trên nút; tab ẩn thì thôi, hiện lại tự vẽ
+    }, 1000);
+  }
+  const secTxt = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)} phút ${Math.ceil((ms % 60000) / 1000)} giây` : `${Math.ceil(ms / 1000)} giây`);
 
   // Lệnh đã tới máy chủ CHƯA phải là thiết bị đã làm: chờ gateway trả ack (ok / lý do từ chối). Không có ack sau ACK_WAIT_MS → báo rõ
   // "chưa phản hồi" thay vì để nút tự nhảy về giá trị cũ không lời giải thích.
@@ -372,6 +390,7 @@
       return cmdSet(p.dev, p.w, p.w.fb ? 'acked' : 'done', { reached: 2 });
     }
     revert(p);
+    if ((a.err || a.error) === 'toggle_too_fast') setCool(p.dev, p.w, Number(a.waitMs) || Number(p.w.toggleMs) || 0);
     cmdSet(p.dev, p.w, 'rejected', { err: a.err || a.error || 'bad_command' });
   }
   // Giá trị thanh trượt người dùng đã chọn nhưng CHƯA gửi: lưu ở đây để không mất khi lưới dựng lại, và luôn hiện rõ "chưa gửi".
@@ -396,7 +415,7 @@
   function structSig(order, byId, banner) {
     return JSON.stringify([banner, dashboard?.gateways?.length || 0, activeGw, order.map((id) => {
       const d = byId[id];
-      return d && [d.id, d.title, d.icon, d.color, d.type, d.gw, d.widgets.map((w) => [w.id, w.kind, w.label, w.locked, w.unit, w.min, w.max, w.step, w.low, w.high, w.onText, w.offText, w.cmd, w.fb])];
+      return d && [d.id, d.title, d.icon, d.color, d.type, d.gw, d.widgets.map((w) => [w.id, w.kind, w.label, w.locked, w.unit, w.min, w.max, w.step, w.low, w.high, w.onText, w.offText, w.cmd, w.fb, w.toggleMs])];
     })]);
   }
 
@@ -634,6 +653,8 @@
         if (!w?.cmd) return;
         const cur = Number(val(dev, w.bind)) === 1;
         const next = cur ? (w.cmd.off ?? 0) : (w.cmd.on ?? 1);
+        const left = coolLeft(dev, w);
+        if (left) return toast(`Chưa đổi được: thiết bị vừa ${cur ? 'bật' : 'tắt'}, chờ thêm ${secTxt(left)} (tối thiểu ${secTxt(w.toggleMs || left)} giữa 2 lần bật/tắt để bảo vệ tiếp điểm).`, true);
         if (typeof window.command === 'function' && w.cmd.a != null) {
           window.command(w.cmd.a, next);
         } else if (w.cmd.key != null && window.Ctl?.send) {
@@ -645,7 +666,8 @@
           cmdSet(dev, w, 'sending', { want: Number(next), reached: 0, err: '' });
           render();
           window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
-            if (r?.ok) return trackAck(r.id, dev, w, prev);
+            if (r?.ok) { setCool(dev, w, Number(w.toggleMs) || 0); return trackAck(r.id, dev, w, prev); }   // đã đổi trạng thái: đếm ngược như server
+            if (r?.error === 'toggle_too_fast') setCool(dev, w, Number(r.waitMs) || Number(w.toggleMs) || 0);
             clearHold(dev, w);
             if (r?.error === 'cancelled') cmdClear(dev, w); else cmdSet(dev, w, 'failed', { err: window.ErrText(r?.error || 'network', r?.status) });
             live[lk(dev)] = { ...live[lk(dev)], [w.bind]: prev };

@@ -248,6 +248,9 @@ void hLease() {
     if (leaseActive() && leaseHolder() != q_->ip) { err("lease_held", 409); return; }
     int ttl = d["TtlSec"] | 15; ttl = ttl < 5 ? 5 : ttl > 120 ? 120 : ttl;
     leaseSet(q_->ip, (uint32_t)ttl * 1000);
+    // thời gian tối thiểu giữa hai lần đổi trạng thái DO1..DO8 theo cấu hình gateway PC (BoardLease.DoMinMs); không gửi = giữ giá trị cũ
+    JsonArrayConst dm = d["DoMinMs"].as<JsonArrayConst>();
+    if (!dm.isNull()) { uint32_t ms[8] = {0}; int i = 0; for (JsonVariantConst v : dm) { if (i >= 8) break; long x = v | 0L; ms[i++] = (uint32_t)constrain(x, 0L, 3600000L); } ioDoMinLease(ms); }
   } else { err("bad_request"); return; }
   JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Mode"] = leaseActive() ? "gateway" : "standalone";
   o["TtlMs"] = leaseRemainingMs(); o["Port"] = MBS_PORT;

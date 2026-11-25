@@ -74,5 +74,5 @@ export function validateChildCmd(body, devices) {
   const lim = w.cmd.limits;                                        // khoảng do tem provisioning đặt (thu hẹp thêm)
   if (lim && (v < lim.min || v > lim.max)) return { error: 'value_out_of_range', min: lim.min, max: lim.max };
   const id = /^[a-z0-9]{1,16}$/i.test(String(b.id || '')) ? String(b.id) : crypto.randomBytes(5).toString('hex');
-  return { cmd: { id, child, key, v }, write: true, critical: Boolean(w.cmd.critical) };
+  return { cmd: { id, child, key, v }, write: true, critical: Boolean(w.cmd.critical), toggleMs: Number(w.toggleMs) > 0 ? Number(w.toggleMs) : 0 };
 }

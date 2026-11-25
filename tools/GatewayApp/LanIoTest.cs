@@ -45,7 +45,9 @@ public sealed partial class MainForm
             };
             var rtu = new Dictionary<string, string> { ["parity"] = "Even" };
             // (1) DI/DO trên board: Modbus RTU Unit 0. run <- DO1 (D20), flow <- DI1 (D10)
-            var e1 = AddDeviceViaDialog(rf, "pump", PlcSource.ModbusRtu, "RS485", 9600, new() { ["parity"] = "Even", ["difilter"] = "200" }, new() { ["unit"] = "0" }, Keep(("run", "20"), ("flow", "10")));
+            //     + thời gian tối thiểu giữa 2 lần bật/tắt = 1,5 giây (ô của hộp thoại) → firmware chặn đổi DO1 quá nhanh
+            var e1 = AddDeviceViaDialog(rf, "pump", PlcSource.ModbusRtu, "RS485", 9600, new() { ["parity"] = "Even", ["difilter"] = "200" }, new() { ["unit"] = "0" }, Keep(("run", "20"), ("flow", "10")),
+                dlg => ((NumericUpDown)dlg.GetType().GetField("_toggleSec", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(dlg)!).Value = 1.5m);
             // (2) slave RS485 (giả lập qua TCP) Unit 1: run <- D10 (ghi được), flow <- D1 (bộ đếm +1/giây)
             var e2 = AddDeviceViaDialog(rf, "pump", PlcSource.ModbusRtu, "RS485", 9600, rtu, new() { ["unit"] = "1" }, Keep(("run", "10"), ("flow", "1")));
             // (3) PLC Modbus TCP Unit 1, cùng ngân hàng thanh ghi: run <- D11, flow <- D0 (nhiệt độ x10)
@@ -74,7 +76,23 @@ public sealed partial class MainForm
             await Task.Delay(1500);
             var doTxt = File.Exists(doFile) ? File.ReadAllText(doFile).Trim() : "";
             Check("ghi DO1=1 → do.txt = 1 và đọc lại run=1", err == null && doTxt == "1" && V(await St(), $"{io}.run") == 1, $"err={err} do.txt={doTxt}");
-            await rf.WriteAsync(io, "run", 0);
+            // bảo vệ tiếp điểm: MinToggleMs 1500 lưu lên board; đổi lại ngay bị firmware từ chối, gửi lại đúng trạng thái thì được, đủ 1,5 s thì được
+            var runCfg = (await c.ConfigAsync()).Config.Pack.FirstOrDefault(p => p.Child == io && p.Field == "run");
+            Check("thời gian tối thiểu bật/tắt (1,5 s) đã lưu lên board", runCfg?.MinToggleMs == 1500, $"{runCfg?.MinToggleMs}");
+            Check("bản tin config gửi cloud có toggleMs=1500", (await c.ConfigAsync()).Config.Pack.Count > 0 && System.Text.Encoding.UTF8.GetString(ConfigBuilder.Build(rf.Config)).Contains("\"toggleMs\":1500"));
+            // mốc tính từ lần ĐỔI trạng thái gần nhất (gửi lại cùng giá trị không lùi mốc): đợi qua 1,5 s rồi tắt → bật lại ngay phải bị chặn
+            await Task.Delay(1600);
+            err = await rf.WriteAsync(io, "run", 0);
+            Check("đủ 1,5 s sau lần bật → tắt DO1 được", err == null, err ?? "");
+            err = await rf.WriteAsync(io, "run", 0);
+            Check("gửi lại DO1=0 (không đổi trạng thái) → được", err == null, err ?? "");
+            err = await rf.WriteAsync(io, "run", 1);
+            await Task.Delay(500);
+            Check("bật lại DO1 ngay sau khi tắt → firmware từ chối (toggle_too_fast), DO vẫn tắt", err != null && (err.Contains("tối thiểu") || err.Contains("toggle_too_fast")) && File.ReadAllText(doFile).Trim() == "0", $"err={err} do.txt={File.ReadAllText(doFile).Trim()}");
+            await Task.Delay(1200);
+            err = await rf.WriteAsync(io, "run", 1);
+            await Task.Delay(800);
+            Check("đủ 1,5 s → bật lại DO1 được", err == null && File.ReadAllText(doFile).Trim() == "1", $"err={err} do.txt={File.ReadAllText(doFile).Trim()}");
 
             double a = double.NaN;
             Check("RS485 unit 1 đọc được (bộ đếm)", await Wait(v => !double.IsNaN(a = V(v, $"{rs}.flow"))), $"{a}");
@@ -137,6 +155,18 @@ public sealed partial class MainForm
             Check("FC03 D22 (DO3) = 1", W(await Mb(host, mbs, 0, 3, 0, 22, 0, 1)) == 1);
             await Mb(host, mbs, 0, 6, 0, 22, 0, 0);
             Check("FC06 ghi D22 = 0 → DO3 tắt", W(await Mb(host, mbs, 0, 3, 0, 22, 0, 1)) == 0);
+            // bảo vệ tiếp điểm qua lease: PC gửi DoMinMs (DO4 = 1 s) → ghi coil DO4 đổi trạng thái quá nhanh bị từ chối bằng ngoại lệ 6 (Slave Device Busy)
+            await c.LeaseAsync(true, 8, new[] { 0, 0, 0, 1000, 0, 0, 0, 0 });
+            var on4 = await Mb(host, mbs, 0, 5, 0, 3, 0xFF, 0);
+            var off4 = await Mb(host, mbs, 0, 5, 0, 3, 0, 0);
+            Check("lease DoMinMs: bật coil DO4 rồi tắt ngay → ngoại lệ 6, DO4 vẫn bật",
+                on4 is { Length: 5 } && off4 is { Length: 2 } && off4[0] == 0x85 && off4[1] == 6 && W(await Mb(host, mbs, 0, 3, 0, 23, 0, 1)) == 1, off4 == null ? "null" : BitConverter.ToString(off4));
+            var fc16 = await Mb(host, mbs, 0, 16, 0, 1, 0, 1, 2, 0, 0);   // D1 = 0: tắt cả 8 DO trong một lệnh → bị từ chối nguyên khối
+            Check("FC16 ghi D1=0 (gồm DO4) quá sớm → từ chối nguyên khối", fc16 is { Length: 2 } && fc16[0] == 0x90 && fc16[1] == 6 && W(await Mb(host, mbs, 0, 3, 0, 23, 0, 1)) == 1);
+            await Task.Delay(1100);
+            Check("đủ 1 s → tắt coil DO4 được", await Mb(host, mbs, 0, 5, 0, 3, 0, 0) is { Length: 5 } && W(await Mb(host, mbs, 0, 3, 0, 23, 0, 1)) == 0);
+            Check("BoardLease.DoMinMs suy từ cấu hình (D20..D27, Unit 0, Modbus TCP)",
+                BoardLease.DoMinMs(new ScadaConfig { Pack = new() { new PackMap { Child = "x", Field = "on", Address = 22, Protocol = "ModbusTcp", MinToggleMs = 700, Params = new() { ["unit"] = "0" } } } })[2] == 700);
             Check("Modbus TCP Unit 0: ghi DI (D10) bị từ chối", (await Mb(host, mbs, 0, 6, 0, 10, 0, 1)) is { Length: 2 } e5 && e5[0] == 0x86);
             Check("coil với Unit ≠ 0 → illegal function", (await Mb(host, mbs, 1, 1, 0, 0, 0, 1)) is { Length: 2 } e6 && e6[1] == 1);
             await Mb(host, mbs, 1, 6, 0, 10, 0, 7);

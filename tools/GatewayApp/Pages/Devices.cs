@@ -151,6 +151,15 @@ sealed class DeviceDialog : Form
         if (_edit == null) PickTemplate(_tpl, true);   // vào / ra chế độ Digital I/O: dựng lại các dòng field theo chân hoặc thanh ghi
     }
     bool HwOn => _tpl.Wire && _edit == null && DioSel;
+    // ----- Đầu ra số (DO / relay / công tắc): thời gian tối thiểu giữa hai lần đổi trạng thái — bảo vệ tiếp điểm. Áp cho mọi field công tắc GHI được của thiết bị.
+    readonly NumericUpDown _toggleSec = new() { Minimum = 0, Maximum = 3600, DecimalPlaces = 1, Increment = 0.5m, Value = 0 };
+    readonly FlowLayoutPanel _rowGuard = new() { AutoSize = true, Dock = DockStyle.Top, BackColor = Theme.Bg, WrapContents = true, Margin = new Padding(0), Visible = false };
+    readonly Label _toggleNote = new()
+    {
+        ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Width = 460, Height = 52, Margin = new Padding(0, 4, 0, 0),
+        Text = "Đổi trạng thái (bật↔tắt) sớm hơn khoảng này bị từ chối ở mọi nơi: webapp, script/API, màn hình gateway và firmware board. " +
+               "Gửi lại đúng trạng thái đang có thì không bị chặn. 0 = không giới hạn. Relay thường: 1–2 giây; máy nén/động cơ: vài phút.",
+    };
     readonly Label _wNote = new() { ForeColor = Theme.Accent, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 38, Visible = false };
     FlowLayoutPanel _rowProto = null!;
     bool _wBusy; string _autoTitle = "";
@@ -251,6 +260,7 @@ sealed class DeviceDialog : Form
         Skin.Input(_wDi); Skin.Input(_wDo);
         _wDiBox = Field("Chân DI phản hồi / cảm biến (tuỳ chọn)", _wDi, 300); _wDoBox = Field("Chân DO điều khiển (tuỳ chọn)", _wDo, 300);
         _wire.Controls.Add(_wDoBox); _wire.Controls.Add(_wDiBox);
+        _rowGuard.Controls.Add(Field("Tối thiểu giữa 2 lần bật/tắt (giây)", _toggleSec, 250)); _rowGuard.Controls.Add(_toggleNote);
         _wDi.SelectedIndexChanged += (_, _) => { if (!_wBusy) { UpdateWireUi(); ApplyWire(); } };
         _wDo.SelectedIndexChanged += (_, _) => { if (!_wBusy) { UpdateWireUi(); ApplyWire(); } };
         BuildGrid();
@@ -276,7 +286,7 @@ sealed class DeviceDialog : Form
         }
 
         right.Controls.Add(_g); right.Controls.Add(_err); right.Controls.Add(buttons); right.Controls.Add(hint); right.Controls.Add(_addrHint);
-        right.Controls.Add(_rowParam); right.Controls.Add(_rowConn); right.Controls.Add(rowProto); right.Controls.Add(_wNote); right.Controls.Add(_wire); right.Controls.Add(top); right.Controls.Add(rh);
+        right.Controls.Add(_rowParam); right.Controls.Add(_rowConn); right.Controls.Add(rowProto); right.Controls.Add(_rowGuard); right.Controls.Add(_wNote); right.Controls.Add(_wire); right.Controls.Add(top); right.Controls.Add(rh);
 
         // ----- phải: xem trước thẻ đúng như trên Tổng quan, cập nhật khi đổi bất kỳ thông tin hiển thị nào
         var prev = new Panel { Dock = DockStyle.Right, Width = 404, Padding = new Padding(6, 12, 14, 8), BackColor = Theme.Bg };
@@ -325,12 +335,16 @@ sealed class DeviceDialog : Form
             _pa.Sample[UiMetaStore.Key(child, f)] = rs.Kind == "toggle" ? 1 : (rs.Min + rs.Max) / 2;
         }
         _pa.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id, Icon = IconValue(), Color = DeviceStyle.ColorKeys[Math.Max(0, _color.SelectedIndex)] });
+        _rowGuard.Visible = fields.Any(p => IsOutput(p, _pa.Meta.Get(child, p.Field)));   // chỉ thiết bị có đầu ra số (công tắc ghi được) mới có ô này
         foreach (var old in _prevHost.Controls.OfType<DeviceCard>().ToList()) { _prevHost.Controls.Remove(old); old.Dispose(); }
         if (fields.Count == 0) return;
         var card = new DeviceCard(child, fields, _pa, _ => { }, null) { Location = new Point(0, 4) };
         card.Tick(_pa);
         _prevHost.Controls.Add(card);
     }
+
+    /// <summary>Đầu ra số: field ghi được, hiển thị dạng công tắc (DO board, coil, relay của PLC…).</summary>
+    static bool IsOutput(PackMap p, FieldMeta? m) => p.Access != PackAccess.Read && FieldMeta.ResolveFull(p, m).Kind == "toggle";
 
     static Control Field(string label, Control c, int width)
     {
@@ -574,6 +588,8 @@ sealed class DeviceDialog : Form
         SelectSource(first.Source ?? _app.Config.Source);
         RebuildBind(null, first.IsBound ? first.Params : null);
         _swap.SelectedIndex = first.WordSwap ? 1 : 0;
+        var mt = _app.Config.Pack.Where(x => x.Child == child).Select(x => x.MinToggleMs).DefaultIfEmpty(0).Max();
+        _toggleSec.Value = Math.Clamp(mt / 1000m, _toggleSec.Minimum, _toggleSec.Maximum);
         foreach (var p in _app.Config.Pack.Where(x => x.Child == child))
         {
             var m = _app.Meta.Get(child, p.Field);
@@ -687,6 +703,8 @@ sealed class DeviceDialog : Form
                 },
                 new FieldMeta { Kind = FieldMeta.Kinds[Math.Max(0, ki)], Unit = Cell(r, ColUnit), Title = Cell(r, ColTitle), OnText = Cell(r, ColOn), OffText = Cell(r, ColOff), Low = lo, High = hi, Feedback = fb }));
         }
+        var toggleMs = (int)Math.Round(_toggleSec.Value * 1000m);
+        foreach (var (p, m) in packs) p.MinToggleMs = IsOutput(p, m) ? toggleMs : 0;
         foreach (var (p, m) in packs)
             if (m.Feedback.Length > 0 && !packs.Any(x => x.Item1.Field == m.Feedback)) { _err.Text = $"Field phản hồi \"{m.Feedback}\" của \"{p.Field}\" không có trong thiết bị này."; return; }
 

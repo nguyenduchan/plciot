@@ -41,6 +41,19 @@ public sealed class BoardLease : IDisposable
         return _cfg().Connections.Where(c => c.Protocol == PlcSource.ModbusTcp && c.Host.Length > 0 && trusted.Contains(c.Host.Trim()) && !TrustedBoards.IsStandalone(c.Host.Trim())).Select(c => c.Host.Trim()).Distinct().ToList();
     }
 
+    /// <summary>
+    /// Thời gian tối thiểu giữa hai lần đổi trạng thái DO1..DO8 của board (I/O board = Unit 0 qua Modbus TCP: D20..D27 / coil 0..7) theo các field đầu ra
+    /// đã khai báo (<see cref="PackMap.MinToggleMs"/>). Gửi kèm mỗi nhịp lease: firmware chặn lần cuối, kể cả khi lệnh Modbus không qua lõi gateway.
+    /// </summary>
+    public static int[] DoMinMs(ScadaConfig cfg)
+    {
+        var r = new int[8];
+        foreach (var p in cfg.Pack.Where(p => p.Source == PlcSource.ModbusTcp && p.Param("unit") == "0" && p.Access != PackAccess.Read && p.MinToggleMs > 0))
+            if (p.Address is >= 20 and <= 27) r[p.Address - 20] = Math.Max(r[p.Address - 20], p.MinToggleMs);
+            else if (p.Address == 1) for (var i = 0; i < 8; i++) r[i] = Math.Max(r[i], p.MinToggleMs);   // D1 = cả 8 DO
+        return r;
+    }
+
     public async Task TickAsync()
     {
         var want = Targets();
@@ -54,7 +67,7 @@ public sealed class BoardLease : IDisposable
                     (c, _) = await RemoteClient.ConnectMcuAsync(h, ApiPort, _id, _ => false);   // không hỏi người dùng: chỉ board đã tin cậy
                     _clients[h] = c;
                 }
-                var r = await c.LeaseAsync(true, TtlSec);
+                var r = await c.LeaseAsync(true, TtlSec, DoMinMs(_cfg()));
                 Status[h] = r.Mode == "gateway" ? "gateway" : "độc lập";
             }
             catch (RemoteException e)

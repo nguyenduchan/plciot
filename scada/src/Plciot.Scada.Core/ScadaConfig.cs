@@ -68,6 +68,12 @@ public sealed class PackMap
     public string Group { get; set; } = "";
     /// <summary>false = thiết bị tạm dừng: gateway không đọc, không ghi, không gửi dữ liệu của field này (cấu hình vẫn giữ). Đặt chung cho mọi field của một thiết bị.</summary>
     public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Đầu ra số (DO / relay / công tắc): thời gian TỐI THIỂU (ms) giữa hai lần ĐỔI trạng thái — bảo vệ tiếp điểm relay, máy nén… khỏi bị bật/tắt dồn dập.
+    /// 0 = không giới hạn. Gửi lên cloud trong bản tin config (<c>toggleMs</c>) để webapp/server chặn trước; gateway (<see cref="ToggleGuard"/>)
+    /// và firmware board Waveshare (DO trên board) tự chặn lần cuối — không tin hoàn toàn vào cloud hay script.
+    /// </summary>
+    public int MinToggleMs { get; set; }
 
     /// <summary>Khoá thực sự đi trên MQTT.</summary>
     [JsonIgnore] public string WireKey => string.IsNullOrWhiteSpace(MqttKey) ? Field : MqttKey.Trim();

@@ -59,7 +59,7 @@ Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PAR
 | `<base>/status` | gw → app | `online` / `plc_fault` / `offline` (LWT) | có |
 | `<base>/cmd` | app → gw | `{"schema":1,"id":"x","a":4,"v":5}` ghi D4 = 5 (chỉ user `ctl`) | không |
 | `<base>/alert` | gw → app | `{"schema":1,"k":"tank1.level","lv":"high","v":95.2,"txt":"Bồn nước: Mức nước vượt ngưỡng cao (95.2 %)","ts":…}` — cảnh báo ngưỡng low/high do **gateway tự tính** (`AlertEngine`, báo khi chuyển trạng thái, tối thiểu 5 phút giữa hai lần cùng mức); server chỉ lưu vào DB và chuyển tiếp Web Push tới đúng tài khoản của gateway | không |
-| `<base>/ack` | gw → app | `{"id":"x","ok":true}` | không |
+| `<base>/ack` | gw → app | `{"id":"x","ok":true}`; từ chối: `{"id":"x","ok":false,"err":"…"}` — `toggle_too_fast` (đầu ra số đổi trạng thái sớm hơn `toggleMs`) kèm `"waitMs"` = số ms còn phải chờ (gateway C#; firmware board chỉ trả `err`) | không |
 | `<base>/cmd` (đọc) | app → gw | `{"id":"x","op":"read","a":100,"n":4}` → ack `{"id":"x","ok":true,"a":100,"v":[..4 số..]}` | không |
 
 Tài khoản `gw` / `edge` (thiết bị) và user app được phân quyền riêng trong `cloud/config/acl`:
@@ -100,6 +100,8 @@ Telemetry vẫn là `<base>/telemetry`: `{"schema":2,"ts":…,"data":{"bien_ap_0
 - `id` `[A-Za-z0-9_-]{1,48}`, `key` `[A-Za-z0-9_]{1,32}`; tối đa 64 thiết bị × 32 field, 16 KB (khớp `max_packet_size` của broker) (`POLICY_MAX_CONFIG_BYTES`).
 - Config trùng bản cũ (hash) → bỏ qua; thiết bị `dynamic` vắng trong config mới → gỡ khỏi dashboard. Thiết bị gắn bằng QR giữ nguyên.
 - Topic `config` được ghi bởi `gw`/`edge`/thiết bị, đọc bởi ingest và user có scope `telemetry`.
+- **`toggleMs`** (field ghi được, thường `switch`): thời gian tối thiểu (ms, 1…3 600 000) giữa hai lần **đổi** trạng thái — bảo vệ tiếp điểm relay / máy nén. Nguồn: `PackMap.MinToggleMs` (GatewayApp: ô *Tối thiểu giữa 2 lần bật/tắt* khi thêm thiết bị). Chỉ lần ĐỔI giá trị mới tính; gửi lại đúng trạng thái đang có luôn được.
+  Chặn ở 4 lớp: webapp (nút khoá + đếm ngược), server `/api/control/cmd` → **429** `{"error":"toggle_too_fast","waitMs","toggleMs"}` + `Retry-After` (bộ nhớ trong tiến trình, `cloud/app/src/toggleGuard.js`), gateway C# `ToggleGuard` (mọi nguồn lệnh: màn hình, màn hình phụ, cloud, MQTT LAN) và firmware board (mọi đường ghi DO). Server sanitize: bỏ nếu field không `writable` hoặc ≤ 0.
 
 ## Lệnh cloud có chữ ký, mật khẩu cục bộ, đổi PC
 

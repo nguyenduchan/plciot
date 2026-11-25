@@ -45,6 +45,8 @@ public static class ConfigBuilder
         [JsonPropertyName("low"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Low { get; set; }
         [JsonPropertyName("high"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? High { get; set; }
         [JsonPropertyName("fb"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Fb { get; set; }
+        /// <summary>Đầu ra số: ms tối thiểu giữa hai lần đổi trạng thái (PackMap.MinToggleMs) — server chặn lệnh, webapp đếm ngược.</summary>
+        [JsonPropertyName("toggleMs"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? ToggleMs { get; set; }
     }
 
     sealed class DeviceDto
@@ -88,6 +90,7 @@ public static class ConfigBuilder
                     On = string.IsNullOrEmpty(v?.On) ? null : v!.On, Off = string.IsNullOrEmpty(v?.Off) ? null : v!.Off,
                     Low = v?.Low, High = v?.High,
                     Fb = writable && !string.IsNullOrEmpty(v?.Fb) ? v!.Fb : null,
+                    ToggleMs = writable && p.MinToggleMs > 0 ? p.MinToggleMs : null,
                 });
             }
             list.Add(dev);

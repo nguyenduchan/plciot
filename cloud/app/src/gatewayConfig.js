@@ -78,6 +78,9 @@ export function sanitizeConfig(payload) {
       if (f.writable === true) out.writable = true;
       // fb = khoá field ĐẦU VÀO của cùng thiết bị (DI nối cảm biến/tiếp điểm relay) phản ánh trạng thái thật của tải đang điều khiển.
       if (out.writable && f.fb) { const fb = clip(f.fb, 32); if (KEY.test(fb) && fb !== key) out.fb = fb; }
+      // toggleMs = đầu ra số: ms tối thiểu giữa hai lần đổi trạng thái (bảo vệ tiếp điểm relay); server chặn lệnh, webapp đếm ngược.
+      const tms = num(f.toggleMs);
+      if (out.writable && tms !== undefined && tms > 0) out.toggleMs = Math.min(3_600_000, Math.round(tms));
       if (f.on) out.on = clip(f.on, 24);
       if (f.off) out.off = clip(f.off, 24);
       const low = num(f.low); const high = num(f.high);

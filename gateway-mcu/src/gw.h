@@ -34,6 +34,7 @@ struct Field {
   bool hasMin = false, hasMax = false; double min = 0, max = 0;
   Proto proto = Proto::None; Access access = Access::ReadWrite; DType type = DType::UInt16;
   bool swap = false, enabled = true; int unit = 1;
+  uint32_t minToggleMs = 0;          // đầu ra số: ms tối thiểu giữa hai lần ĐỔI trạng thái (PackMap.MinToggleMs), 0 = không giới hạn
   int words() const { return type == DType::Float64 ? 4 : (type == DType::UInt32 || type == DType::Int32 || type == DType::Float32) ? 2 : 1; }
   bool localIo() const { return proto == Proto::ModbusRtu && unit == 0; }
 };
@@ -128,6 +129,11 @@ uint32_t ioDiCount(int ch);                      // số lần chuyển 0→1 (c
 void ioDiCountSet(int ch, uint32_t v);           // đặt lại bộ đếm
 uint8_t ioDo();
 bool ioSetDo(uint8_t mask);
+// Bảo vệ tiếp điểm relay: thời gian tối thiểu giữa hai lần ĐỔI trạng thái của từng DO. Nguồn: cấu hình board (field Unit 0 có MinToggleMs)
+// và PC đang giữ lease (DoMinMs gửi kèm nhịp tim); lấy giá trị LỚN hơn. Chặn mọi đường ghi DO: engine/cloud, API LAN, Modbus TCP slave.
+void ioDoMinCfg(const uint32_t* ms8);           // từ cấu hình board (storeApply)
+void ioDoMinLease(const uint32_t* ms8);         // từ PC giữ lease (chỉ hiệu lực khi lease còn)
+uint32_t ioDoWaitMs(uint8_t mask);              // ms còn phải chờ trước khi được đặt DO = mask (0 = được ngay)
 void ioLed(uint8_t r, uint8_t g, uint8_t b);
 void ioBeep(int ms);
 void ioLoop();                                   // nút BOOT

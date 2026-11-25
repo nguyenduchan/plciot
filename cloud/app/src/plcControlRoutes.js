@@ -16,6 +16,7 @@ import { controlConfigFor } from './profiles.js';
 import { resolveDeviceForUser } from './tenants.js';
 import { isGatewayLocked } from './hwBlock.js';
 import { mayRemoteControl, planWidgetLimit, planDeviceLimit, takeRpcBudget } from './entitlements.js';
+import { toggleWaitMs, toggleRecord } from './toggleGuard.js';
 
 /** @param security giá trị trả về của mountSecurityRoutes(): { authorize, stationAuth, stationLimit, ... } */
 export function mountPlcControl(app, { db, requireAuth, security }) {
@@ -39,9 +40,21 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     return { mqttId: dev?.mqtt_id };   // topic gw/<mqttId>/cmd: id ngẫu nhiên của gateway (thiếu = gateway chưa đăng ký)
   }
 
-  async function dispatch(user, cmd, via, ip) {
+  /** Đầu ra số có toggleMs: đổi trạng thái sớm hơn khoảng tối thiểu → trả { waitMs } (chưa phát lệnh). */
+  const guardArgs = (user, cmd, toggleMs) => ({ site: user.notify_site, device: user.notify_device, child: cmd.child, key: cmd.key, v: cmd.v, toggleMs });
+  function tooFast(res, user, cmd, toggleMs) {
+    if (!toggleMs || cmd.key == null) return false;
+    const waitMs = toggleWaitMs(guardArgs(user, cmd, toggleMs));
+    if (!waitMs) return false;
+    res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+    out(res, 429, { error: 'toggle_too_fast', waitMs, toggleMs });
+    return true;
+  }
+
+  async function dispatch(user, cmd, via, ip, toggleMs = 0) {
     const t0 = Date.now();
     await publishCmd(user.notify_site, user.notify_device, cmd, publishOpts(user));
+    if (toggleMs && cmd.key != null) toggleRecord(guardArgs(user, cmd, toggleMs));
     const ms = Date.now() - t0;
     if (ms > 50) console.warn(`[ctl] publish chậm ${ms} ms id=${cmd.id}`);
     // ghi audit SAU khi lệnh đã đi (không nằm trên đường trễ của lệnh)
@@ -76,6 +89,8 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
       ? validateChildCmd(req.body, limited.filter((_, i) => !gwSel || (rows[i].site === tu.notify_site && rows[i].gatewayDevice === tu.notify_device)))
       : validateCmd(req.body, cfg);
     if (v.error) return out(res, 400, v);
+    // bảo vệ tiếp điểm: kiểm trước bước xác thực để không bắt người dùng xác nhận một lệnh chắc chắn bị từ chối
+    if (v.write && tooFast(res, tu, v.cmd, v.toggleMs)) return;
     const ip = clientIp(req);
     let via = 'read';
     if (v.write) {
@@ -122,14 +137,16 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
         pendingConfirm.set(id, {
           userId: req.user.id, site: tu.notify_site, device: tu.notify_device,
           cmd: v.cmd, via, sessionId: req.tokenPayload?.sid, controlToken: String(req.headers['x-control-token'] || ''),
-          bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs,
+          bit: cfg.physicalBit, since: Date.now(), expires: Date.now() + cfg.physicalWaitMs, toggleMs: v.toggleMs,
         });
         audit(db, 'control_pending_physical', { userId: req.user.id, ip, detail: `a=${v.cmd.a}` });
         return out(res, 202, { pending: true, confirmId: id, bit: cfg.physicalBit, expiresIn: cfg.physicalWaitMs / 1000, id: v.cmd.id });
       }
     }
+    // kiểm lại ngay trước khi phát: hai lệnh song song cùng qua bước kiểm đầu (xác thực xen giữa)
+    if (v.write && tooFast(res, tu, v.cmd, v.toggleMs)) return;
     try {
-      await dispatch(tu, v.cmd, via, ip);
+      await dispatch(tu, v.cmd, via, ip, v.toggleMs);
     } catch (e) {
       return out(res, 503, { error: 'mqtt_unavailable' });
     }
@@ -159,8 +176,9 @@ export function mountPlcControl(app, { db, requireAuth, security }) {
     }
     if (!edgeSince(p.site, p.device, p.bit, p.since)) return res.json({ waiting: true, bit: p.bit });
     pendingConfirm.delete(req.params.id);
+    if (tooFast(res, { notify_site: p.site, notify_device: p.device }, p.cmd, p.toggleMs)) return;
     try {
-      await dispatch({ ...req.user, notify_site: p.site, notify_device: p.device }, p.cmd, `${p.via}+button`, clientIp(req));
+      await dispatch({ ...req.user, notify_site: p.site, notify_device: p.device }, p.cmd, `${p.via}+button`, clientIp(req), p.toggleMs);
     } catch {
       return out(res, 503, { error: 'mqtt_unavailable' });
     }

@@ -111,7 +111,11 @@ public sealed partial class MainForm : Form, IGatewayApp
         if (ack == null) return null;            // chế độ gateway ESP32: ack đến sau
         using var d = JsonDocument.Parse(ack);
         if (d.RootElement.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True) return null;
-        return d.RootElement.TryGetProperty("err", out var e2) ? e2.GetString() : "lỗi";
+        var err = d.RootElement.TryGetProperty("err", out var e2) ? e2.GetString() : "lỗi";
+        // bảo vệ tiếp điểm relay: đổi trạng thái sớm hơn thời gian tối thiểu đã đặt cho đầu ra này
+        if (err == "toggle_too_fast" && d.RootElement.TryGetProperty("waitMs", out var wm) && wm.TryGetInt32(out var ms))
+            return $"vừa đổi trạng thái — chờ thêm {Math.Ceiling(ms / 1000.0):0} giây (tối thiểu giữa 2 lần bật/tắt, bảo vệ tiếp điểm)";
+        return err;
     }
 
     public async Task<string?> SetDeviceEnabledAsync(string child, bool enabled)

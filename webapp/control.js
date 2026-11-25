@@ -14,6 +14,7 @@
     value_out_of_range: 'Giá trị ngoài khoảng cho phép.',
     enroll_required: 'Điều khiển đang bị khoá: hãy bật vân tay / Face ID hoặc Authenticator trong tab Điều khiển.',
     confirm_expired: 'Hết thời gian chờ nút xác nhận tại xưởng.',
+    toggle_too_fast: 'Bật/tắt quá nhanh: chờ đủ thời gian tối thiểu giữa hai lần đổi trạng thái.',
   });
 
   function waitPhysical(info) {
@@ -72,7 +73,8 @@
       if (r.status === 202 && r.body.pending) return waitPhysical(r.body);
       if (r.status === 401) return { error: 'session_expired' };
       // subscription_denied kèm lý do (chưa kích hoạt gói, gói chỉ giám sát…) → mã riêng để báo đúng nguyên nhân
-      return r.ok ? { ok: true, id: r.body.id } : { error: (r.body.error === 'subscription_denied' && r.body.reason) ? `sub_${r.body.reason}` : (r.body.error || 'error'), status: r.status };
+      // toggle_too_fast kèm waitMs: còn bao lâu nữa mới được đổi trạng thái (nút hiện đếm ngược)
+      return r.ok ? { ok: true, id: r.body.id } : { error: (r.body.error === 'subscription_denied' && r.body.reason) ? `sub_${r.body.reason}` : (r.body.error || 'error'), status: r.status, waitMs: r.body.waitMs };
     }
     return { error: 'cancelled' };
   }

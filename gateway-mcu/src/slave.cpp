@@ -25,6 +25,7 @@ uint8_t exCode(const String& e) {
   if (e == "illegal_value" || e == "bad_range") return 3;
   if (e == "timeout" || e == "short_frame" || e == "bad_crc" || e == "wrong_unit" || e == "bad_frame" || e == "connect_failed") return 0x0B;   // thiết bị sau board không trả lời
   if (e == "no_rtu_connection") return 0x0A;
+  if (e == "toggle_too_fast") return 6;   // Slave Device Busy: DO vừa đổi trạng thái, chưa đủ thời gian tối thiểu
   return 4;
 }
 

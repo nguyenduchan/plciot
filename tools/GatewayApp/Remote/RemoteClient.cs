@@ -108,7 +108,10 @@ public sealed class RemoteClient : IDisposable
     public Task<ApiResult> RunAsync(bool run) => SendAsync<ApiResult>(HttpMethod.Post, "api/run", new ApiRun { Run = run }, longOp: true);
     public Task<ApiResult> DeviceAsync(string child, bool enabled) => SendAsync<ApiResult>(HttpMethod.Post, "api/device", new ApiDevice { Child = child, Enabled = enabled });
     /// <summary>Board MCU: xin / gia hạn lease chế độ gateway (board dừng MQTTS, mở Modbus TCP slave cho IP của PC này) hoặc trả lease. Lỗi lease_held = PC khác đang giữ.</summary>
-    public Task<ApiLease> LeaseAsync(bool acquire, int ttlSec = 15) => SendAsync<ApiLease>(HttpMethod.Post, "api/lease", new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec });
+    /// <param name="doMinMs">8 số: ms tối thiểu giữa hai lần đổi trạng thái DO1..DO8 của board theo cấu hình gateway PC (firmware chặn ghi Modbus quá nhanh); null = không gửi.</param>
+    public Task<ApiLease> LeaseAsync(bool acquire, int ttlSec = 15, int[]? doMinMs = null) =>
+        SendAsync<ApiLease>(HttpMethod.Post, "api/lease", doMinMs == null ? new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec }
+            : new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec, DoMinMs = doMinMs });
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
     public Task<ApiNetwork> NetworkAsync() => SendAsync<ApiNetwork>(HttpMethod.Get, "api/network", null);
     /// <summary>Board MCU: quét Wi-Fi (~3–5 giây). Trả mạng đã bỏ trùng SSID, mỗi mạng một dòng.</summary>
@@ -219,6 +222,7 @@ public sealed class RemoteClient : IDisposable
         "ota_incomplete" => "Đứt kết nối giữa chừng — board giữ nguyên firmware cũ. Thử lại.",
         "ota_unsupported" => "Thiết bị này không hỗ trợ cập nhật firmware qua mạng.",
         "bad_json" => "Thiết bị trả dữ liệu không đúng định dạng (phiên bản không khớp?).",
+        "toggle_too_fast" => "Đầu ra vừa đổi trạng thái — chưa đủ thời gian tối thiểu giữa 2 lần bật/tắt (bảo vệ tiếp điểm relay). Đợi rồi thử lại.",
         _ => "Thiết bị báo lỗi: " + r.Code,
     } : e.Message;
 

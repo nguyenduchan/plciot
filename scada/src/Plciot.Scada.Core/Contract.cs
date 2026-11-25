@@ -81,12 +81,14 @@ public static class CommandPolicy
         }
     }
 
-    public static string AckJson(string? id, bool ok, string? err = null, int? a = null, IEnumerable<ushort>? values = null)
+    /// <param name="waitMs">lỗi <c>toggle_too_fast</c>: còn bao nhiêu ms nữa mới được đổi trạng thái (webapp hiện đếm ngược).</param>
+    public static string AckJson(string? id, bool ok, string? err = null, int? a = null, IEnumerable<ushort>? values = null, int? waitMs = null)
     {
         var o = new Dictionary<string, object?> { ["id"] = id, ["ok"] = ok };
         if (a != null) o["a"] = a;
         if (values != null) o["v"] = values.ToArray();
         if (err != null) o["err"] = err;
+        if (waitMs != null) o["waitMs"] = waitMs;
         return JsonSerializer.Serialize(o);
     }
 }
