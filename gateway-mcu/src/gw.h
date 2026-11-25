@@ -35,6 +35,7 @@ struct Field {
   Proto proto = Proto::None; Access access = Access::ReadWrite; DType type = DType::UInt16;
   bool swap = false, enabled = true; int unit = 1;
   uint32_t minToggleMs = 0;          // đầu ra số: ms tối thiểu giữa hai lần ĐỔI trạng thái (PackMap.MinToggleMs), 0 = không giới hạn
+  uint32_t lossOffSec = 0;           // DO board: mất người điều khiển quá ngần này giây → tự TẮT (PackMap.LossOffSec), 0 = giữ nguyên
   int words() const { return type == DType::Float64 ? 4 : (type == DType::UInt32 || type == DType::Int32 || type == DType::Float32) ? 2 : 1; }
   bool localIo() const { return proto == Proto::ModbusRtu && unit == 0; }
 };
@@ -141,6 +142,7 @@ bool ioDoOk();                                   // TCA9554 đang trả lời v�
 void ioDoMinCfg(const uint32_t* ms8);           // từ cấu hình board (storeApply)
 void ioDoMinLease(const uint32_t* ms8);         // từ PC giữ lease (chỉ hiệu lực khi lease còn)
 uint32_t ioDoWaitMs(uint8_t mask);              // ms còn phải chờ trước khi được đặt DO = mask (0 = được ngay)
+uint32_t ioDoLastChange(int ch);                // millis lần đổi trạng thái gần nhất của DO ch (0..7); 0 = chưa đổi lần nào
 void ioLed(uint8_t r, uint8_t g, uint8_t b);
 void ioBeep(int ms);
 void ioLoop();                                   // nút BOOT
@@ -171,6 +173,8 @@ void engineRestart();                            // cấu hình đổi: bỏ gi�
 String engineWrite(const String& child, const String& key, double v, bool byWire);   // "" = ok, còn lại mã lỗi (read_only, value_out_of_range…)
 void engineValues(JsonObject out);               // "child.field" → số (cho GET /api/state)
 String engineTelemetry();                        // {"schema":2,"d":{child:{khoá:số}}}; rỗng = chưa có giá trị
+void engineAges(JsonObject out);                 // "child.field" → ms từ lần đọc được gần nhất (field chưa đọc được lần nào: không có)
+int32_t engineAgeMs(const String& key);          // -1 = chưa từng đọc được (logic dùng: tuổi quá lớn → coi như mất cảm biến)
 uint32_t engineSeq();                            // tăng mỗi chu kỳ đọc xong
 
 // ---------------------------------------------------------------- alert.cpp: cảnh báo ngưỡng tính tại gateway (AlertEngine.cs)
@@ -200,6 +204,17 @@ bool cloudAction(const String& action, const String& api, const String& value, S
 bool cloudOwnsBoard(const String& webToken, String& why);
 bool timeSynced();
 int64_t nowMs();
+
+// ---------------------------------------------------------------- safety.cpp: chế độ an toàn + tắt DO khi mất người điều khiển
+// Chế độ AN TOÀN: khởi động lại bất thường (panic / watchdog / sụt áp) ≥ 3 lần liền, mỗi lần chạy chưa đủ 2 phút → DO giữ TẮT,
+//   mọi lệnh BẬT bị từ chối ("safe_mode") cho tới khi chạy ổn định 30 phút (hoặc tắt nguồn bật lại — power_on xoá bộ đếm).
+// Mất người điều khiển: xem Field::lossOffSec. "Người điều khiển" = MQTT cloud (chạy độc lập, cloud bật) hoặc PC giữ lease.
+void safetyBegin();                              // sau wdtBegin (cần bootReason), trước ioBegin
+bool safeMode();
+uint32_t safetyBootFails();                      // số lần khởi động lại bất thường liên tiếp (gồm lần này)
+void safetyLossCfg(const uint32_t* sec8);        // từ cấu hình (storeApply)
+void safetyLink(bool cloudExpected, bool lease, bool cloudUp);   // loop(): cloud có bật không, PC đang giữ lease không, MQTT đang nối không
+void safetyTick();                               // task io (500 ms): bộ đếm khởi động, hết chế độ an toàn, tắt DO khi mất kết nối
 
 // ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó
 // Mỗi task gọi wdtFeed() mỗi vòng; quá hạn → ghi tên task vào NVS ("wdt") rồi khởi động lại (DO về TẮT ở ioBegin).

@@ -11,6 +11,7 @@ String g_status = "no_devices";
 
 namespace {
 std::map<String, double> s_values;   // "child.field" → giá trị
+std::map<String, uint32_t> s_lastOk; // "child.field" → millis lần đọc được gần nhất (giữ cả khi PLC đang lỗi → tính được tuổi)
 TaskHandle_t s_task = nullptr;
 std::atomic<uint32_t> s_seq{0};   // tăng ở luồng đọc, đọc ở loop() (cloud)
 
@@ -80,6 +81,8 @@ void pollOnce() {
     i = j + 1;
   }
   Lock l;
+  uint32_t now = millis();
+  for (auto& kv : next) s_lastOk[kv.first] = now;
   s_values.swap(next);
   g_status = okReads > 0 ? "online" : "plc_fault";   // một PLC lỗi (PLC khác vẫn đọc được) vẫn báo online; field của nó vắng khỏi gói
   (void)badReads;
@@ -100,7 +103,7 @@ void task(void*) {
 void engineBegin() { xTaskCreatePinnedToCore(task, "poll", 8192, nullptr, 1, &s_task, 1); }
 
 void engineRestart() {
-  { Lock l; s_values.clear(); }
+  { Lock l; s_values.clear(); s_lastOk.clear(); }
   modbusReconfigure();
   if (s_task) xTaskNotifyGive(s_task);
 }
@@ -127,7 +130,7 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   String err;
   bool ok;
   { BusLockIf bus(!f->localIo()); ok = mbWrite(*f, f->addr, w, n, err); }   // DO trên board: không chờ vòng đọc PLC
-  if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" ? err : "plc_error"; }
+  if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" || err == "safe_mode" ? err : "plc_error"; }
   logf("Điều khiển: %s.%s = %g → D%d", f->child.c_str(), f->field.c_str(), v, f->addr);
   if (s_task) xTaskNotifyGive(s_task);
   return "";
@@ -136,6 +139,18 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
 void engineValues(JsonObject out) {
   Lock l;
   for (auto& kv : s_values) out[kv.first] = kv.second;
+}
+
+void engineAges(JsonObject out) {
+  Lock l;
+  uint32_t now = millis();
+  for (auto& kv : s_lastOk) out[kv.first] = now - kv.second;
+}
+
+int32_t engineAgeMs(const String& key) {
+  Lock l;
+  auto it = s_lastOk.find(key);
+  return it == s_lastOk.end() ? -1 : (int32_t)min<uint32_t>(millis() - it->second, INT32_MAX);
 }
 
 String engineTelemetry() {

@@ -5,6 +5,7 @@
 
 void setup();
 void loop();
+bool ioSetDo(uint8_t mask);
 
 // --cryptotest <khoá server SPKI b64u> <mqttId> <file lệnh đã ký>: kiểm crypto.cpp THẬT với chữ ký của server (cmdSign.js),
 // và in khoá công khai + chữ ký "register|1|123" để kiểm ngược bằng Node. Dùng thư mục dữ liệu riêng (SIM_DATA) để không đụng khoá thật.
@@ -41,6 +42,10 @@ int main(int argc, char** argv) {
   printf("=== GATEWAY WAVESHARE — BẢN GIẢ LẬP TRÊN PC (không phải board) ===\n");
   printf("Dữ liệu: %s\\  ·  DI: sửa %s\\di.txt (vd. 0x05)  ·  RS485: SIM_COM=COMx  ·  Cổng API: SIM_API_PORT (đang %d)\n\n", simDataDir(), simDataDir(), simApiPort());
   setup();
+  if (const char* di = getenv("SIM_DO_INIT")) {   // thử nghiệm: bật sẵn DO sau khởi động (thử tắt khi mất kết nối / chế độ an toàn)
+    uint8_t m = (uint8_t)strtol(di, nullptr, 0);
+    printf("[sim] SIM_DO_INIT: đặt DO = 0x%02X → %s\n", m, ioSetDo(m) ? "ok" : "bị từ chối");
+  }
   for (;;) loop();
 }
 #endif  // GW_SIM

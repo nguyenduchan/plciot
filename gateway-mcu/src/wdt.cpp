@@ -68,7 +68,8 @@ void wdtBegin() {
 #ifndef GW_SIM
   s_boot = w.length() ? "wdt:" + w : String(resetName(esp_reset_reason()));
 #else
-  s_boot = w.length() ? "wdt:" + w : String("sim");
+  const char* sr = getenv("SIM_RESET");   // bản giả lập: giả lý do khởi động (vd. panic) để thử chế độ an toàn
+  s_boot = w.length() ? "wdt:" + w : String(sr && *sr ? sr : "sim");
 #endif
   logf("Lý do khởi động: %s", s_boot.c_str());
   xTaskCreatePinnedToCore(supervisor, "wdt", 4096, nullptr, 5, nullptr, 0);

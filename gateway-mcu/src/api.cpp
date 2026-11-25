@@ -197,6 +197,8 @@ void hState() {
   d["Mode"] = leaseActive() ? "gateway" : "standalone"; if (leaseActive()) d["LeaseHolder"] = leaseHolder().toString();
   d["Cloud"] = cloudStateName(); d["Rev"] = g_rev; d["Customer"] = true; d["Fingerprint"] = fingerprint();
   d["DoOk"] = ioDoOk(); d["TimeSource"] = timeSource(); d["BootReason"] = bootReason();   // độ tin cậy khi chạy độc lập (GatewayApp chưa hiện, bỏ qua trường lạ)
+  d["SafeMode"] = safeMode(); d["BootFails"] = safetyBootFails();
+  engineAges(d["AgeMs"].to<JsonObject>());
   engineValues(d["Values"].to<JsonObject>());
   String s; serializeJson(d, s); send(200, s);
 }

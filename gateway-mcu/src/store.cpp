@@ -150,6 +150,7 @@ void storeApply() {
     f.swap = p["WordSwap"] | false; f.enabled = p["Enabled"] | true;
     f.unit = String(p["Params"]["unit"] | "1").toInt();
     f.minToggleMs = constrain((long)(p["MinToggleMs"] | 0), 0L, 3600000L);
+    f.lossOffSec = constrain((long)(p["LossOffSec"] | 0), 0L, 86400L);
     n.pack.push_back(f);
   }
   g_cfg = n;
@@ -160,6 +161,13 @@ void storeApply() {
     for (int i = 0; i < 8; i++) if (f.addr == 1 || f.addr == 20 + i) mins[i] = max(mins[i], f.minToggleMs);
   }
   ioDoMinCfg(mins);
+  // Tắt khi mất người điều khiển: nhiều field cùng chân → lấy hạn NGẮN nhất (an toàn hơn)
+  uint32_t loss[8] = {0};
+  for (auto& f : n.pack) {
+    if (!f.localIo() || f.access == Access::Read || !f.lossOffSec) continue;
+    for (int i = 0; i < 8; i++) if (f.addr == 1 || f.addr == 20 + i) loss[i] = loss[i] ? min(loss[i], f.lossOffSec) : f.lossOffSec;
+  }
+  safetyLossCfg(loss);
 }
 
 // ---------------------------------------------------------------- kiểm tra cấu hình admin gửi (tập con của ScadaConfig.Validate + giới hạn của board)
@@ -199,6 +207,7 @@ String storeValidate(JsonObjectConst c) {
     seenWire[wk] = what;
     if (!p["Min"].isNull() && !p["Max"].isNull() && (double)p["Min"] > (double)p["Max"]) return "Pack: Min không được lớn hơn Max.";
     { long mt = p["MinToggleMs"] | 0L; if (mt < 0 || mt > 3600000L) return what + ": thời gian tối thiểu giữa 2 lần bật/tắt phải từ 0 đến 3600 giây."; }
+    { long lo = p["LossOffSec"] | 0L; if (lo < 0 || lo > 86400L) return what + ": thời gian tắt khi mất kết nối phải từ 0 đến 86400 giây."; }
   }
   bool hasRtu = false, hasTcp = false;
   for (JsonObjectConst k : c["Connections"].as<JsonArrayConst>()) {

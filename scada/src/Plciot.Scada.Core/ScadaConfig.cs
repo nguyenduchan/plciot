@@ -74,6 +74,13 @@ public sealed class PackMap
     /// và firmware board Waveshare (DO trên board) tự chặn lần cuối — không tin hoàn toàn vào cloud hay script.
     /// </summary>
     public int MinToggleMs { get; set; }
+    /// <summary>
+    /// Đầu ra số trên board Waveshare chạy ĐỘC LẬP (DO của chính board, Unit 0): mất người điều khiển (MQTT cloud khi chạy độc lập,
+    /// PC giữ lease khi ở chế độ gateway) liên tục quá ngần này GIÂY thì firmware tự TẮT đầu ra — không có ai thấy/tắt được từ xa.
+    /// Bật lại khi đang mất kết nối (vd. từ GatewayApp qua LAN) cũng chỉ giữ được ngần ấy. 0 = giữ nguyên trạng thái (mặc định).
+    /// Gateway PC (lõi C#) không dùng trường này. Không tự bật lại khi có kết nối: người vận hành quyết định.
+    /// </summary>
+    public int LossOffSec { get; set; }
 
     /// <summary>Khoá thực sự đi trên MQTT.</summary>
     [JsonIgnore] public string WireKey => string.IsNullOrWhiteSpace(MqttKey) ? Field : MqttKey.Trim();

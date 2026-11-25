@@ -35,6 +35,7 @@ static void ledTick() {
   String cs = cloudStateName();
   static bool blink = false; blink = !blink;
   if (g_locked) ioLed(blink ? 32 : 0, 0, 0);   // bị khoá (báo mất): đỏ nhấp nháy
+  else if (safeMode()) ioLed(blink ? 32 : 0, blink ? 12 : 0, 0);   // chế độ an toàn: cam nhấp nháy
   else if (!ioDoOk()) ioLed(blink ? 24 : 0, 0, blink ? 24 : 0);   // TCA9554 không trả lời: tím nhấp nháy — DO không tin được
   else if (!netUp()) ioLed(24, 0, 0);   // mất cả Ethernet lẫn Wi-Fi
   else if (g_status == "plc_fault" || g_status == "no_devices") ioLed(20, 14, 0);
@@ -47,6 +48,7 @@ void setup() {
   delay(300);
   logf("Gateway Waveshare %s khởi động", FW_VERSION);
   wdtBegin();            // trước mọi task: ghi nhận lý do khởi động, chạy task giám sát
+  safetyBegin();         // đếm khởi động lại bất thường → chế độ an toàn (trước khi có đường ghi DO nào)
   ioBegin();             // DO về TẮT ngay, càng sớm càng tốt
   rtcBegin();            // có giờ từ RTC trước khi mạng lên (trạm mất mạng vẫn có lịch đúng)
   Network.onEvent(onNet);
@@ -72,6 +74,7 @@ void loop() {
   apiLoop();
   slaveLoop();
   cloudLoop();
+  safetyLink(g_cfg.cloudOn() && g_cfg.cloudHost.length() > 0 && g_cfg.mqttId.length() > 0, leaseActive(), cloudLinkOk());   // cloud đã cài (đã enroll) mới tính là "cần người điều khiển"
   rtcLoop();
   ledTick();
   delay(2);

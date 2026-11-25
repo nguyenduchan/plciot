@@ -67,6 +67,7 @@
     bad_sig: ['Gateway từ chối vì lệnh không mang chữ ký hợp lệ của máy chủ.', 'Đợi vài phút để gateway đồng bộ lại rồi thử lại; nếu vẫn lỗi, báo quản trị viên.'],
     stale_cmd: ['Gateway từ chối vì lệnh đến quá trễ hoặc đồng hồ máy gateway bị lệch.', 'Chỉnh đúng ngày giờ trên máy gateway rồi thử lại.'],
     toggle_too_fast: ['Thiết bị vừa đổi trạng thái — chưa đủ thời gian tối thiểu giữa hai lần bật/tắt (bảo vệ tiếp điểm relay).', 'Đợi hết thời gian đếm ngược trên nút rồi bấm lại.'],
+    safe_mode: ['Board gateway đang ở chế độ an toàn vì vừa khởi động lại bất thường nhiều lần liền (sụt áp, treo) — chỉ cho TẮT đầu ra.', 'Kiểm tra nguồn cấp và tải nối vào DO. Chế độ an toàn tự hết sau 30 phút chạy ổn định, hoặc tắt nguồn board rồi bật lại.'],
     replayed_cmd: ['Gateway đã nhận lệnh này rồi nên bỏ qua bản lặp.', 'Kiểm tra trạng thái thiết bị trước khi gửi lại.'],
     remote_disabled: ['Gateway đang tắt điều khiển từ xa.', 'Bật "điều khiển từ điện thoại" trong phần mềm gateway, hoặc thao tác tại máy.'],
     control_disabled: ['Gateway không cho phép điều khiển từ nguồn này.', 'Kiểm tra quyền điều khiển trong phần mềm gateway.'],

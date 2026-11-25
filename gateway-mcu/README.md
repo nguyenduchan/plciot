@@ -109,7 +109,7 @@ Nguyên tắc: **ai cầm thiết bị được setup** (người cầm thiết 
 
 ## LED
 
-xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị · xanh dương = đang nối cloud · đỏ = mất mạng · **tím nhấp nháy = TCA9554 (DO) không trả lời**.
+xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị · xanh dương = đang nối cloud · đỏ = mất mạng · **tím nhấp nháy = TCA9554 (DO) không trả lời** · **cam nhấp nháy = chế độ an toàn**.
 
 ## Độ tin cậy khi chạy độc lập (trạm không người trông)
 
@@ -117,6 +117,9 @@ xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị
 - **DO** (`io.cpp`): mỗi lần ghi TCA9554 đều đọc lại thanh ghi; lỗi → gỡ kẹt I2C (9 xung SCL + STOP), thử lại một lần. Task `io` kiểm lại mỗi 500 ms (chip bị reset do sụt áp → ghi lại). `DoOk` trong `/api/state`.
 - **Khoá**: I/O trên board dùng `IoLock` riêng (I2C + trạng thái DO), không chờ `BusLock` của RS485/TCP. Vòng đọc PLC khoá bus theo từng giao dịch, không giữ cả vòng.
 - **Giờ** (`rtc.cpp`): khởi động đọc RTC PCF85063 (0x51) → có giờ cả khi mất mạng; NTP / header `Date` → ghi lại RTC (tối đa 1 lần/giờ). Cờ OS bật (mất nguồn nuôi) = giờ không tin. `timeTrusted()`, `TimeSource` (`ntp`/`rtc`/`none`).
+- **Chế độ an toàn** (`safety.cpp`): khởi động lại bất thường (panic / watchdog / sụt áp) 3 lần liền, mỗi lần chưa chạy đủ 2 phút → DO giữ TẮT, lệnh BẬT bị từ chối (`safe_mode`, Modbus ngoại lệ 4) tới khi chạy ổn định 30 phút; tắt nguồn bật lại (`power_on`) xoá bộ đếm. `SafeMode`, `BootFails` trong `/api/state`. Thử trên bản giả lập: `SIM_RESET=panic` (chạy 3 lần), `SIM_DO_INIT=0x01`.
+- **Tắt DO khi mất người điều khiển** (`PackMap.LossOffSec`, GatewayApp: ô "Tắt khi mất kết nối điều khiển" khi sửa thiết bị trên board): cloud đã cài mà không nối được, hoặc PC từng giữ lease mà mất lease, liên tục quá N giây → tự TẮT chân đó (tính từ lần đổi DO gần nhất nếu muộn hơn). Không tự bật lại. Vẫn chờ đủ thời gian tối thiểu bật/tắt.
+- **Tuổi giá trị**: `AgeMs` trong `/api/state` = ms từ lần đọc được gần nhất của từng field (`engineAgeMs()` cho logic sau này: tuổi lớn = mất cảm biến).
 - **Cấu hình**: ghi `config.tmp` rồi `rename` đè (nguyên tử) — không xoá `config.json` trước. Khởi động thấy `config.tmp` đọc được → dùng (bản mới hơn); ghi dở → bỏ.
 
 ## Chưa kiểm chứng trên phần cứng (cần board thật)

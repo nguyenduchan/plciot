@@ -114,6 +114,7 @@ void ioTask(void*) {
       if (!ok) { i2cRecover(); ok = tcaApply(s_do); }
       tcaSetOk(ok);
     }
+    safetyTick();
     delay(500);
   }
 }
@@ -162,9 +163,12 @@ uint32_t ioDoWaitMs(uint8_t mask) {
 
 bool ioDoOk() { return s_tca; }
 
+uint32_t ioDoLastChange(int ch) { return ch >= 0 && ch < 8 && (s_doEver & (1 << ch)) ? s_doLast[ch] : 0; }
+
 bool ioSetDo(uint8_t mask) {
   IoLock l;
   if (!s_tca) return false;
+  if (safeMode() && (mask & ~s_do)) return false;   // chế độ an toàn: chỉ cho TẮT (localWrite báo "safe_mode" trước khi tới đây)
   bool ok = tcaWrite(0x01, tcaOut(mask));
   uint8_t o = 0;
   ok = ok && tcaRead(0x01, o) && o == tcaOut(mask);
