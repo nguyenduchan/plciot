@@ -245,7 +245,7 @@ body{font-family:var(--font-ui);font-variant-numeric:tabular-nums slashed-zero}
 .num,.w .v,.state{font-variant-numeric:tabular-nums slashed-zero}
 
 /* ---------- Dữ liệu cũ / mất kết nối: số bị làm mờ để không bị tin nhầm ---------- */
-body.stale .num,body.stale .w .v,body.stale .ring,body.stale .w .bar,body.stale .state,body.stale .chip{opacity:.38;filter:grayscale(1)}
+body.stale .num,body.stale .w .v,body.stale .ring,body.stale .w .bar,body.stale .state,body.stale .chip{opacity:.6;filter:grayscale(1)}
 body.stale .chip.on i{box-shadow:none}
 
 /* ---------- Nút điều khiển máy ---------- */
@@ -345,7 +345,6 @@ body.ui-simple .widgets .ctlw .row{gap:10px}
 .dev-card header{display:flex;align-items:baseline;gap:8px}
 .dev-card header h3{margin:0;font-size:1.1rem;font-weight:700;flex:1}
 .dev-card header .muted{font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-.dev-card header .dw-rm{margin-left:auto;min-width:36px;min-height:36px}
 .dev-widgets{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .dev-widgets .dw{background:color-mix(in srgb,var(--fg) 5%,transparent);border-radius:12px;padding:12px}
 .dev-widgets .dw .k{font-size:12px;color:var(--mut);margin-bottom:6px;font-weight:500}
@@ -373,11 +372,17 @@ body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}
 .dw-fb.bad{background:rgba(217,48,37,.15);color:#d93025;font-weight:600}.dw-fb.bad .lamp{background:#d93025}
 @keyframes fbp{50%{opacity:.25}}
 .dw-cmd{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.12);font-size:12px}
-.dw-steps{display:flex;gap:4px;list-style:none;margin:0 0 4px;padding:0}
-.dw-steps li{flex:1;text-align:center;padding:2px 4px;border-radius:6px;background:rgba(127,127,127,.18);opacity:.7;font-size:11px}
-.dw-steps li.done{background:rgba(34,160,90,.25);opacity:1}
-.dw-steps li.active{background:rgba(217,164,6,.28);opacity:1;animation:fbp 1s infinite}
-.dw-steps li.err{background:rgba(217,48,37,.28);opacity:1}
+.dw-steps{display:flex;list-style:none;margin:2px 0 8px;padding:0}
+.dw-steps li{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--mut)}
+.dw-steps li::before{content:"";position:absolute;top:9px;right:50%;width:100%;height:2px;background:rgba(127,127,127,.35)}
+.dw-steps li:first-child::before{display:none}
+.dw-steps li i{position:relative;z-index:1;width:20px;height:20px;border-radius:50%;box-sizing:border-box;border:2px solid rgba(127,127,127,.5);background:var(--card);display:grid;place-items:center;font-style:normal;font-size:11px;line-height:1;color:#fff}
+.dw-steps li.done,.dw-steps li.active,.dw-steps li.err{color:var(--fg);font-weight:600}
+.dw-steps li.done::before,.dw-steps li.active::before{background:#22a05a}.dw-steps li.err::before{background:#d93025}
+.dw-steps li.done i{background:#22a05a;border-color:#22a05a}.dw-steps li.done i::after{content:"✓"}
+.dw-steps li.active i{background:#d9a406;border-color:#d9a406;animation:fbp 1s infinite}.dw-steps li.active i::after{content:"…"}
+.dw-steps li.err i{background:#d93025;border-color:#d93025}.dw-steps li.err i::after{content:"✕"}
+@media (prefers-reduced-motion:reduce){.dw-steps li.active i{animation:none}}
 .dw-cmd.ok{background:rgba(34,160,90,.14)}.dw-cmd.bad{background:rgba(217,48,37,.15);color:#d93025;font-weight:600}
 .dw-cmdtxt{line-height:1.35}
 
@@ -468,7 +473,6 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dev-card.readonly{pointer-events:none;opacity:.96}
 
 /* nhãn gateway trên thẻ thiết bị khi tài khoản có nhiều gateway */
-.gw-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2, #1e2530); color: var(--muted, #9aa7b8); margin-left: auto; white-space: nowrap; }
 /* hướng dẫn bật quyền camera */
 .cam-help { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
 .cam-help .sheet { width: min(520px, 100%); background: var(--panel, #161b22); color: var(--text, #e6edf3); border-radius: 18px 18px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.4); }
@@ -542,7 +546,6 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .dw-numin::-webkit-outer-spin-button, .dw-numin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .dw-step { min-width: 48px; min-height: 52px; border-radius: 12px; font-size: 24px; font-weight: 700; line-height: 1; }
 .dw-nu { opacity: .7; }
-.dw-range { font-size: 12px; margin-left: auto; }
 .dw.pending { outline: 2px solid var(--warn, #f59e0b); outline-offset: 2px; border-radius: 14px; }
 .dw.pending .dw-pendinfo { opacity: 1; font-weight: 600; color: var(--warn, #f59e0b); }
 .dw-toggle small { opacity: .75; font-weight: 400; margin-left: 6px; }
@@ -845,3 +848,126 @@ nav button .ind-badge { position: absolute; top: 0; left: calc(50% + 6px); }
 .locked-group > summary { cursor: pointer; padding: 10px 12px; border: 1px dashed rgba(128,128,128,.45); border-radius: 12px; font-size: 13px; opacity: .8; list-style-position: inside; }
 .locked-group[open] > summary { margin-bottom: 10px; }
 .gw-head[hidden] { display: none; }
+
+/* ======================= Phong cách iOS (giao diện điện thoại "Đơn giản"): nền xám nhóm, thẻ bo tròn không viền, chữ nhấn xanh iOS,
+   header/tab bar mờ kính, nút dạng viên thuốc, segmented control. Đặt CUỐI file để ghi đè các lớp trước; chế độ pro/desktop không bị ảnh hưởng. ======================= */
+body.ui-simple{--bg:#f2f2f7;--card:#fff;--line:#c6c6c81f;--hair:#3c3c4329;--mut:#6c6c70;--acc:#007aff;--accbg:#007aff1a;--ok:#34a853;--on:#34c759;--r:14px;--fill:#7676801f;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,Roboto,sans-serif}
+@media (prefers-color-scheme:dark){body.ui-simple{--bg:#000;--card:#1c1c1e;--line:#54545899;--hair:#54545899;--mut:#98989f;--acc:#0a84ff;--accbg:#0a84ff26;--on:#30d158;--fill:#7676803d}}
+body.ui-simple .content>header{background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--hair);padding:calc(10px + env(safe-area-inset-top)) 16px 8px;min-height:52px;gap:8px}
+body.ui-simple h1{font-size:26px;font-weight:700;letter-spacing:-.02em;flex:1;min-width:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.ui-simple .hdr-back{background:none;border:0;padding:0 6px 0 0;margin-left:-4px;font-size:34px;line-height:1;color:var(--acc);min-width:28px}
+body.ui-simple .chat-fab{width:34px;height:34px;font-size:16px;background:var(--fill)}
+body.ui-simple .pill{height:34px;display:inline-flex;align-items:center;border-radius:17px;padding:0 12px;font-size:12px;font-weight:600;letter-spacing:0;border:0;background:var(--fill);color:var(--mut);white-space:nowrap}
+body.ui-simple .pill.on{background:#34c7591f;color:var(--ok)}
+body.ui-simple .pill.warn,body.ui-simple .pill.off{background:var(--al-warn-bg);color:var(--al-warn);border:0}
+body.ui-simple .alarm-bar{margin:10px 16px 0;padding:10px 14px;min-height:0;border:0;border-radius:14px;font-size:14px;font-weight:600;line-height:1.35;position:static}
+body.ui-simple .alarm-bar .ab-i{width:auto;font-size:14px}
+body.ui-simple .alarm-bar.ok{background:transparent;margin:0;padding:0;height:0;overflow:hidden}
+body.ui-simple .alarm-bar button{border:0;border-radius:10px;background:var(--card);padding:7px 12px;font-weight:600}
+body.ui-simple main{padding:10px 16px 16px}
+body.ui-simple .gw-tabs{margin:0 -16px 0}
+body.ui-simple .gw-row{gap:8px;padding:2px 16px 4px;scrollbar-width:none}
+body.ui-simple .gw-row::-webkit-scrollbar{display:none}
+body.ui-simple .gw-tabs button{border:0;border-radius:18px;padding:7px 14px;background:var(--card);align-items:center;box-shadow:0 0 0 .5px var(--hair)}
+body.ui-simple .gw-tabs button.on{background:var(--acc);color:#fff;box-shadow:none}
+body.ui-simple .gw-tabs button.on small{opacity:.85}
+body.ui-simple .dev-head{margin:8px 0 8px;padding:0 4px}
+body.ui-simple .dev-head h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--mut)}
+body.ui-simple .dev-add-btn{height:34px;min-height:0;padding:0 14px;border-radius:17px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+body.ui-simple .dev-add-btn svg{width:16px;height:16px}
+body.ui-simple .gw-head{border:0;border-radius:var(--r);padding:12px 14px;margin-bottom:12px}
+body.ui-simple .gw-rm{border:0;background:transparent;color:var(--bad);font-weight:600;min-height:34px;padding:0 4px}
+body.ui-simple .dev-card{border:0;border-radius:20px;padding:16px;box-shadow:0 1px 2px #0000000a,0 4px 16px #00000010}
+body.ui-simple .dev-card[class*="cat-"],body.ui-simple .dev-card[class*="acc-"]{border-top:0}
+body.ui-simple .dev-widgets .dw,body.ui-simple .w{background:var(--fill);border-radius:14px;border:0}
+body.ui-simple .panel{border:0;border-radius:var(--r);padding:16px;box-shadow:none}
+body.ui-simple .panel>h2,body.ui-simple .panel h2{font-size:13px;font-weight:600;letter-spacing:.02em}
+body.ui-simple button{border-radius:12px;border:0;background:var(--fill)}
+body.ui-simple button.primary{background:var(--acc);color:#fff;font-weight:600;min-height:44px}
+body.ui-simple input:not([type=checkbox]),body.ui-simple select,body.ui-simple textarea{border-radius:12px;background:var(--fill);border:0;padding:12px 14px}
+body.ui-simple input:not([type=checkbox]):focus{box-shadow:0 0 0 2px var(--acc)}
+body.ui-simple .set-tabs{padding:2px;gap:0;border-radius:10px;box-shadow:none;background:var(--fill);margin:0 0 14px}
+body.ui-simple .set-tabs button{padding:7px 2px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--fg);box-shadow:none;background:transparent;white-space:nowrap}
+body.ui-simple .set-tabs button.on{background:var(--card);color:var(--fg);font-weight:600;box-shadow:0 1px 3px #0000002e,0 0 0 .5px #0000000a}
+body.ui-simple .seg{border-radius:10px;padding:2px;background:var(--fill)}
+body.ui-simple .seg button{border-radius:8px;padding:7px 0;font-size:13px}
+body.ui-simple .seg button.sel{box-shadow:0 1px 3px #0000002e;color:var(--fg)}
+body.ui-simple nav{background:color-mix(in srgb,var(--card) 80%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--hair);padding:6px 8px calc(4px + env(safe-area-inset-bottom))}
+body.ui-simple nav button{background:none;border:0;font-size:10px;font-weight:500;gap:3px}
+body.ui-simple nav svg{width:25px;height:25px}
+body.ui-simple #toast{border:0;border-radius:14px;background:#1c1c1ef2;color:#fff}
+@media (min-width:900px){body.ui-simple nav{background:var(--card);border-top:0;border-right:.5px solid var(--hair)}body.ui-simple .content>header{background:none;backdrop-filter:none;border-bottom:0}}
+
+.hint:empty{display:none}
+
+/* ---- Control (iOS): hộp xác nhận không có ô nhập = alert giữa màn hình; hộp xác thực có ô nhập (Face ID / mã Authenticator / mật khẩu) = bottom sheet ---- */
+@keyframes ios-fade{from{opacity:0}}
+@keyframes ios-up{from{transform:translateY(40px);opacity:0}}
+@keyframes ios-pop{from{transform:scale(1.08);opacity:0}}
+@media (prefers-reduced-motion:reduce){body.ui-simple .ctl-modal,body.ui-simple .ctl-box,body.ui-simple .cf-back,body.ui-simple .cf-box{animation:none}}
+body.ui-simple .ctl-modal,body.ui-simple .cf-back{background:#0000005c;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:ios-fade .2s}
+body.ui-simple .ctl-box{border-radius:20px;padding:20px;max-width:400px;animation:ios-up .28s cubic-bezier(.2,.8,.2,1)}
+@media (max-width:899px){
+  body.ui-simple .ctl-modal{align-items:flex-end;padding:0}
+  body.ui-simple .ctl-box{max-width:none;border-radius:20px 20px 0 0;padding:8px 20px calc(20px + env(safe-area-inset-bottom));max-height:90vh}
+  body.ui-simple .ctl-box::before{content:"";display:block;width:36px;height:5px;border-radius:3px;background:var(--fill);margin:0 auto 14px}
+}
+body.ui-simple .ctl-box h3{margin:0 0 6px;font-size:20px;font-weight:700;letter-spacing:-.01em;text-align:center}
+body.ui-simple .ctl-box .muted{margin:0 0 14px;font-size:14px;text-align:center}
+body.ui-simple .ctl-box label{margin:0 0 12px;font-size:13px}
+body.ui-simple .ctl-box .row{flex-direction:column;gap:8px;margin-top:10px}
+body.ui-simple .ctl-box .row>button{flex:none;width:100%;min-height:50px;border-radius:14px;font-size:17px;font-weight:600;color:var(--acc)}
+body.ui-simple .ctl-box .row>button.primary{color:#fff}
+body.ui-simple .ctl-box .ctl-newdev,body.ui-simple .ctl-box .ctl-cancel,body.ui-simple .ctl-box .bio-x{background:transparent;min-height:44px;font-size:16px;font-weight:500;color:var(--mut)}
+body.ui-simple .ctl-box .ctl-code,body.ui-simple .ctl-box [data-code]{text-align:center;font:600 28px/1.2 var(--font-mono);letter-spacing:.35em;padding:14px 14px 14px calc(14px + .35em)}
+body.ui-simple .ctl-box .ctl-rc{text-align:center;font:600 20px/1.2 var(--font-mono);letter-spacing:.12em}
+body.ui-simple .ctl-err{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--al-crit-bg);font-size:14px;text-align:center}
+body.ui-simple .ctl-err:empty{display:none}
+body.ui-simple .ctl-notice{background:var(--fill);border-radius:12px;font-size:14px}
+body.ui-simple .bio-icon{color:var(--acc)}
+body.ui-simple .bio-icon.bio-ok{color:var(--ok)}
+/* alert xác nhận (iOS UIAlertController): tiêu đề + nội dung, hai nút chia đôi, ngăn bằng đường mảnh */
+body.ui-simple .cf-back{align-items:center;padding:24px}
+body.ui-simple .cf-box{max-width:300px;border:0;border-radius:16px;padding:20px 0 0;text-align:center;overflow:hidden;animation:ios-pop .2s}
+body.ui-simple .cf-box h3{margin:0 0 6px;padding:0 20px;font-size:17px;font-weight:600}
+body.ui-simple .cf-box p{margin:0;padding:0 20px 18px;font-size:13px;color:var(--fg)}
+body.ui-simple .cf-box .row{gap:0;border-top:.5px solid var(--hair)}
+body.ui-simple .cf-box .row button.ctl-btn{flex:1;min-height:48px;padding:0;border:0;border-radius:0;outline:0;background:transparent;color:var(--acc);font-size:17px;font-weight:400;letter-spacing:0}
+body.ui-simple .cf-box .row button.ctl-btn+button.ctl-btn{border-left:.5px solid var(--hair);font-weight:600}
+body.ui-simple .dev-widgets .dw-toggle{min-height:50px;border-radius:14px;font-weight:600}
+body.ui-simple .ctl-box .row+label{margin-top:16px}
+body.ui-simple .set-tabs{position:static}
+/* Mục thu gọn trong Cài đặt: mũi tên › xoay xuống khi mở (kiểu danh sách iOS) */
+body.ui-simple .sec>summary,body.ui-simple .sec-card>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;cursor:pointer;padding:6px 0}
+body.ui-simple .sec>summary::-webkit-details-marker,body.ui-simple .sec-card>summary::-webkit-details-marker{display:none}
+body.ui-simple .sec>summary::after,body.ui-simple .sec-card>summary::after{content:"›";font-size:22px;line-height:1;color:var(--mut);transition:transform .2s}
+body.ui-simple details[open]>summary::after{transform:rotate(90deg)}
+body.ui-simple .sec{border-top:.5px solid var(--hair)}
+body.ui-simple .sec-card[open]>summary{margin-bottom:12px}
+
+/* Trạng thái lệnh: hiện khi điều khiển, tự mờ đi rồi ẩn; không che hay thay thế phần UI khác */
+@keyframes dw-in{from{opacity:0;transform:translateY(-4px)}}
+@keyframes dw-out{to{opacity:0}}
+.dw-cmd{animation:dw-in .2s}
+.dw-cmd.out{animation:dw-out .45s forwards}
+.dw-where{margin:0 0 4px;font-size:12px}
+@media (prefers-reduced-motion:reduce){.dw-cmd,.dw-cmd.out{animation:none}}
+/* Không có đầu vào xác nhận: nút cuối viền xanh rỗng = "đã ghi lệnh, chưa kiểm chứng" */
+.dw-steps li.open{color:var(--fg);font-weight:600}
+.dw-steps li.open::before{background:#22a05a}
+.dw-steps li.open i{background:var(--card);border-color:#22a05a;color:#22a05a}.dw-steps li.open i::after{content:"✓"}
+
+/* Huy hiệu độ tin cậy của điều khiển: Có xác nhận (khiên xanh + ✓) / Không xác nhận (khiên nét đứt xám) */
+.dw-trust{float:right;display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px 2px 6px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.3;background:rgba(127,127,127,.16);color:var(--mut)}
+.dw-trust svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dw-trust svg .dash{stroke-dasharray:3 2.4}
+.dw-trust.ok{background:#22a05a24;color:#22a05a}
+.ctlw.verified{box-shadow:inset 0 0 0 1px #22a05a55}
+
+/* Kiểu thẻ nền tối (grafana/carbon/material) đặt màu nền nhưng không đặt màu chữ → chữ thừa hưởng màu tối của trang sáng = tương phản gần 1:1. Khai báo lại màu chữ cho vùng nền tối. */
+[data-ic-style="grafana"] .dev-card.dev-card,[data-ic-style="carbon"] .dev-card.dev-card,[data-ic-style="material"] .dev-card.dev-card{--fg:#ececf1;--mut:#a9a9b6;color:var(--fg);color-scheme:dark}
+
+/* Cho phép bôi đen / chọn bằng chuột để sao chép nội dung; chỉ nút, thanh điều hướng và điều khiển bấm là không chọn được */
+body,body.ui-simple{-webkit-user-select:text;user-select:text}
+button,nav,summary,.pill,.gw-tabs,.seg,.set-tabs,.dw-toggle,.dw-step,.dw-star,.chip,.hdr-back{-webkit-user-select:none;user-select:none}

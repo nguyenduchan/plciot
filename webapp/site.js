@@ -114,7 +114,7 @@
         <div class="row"><button id="pc-add" class="primary">Thêm PC (lấy mã ghép)</button></div>
         <p class="muted">Đổi PC: thêm PC mới rồi thu hồi PC cũ. PC bị thu hồi mất quyền ngay.</p>`;
     } else {
-      h += `<p class="muted">Muốn vào nhà máy của người khác: nhờ chủ tạo <b>mã mời</b>. Tem QR gắn thiết bị của chính bạn ở ô phía trên.</p>`;
+      h += `<p class="muted">Muốn vào nhà máy khác: nhờ chủ tạo mã mời.</p>`;
     }
     body.innerHTML = h;
 

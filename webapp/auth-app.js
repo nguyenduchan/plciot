@@ -26,9 +26,9 @@ window.AuthApp = {
       const p = summary.privacy || {};
       const dpo = [summary.dpoContact, summary.dpoEmail].filter(Boolean).join(' · ');
       privacy.textContent = [
-        p.needsConsent ? 'Thông báo BVDLCN đã cập nhật — cần đồng ý lại.' : `Đã đồng ý notice ${p.consentedVersion || '—'}.`,
-        summary.auditRetentionDays != null ? `Nhật ký bảo mật giữ ${summary.auditRetentionDays || 'không giới hạn'} ngày.` : '',
-        dpo ? `DPO: ${dpo}` : '',
+        p.needsConsent ? 'Thông báo BVDLCN đã cập nhật — cần đồng ý lại.' : `Đã đồng ý thông báo phiên bản ${p.consentedVersion || '—'}.`,
+        summary.auditRetentionDays != null ? `Nhật ký bảo mật lưu ${summary.auditRetentionDays || 'không giới hạn'} ngày.` : '',
+        dpo ? `Liên hệ DPO: ${dpo}` : '',
       ].filter(Boolean).join(' ');
     }
     const doc = document.querySelector('#privacy-doc');
@@ -77,6 +77,23 @@ if (acctDelete) acctDelete.onclick = async () => {
   }
   try { localStorage.clear(); } catch { /* ignore */ }
   location.href = '/login.html';
+};
+const rcGen = document.querySelector('#rc-gen');
+if (rcGen) rcGen.onclick = async () => {
+  if (!confirm('Tạo bộ mã khôi phục mới? Bộ mã cũ sẽ mất hiệu lực.')) return;
+  const result = await withReauth('POST', '/api/account/recovery-codes', {});
+  const message = document.querySelector('#acct-msg');
+  if (!result.ok) { if (message) message.textContent = window.Security.errText(result.body.error); return; }
+  const text = (result.body.codes || []).join('\n');
+  const out = document.querySelector('#rc-out');
+  out.textContent = text; out.hidden = false;
+  document.querySelector('#rc-actions').hidden = false;
+  document.querySelector('#rc-copy').onclick = () => navigator.clipboard?.writeText(text).then(() => { if (message) message.textContent = 'Đã sao chép.'; });
+  document.querySelector('#rc-dl').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain' }));
+    a.download = 'plciot-recovery-codes.txt'; a.click(); URL.revokeObjectURL(a.href);
+  };
 };
 document.querySelector('#nav')?.addEventListener('click', (event) => {
   if (event.target.closest('button[data-tab="set"]')) document.dispatchEvent(new Event('security-profile-refresh'));

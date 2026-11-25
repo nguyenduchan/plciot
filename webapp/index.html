@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="vendor/gridstack.min.css">
-<link rel="stylesheet" href="style.css?v=20261117b">
+<link rel="stylesheet" href="style.css?v=20261125m">
 <!-- Chat hỗ trợ: vùng riêng (toàn màn hình trên điện thoại, ngăn kéo bên phải trên máy tính), mở bằng nút 💬 trên đỉnh -->
 <div id="chat-view" class="chat-view" hidden role="dialog" aria-label="Chat với quản trị viên">
   <div class="chat-head"><b>Chat với quản trị viên</b> <span id="support-badge" class="tag" hidden></span><button type="button" class="fit" id="chat-close" aria-label="Đóng chat">✕</button></div>
@@ -25,8 +25,8 @@
   </div>
   <div class="panel form" id="support-panel" hidden>
     <details class="sup-note"><summary class="muted">Lưu ý khi chat</summary>
-      <p class="muted">Hai kênh tách riêng để khỏi nhầm: <b>Hỗ trợ kỹ thuật</b> (báo lỗi, hỏi cách dùng, kèm ảnh chụp màn hình) và <b>Nâng cấp gói</b> (xem chi tiết gói, đồng ý hoặc không đồng ý nâng cấp). Mọi thỏa thuận và thanh toán (nếu có) thực hiện trực tiếp giữa bạn và quản trị viên, không qua ứng dụng này.</p>
-      <p class="muted">Không gửi mật khẩu, mã Authenticator hay số thẻ trong khung chat. Che thông tin nhạy cảm trong ảnh chụp màn hình trước khi gửi.</p>
+      <p class="muted"><b>Hỗ trợ kỹ thuật</b>: báo lỗi, hỏi cách dùng. <b>Nâng cấp gói</b>: xem và đồng ý gói. Thanh toán làm trực tiếp với quản trị viên.</p>
+      <p class="muted">Đừng gửi mật khẩu, mã xác thực hay số thẻ.</p>
     </details>
     <select id="support-plan" hidden><option value="">— chọn gói —</option></select>
     <div id="support-reload" class="sup-plan" hidden>
@@ -34,7 +34,7 @@
       <div class="row"><button type="button" class="primary fit" id="support-reload-btn">Tải lại để dùng gói mới</button></div>
     </div>
     <div id="ch-support" class="ch-pane">
-      <p class="muted ch-hint">Kênh này <b>chỉ để hỏi kỹ thuật</b> (lỗi, cách dùng, thiết bị không lên dữ liệu…). Dùng được ở mọi gói, không cần nâng cấp. Muốn nâng cấp gói hãy sang tab “Nâng cấp gói”.</p>
+      <p class="muted ch-hint">Hỏi kỹ thuật, dùng được ở mọi gói.</p>
       <div id="support-log" class="sup-log"></div>
     </div>
     <div id="ch-upgrade" class="ch-pane" hidden>
@@ -98,7 +98,7 @@
           <h2>Số lượng đếm được theo thời gian</h2>
           <div class="seg" id="cum-range"><button data-h="1">1 giờ</button><button data-h="6">6 giờ</button><button data-h="24">24 giờ</button><button data-h="48">48 giờ</button></div>
           <div id="wcum" class="chart"></div>
-          <p class="muted">Tổng số sản phẩm đếm được cộng dồn từ đầu khoảng chọn (dữ liệu ghi trên thiết bị khi app mở).</p>
+          <p class="muted">Tổng số đếm được trong khoảng đã chọn.</p>
         </div>
         <div class="panel pro-only scada-legacy"><h2>Sản lượng mỗi giờ (24 giờ qua)</h2><canvas id="wbars" data-h="170"></canvas><p class="muted" id="w-note"></p></div>
         <div class="panel pro-only scada-legacy"><h2>Số phút băng tải chạy mỗi giờ</h2><canvas id="wmin" data-h="170"></canvas></div>
@@ -137,7 +137,7 @@
           <p class="muted" id="ctrl-hint"></p>
         </div>
         <div class="panel"><h2>Điều khiển đầu ra</h2><div id="switches" class="switches"></div>
-          <p class="muted" id="name-hint" hidden>Đầu ra đang hiện theo địa chỉ (Y0, Y1…). <a href="#" id="name-link" onclick="return false">Đặt tên thiết bị</a> (ví dụ "Băng tải 1", "Van nước") để dễ nhận biết.</p></div>
+          <p class="muted" id="name-hint" hidden>Đầu ra hiện theo địa chỉ. <a href="#" id="name-link" onclick="return false">Đặt tên thiết bị</a> để dễ nhận biết.</p></div>
       </section>
 
       <section id="tab-rep" class="tab" hidden>
@@ -160,36 +160,30 @@
         <div class="set-pane" data-pane="acct">
         <div class="panel form" id="support-link">
           <h2>Hỗ trợ</h2>
-          <p class="muted">Cần giúp đỡ kỹ thuật, báo lỗi hoặc có thắc mắc? Chat trực tiếp với quản trị viên, kèm ảnh chụp màn hình nếu cần. <b>Dùng được ở mọi gói, không cần nâng cấp.</b></p>
           <div class="row"><button type="button" class="primary" id="support-open">Chat hỗ trợ</button></div>
         </div>
-        <div class="panel form" id="export-panel" style="margin-top:12px">
+        <details class="panel form sec-card" id="export-panel" style="margin-top:12px">
           
-            <h2>Xuất dữ liệu lịch sử</h2>
-            <p class="muted">Tải dữ liệu đã lưu trên máy chủ về máy: mỗi dòng là một giá trị (thời gian · thiết bị · field · giá trị · nguồn live/bù). Chỉ gồm khoảng thời gian nằm trong thời hạn lưu của gói.</p>
+            <summary>Xuất dữ liệu lịch sử</summary>
             <div class="row" style="flex-wrap:wrap;gap:8px">
               <select id="exp-gw" class="fit" style="flex:1 1 100%" aria-label="Gateway"></select>
               <label class="fit" style="flex:1 1 140px">Từ <input type="date" id="exp-from" style="width:100%"></label>
               <label class="fit" style="flex:1 1 140px">Đến <input type="date" id="exp-to" style="width:100%"></label>
               <select id="exp-fmt" class="fit" style="flex:1 1 100%" aria-label="Định dạng">
-                <option value="csv">CSV (mở bằng Excel)</option>
-                <option value="tsv">Văn bản (.txt, cột cách nhau bằng Tab)</option>
+                <option value="csv">CSV</option>
+                <option value="tsv">TSV (.txt)</option>
                 <option value="json">JSON</option>
               </select>
               <button type="button" id="exp-go" class="primary fit" style="flex:1 1 100%">Tải về</button>
             </div>
             <p class="muted" id="exp-msg"></p>
-          
-        </div>
-        <div class="panel form" id="acct" style="margin-top:12px" hidden>
+        </details>
+        <div class="panel form" id="acct" style="margin-top:12px">
           <h2>Tài khoản &amp; bảo mật</h2>
-          <div id="acct-sum" class="muted">Đang tải…</div>
-          <div id="acct-pending"></div>
 
           <details class="sec" id="ctl-sec" hidden>
-            <summary>Điều khiển: vân tay / Authenticator</summary>
-            <p class="muted">Mỗi lần điều khiển từ xa cần xác nhận. Điện thoại có vân tay / Face ID: chạm một lần. Máy cũ: mã Authenticator, nhớ 7 ngày (đổi mạng sẽ hỏi lại).</p>
-            <p id="ctl-state" class="muted">Đang tải…</p>
+            <summary>Xác thực điều khiển</summary>
+            <p id="ctl-state" class="muted"></p>
             <div id="ctl-list"></div>
             <div class="row"><button id="ctl-pk-add" class="primary">Thêm vân tay / Face ID</button><button id="ctl-totp-add" class="fit">Bật Authenticator</button></div>
             <div class="row"><button id="ctl-review" class="fit">Duyệt thiết bị mới</button><button id="ctl-totp-off" class="fit" hidden>Tắt Authenticator</button><button id="ctl-lock" class="fit" hidden>Khoá điều khiển ngay</button></div>
@@ -199,20 +193,20 @@
 
           <details class="sec pro-only" id="site-sec" hidden>
             <summary>Nhà máy &amp; thành viên</summary>
-            <div id="site-body" class="muted">Đang tải…</div>
+            <div id="site-body" class="muted"></div>
             <p class="muted" id="site-msg"></p>
           </details>
 
           <details class="sec" id="lost-sec">
             <summary>Báo mất gateway</summary>
-            <p class="muted">Mất hoặc bị trộm gateway: báo ở đây để <b>khoá tạm ngay</b>; admin sẽ duyệt. Tìm lại được thì bấm mở khoá.</p>
+            <p class="muted">Khoá tạm gateway bị mất; quản trị viên sẽ duyệt.</p>
             <div id="lost-body" class="muted"></div>
             <p class="muted" id="lost-msg"></p>
           </details>
 
           <details class="sec">
-            <summary>Mã khôi phục (dự phòng)</summary>
-            <p class="muted">10 mã dùng một lần. Lưu ở nơi an toàn (in ra / trình quản lý mật khẩu). Tạo lại sẽ vô hiệu bộ cũ.</p>
+            <summary>Mã khôi phục</summary>
+            <p class="muted">10 mã dùng một lần. Tạo lại sẽ vô hiệu mã cũ.</p>
             <div class="row"><button id="rc-gen" class="primary">Tạo bộ mã mới</button></div>
             <pre id="rc-out" class="codes" hidden></pre>
             <div class="row" id="rc-actions" hidden><button id="rc-copy" class="fit">Sao chép</button><button id="rc-dl" class="fit">Tải .txt</button></div>
@@ -220,12 +214,12 @@
           <details class="sec pro-only">
             <summary>Dữ liệu lịch sử</summary>
             <p class="muted" id="ret-info"></p>
-            <p class="muted">Xoá toàn bộ lịch sử đã lưu trên máy chủ cho thiết bị này (ví dụ trước khi bán/chuyển nhượng). Không thể hoàn tác.</p>
+            <p class="muted">Xoá toàn bộ lịch sử trên máy chủ. Không thể hoàn tác.</p>
             <div class="row"><button id="wp-go" class="danger">Xoá lịch sử trên máy chủ</button></div>
           </details>
           <details class="sec">
             <summary>Quyền dữ liệu cá nhân</summary>
-            <p class="muted">Xuất hồ sơ tài khoản, nhật ký liên quan và thiết bị tin cậy (không gồm mật khẩu / MQTT). Xoá tài khoản sẽ gỡ dữ liệu gắn user và thu hồi phiên.</p>
+            
             <p class="muted" id="privacy-info"></p>
             <div class="row">
               <button id="data-export" class="fit primary">Xuất dữ liệu của tôi</button>
@@ -236,8 +230,8 @@
           <p class="muted" id="acct-msg"></p>
         </div>
         <div class="panel form" id="push-panel">
-          <h2>Cảnh báo nguy hiểm trên điện thoại</h2>
-          <p class="muted">Nhận thông báo khi thiết bị vượt ngưỡng hoặc mất kết nối. Máy chủ không lưu số điện thoại hay email của bạn.</p>
+          <h2>Thông báo</h2>
+          <p class="muted">Cảnh báo khi thiết bị vượt ngưỡng hoặc mất kết nối.</p>
           <button type="button" id="push-on">Bật cảnh báo</button> <button type="button" id="push-off" hidden>Tắt</button> <button type="button" id="push-test" hidden>Gửi thử</button>
           <p class="muted" id="push-msg"></p>
         </div>
@@ -246,63 +240,58 @@
         </div>
         <div class="panel form" id="gw-code-link" style="margin-top:12px">
           <h2>Kết nối gateway</h2>
-          <p class="muted">Tạo mã để nhập vào ứng dụng Gateway trên máy tính — không cần nhập mật khẩu vào ứng dụng đó.</p>
-          <div class="row"><a href="gateway-login.html"><button type="button" class="primary" style="width:100%">Tạo mã ghép (OTP) cho gateway</button></a></div>
+                    <div class="row"><a href="gateway-login.html"><button type="button" class="primary" style="width:100%">Tạo mã ghép gateway</button></a></div>
         </div>
         <div class="panel form pro-only" id="admin-link" style="margin-top:12px" hidden>
           <h2>Quản trị</h2>
-          <div class="row"><a href="console.html"><button type="button" class="primary" style="width:100%">Console dịch vụ IoT (gói, thiết bị, DB)</button></a></div>
+          <div class="row"><a href="console.html"><button type="button" class="primary" style="width:100%">Console dịch vụ</button></a></div>
           <div class="row"><a href="admin.html"><button type="button" style="width:100%">Người dùng &amp; phân quyền</button></a></div>
         </div>
         </div>
         <div class="set-pane" data-pane="ui" hidden>
         <div class="panel form">
-          <label>Kiểu giao diện<select id="uiMode"><option value="simple">Điện thoại — widget + báo cáo</option><option value="pro">SCADA kỹ thuật (I/O, băng tải)</option></select></label>
+          <label>Kiểu giao diện<select id="uiMode"><option value="simple">Điện thoại</option><option value="pro">Kỹ thuật (SCADA)</option></select></label>
           <div class="pro-only">
-          <label>Địa chỉ máy chủ MQTT (WebSocket bảo mật)<input id="url" placeholder="wss://plc-mqtt.dieukhientudong.net" autocapitalize="off" autocorrect="off"></label>
+          <label>Máy chủ MQTT<input id="url" placeholder="wss://plc-mqtt.dieukhientudong.net" autocapitalize="off" autocorrect="off"></label>
           <label>Tên đăng nhập<input id="user" autocapitalize="off" autocorrect="off"></label>
           <label>Mật khẩu<input id="pass" type="password"></label>
           <label>Mã nhà máy<input id="site" autocapitalize="off"></label>
           <label>Mã thiết bị<input id="dev" autocapitalize="off"></label>
-          <label>Tên đầu vào X0..X7 (cách nhau bằng dấu phẩy)<input id="inNames"></label>
-          <label>Tên đầu ra Y0..Y7<input id="outNames"></label>
-          <label>Tốc độ tối đa của băng tải (sản phẩm/phút, để vẽ thanh đo)<input id="maxRate" type="number" min="1" inputmode="numeric"></label>
-          <label>Khoảng cách giữa 2 sản phẩm (cm, để đổi sang m/phút, 0 = ẩn)<input id="pitchCm" type="number" min="0" inputmode="decimal"></label>
+          <label>Tên đầu vào X0–X7 (cách nhau bằng dấu phẩy)<input id="inNames"></label>
+          <label>Tên đầu ra Y0–Y7<input id="outNames"></label>
+          <label>Tốc độ tối đa băng tải (sp/phút)<input id="maxRate" type="number" min="1" inputmode="numeric"></label>
+          <label>Khoảng cách 2 sản phẩm (cm, 0 = ẩn)<input id="pitchCm" type="number" min="0" inputmode="decimal"></label>
           <h2>Lưu dữ liệu trên thiết bị</h2>
-          <label>Giữ dữ liệu chi tiết (theo phút) — số ngày<input id="keepMinDays" type="number" min="1" max="3650" inputmode="numeric"></label>
-          <label>Giữ dữ liệu tổng hợp (theo giờ) — số ngày<input id="keepHourDays" type="number" min="1" max="3650" inputmode="numeric"></label>
-          <label>Giới hạn dung lượng (MB, 0 = không giới hạn). Vượt giới hạn sẽ xoá dữ liệu cũ nhất, ưu tiên bỏ dữ liệu chi tiết<input id="maxMB" type="number" min="0" inputmode="numeric"></label>
+          <label>Giữ dữ liệu theo phút (ngày)<input id="keepMinDays" type="number" min="1" max="3650" inputmode="numeric"></label>
+          <label>Giữ dữ liệu theo giờ (ngày)<input id="keepHourDays" type="number" min="1" max="3650" inputmode="numeric"></label>
+          <label>Giới hạn dung lượng (MB, 0 = không giới hạn)<input id="maxMB" type="number" min="0" inputmode="numeric"></label>
           <p class="muted" id="storage-info"></p>
           <div class="row"><button id="storage-clear" type="button" class="danger">Xoá dữ liệu trên thiết bị</button></div>
-          <p class="muted">Đây là bộ nhớ trên thiết bị này. Thời gian lưu trên máy chủ phụ thuộc gói tài khoản (mặc định 3 ngày).</p>
           <div class="row"><button id="save" class="primary">Lưu &amp; kết nối</button></div>
           </div>
         </div>
-        <div class="panel" id="ic-panel" style="margin-top:12px">
-          <h2>Kiểu hiển thị thiết bị</h2>
-          <p class="muted">Chọn kiểu icon, màu sắc và hiệu ứng cho thẻ thiết bị. Lưu trên máy này.</p>
+        <details class="panel sec-card" id="ic-panel" style="margin-top:12px">
+          <summary>Kiểu hiển thị thiết bị</summary>
           <div id="ic-live" class="ic-live" aria-label="Xem trước"></div>
           <div class="ic-choices" id="ic-choices"></div>
           <h3 style="margin:14px 0 4px;font-size:14px">Màu sắc</h3>
           <div class="ic-swatches" id="ic-colors"></div>
-          <p class="muted"><a href="icons-preview.html">Xem toàn bộ bộ icon thiết bị công nghiệp →</a></p>
+          <p class="muted"><a href="icons-preview.html">Xem tất cả icon →</a></p>
         </div>
         <div class="panel form pro-only" style="margin-top:12px">
           <h2>Truy vấn dữ liệu PLC</h2>
-          <p class="muted" style="margin-top:0">Đọc trực tiếp thanh ghi từ PLC qua gateway hoặc Node-RED (chỉ đọc). Địa chỉ 0–299.</p>
+          <p class="muted" style="margin-top:0">Chỉ đọc, địa chỉ 0–299.</p>
           <div class="row"><input id="q-a" type="number" min="0" max="299" inputmode="numeric" placeholder="Địa chỉ, ví dụ 100"><input id="q-n" type="number" min="1" max="20" value="4" inputmode="numeric" style="max-width:84px" aria-label="Số lượng"><button id="q-go" class="fit primary">Đọc</button></div>
           <div id="q-out" class="muted"></div>
         </div>
         </div>
         <div class="set-pane" data-pane="plan" hidden>
         <div class="panel" id="sub-panel" style="margin-top:12px" hidden>
-          <h2>Gói dịch vụ (cloud)</h2>
-          <p class="muted" id="sub-info">Đang tải…</p>
-          <p class="muted">Mọi gói đều có sẵn giám sát và điều khiển. Các gói chỉ khác nhau về số widget, thời gian lưu dữ liệu và quyền dành cho đối tác.</p>
+          <h2>Gói dịch vụ</h2>
+          <p class="muted" id="sub-info"></p>
           <div id="plan-table" class="plan-table"></div>
           <div class="row"><button type="button" class="primary" id="plan-copy">Chat để nâng cấp</button></div>
-          <p class="muted">Chat với quản trị viên để được tư vấn. Khi đã thỏa thuận xong, quản trị viên nâng gói cho tài khoản của bạn; sau đó tải lại webapp là dùng được, không cần đăng nhập lại.</p>
-        </div>
+                  </div>
         </div>
       </section>
     </main>
@@ -394,9 +383,9 @@
 <script src="security/device-proof.js"></script>
 <script src="security/debug-trace.js"></script>
 <script src="security/security-client.js"></script>
-<script src="auth-app.js"></script>
+<script src="auth-app.js?v=20261125c"></script>
 <script src="control.js?v=20261113a"></script>
-<script src="site.js"></script>
+<script src="site.js?v=20261125a"></script>
 <script src="push.js"></script>
 <script src="metric-icons.js?v=1"></script>
 <script src="icons.js?v=20261118a"></script>
@@ -411,11 +400,11 @@
 <script src="export-data.js?v=20261118a"></script>
 <script src="viewing.js?v=20261119a"></script>
 <script src="sol-multi.js?v=5"></script>
-<script src="devices.js?v=20261117b"></script>
+<script src="devices.js?v=20261125e"></script>
 <script src="lost.js?v=20261120a"></script>
-<script src="app.js?v=20261117b"></script>
+<script src="app.js?v=20261125c"></script>
 <script src="security/account.js"></script>
-<script src="back-nav.js?v=1"></script>
+<script src="back-nav.js?v=2"></script>
 </body>
 </html>
 

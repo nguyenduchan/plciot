@@ -131,7 +131,11 @@
     const cur = { dev, w, ...(cmdSt.get(k) || {}), ...extra, st, t: Date.now() };
     cmdSt.set(k, cur);
     if (st === 'acked' && w.fb) setTimeout(() => { const c = cmdSt.get(k); if (c && c.st === 'acked' && c.t === cur.t) cmdSet(dev, w, 'mismatch'); }, FB_WAIT_MS);
-    if (CMD_FINAL.has(st)) setTimeout(() => { const c = cmdSt.get(k); if (c && c.t === cur.t) { cmdSt.delete(k); render(); } }, st === 'confirmed' || st === 'done' ? 6000 : 20000);
+    if (CMD_FINAL.has(st)) {   // trạng thái chỉ hiện trong lúc điều khiển rồi tự mờ đi và ẩn: thành công 3 giây, lỗi 10 giây
+      const hold = st === 'confirmed' || st === 'done' ? 3000 : 10000;
+      setTimeout(() => { const c = cmdSt.get(k); if (c && c.t === cur.t) { c.fading = true; render(); } }, hold - 450);
+      setTimeout(() => { const c = cmdSt.get(k); if (c && c.t === cur.t) { cmdSt.delete(k); render(); } }, hold);
+    }
     render();
   }
   const cmdClear = (dev, w) => { cmdSt.delete(holdKey(dev, w)); };
@@ -152,21 +156,28 @@
       sent: ['wait', 'Đã gửi tới máy chủ — chờ gateway nhận…'],
       acked: w.fb ? ['wait', `Gateway đã ghi lệnh — chờ cảm biến xác nhận ${what}…`] : ['wait', 'Gateway đã ghi lệnh…'],
       confirmed: ['ok', `✔ Đã thực hiện ${what} — cảm biến xác nhận`],
-      done: ['ok', '✔ Gateway đã ghi lệnh vào thiết bị (chưa có cảm biến phản hồi để kiểm chứng)'],
+      // Thiết bị không có đầu vào xác nhận: chỉ biết gateway đã ghi lệnh → trung tính (không xanh "thành công"), nút Thiết bị vẽ viền rỗng
+      done: ['note', `Gateway đã ghi lệnh ${what}. Thiết bị này không có tín hiệu xác nhận nên chưa kiểm chứng được trạng thái thực.`],
       rejected: ['bad', `✖ Thiết bị từ chối, không có gì thay đổi. ${esc(window.ErrText(c.err || 'bad_command'))}`],
       noreply: ['bad', `⚠ ${esc(window.ErrText('gateway_no_reply'))}`],
       mismatch: ['bad', '⚠ Gateway đã ghi lệnh nhưng cảm biến chưa đổi theo — kiểm tra relay / dây / cảm biến'],
       failed: ['bad', `✖ Lệnh chưa gửi được, thiết bị không thay đổi. ${esc(c.err || '')}`],
     }[c.st] || ['wait', ''];
-    const steps = ['Đã gửi', 'Gateway nhận'].concat(w.fb ? ['Cảm biến xác nhận'] : []);
+    // Đường đi của lệnh: Bạn → Cloud → Gateway → Thiết bị → (Cảm biến). Nút đã qua = xanh, đang chờ = vàng nhấp nháy, gói tin dừng ở đây = đỏ, chưa tới = xám.
+    // `at` = nút mà gói tin đang ở / bị kẹt. Gateway trả ack = đã ghi xuống thiết bị; "rejected" là thiết bị từ chối nên kẹt ở nút Thiết bị.
+    const steps = ['Bạn', 'Cloud', 'Gateway', 'Thiết bị'].concat(w.fb ? ['Cảm biến'] : []);
     const bad = T[0] === 'bad';
-    const items = steps.map((n, i) => `<li class="${i < (c.reached || 0) ? 'done' : i === (c.reached || 0) ? (bad ? 'err' : 'active') : ''}">${esc(n)}</li>`).join('');
-    return `<div class="dw-cmd ${T[0]}" role="${bad ? 'alert' : 'status'}"><ol class="dw-steps">${items}</ol><div class="dw-cmdtxt">${T[1]}</div></div>`;
+    const at = { sending: 1, failed: 1, sent: 2, noreply: 2, rejected: 3, acked: 4, mismatch: 4, done: steps.length, confirmed: steps.length }[c.st] ?? 1;
+    const items = steps.map((n, i) => `<li class="${c.st === 'done' && i === at - 1 ? 'open' : i < at ? 'done' : i === at ? (bad ? 'err' : 'active') : ''}"${i === at && !bad ? ' aria-current="step"' : ''}><i></i><span>${esc(n)}</span></li>`).join('');
+    const where = bad && steps[at] ? `<div class="dw-where">Gói tin dừng tại <b>${esc(steps[at])}</b></div>` : '';
+    return `<div class="dw-cmd ${T[0]}${c.fading ? ' out' : ''}" role="${bad ? 'alert' : 'status'}"><ol class="dw-steps">${items}</ol>${where}<div class="dw-cmdtxt">${T[1]}</div></div>`;
   }
   /** Dòng cảm biến tĩnh (khi không có lệnh nào đang hiện): trạng thái thật so với trạng thái lệnh gần nhất. */
   function fbHtml(dev, w, cmdOn) {
-    if (!w.fb || cmdSt.has(holdKey(dev, w))) return '';
+    if (!w.fb) return '';
     const raw = val(dev, w.fb);
+    // Đang có lệnh: vẫn hiện số đo cảm biến (không ẩn) nhưng chưa kết luận khớp/lệch — việc đó do đường trạng thái lệnh báo
+    if (cmdSt.has(holdKey(dev, w))) return raw == null || raw === '' ? '' : `<div class="dw-fb idle" role="status"><i class="lamp"></i>Cảm biến: ${esc(lab(w, Number(raw) === 1 || raw === true))}</div>`;
     if (raw == null || raw === '') return `<div class="dw-fb idle" role="status"><i class="lamp"></i>Phản hồi <code>${esc(w.fb)}</code>: chưa có tín hiệu</div>`;
     const fbOn = Number(raw) === 1 || raw === true;
     if (fbOn === cmdOn) return `<div class="dw-fb ok" role="status"><i class="lamp on"></i>Cảm biến xác nhận: ${esc(lab(w, fbOn))}</div>`;
@@ -226,7 +237,11 @@
         ? `<button type="button" class="dw-star ${c.critical ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" data-key="${esc(c.key)}" data-crit="${c.critical ? 1 : 0}" ${c.criticalLocked ? 'disabled' : ''} title="${c.critical ? (c.criticalLocked ? 'Lệnh nguy hiểm do tem đặt' : 'Bỏ đánh dấu nguy hiểm') : 'Đánh dấu lệnh nguy hiểm'}">${c.critical ? '★' : '☆'}</button>`
         : '';
       const info = [c.critical ? `⚠ Nguy hiểm — xác nhận từng lần${c.criticalLocked ? ' (tem đặt)' : ''}` : '', c.limits ? `Giới hạn ${c.limits.min}–${c.limits.max}` : ''].filter(Boolean).join(' · ');
-      return `<div class="dw ctlw ${c.critical ? 'crit' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}</div>
+      // Huy hiệu độ tin cậy: có đầu vào phản hồi (cảm biến / tiếp điểm) = lệnh được kiểm chứng bằng tín hiệu thật; không có = chỉ biết gateway đã ghi lệnh
+      const trust = w.fb
+        ? '<span class="dw-trust ok" title="Có tín hiệu phản hồi: lệnh được kiểm chứng bằng đầu vào thật"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Có xác nhận</span>'
+        : '<span class="dw-trust" title="Không có tín hiệu phản hồi: chỉ biết gateway đã ghi lệnh"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="dash" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>Không xác nhận</span>';
+      return `<div class="dw ctlw ${c.critical ? 'crit' : ''}${w.fb ? ' verified' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}${trust}</div>
         <button type="button" class="fit dw-toggle ${on ? 'on' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}</small></button><div class="dw-status">${cmdHtml(dev, w)}${fbHtml(dev, w, on)}</div>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'slider') {

@@ -695,7 +695,7 @@ $('#logout').onclick = async () => {
   try { ['session', 'ctl', 'enroll', 'devReq'].forEach((k) => localStorage.removeItem(k)); } catch {}
   location.replace('login.html?out=1'); // out=1: người dùng chủ động đăng xuất → không tự đăng nhập lại bằng vân tay
 };
-let hideTimer = null, hiddenAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
+let hideTimer = null, hiddenAt = 0, visSyncAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline'; });
 document.addEventListener('visibilitychange', () => {
   if (window.AppLock?.isLocked()) return;
@@ -705,6 +705,9 @@ document.addEventListener('visibilitychange', () => {
     // iOS đóng băng trang ở nền: socket có thể đã chết mà vẫn báo "mở". Ẩn quá 30 giây thì luôn dựng kết nối mới khi quay lại.
     if (S.status === 'offline' || (hiddenAt && Date.now() - hiddenAt > 30000)) connect();
     hiddenAt = 0;
+    // Tab chớp ẩn/hiện liên tục (khung xem trước, đổi cửa sổ nhanh) không được kéo lịch sử mỗi lần: tối đa 1 lần / 60 giây
+    if (Date.now() - (visSyncAt || 0) < 60000) return;
+    visSyncAt = Date.now();
     syncCloudHistory().then(() => DB.range('raw', Date.now() - 3600e3, Date.now())).then((rows) => {
       if (rows?.length) hist = rows.map((r) => [r.t, r.o, r.i, r.a, r.c]);
     }).catch(() => {});

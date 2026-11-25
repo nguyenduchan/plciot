@@ -43,6 +43,7 @@
 
   function ensureBackButton(win) {
     if (win.querySelector(HAS_BACK)) return;
+    if (closer(win)) return;   // cửa sổ đã có nút Huỷ/Đóng của chính nó → không thêm nút "Quay lại" thừa (nút Back của máy vẫn đóng được qua closeWin)
     const box = win.querySelector(BOX) || win;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'nav-back'; b.textContent = 'Quay lại'; b.setAttribute('aria-label', 'Quay lại');

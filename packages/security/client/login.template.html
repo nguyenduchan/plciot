@@ -32,7 +32,7 @@
 
     <div id="pane-login" role="tabpanel" aria-labelledby="tab-login">
     <div id="step-creds" class="step">
-      <p class="hint" id="flow-hint">Đăng nhập bằng tên đăng nhập + mật khẩu đã đăng ký.</p>
+      <p class="hint" id="flow-hint">Đăng nhập để tiếp tục.</p>
       <label id="username-row">Tên đăng nhập<input id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Tên đăng nhập"></label>
       <label id="pw-row">Mật khẩu<input id="password" type="password" autocomplete="current-password" placeholder="Mật khẩu"></label>
       <div class="login-actions">
@@ -46,7 +46,7 @@
       </div>
       <details id="more-device" class="more-device">
         <summary>Có mã mời nhà máy?</summary>
-        <p class="hint" id="tg-hint">Tem QR thiết bị gắn <b>sau khi đăng nhập</b> (Cài đặt → Nhà máy). Đổi điện thoại: đăng nhập bằng mật khẩu / Khôi phục — <b>không</b> quét lại tem.</p>
+        <p class="hint" id="tg-hint">Tem QR gắn sau khi đăng nhập (Cài đặt → Nhà máy).</p>
         <label id="invite-row">Mã mời<input id="invite-code" autocomplete="off" placeholder="Mã mời từ chủ nhà máy"></label>
         <label id="privacy-row" class="privacy-consent">
           <input id="privacy-consent" type="checkbox">
@@ -64,7 +64,7 @@
 
     <div id="step-recover" class="step" hidden>
       <p class="hint" style="font-weight:600">Khôi phục khi mất máy / quên mật khẩu</p>
-      <p class="hint">Cần <b>ít nhất 2</b> trong: <b>mã khôi phục</b>, <b>mật khẩu</b>, <b>vân tay / Face ID trên máy này</b>. <b>Không</b> quét lại QR tem thiết bị (tem chỉ dùng lần nhận máy đầu). Face ID máy cũ không mang sang máy mới.</p>
+      <p class="hint">Cần ít nhất 2 trong: mã khôi phục, mật khẩu, vân tay / Face ID.</p>
       <label>Tên đăng nhập<input id="rc-phone" autocomplete="username" autocapitalize="none" placeholder="Tên đăng nhập"></label>
       <label>Mã khôi phục<input id="rc-otp" autocomplete="one-time-code" placeholder="XXXX-XXXX"></label>
       <label>Mật khẩu<input id="rc-pw" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại"></label>
@@ -98,7 +98,7 @@
       <div class="login-actions">
         <button type="button" id="btn-register" class="primary">Tiếp tục</button>
       </div>
-      <p class="hint" style="margin-top:12px">Cuối cùng bạn sẽ nhận <b>mã khôi phục</b>. Hãy lưu lại cùng tên đăng nhập và mật khẩu để lấy lại tài khoản khi mất máy hoặc quên mật khẩu. Tài khoản chỉ được tạo khi hoàn tất cả các bước.</p>
+      <p class="hint" style="margin-top:12px">Bước cuối bạn sẽ nhận mã khôi phục — hãy lưu lại.</p>
     </div>
 
     <div id="progress">

@@ -401,7 +401,7 @@ async function showFaceIdOption() {
   $('#btn-passkey').onclick = () => passkeyLogin();
   if ($('#or-sep')) $('#or-sep').hidden = $('#btn-login').hidden;
   if (!document.body.classList.contains('returning')) {
-    $('#flow-hint').textContent = `Chọn 1 cách đăng nhập: nhập tên đăng nhập + mật khẩu, hoặc bấm «Đăng nhập bằng ${bio.label}». Chưa có tài khoản? Chọn tab «Đăng ký».`;
+    $('#flow-hint').textContent = '';
   }
 }
 
@@ -417,7 +417,7 @@ function passwordFirstView() {
   $('#btn-login').textContent = 'Đăng nhập bằng mật khẩu';
   if ($('#btn-invite')) $('#btn-invite').hidden = false;
   $('#lnk-use-pw').hidden = true;
-  $('#flow-hint').textContent = 'Đăng nhập bằng tên đăng nhập + mật khẩu đã lưu. Chưa có tài khoản? Chọn tab «Đăng ký». Tem QR gắn sau khi vào app (Cài đặt → Nhà máy).';
+  $('#flow-hint').textContent = '';
   $('#switch-row').hidden = true;
 }
 
@@ -439,7 +439,7 @@ async function returningView() {
   document.body.classList.add('returning');
   // Máy tin cậy: Face ID tiện lợi; mật khẩu luôn sẵn làm dự phòng.
   $('#flow-hint').textContent = canBio
-    ? `Chọn 1 cách đăng nhập ${username}: mật khẩu hoặc ${bio.label}.`
+    ? ''
     : `Đăng nhập ${username} bằng mật khẩu.`;
   if ($('#btn-invite')) $('#btn-invite').hidden = true;
   $('#btn-passkey').hidden = !canBio;

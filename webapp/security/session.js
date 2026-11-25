@@ -16,7 +16,7 @@
   let lastActivity = Date.now();
   let hiddenAt = 0;
   let lastPing = 0;
-  let hiddenTimer = null;
+  let hiddenTimer = null, bgTimer = null, bgSent = false;
 
   function post(path, session, token) {
     return orig.call(window, location.origin + path, {
@@ -103,14 +103,19 @@
   setInterval(() => { if (Date.now() - lastActivity >= 300_000) lock(); }, 5000);
   document.addEventListener('visibilitychange', () => {
     clearTimeout(hiddenTimer);
+    clearTimeout(bgTimer);
     if (document.hidden) {
       hiddenAt = Date.now();
-      post('/api/login/background', readSession()).catch(() => {});
+      // Báo "ở nền" sau 3 giây vẫn còn ẩn: tab chớp ẩn/hiện liên tục không tạo cơn bão request (429) lên server.
+      bgTimer = setTimeout(() => { bgSent = true; post('/api/login/background', readSession()).catch(() => {}); }, 3000);
       hiddenTimer = setTimeout(() => lock(), 60_000);
     } else {
       if (hiddenAt && Date.now() - hiddenAt >= 60_000) return lock();
       hiddenAt = 0;
-      post('/api/login/activity', readSession()).then((res) => { if (res.status === 401) lock(false); }).catch(() => {});
+      if (bgSent) {   // chỉ báo "đã quay lại" khi trước đó đã báo "ở nền"
+        bgSent = false;
+        post('/api/login/activity', readSession()).then((res) => { if (res.status === 401) lock(false); }).catch(() => {});
+      }
     }
   });
   window.addEventListener('pagehide', () => {

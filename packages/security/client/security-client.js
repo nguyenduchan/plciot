@@ -1522,18 +1522,17 @@
     root.hidden = false;
     const msg = (t, bad) => { const e = $('#ctl-msg'); e.textContent = t || ''; e.classList.toggle('err', Boolean(bad)); };
 
-    const hasBiometric = await platformAuthenticator();
     // Chỉ ẩn khi trình duyệt không có WebAuthn (không HTTPS / WebView cũ). Có WebAuthn mà chưa nhận ra cảm biến vẫn cho bấm thử.
     $('#ctl-pk-add').hidden = !passkeySupported();
     async function refresh() {
       const st = await api('GET', '/api/control/status');
       if (!st.ok) { $('#ctl-state').textContent = errText(st.body.error); return; }
       const m = st.body.methods;
-      $('#ctl-state').textContent = !st.body.stepUp ? 'Xác thực bổ sung đang tắt trên máy chủ.'
-        : `${m.passkey ? 'Vân tay / Face ID: đã bật. ' : ''}${m.totp ? 'Authenticator: đã bật. ' : ''}${!m.enrolled ? 'Chưa thiết lập — bạn sẽ không điều khiển được cho tới khi thiết lập.' : ''}`
-        + (hasBiometric || m.passkey ? '' : ' Máy này không có vân tay / Face ID / Windows Hello nên dùng Authenticator.')
-        + (st.body.unlocked ? ' Đang mở khoá điều khiển.' : '')
-        + (m.enrolled ? ' Mã khôi phục còn ' + st.body.recoveryCodesLeft + '.' + (st.body.recoveryCodesLeft ? '' : ' ⚠️ Hãy tạo mã mới ở mục Mã khôi phục.') : '');
+      const on = [m.passkey && 'Face ID / vân tay', m.totp && 'Authenticator'].filter(Boolean);
+      const left = st.body.recoveryCodesLeft;
+      $('#ctl-state').textContent = !st.body.stepUp ? 'Đang tắt trên máy chủ.'
+        : !m.enrolled ? 'Chưa thiết lập — cần thiết lập để điều khiển.'
+        : `Đã bật: ${on.join(', ')}. Mã khôi phục còn ${left}.${left ? '' : ' Hãy tạo mã mới.'}${st.body.unlocked ? ' Đang mở khoá.' : ''}`;
       if (st.body.pendingDevices > 0 && !refresh.prompted) { refresh.prompted = true; reviewDevices(); }
       $('#ctl-totp-add').textContent = m.totp ? 'Đặt lại Authenticator (máy mới)' : 'Bật Authenticator';
       $('#ctl-totp-off').hidden = !m.totp;
