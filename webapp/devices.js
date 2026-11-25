@@ -128,7 +128,13 @@
   const CMD_FINAL = new Set(['confirmed', 'done', 'rejected', 'noreply', 'mismatch', 'failed']);
   function cmdSet(dev, w, st, extra) {
     const k = holdKey(dev, w);
-    const cur = { dev, w, ...(cmdSt.get(k) || {}), ...extra, st, t: Date.now() };
+    const now = Date.now();
+    const prev = cmdSt.get(k);
+    // đồng hồ của lệnh: t0 = lúc bấm ('sending'); ms[trạng thái] = số ms từ t0 tới lúc vào trạng thái đó (hiện cạnh từng node + tổng)
+    const t0 = st === 'sending' || !prev?.t0 ? now : prev.t0;
+    const ms = st === 'sending' ? { sending: 0 } : { ...(prev?.ms || {}) };
+    ms[st] = now - t0;
+    const cur = { dev, w, ...(prev || {}), ...extra, st, t: now, t0, ms };
     cmdSt.set(k, cur);
     if (st === 'acked' && w.fb) setTimeout(() => { const c = cmdSt.get(k); if (c && c.st === 'acked' && c.t === cur.t) cmdSet(dev, w, 'mismatch'); }, FB_WAIT_MS);
     if (CMD_FINAL.has(st)) {   // trạng thái chỉ hiện trong lúc điều khiển rồi tự mờ đi và ẩn: thành công 3 giây, lỗi 10 giây
@@ -168,9 +174,19 @@
     const steps = ['Bạn', 'Cloud', 'Gateway', 'Thiết bị'].concat(w.fb ? ['Cảm biến'] : []);
     const bad = T[0] === 'bad';
     const at = { sending: 1, failed: 1, sent: 2, noreply: 2, rejected: 3, acked: 4, mismatch: 4, done: steps.length, confirmed: steps.length }[c.st] ?? 1;
-    const items = steps.map((n, i) => `<li class="${c.st === 'done' && i === at - 1 ? 'open' : i < at ? 'done' : i === at ? (bad ? 'err' : 'active') : ''}"${i === at && !bad ? ' aria-current="step"' : ''}><i></i><span>${esc(n)}</span></li>`).join('');
+    // thời gian (ms) tính từ lúc bấm: node đã qua = lúc nhận được xác nhận ở bước đó; node kẹt = lúc phát hiện lỗi; node đang chờ chưa có số
+    const m = c.ms || {};
+    const gwMs = m.acked ?? m.done ?? m.rejected;   // gateway trả ack (kể cả từ chối) = đã phản hồi
+    const nodeMs = [null, m.sent, gwMs, m.acked ?? m.done, m.confirmed];
+    const msText = (i) => {
+      const v = i === at ? (bad ? m[c.st] : undefined) : (i < at ? nodeMs[i] : undefined);
+      return v == null ? '' : `<em class="dw-ms">${v} ms</em>`;
+    };
+    const final = CMD_FINAL.has(c.st);
+    const total = final && m[c.st] != null ? ` <b class="dw-total">· Tổng ${m[c.st]} ms</b>` : '';
+    const items = steps.map((n, i) => `<li class="${c.st === 'done' && i === at - 1 ? 'open' : i < at ? 'done' : i === at ? (bad ? 'err' : 'active') : ''}"${i === at && !bad ? ' aria-current="step"' : ''}><i></i><span>${esc(n)}</span>${msText(i)}</li>`).join('');
     const where = bad && steps[at] ? `<div class="dw-where">Gói tin dừng tại <b>${esc(steps[at])}</b></div>` : '';
-    return `<div class="dw-cmd ${T[0]}${c.fading ? ' out' : ''}" role="${bad ? 'alert' : 'status'}"><ol class="dw-steps">${items}</ol>${where}<div class="dw-cmdtxt">${T[1]}</div></div>`;
+    return `<div class="dw-cmd ${T[0]}${c.fading ? ' out' : ''}" role="${bad ? 'alert' : 'status'}"><ol class="dw-steps">${items}</ol>${where}<div class="dw-cmdtxt">${T[1]}${total}</div></div>`;
   }
   /** Dòng cảm biến tĩnh (khi không có lệnh nào đang hiện): trạng thái thật so với trạng thái lệnh gần nhất. */
   function fbHtml(dev, w, cmdOn) {

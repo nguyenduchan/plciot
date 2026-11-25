@@ -16,6 +16,10 @@ static class Icons
 
     static readonly Dictionary<string, Parsed?> Cache = new();
 
+    /// <summary>Dạng hình thiết bị: "3d" (mặc định, đổ khối) · "flat" (phẳng) · "line" (nét mảnh một màu như trước). Có thể đặt bằng biến môi trường GATEWAYAPP_ICONFORM.</summary>
+    public static string RealForm { get; set; } = Environment.GetEnvironmentVariable("GATEWAYAPP_ICONFORM") is "flat" or "line" ? Environment.GetEnvironmentVariable("GATEWAYAPP_ICONFORM")! : "3d";
+    static bool UseReal(string? id) => RealForm != "line" && RealIcon.Has(id);
+
     /// <summary>Có icon này không (đại lượng đo hoặc thiết bị).</summary>
     public static bool Has(string? id) => id != null && (IconData.Q.ContainsKey(id) || IconData.Device.ContainsKey(id));
 
@@ -34,6 +38,7 @@ static class Icons
     /// <summary>Vẽ icon vào ô r (giữ tỉ lệ, căn giữa). Mặc định bộ đại lượng đo (24×24, rồi tới bộ thiết bị); device = true → bộ thiết bị (48×48, giống webapp).</summary>
     public static void Draw(Graphics g, string? id, RectangleF r, Color c, float? stroke = null, bool device = false)
     {
+        if (device && UseReal(id)) { RealIcon.Draw(g, id, r, RealForm == "flat"); return; }   // hình thiết bị thực tế (3D / phẳng), giống webapp
         var p = Get(id ?? "", device) ?? Get("chart", false);
         if (p == null || r.Width <= 0 || r.Height <= 0) return;
         var s = Math.Min(r.Width, r.Height) / p.Box;
@@ -58,6 +63,7 @@ static class Icons
     /// <summary>Ô icon bo góc nền nhạt + icon màu nhấn (dùng cho thẻ thiết bị, chỉ số).</summary>
     public static void Badge(Graphics g, string? id, RectangleF r, Color c, float radius = 8, int alpha = 46, bool device = false)
     {
+        if (device && UseReal(id)) { RealIcon.Draw(g, id, r, RealForm == "flat"); return; }   // hình thực tế tự đứng, không cần ô nền
         using (var path = Theme.Round(r, radius)) using (var b = new SolidBrush(Color.FromArgb(alpha, c))) g.FillPath(b, path);
         var pad = r.Width * (device ? 0.14f : 0.2f);
         Draw(g, id, new RectangleF(r.X + pad, r.Y + pad, r.Width - pad * 2, r.Height - pad * 2), c, null, device);
@@ -145,7 +151,7 @@ static class Icons
         public bool Flag() { Skip(); var c = _s[_i++]; return c == '1'; }
     }
 
-    static void PathData(GraphicsPath gp, string d)
+    internal static void PathData(GraphicsPath gp, string d)
     {
         var r = new Reader(d);
         PointF cur = default, start = default, ctl = default; char prev = ' ';

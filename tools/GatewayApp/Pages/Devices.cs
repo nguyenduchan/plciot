@@ -22,8 +22,8 @@ sealed class TemplateTile : Painted
         using (var b = new SolidBrush(Selected ? Color.FromArgb(40, Theme.Accent) : _hot ? Theme.Panel2 : Theme.Panel)) g.FillPath(b, path);
         using (var p = new Pen(Selected ? Theme.Accent : Theme.Border, Selected ? 1.6f : 1f)) g.DrawPath(p, path);
         Icons.Badge(g, Icons.ForDevice(Tpl.Id, Tpl.Id), new RectangleF(10, 9, 40, 40), Selected ? Theme.Accent : Theme.Teal, 9, 50, device: true);   // icon vector giống webapp
-        TextRenderer.DrawText(g, Tpl.Name, Theme.Semi, new Rectangle(60, 8, Width - 66, 22), Theme.Text, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(g, Tpl.Desc, Theme.Small, new Rectangle(60, 31, Width - 66, 20), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(g, Tpl.Name, Theme.Semi, new Rectangle(64, 8, Width - 70, 22), Theme.Text, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(g, Tpl.Desc, Theme.Small, new Rectangle(64, 31, Width - 70, 20), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 }
 

@@ -976,3 +976,19 @@ html .wic .icr{width:22px;height:22px;margin:-3px 2px -3px 0;vertical-align:midd
 html .dev-card.is-off .dev-ic:has(.icr){filter:grayscale(.85) opacity(.65)}
 html .gw-ic .icr{width:30px;height:30px}
 html .ic-prev .dev-ic:has(.icr){width:40px;height:40px}
+
+/* Khoảng thở giữa icon và chữ: không đè, không dính sát */
+html .dev-card header{gap:12px}
+html .wic{margin-right:8px}
+html .wic .icr{margin:-3px 0}
+html .dw.ctlw .k{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+html .dw.ctlw .k .wic{margin-right:0}
+html .dw.ctlw .k .dw-trust{float:none;margin-left:auto}
+html .wic{width:auto;height:auto;display:inline-flex;align-items:center;flex:none;vertical-align:middle}
+html .wic .icr{margin:0}
+html .dw:not(.ctlw) .k{display:flex;align-items:center;gap:8px}
+html .dw:not(.ctlw) .k .wic{margin-right:0}
+
+/* Thời gian (ms) từng bước của lệnh + tổng */
+.dw-steps li em.dw-ms{font-style:normal;font-size:10px;font-weight:500;line-height:1;margin-top:-2px;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dw-total{font-variant-numeric:tabular-nums;white-space:nowrap}

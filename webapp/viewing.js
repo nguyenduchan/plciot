@@ -4,9 +4,11 @@
 (function () {
   const EVERY_MS = 20000;
   function session() { try { return JSON.parse(localStorage.getItem('session')); } catch { return null; } }
-  let inflight = false;
+  let inflight = false, lastBeat = 0;
   async function beat() {
     if (inflight || document.visibilityState !== 'visible') return;
+    if (Date.now() - lastBeat < 8000) return;   // tab chớp ẩn/hiện liên tục không được bắn POST mỗi lần (server giới hạn → 429)
+    lastBeat = Date.now();
     const s = session();
     if (!s || !s.token) return;
     inflight = true;

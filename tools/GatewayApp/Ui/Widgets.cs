@@ -46,14 +46,14 @@ class Card : Panel
             var x0 = 14;
             if (_icon.Length > 0)
             {
-                var ic = new RectangleF(11, 5, 30, 30);
+                var ic = new RectangleF(13, 5, 30, 30);
                 if (Icons.Has(_icon)) Icons.Badge(g, _icon, ic, _accent, 8, 50, device: true);   // icon vector giống webapp
                 else
                 {
                     using (var ip = Theme.Round(ic, 7)) { using var ib = new SolidBrush(Color.FromArgb(55, _accent)); g.FillPath(ib, ip); }
                     TextRenderer.DrawText(g, _icon, new Font("Segoe UI Symbol", 11f), Rectangle.Round(ic), _accent, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 }
-                x0 = 50;
+                x0 = 56;   // icon thực tế rộng hơn icon nét: chừa khoảng thở giữa hình và chữ
                 using var bar = new SolidBrush(_accent); g.FillRectangle(bar, 1, 14, 3, 12);
             }
             TextRenderer.DrawText(g, _title, Theme.Title, new Point(x0, 9), Theme.Text, TextFormatFlags.NoPadding);

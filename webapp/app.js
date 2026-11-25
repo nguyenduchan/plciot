@@ -695,7 +695,7 @@ $('#logout').onclick = async () => {
   try { ['session', 'ctl', 'enroll', 'devReq'].forEach((k) => localStorage.removeItem(k)); } catch {}
   location.replace('login.html?out=1'); // out=1: người dùng chủ động đăng xuất → không tự đăng nhập lại bằng vân tay
 };
-let hideTimer = null, hiddenAt = 0, visSyncAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
+let hideTimer = null, hiddenAt = 0, visSyncAt = 0, visConnectAt = 0;   // hidden tab for 5 min -> release the broker connection; reconnect on return
 document.addEventListener('app-locked', () => { link.stop(); S.status = 'offline'; });
 document.addEventListener('visibilitychange', () => {
   if (window.AppLock?.isLocked()) return;
@@ -703,7 +703,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); hideTimer = setTimeout(() => { link.stop(); S.status = 'offline'; }, 300000); }
   else {
     // iOS đóng băng trang ở nền: socket có thể đã chết mà vẫn báo "mở". Ẩn quá 30 giây thì luôn dựng kết nối mới khi quay lại.
-    if (S.status === 'offline' || (hiddenAt && Date.now() - hiddenAt > 30000)) connect();
+    // Tab chớp ẩn/hiện liên tục (khung xem trước) không được dựng lại kết nối MQTT mỗi lần: tối đa 1 lần / 8 giây
+    if ((S.status === 'offline' || (hiddenAt && Date.now() - hiddenAt > 30000)) && Date.now() - (visConnectAt || 0) > 8000) { visConnectAt = Date.now(); connect(); }
     hiddenAt = 0;
     // Tab chớp ẩn/hiện liên tục (khung xem trước, đổi cửa sổ nhanh) không được kéo lịch sử mỗi lần: tối đa 1 lần / 60 giây
     if (Date.now() - (visSyncAt || 0) < 60000) return;

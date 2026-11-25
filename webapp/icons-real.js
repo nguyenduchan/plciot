@@ -34,10 +34,10 @@
     const ST = g ? 'stroke="rgba(0,0,0,.38)" stroke-width=".9" stroke-linejoin="round"' : 'stroke="rgba(0,0,0,.2)" stroke-width=".8" stroke-linejoin="round"';
     return {
       g, f,
-      R: (x, y, w, h, r, n, o = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${f(n)}" ${ST} ${o}/>`,
-      C: (cx, cy, r, n, o = '') => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f(n)}" ${ST} ${o}/>`,
-      E: (cx, cy, rx, ry, n, o = '') => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f(n)}" ${ST} ${o}/>`,
-      P: (d, n, o = '') => `<path d="${d}" fill="${f(n)}" ${ST} ${o}/>`,
+      R: (x, y, w, h, r, n, o = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${f(n)}" ${o.includes('stroke=') ? '' : ST} ${o}/>`,
+      C: (cx, cy, r, n, o = '') => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f(n)}" ${o.includes('stroke=') ? '' : ST} ${o}/>`,
+      E: (cx, cy, rx, ry, n, o = '') => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f(n)}" ${o.includes('stroke=') ? '' : ST} ${o}/>`,
+      P: (d, n, o = '') => `<path d="${d}" fill="${f(n)}" ${o.includes('stroke=') ? '' : ST} ${o}/>`,
       L: (d, c = 'rgba(0,0,0,.28)', w = 1.1) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`,
       HL: (s) => (g ? s : ''),                                       // chỉ có ở dạng 3D: vệt sáng
       SH: (cx, cy, rx) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="2.2" fill="#000" opacity="${g ? .28 : .12}"/>`, // bóng đổ xuống nền
