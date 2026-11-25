@@ -103,8 +103,8 @@
     const host = document.getElementById('plan-table');
     if (!host) return;
     const cur = sub?.plan;
-    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ' <span class="tag pick-tag">chạm để chọn</span>'}
-      <small>${esc(p.desc || '')}</small><small>Có giám sát + điều khiển · ${esc(p.widgets)} · ${esc(p.retention)}</small>${priceLine(p.id)}<small class="fit">Phù hợp: ${esc(p.fit)}</small></div>`).join('');
+    host.innerHTML = PLANS.map((p) => `<div class="plan-row${p.id === cur ? ' cur' : ' pick'}" data-plan="${esc(p.id)}" title="${esc([p.desc, p.fit && 'Phù hợp: ' + p.fit].filter(Boolean).join(' — '))}"${p.id === cur ? '' : ' role="button" tabindex="0"'}><b>${esc(p.name)}</b>${p.id === cur ? ' <span class="tag">đang dùng</span>' : ''}
+      <small>${esc(p.widgets)} · ${esc(p.retention)}</small>${priceLine(p.id)}</div>`).join('');
     let box = document.getElementById('plan-days-box');
     if (!box) { box = document.createElement('div'); box.id = 'plan-days-box'; host.insertAdjacentElement('afterend', box); }
     box.innerHTML = '<p class="help">Mã gói (DK10, DK30…) là số thiết bị tối đa của gói — dùng mã này khi trao đổi với quản trị viên. Giá chỉ để tham khảo, chưa phải đơn đặt hàng; gói chỉ được kích hoạt sau khi bạn chat với quản trị viên và được xác nhận.</p>';

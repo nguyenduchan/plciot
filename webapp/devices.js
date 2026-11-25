@@ -159,7 +159,7 @@
       // Thiết bị không có đầu vào xác nhận: chỉ biết gateway đã ghi lệnh → trung tính (không xanh "thành công"), nút Thiết bị vẽ viền rỗng
       done: ['note', `Gateway đã ghi lệnh ${what}. Thiết bị này không có tín hiệu xác nhận nên chưa kiểm chứng được trạng thái thực.`],
       rejected: ['bad', `✖ Thiết bị từ chối, không có gì thay đổi. ${esc(window.ErrText(c.err || 'bad_command'))}`],
-      noreply: ['bad', `⚠ ${esc(window.ErrText('gateway_no_reply'))}`],
+      noreply: ['bad', '✖ Không thành công — gateway không phản hồi. Trạng thái điều khiển không đổi.'],
       mismatch: ['bad', '⚠ Gateway đã ghi lệnh nhưng cảm biến chưa đổi theo — kiểm tra relay / dây / cảm biến'],
       failed: ['bad', `✖ Lệnh chưa gửi được, thiết bị không thay đổi. ${esc(c.err || '')}`],
     }[c.st] || ['wait', ''];
@@ -329,8 +329,15 @@
     live[lk(p.dev)] = { ...live[lk(p.dev)], [p.w.bind]: p.prev };
     render();
   }
+  /** Gateway đã ghi lệnh (ack ok): lúc này mới đổi trạng thái điều khiển sang giá trị đã gửi; giữ ngắn để telemetry cũ không kéo về. */
+  function applyWanted(dev, w) {
+    const c = cmdSt.get(holdKey(dev, w));
+    if (c?.want == null || !Number.isFinite(Number(c.want))) return;
+    live[lk(dev)] = { ...live[lk(dev)], [w.bind]: Number(c.want) };
+    setHold(dev, w, c.want);
+  }
   function trackAck(id, dev, w, prev) {
-    if (!id) { cmdSet(dev, w, 'done', { reached: 2 }); return; }
+    if (!id) { applyWanted(dev, w); cmdSet(dev, w, 'done', { reached: 2 }); return; }
     cmdSet(dev, w, 'sent', { id: String(id), reached: 1 });
     const timer = setTimeout(() => {
       const p = awaiting.get(id); if (!p) return;
@@ -345,6 +352,7 @@
     if (a.ok) {
       const c = cmdSt.get(holdKey(p.dev, p.w));
       if (c && c.st === 'confirmed') return;                 // telemetry về trước ack: đã xác nhận bằng cảm biến rồi
+      applyWanted(p.dev, p.w);
       return cmdSet(p.dev, p.w, p.w.fb ? 'acked' : 'done', { reached: 2 });
     }
     revert(p);
@@ -587,8 +595,7 @@
         if (!w?.cmd?.key || !window.Ctl?.send || btn.disabled) return;
         const prev = live[lk(dev)]?.[w.bind];
         const next = staged[skey] !== undefined ? Number(staged[skey]) : Number(sl.value);
-        live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
-        setHold(dev, w, next);
+        // không cập nhật lạc quan: giá trị chỉ đổi khi gateway ack ok (xem applyWanted)
         clearDirty();
         cmdSet(dev, w, 'sending', { want: next, reached: 0, err: '' });
         btn.disabled = true; btn.textContent = 'Đang gửi…';
@@ -616,11 +623,10 @@
         } else if (w.cmd.key != null && window.Ctl?.send) {
           // thiết bị con của hub: lệnh {child,key,v} đi /api/control/cmd (cùng xác thực bước hai), kết quả thật hiện qua telemetry
           b.disabled = true;
-          // cập nhật lạc quan: nút đổi ngay, telemetry của PLC xác nhận (hoặc sửa lại) sau; lỗi thì trả về giá trị cũ
+          // KHÔNG cập nhật lạc quan: nút giữ nguyên trạng thái cũ cho tới khi gateway báo đã ghi lệnh (ack ok → applyWanted).
+          // Gateway không phản hồi / từ chối / gửi lỗi = lệnh không thành công, trạng thái điều khiển không đổi.
           const prev = live[lk(dev)]?.[w.bind];
-          live[lk(dev)] = { ...live[lk(dev)], [w.bind]: next };
-          setHold(dev, w, next);
-          cmdSet(dev, w, 'sending', { want: Number(next), reached: 0, err: '' });   // trước render: nút đã đổi nhưng đầu vào chưa kịp đổi thì không phải là "lệch"
+          cmdSet(dev, w, 'sending', { want: Number(next), reached: 0, err: '' });
           render();
           window.Ctl.send({ child: dev.childId, key: w.cmd.key, v: next, gw: gwKey(dev) }).then((r) => {
             if (r?.ok) return trackAck(r.id, dev, w, prev);
