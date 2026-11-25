@@ -146,12 +146,22 @@
     [/(alarm|alm|fault|err|trip|canh_bao)/i, 'alarm'], [/(door|cua|gate)/i, 'door'], [/(batt|pin|soc|ups)/i, 'battery'], [/(heat|gia_nhiet|set_?t)/i, 'heater'],
   ];
 
+  // mã đại lượng đo (metric-icons.js) → mã thiết bị thật vẽ giống nhất
+  const REAL_VALUE = { temp: 'env', thermo: 'env', humidity: 'humidity', level: 'tank', flow: 'flow', pressure: 'pressure', voltage: 'energy', current: 'energy', power: 'energy', energy: 'energy',
+    speed: 'gauge', freq: 'vfd', weight: 'scale', ph: 'ph', gas: 'gas', vib: 'vibration', bulb: 'bulb', light: 'bulb', battery: 'battery', alarm: 'alarm', warn: 'alarm', door: 'door',
+    valve: 'valve', pump: 'pump', fan: 'fan', motor: 'motor', generator: 'generator', compressor: 'compressor', conveyor: 'conveyor', count: 'counter', clock: 'clock', run: 'power', plug: 'relay' };
+
   function device(name, opt = {}) {
     const id = Array.isArray(name) ? pick(name) : pick(name);
     // bộ hình "P&ID chuẩn" (icons-pid.js, mặc định) hoặc "Minh hoạ" — chọn riêng, không phụ thuộc kiểu nền 3D/hiện đại/SCADA
     // hình vẽ theo kiểu nền: SCADA = ký hiệu P&ID đơn sắc; Đẹp (3D) = hình thiết bị đổ khối (icons-3d.js); Hiện đại = nét mảnh
     const st = opt.style || document.documentElement.dataset.icStyle;   // opt.style: vẽ theo một phong cách cụ thể (ô xem trước ở Cài đặt)
     // Grafana / ThingsBoard / Material / Carbon: mỗi phong cách dùng bộ icon thật của hệ đó (icons-sets.js, giấy phép mở)
+    // Hình thiết bị "thực tế" (icons-real.js): 3D đổ khối hoặc phẳng, vẽ giống hình chụp thiết bị thật; "theo kiểu thẻ" = bộ icon riêng của kiểu đang chọn.
+    // Kiểu SCADA luôn giữ ký hiệu P&ID (đơn sắc, tĩnh) theo chuẩn vận hành.
+    const shape = opt.shape || document.documentElement.dataset.icForm || '3d';
+    const real = st !== 'scada' && shape !== 'theme' ? window.PlcIconsReal?.get(shape, id) : null;
+    if (real) return real().replace('class="ic ', `class="ic ${opt.on ? 'on ' : ''}`).replace('<svg ', `<svg ${opt.speed != null ? `style="--spin:${opt.speed}s" ` : ''}`);
     const set = window.PlcIconSets?.[st]?.[id];
     if (set) {
       const attrs = st === 'grafana' ? 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"' : 'fill="currentColor"';
@@ -164,7 +174,14 @@
   /** Icon nhỏ cho một giá trị: bộ ĐẠI LƯỢNG ĐO dùng chung với gateway (metric-icons.js — theo đơn vị, nhãn, khoá: °C → nhiệt kế, bar → đồng hồ áp, %RH → giọt ẩm…);
    *  thiếu bộ đó thì đoán theo khoá field bằng icon thiết bị như cũ. */
   function value(key, kind, unit, label) {
-    if (window.PlcQIcons) return window.PlcQIcons.svg(window.PlcQIcons.forField(key, unit, label, kind));
+    if (window.PlcQIcons) {
+      const qid = window.PlcQIcons.forField(key, unit, label, kind);
+      // giá trị đo cũng vẽ bằng thiết bị thật tương ứng (nhiệt kế, đồng hồ áp, bồn…) khi chọn hình thực tế
+      const shape = document.documentElement.dataset.icForm || '3d';
+      const dev = REAL_VALUE[qid];
+      const real = dev && shape !== 'theme' && document.documentElement.dataset.icStyle !== 'scada' ? window.PlcIconsReal?.get(shape, dev) : null;
+      return real ? real() : window.PlcQIcons.svg(qid);
+    }
     const k = String(key || '');
     const hit = VALUE.find(([re]) => re.test(k));
     const name = hit ? hit[1] : (kind === 'slider' ? 'gauge' : kind === 'toggle' ? 'power' : 'sensor');
@@ -210,6 +227,26 @@
   document.documentElement.dataset.icStyle = get();
   document.addEventListener('DOMContentLoaded', render);
   window.PlcIcons = Object.assign(window.PlcIcons || {}, { styles: STYLES, getStyle: get, setStyle: set });
+
+  // Hình thiết bị: 3D thực tế (mặc định) · Phẳng thực tế · Theo kiểu thẻ (bộ icon riêng của kiểu đang chọn)
+  const FORMS = [{ id: '3d', name: '3D' }, { id: 'flat', name: 'Phẳng' }, { id: 'theme', name: 'Theo kiểu thẻ' }];
+  const FKEY = 'icForm';
+  const getForm = () => { try { const v = localStorage.getItem(FKEY); return FORMS.some((s) => s.id === v) ? v : '3d'; } catch { return '3d'; } };
+  function setForm(id) {
+    if (!FORMS.some((s) => s.id === id)) return;
+    try { localStorage.setItem(FKEY, id); } catch { /* */ }
+    document.documentElement.dataset.icForm = id;
+    renderForm(); render(); document.dispatchEvent(new Event('plc-icstyle'));
+  }
+  function renderForm() {
+    const host = document.getElementById('ic-form'); if (!host) return;
+    const cur = getForm();
+    host.innerHTML = FORMS.map((s) => `<button type="button" data-form="${s.id}"${s.id === cur ? ' class="sel"' : ''} aria-pressed="${s.id === cur}">${s.name}</button>`).join('');
+    host.querySelectorAll('button').forEach((b) => { b.onclick = () => setForm(b.dataset.form); });
+  }
+  document.documentElement.dataset.icForm = getForm();
+  document.addEventListener('DOMContentLoaded', renderForm);
+  window.PlcIcons = Object.assign(window.PlcIcons, { getForm, setForm });
 }());
 
 /* ===== Màu sắc + chuyển động (lưu trên máy này) =====

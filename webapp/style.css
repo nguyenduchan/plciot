@@ -968,3 +968,11 @@ body.ui-simple .sec-card[open]>summary{margin-bottom:12px}
 /* Cho phép bôi đen / chọn bằng chuột để sao chép nội dung; chỉ nút, thanh điều hướng và điều khiển bấm là không chọn được */
 body,body.ui-simple{-webkit-user-select:text;user-select:text}
 button,nav,summary,.pill,.gw-tabs,.seg,.set-tabs,.dw-toggle,.dw-step,.dw-star,.chip,.hdr-back{-webkit-user-select:none;user-select:none}
+
+/* Icon thiết bị thực tế (icons-real.js): bỏ ô nền, hình tự đứng; tắt máy thì xám mờ */
+html .dev-ic:has(.icr){background:none;box-shadow:none;border:0;width:56px;height:56px;filter:none}
+html .dev-ic .icr{width:100%;height:100%;stroke:none;filter:none}
+html .wic .icr{width:22px;height:22px;margin:-3px 2px -3px 0;vertical-align:middle;stroke:none}
+html .dev-card.is-off .dev-ic:has(.icr){filter:grayscale(.85) opacity(.65)}
+html .gw-ic .icr{width:30px;height:30px}
+html .ic-prev .dev-ic:has(.icr){width:40px;height:40px}
