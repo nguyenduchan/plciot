@@ -279,12 +279,21 @@ function showTab(t) {
     if (b.dataset.tab === t) $('#title').textContent = b.querySelector('span').textContent;
   });
   render();
+  window.DevicesUi?.catchUp?.();   // lưới thiết bị không vẽ khi tab ẩn: vừa hiện lại thì vẽ ngay số liệu mới nhất
 }
 /* Thanh cảnh báo cố định (mọi tab): cảnh báo đang hoạt động > mất liên lạc > bình thường. Chưa "Đã nhận" thì nhấp nháy. */
 function renderAlarmBar() {
   const bar = $('#alarm-bar');
   if (!bar) return;
-  document.documentElement.style.setProperty('--hdr-h', `${($('header') || {}).offsetHeight || 58}px`); // thanh cảnh báo dính ngay dưới tiêu đề
+  // thanh cảnh báo dính ngay dưới tiêu đề. Đo bằng ResizeObserver (chỉ khi tiêu đề đổi cỡ): trước đây đọc offsetHeight + ghi biến CSS
+  // lên <html> MỖI GIÂY → ép layout + tính lại style toàn trang mỗi giây.
+  if (!renderAlarmBar.ro) {
+    const hdr = $('header');
+    const setH = () => document.documentElement.style.setProperty('--hdr-h', `${(hdr || {}).offsetHeight || 58}px`);
+    setH();
+    renderAlarmBar.ro = typeof ResizeObserver === 'function' && hdr ? new ResizeObserver(setH) : true;
+    if (renderAlarmBar.ro !== true) renderAlarmBar.ro.observe(hdr);
+  }
   const st = S.status, mask = (S.regs && S.regs[R.ALARM]) || 0;
   const act = ALARMS.filter(([m]) => mask & m);
   const active = act.map(([, t]) => t);
@@ -300,6 +309,9 @@ function renderAlarmBar() {
   }
   const crit = act.some((a) => a[2] === 'crit');
   if (act.length) { cls = crit ? 'alarm' : 'alarm warnonly'; icon = '▲'; text = `${act.length} cảnh báo${crit ? ' KHẨN CẤP' : ''}: ${active.join(' · ')}`; }
+  const sig = `${cls}|${act.length && unacked ? 1 : 0}|${icon}|${text}|${active.length && unacked ? mask : ''}`;
+  if (bar.__sig === sig) return;   // gọi mỗi giây: không đổi gì thì không đụng DOM
+  bar.__sig = sig;
   bar.className = `alarm-bar ${cls}${act.length && unacked ? ' blink' : ''}`;
   bar.replaceChildren();
   const i = document.createElement('span'); i.className = 'ab-i'; i.setAttribute('aria-hidden', 'true'); i.textContent = icon;
@@ -333,6 +345,9 @@ function renderStatusCard() {
   } else if (st === 1) {
     cls = 'ok'; icon = '●'; title = 'Máy đang chạy, mọi thứ bình thường'; hint = `Đã đếm ${u32(R.COUNT)} sản phẩm.`;
   }
+  const sig = `${cls}|${icon}|${title}|${hint}`;
+  if (c.__sig === sig) return;
+  c.__sig = sig;
   c.className = `status-card st-${cls} span`;
   c.querySelector('.sc-i').textContent = icon;
   c.querySelector('.sc-t').textContent = title;
@@ -342,9 +357,11 @@ function renderStatusCard() {
 function renderStatus() {
   const pill = $('#pill'), st = S.status, stale = isStale(), age = dataAge();
   document.body.classList.toggle('stale', stale);
-  pill.className = 'pill ' + (st === 'online' && !stale ? 'on' : st === 'plc_fault' || st === 'online' ? 'warn' : 'off');
+  const pc = 'pill ' + (st === 'online' && !stale ? 'on' : st === 'plc_fault' || st === 'online' ? 'warn' : 'off');
   const base = { online: '● Trực tuyến', plc_fault: '▲ PLC mất liên lạc', connecting: '■ Đang kết nối', offline: '■ Mất kết nối' }[st] || st;
-  pill.textContent = st === 'online' && stale ? `▲ Dữ liệu cũ${age != null ? ' · ' + ageText(age) : ''}` : st === 'online' && age != null ? `${base} · ${ageText(age)} trước` : base;
+  const pt = st === 'online' && stale ? `▲ Dữ liệu cũ${age != null ? ' · ' + ageText(age) : ''}` : st === 'online' && age != null ? `${base} · ${ageText(age)} trước` : base;
+  if (pill.className !== pc) pill.className = pc;
+  if (pill.textContent !== pt) pill.textContent = pt;   // chỉ ghi khi chữ đổi (mỗi giây gọi một lần)
   renderAlarmBar();
   renderStatusCard();
 }

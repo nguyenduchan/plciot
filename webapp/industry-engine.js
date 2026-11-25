@@ -667,7 +667,11 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
     }
     lastTs = now;
   }
+  // App ở nền: vẫn lấy mẫu + quét cảnh báo (không bỏ sót), nhưng không vẽ sơ đồ (không ai nhìn); hiện lại thì vẽ ngay một lần.
+  let drawLate = false;
   function redraw() {
+    if (document.hidden) { drawLate = true; return; }
+    drawLate = false;
     drawOverview();
     for (const id of Object.keys(MINE)) if (!MINE[id].hidden) drawTab(id);
   }
@@ -688,6 +692,8 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   }
   if (!hook()) document.addEventListener('DOMContentLoaded', hook);
 
+  const onVis = () => { if (!dead && drawLate && !document.hidden) redraw(); };
+  document.addEventListener('visibilitychange', onVis);
   const timer = setInterval(() => {
     sample(Date.now()); alarmScan(Date.now()); redraw();
   }, 1500);
@@ -696,6 +702,7 @@ function mount(S, opts) {   // mount(spec, { base }): base = topic gateway (gw/<
   function unmount() {
     dead = true;
     clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVis);
     const ui = window.DevicesUi;
     ui?.__ind?.set?.delete(handler);
     if (!HL && window.__indHide === hideMine) window.__indHide = null;

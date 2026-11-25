@@ -437,8 +437,12 @@
       d.widgets.forEach((w, i) => {
         const el = box.children[i]; if (!el) return;
         if (activeSlider && el.contains(activeSlider)) return;   // đang kéo: để nguyên
+        // Dựng chuỗi HTML rẻ; parse + morph DOM mới đắt. Chuỗi y hệt lần trước (số liệu widget này không đổi) → bỏ qua hẳn.
+        const html = widgetHtml(d, w).trim();
+        if (el.__h === html) return;
+        el.__h = html;
         const t = document.createElement('template');
-        t.innerHTML = widgetHtml(d, w).trim();
+        t.innerHTML = html;
         if (t.content.firstElementChild) morph(el, t.content.firstElementChild);
       });
     }
@@ -451,14 +455,16 @@
   function renderGwTabs() {
     const el = $('#gw-tabs'); if (!el) return;
     const l = gwList();
-    if (l.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
+    if (l.length < 2) { if (!el.hidden) { el.hidden = true; el.innerHTML = ''; el.__h = ''; } return; }
     const cur = currentGw();
     el.hidden = false;
     const total = l.reduce((n, g) => n + (unseen[g.base] | 0), 0);
-    el.innerHTML = (total ? `<div class="gw-total">⚠ <b>${total > 99 ? '99+' : total}</b> cảnh báo chưa xem</div>` : '') + `<div class="gw-row">` + l.map((g) => {
+    const html = (total ? `<div class="gw-total">⚠ <b>${total > 99 ? '99+' : total}</b> cảnh báo chưa xem</div>` : '') + `<div class="gw-row">` + l.map((g) => {
       const t = window.SolMulti?.title?.(g.solution) || '';
       return `<button type="button" role="tab" class="${g.key === cur.key ? 'on' : ''}" data-gw="${esc(g.key)}" title="${esc(g.key)}"><b>${esc(g.device)}${unseen[g.base] ? `<i class="gw-badge" title="Cảnh báo chưa xem">${unseen[g.base] > 99 ? '99+' : unseen[g.base]}</i>` : ''}</b><small>${esc(t || g.site)}</small></button>`;
     }).join('') + '</div>';
+    if (el.__h === html) return;   // mỗi gói telemetry gọi tới đây: không đổi thì không dựng lại DOM + gắn lại sự kiện
+    el.__h = html; el.innerHTML = html;
     el.querySelectorAll('button').forEach((b) => {
       b.onclick = () => { activeGw = b.dataset.gw; try { LS.set('activeGw', activeGw); } catch { /* */ } lastSig = ''; render(); };
     });
@@ -473,7 +479,23 @@
     lastGwSig = sig;
     document.dispatchEvent(new CustomEvent('plc-gw-active', { detail: { gw: g, all: gwList() } }));
   }
-  function render() { renderGrid(); renderGwTabs(); announceGw(); }
+  function render() { clearTimeout(renderQ); renderQ = 0; renderGrid(); renderGwTabs(); announceGw(); }
+  // Telemetry nhiều gateway đến dồn (mỗi gói một lần vẽ): gộp lại tối đa ~6 lần/giây. App ở nền / lưới không hiện (tab khác)
+  // thì không vẽ gì — chỉ đánh dấu, hiện lại thì vẽ một lần với số liệu mới nhất.
+  var renderQ = 0, renderLate = false;   // var: render() có thể được gọi trước dòng này lúc khởi động
+  const gridShown = () => { const h = $('#dev-grid'); return !!h && h.getClientRects().length > 0; };
+  function scheduleRender() {
+    if (document.hidden || !gridShown()) { renderLate = true; return; }
+    if (!renderQ) renderQ = setTimeout(render, 150);
+  }
+  const catchUp = () => { if (renderLate && !document.hidden && gridShown()) { renderLate = false; render(); } };
+  document.addEventListener('visibilitychange', catchUp);
+  // Tab Thiết bị vừa hiện lại: lưới đổi cỡ từ 0 (ẩn) sang cỡ thật → ResizeObserver báo (không phụ thuộc viewport như IntersectionObserver)
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(() => catchUp());
+    const watch = () => { const h = $('#dev-grid'); if (h) ro.observe(h); else setTimeout(watch, 500); };
+    watch();
+  }
   document.addEventListener('plc-sol-manifest', renderGwTabs);
   document.addEventListener('plc-ind-keys', () => { lastSig = ''; render(); });   // gắn/gỡ giao diện giải pháp → vẽ lại khung thiết bị (ẩn/hiện field trong sơ đồ)   // có tên giải pháp → cập nhật nhãn tab
 
@@ -1072,7 +1094,7 @@
         };
       }
     }
-    render();
+    scheduleRender();
   }
 
   /** Gateway publish <base>/config: server đã upsert → tải lại dashboard (debounce vì ingest ghi DB trước khi UI hỏi). */
@@ -1095,7 +1117,7 @@
   }
   document.addEventListener('DOMContentLoaded', renderSample);
 
-  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard };
+  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard, catchUp };
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);
