@@ -531,6 +531,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             h.Core.Traffic += (d, c, t) => _log.Add(d, c, t);
             h.Core.Publish += OnPublish;
             h.Core.ControlGate = () => Unlocked;   // điều khiển (ghi xuống PLC, kể cả từ cloud/điện thoại) chỉ sau khi đã nhập OTP
+            h.RpcHandler = HandleRpcAsync;         // cài đặt từ xa bằng GatewayAdmin (qua server, chủ gateway phải cho phép trên webapp)
             _host = h;
             await h.StartAsync();
         }

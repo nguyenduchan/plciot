@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    GatewayAdmin: app desktop của chủ hệ thống — cài đặt gateway của khách TỪ XA qua server (relay MQTT), dùng lại nguyên các trang
+    thiết lập của GatewayApp (RemoteForm) với đường truyền "qua cloud". Client thuần: KHÔNG chạy gateway trên máy này.
+    Tách khỏi GatewayApp: bản cài cho khách không có giao diện/khoá quản trị từ xa.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GatewayAdmin</RootNamespace>
+    <AssemblyName>GatewayAdmin</AssemblyName>
+    <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GatewayApp\GatewayApp.csproj" />
+  </ItemGroup>
+</Project>

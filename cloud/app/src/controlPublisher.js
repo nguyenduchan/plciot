@@ -46,6 +46,17 @@ function whenConnected(c) {
   });
 }
 
+/** Publish chuỗi đã ký sẵn lên gw/<mqttId>/<kind> (kind do server ghi: cmd | rpc). */
+export async function publishSigned(mqttId, kind, raw) {
+  if (override) return override(null, null, raw, { mqttId, kind });
+  const c = ensure(shardOf(mqttId));
+  await whenConnected(c);
+  const topic = topicOf({ mqttId }, kind);
+  return new Promise((resolve, reject) => {
+    c.publish(topic, raw, { qos: 1 }, (err) => (err ? reject(err) : resolve({ topic })));
+  });
+}
+
 /**
  * @param {string} site
  * @param {string} device

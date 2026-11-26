@@ -49,7 +49,14 @@ public sealed class ScadaHost : IAsyncDisposable
         Core.Log += l => Log?.Invoke(l);
         _bridge.Log += Core.Emit;
         _bridge.CommandReceived += OnCloudCommandAsync;
+        _bridge.RpcReceived += OnRpcAsync;
     }
+
+    /// <summary>
+    /// Cài đặt từ xa (GatewayAdmin → server → gw/&lt;mqttId&gt;/rpc): app chủ gắn ĐÚNG bộ xử lý API LAN của nó (method, path, body) → (status, json).
+    /// null = gateway này không nhận cài đặt từ xa. Server đã kiểm quyền (máy admin đã đăng ký + chủ gateway cho phép) và chỉ cho route an toàn.
+    /// </summary>
+    public Func<string, string, string, Task<(int Status, string Json)>>? RpcHandler { get; set; }
 
     public async Task StartAsync()
     {
@@ -153,6 +160,67 @@ public sealed class ScadaHost : IAsyncDisposable
             return;
         }
         if (!Core.Direct) Core.ApplyExternal(kind, m.Payload, m.Retain);      // gateway ESP32 đẩy dữ liệu vào lõi
+    }
+
+    // ------------------------------------------------------------------ cài đặt từ xa (rpc)
+    const int RpcChunk = 3000;          // mỗi phần base64 ≤ 3000 ký tự: gói rpcr < 4 KB (đường ingest của server chặn gói lớn hơn)
+    const long RpcWindowMs = 60_000;
+    readonly Dictionary<string, long> _seenRpc = new();
+
+    async Task OnRpcAsync(byte[] payload)
+    {
+        if (_cfg.CloudCmdKey.Length == 0 || !CmdSignature.TryVerify(payload, _cfg.MqttId, _cfg.CloudCmdKey, out var plain, "rpc1"))
+        {
+            Core.Emit("Bỏ yêu cầu cài đặt từ xa: thiếu/sai chữ ký của server");
+            return;   // không trả lời: ai đó không phải server gửi vào thì cũng không nhận được gì
+        }
+        string rid, m, p, b, adm; long ts;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(plain);
+            var r = doc.RootElement;
+            rid = r.GetProperty("rid").GetString() ?? ""; m = r.GetProperty("m").GetString() ?? ""; p = r.GetProperty("p").GetString() ?? "";
+            b = r.TryGetProperty("b", out var bv) ? bv.GetString() ?? "" : ""; adm = r.TryGetProperty("adm", out var av) ? av.GetString() ?? "" : "";
+            ts = r.GetProperty("ts").GetInt64();
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException) { return; }
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (rid.Length is 0 or > 64 || Math.Abs(now - ts) > RpcWindowMs) { Core.Emit("Bỏ yêu cầu cài đặt từ xa: quá cũ hoặc lệch đồng hồ"); return; }
+        lock (_seenRpc)
+        {
+            foreach (var k in _seenRpc.Where(kv => now - kv.Value > 2 * RpcWindowMs).Select(kv => kv.Key).ToList()) _seenRpc.Remove(k);
+            if (!_seenRpc.TryAdd(rid, now)) return;   // phát lại
+        }
+        int st; string json;
+        if (RpcHandler is not { } h) (st, json) = (503, "{\"Ok\":false,\"Err\":\"rpc_unavailable\"}");
+        else
+        {
+            var body = b.Length == 0 ? "" : Gunzip(Convert.FromBase64String(b));
+            if (m != "GET" || p == "/api/config") Core.Emit($"Cài đặt từ xa ({adm}): {m} {p}");
+            try { (st, json) = await h(m, p, body); }
+            catch (Exception ex) { (st, json) = (500, System.Text.Json.JsonSerializer.Serialize(new { Ok = false, Err = ex.Message })); }
+        }
+        var z = Convert.ToBase64String(Gzip(Encoding.UTF8.GetBytes(json)));
+        var n = Math.Max(1, (z.Length + RpcChunk - 1) / RpcChunk);
+        for (var i = 0; i < n; i++)
+        {
+            var part = z.Substring(i * RpcChunk, Math.Min(RpcChunk, z.Length - i * RpcChunk));
+            var msg = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { rid, i, n, st, z = part });
+            if (!await _bridge.PublishRpcReplyAsync(msg)) { Core.Emit("Không gửi được trả lời cài đặt từ xa (mất cloud)"); return; }
+        }
+    }
+
+    static byte[] Gzip(byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Optimal)) gz.Write(data);
+        return ms.ToArray();
+    }
+    static string Gunzip(byte[] data)
+    {
+        using var gz = new System.IO.Compression.GZipStream(new MemoryStream(data), System.IO.Compression.CompressionMode.Decompress);
+        using var sr = new StreamReader(gz, Encoding.UTF8);
+        return sr.ReadToEnd();
     }
 
     // ------------------------------------------------------------------ cloud → lõi

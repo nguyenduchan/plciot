@@ -48,6 +48,14 @@ export function signCmd(mqttId, payload) {
   return `${json.slice(0, -1)},"sig":"${sig.toString('base64url')}"}`;
 }
 
+/** Yêu cầu cài đặt từ xa (remoteAdmin.js) — tiền tố khác `cmd1` để chữ ký của loại gói này không dùng được cho loại kia. */
+export const rpcMessage = (mqttId, json) => `rpc1|${mqttId}|${json}`;
+export function signRpc(mqttId, payload) {
+  const json = JSON.stringify(payload);
+  const sig = crypto.sign('sha256', Buffer.from(rpcMessage(mqttId, json), 'utf8'), { key: load().priv, dsaEncoding: 'ieee-p1363' });
+  return `${json.slice(0, -1)},"sig":"${sig.toString('base64url')}"}`;
+}
+
 /** Dùng trong test: kiểm một chuỗi đã ký (giống việc gateway làm). */
 export function verifySignedCmd(mqttId, raw, spki = cmdPublicKey()) {
   const i = raw.lastIndexOf(',"sig":"');

@@ -47,3 +47,7 @@ Kiểm thử (cần một gateway đích, vd. GatewayApp thứ hai `--customer -
 với `GATEWAYAPP_SETTINGS` riêng, và `python tools/modbus_tcp_sim.py --port 5020`):
 `GatewayApp.exe --lantest THƯ_MỤC --lan-target 127.0.0.1:8760 --lan-code 12345678 --lan-mb 5020` → `lantest-result.txt` (FAIL = lỗi) + ảnh chụp.
 - Tool admin: `tools/GatewayAdmin` (dùng lại các trang giao diện của GatewayApp).
+
+### Khi mất mạng (chỉ board Waveshare, chỉ qua LAN)
+
+Trang **"Khi mất mạng"** trong cửa sổ thiết lập board: mỗi DO chọn một kiểu (giữ nguyên / tắt / bật / lịch giờ / theo DI / ngưỡng có trễ / chạy-nghỉ chu kỳ) + "sau … giây mất mạng", bấm **Lưu xuống board**, rồi **Thử mất mạng 2 phút** để xem DO chạy đúng trước khi rời trạm. Webapp không có phần cài đặt này (người dùng không sửa); cài từ xa sẽ làm bằng **GatewayAdmin.exe** riêng qua cùng API. Chi tiết: `gateway-mcu/README.md` (Logic khi mất mạng). Test: `--offlinetest` (Debug, cần `--noauth`).

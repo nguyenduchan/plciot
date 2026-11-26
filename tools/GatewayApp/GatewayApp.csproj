@@ -19,4 +19,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <ProjectReference Include="..\..\scada\src\Plciot.Scada.Services\Plciot.Scada.Services.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- GatewayAdmin (tools/GatewayAdmin) dùng lại giao diện (Theme, nút, bảng) và trang thiết lập; bản GatewayApp cho khách không chứa phần quản trị từ xa -->
+    <InternalsVisibleTo Include="GatewayAdmin" />
+  </ItemGroup>
 </Project>

@@ -78,6 +78,22 @@ ok(from(seenA, 'CMD-A').length >= 1 && from(seenA, 'CMD-B').length === 0, 'gatew
 ok(from(seenB, 'CMD-B').length >= 1 && from(seenB, 'CMD-A').length === 0, 'gateway B nhận cmd của B, không nhận cmd của A');
 ok(from(seenUA, 'CMD-A').length === 0 && from(seenUB, 'CMD-B').length === 0, 'user app không thấy cmd (không có quyền đọc cmd)');
 
+// 4) cài đặt từ xa: ctl ghi rpc → chỉ đúng gateway nhận; gateway trả rpcr → ingest nhận; không ai khác ghi/đọc được
+await sub(a, `gw/${A.id}/rpc`, `gw/${B.id}/rpc`, 'gw/+/rpc');
+await sub(b, `gw/${B.id}/rpc`, `gw/${A.id}/rpc`);
+await sub(ing, 'gw/+/rpcr', 'gw/+/rpc');
+await sub(ua, `gw/${A.id}/rpc`, `gw/${A.id}/rpcr`);
+ctl.publish(`gw/${A.id}/rpc`, '{"tag":"RPC-A"}', { qos: 1 });
+a.publish(`gw/${A.id}/rpcr`, '{"tag":"RPCR-A"}', { qos: 1 });
+a.publish(`gw/${B.id}/rpcr`, '{"tag":"RPCR-FAKE1"}', { qos: 1 });
+a.publish(`gw/${B.id}/rpc`, '{"tag":"RPC-FAKE2"}', { qos: 1 });
+ua.publish(`gw/${A.id}/rpc`, '{"tag":"RPC-FAKE3"}', { qos: 1 });
+await wait(800);
+ok(from(seenA, 'RPC-A').length >= 1 && from(seenB, 'RPC-A').length === 0, 'ctl ghi rpc: chỉ gateway A nhận');
+ok(from(seenIng, 'RPCR-A').length >= 1 && from(seenIng, 'RPC-A').length === 0, 'ingest nhận rpcr của A, không đọc được rpc');
+ok(from(seenUA, 'RPC').length === 0, 'user app không đọc rpc/rpcr');
+ok(![...seenIng, ...seenA, ...seenB].some((x) => x[1].includes('FAKE')), 'gateway ghi rpcr/rpc của gateway khác, user ghi rpc: bị chặn');
+
 [a, b, ua, ub, ing, ctl].forEach((c) => c.end(true));
 console.log(fails ? `\n${fails} test hỏng` : '\nTất cả đạt');
 process.exit(fails ? 1 : 0);

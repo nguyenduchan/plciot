@@ -1,4 +1,5 @@
 import { shardCount, shardUrls } from './shards.js';
+import { onRpcReply } from './remoteAdmin.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
 import { evaluateBackfill } from './backfill.js';
@@ -142,6 +143,7 @@ export function startMqttIngest(db) {
       const parsed = resolveIngestTopic(db, t);
       if (!parsed) return;
       const { site, device, kind } = parsed;
+      if (kind === 'rpcr') { onRpcReply(parsed.mqttId, buf); return; }   // trả lời cài đặt từ xa: không lưu, chỉ chuyển cho yêu cầu đang chờ
       if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config', 'alert'].includes(kind)) return;
 
       const verdict = evaluateIngest(db, { topic: t, parsed, payloadBuf: buf });

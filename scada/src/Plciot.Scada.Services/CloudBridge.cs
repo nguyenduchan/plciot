@@ -29,6 +29,8 @@ public sealed class CloudBridge : IAsyncDisposable
     readonly ConcurrentDictionary<string, byte[]> _lastSent = new();
     long _expediteUntil;                                   // Stopwatch ticks: tới lúc này telemetry gửi ngay, không chờ khoảng chống dồn
     readonly string _cmdTopic;
+    /// <summary>Cài đặt từ xa (GatewayAdmin qua server): server ghi gw/&lt;mqttId&gt;/rpc, gateway trả các phần lên …/rpcr.</summary>
+    readonly string _rpcTopic;
     TaskCompletionSource _dropped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile CloudState _state;
 
@@ -41,11 +43,14 @@ public sealed class CloudBridge : IAsyncDisposable
     public event Action<string>? Log;
     /// <summary>Lệnh nhận từ cloud (payload thô, CHƯA kiểm tra).</summary>
     public event Func<byte[], Task>? CommandReceived;
+    /// <summary>Yêu cầu cài đặt từ xa nhận từ cloud (payload thô, CHƯA kiểm chữ ký — ScadaHost kiểm).</summary>
+    public event Func<byte[], Task>? RpcReceived;
 
     public CloudBridge(ScadaConfig cfg)
     {
         _cfg = cfg;
         _cmdTopic = cfg.BaseTopic + "/cmd";
+        _rpcTopic = cfg.BaseTopic + "/rpc";
         _client = new MqttFactory().CreateMqttClient();
         _client.ApplicationMessageReceivedAsync += OnMessage;
         _client.DisconnectedAsync += e => { _dropped.TrySetResult(); return Task.CompletedTask; };
@@ -67,7 +72,8 @@ public sealed class CloudBridge : IAsyncDisposable
                 if (res.ResultCode != MqttClientConnectResultCode.Success)
                     throw new InvalidOperationException($"cloud từ chối: {res.ResultCode}");
                 await _client.SubscribeAsync(new MqttClientSubscribeOptionsBuilder()
-                    .WithTopicFilter(_cmdTopic, MqttQualityOfServiceLevel.AtMostOnce).Build(), ct);
+                    .WithTopicFilter(_cmdTopic, MqttQualityOfServiceLevel.AtMostOnce)
+                    .WithTopicFilter(_rpcTopic, MqttQualityOfServiceLevel.AtLeastOnce).Build(), ct);
                 State = CloudState.Connected;
                 Log?.Invoke($"Đã nối cloud {_cfg.CloudHost}:{_cfg.CloudPort} ({_cfg.CloudTransport}, TLS)");
                 delay = TimeSpan.FromSeconds(2);
@@ -132,7 +138,15 @@ public sealed class CloudBridge : IAsyncDisposable
 
     async Task OnMessage(MqttApplicationMessageReceivedEventArgs e)
     {
-        if (e.ApplicationMessage.Topic != _cmdTopic) return;
+        var topic = e.ApplicationMessage.Topic;
+        if (topic == _rpcTopic)
+        {
+            // chạy riêng: một yêu cầu chậm (lưu cấu hình, khởi động lại đọc PLC) không chặn luồng nhận lệnh điều khiển
+            var payload = e.ApplicationMessage.PayloadSegment.ToArray();
+            if (payload.Length <= MaxConfigPayload && RpcReceived is { } rh) _ = Task.Run(() => rh(payload));
+            return;
+        }
+        if (topic != _cmdTopic) return;
         var h = CommandReceived;
         if (h != null) await h(e.ApplicationMessage.PayloadSegment.ToArray());
     }
@@ -194,6 +208,19 @@ public sealed class CloudBridge : IAsyncDisposable
         State == CloudState.Connected
             ? SendAsync(_cfg.BaseTopic + "/ack", Encoding.UTF8.GetBytes(json), false, CancellationToken.None)
             : Task.CompletedTask;
+
+    /// <summary>Một phần trả lời cài đặt từ xa (≤ 4 KB) lên …/rpcr, QoS 1. false = chưa nối cloud.</summary>
+    public async Task<bool> PublishRpcReplyAsync(byte[] part)
+    {
+        if (State != CloudState.Connected || !_client.IsConnected || part.Length > MaxPayload) return false;
+        try
+        {
+            var r = await _client.PublishAsync(new MqttApplicationMessageBuilder().WithTopic(_cfg.BaseTopic + "/rpcr").WithPayload(part)
+                .WithRetainFlag(false).WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce).Build());
+            return r.IsSuccess;
+        }
+        catch (Exception ex) { Log?.Invoke($"Gửi trả lời cài đặt từ xa lỗi: {ex.Message}"); return false; }
+    }
 
     /// <summary>Gửi một gói bù dữ liệu (telemetry có ts gốc, bf=1) với QoS 1, không retain. false = chưa gửi được (mất kết nối) → giữ lại gửi sau.</summary>
     public async Task<bool> SendBackfillAsync(byte[] payload, CancellationToken ct)

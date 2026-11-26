@@ -182,10 +182,37 @@ public sealed partial class MainForm
         return new ApiConfig { Config = clone, Fields = new(_meta.Map), Devices = new(_meta.Devices) };
     }
 
-    async Task<(int, string)> ApplyRemoteAsync(string body)
+    /// <summary>
+    /// Cài đặt TỪ XA (GatewayAdmin → server → MQTT rpc, xem ScadaHost.RpcHandler): cùng bộ xử lý API LAN, trừ:
+    /// chạy/dừng gateway và đăng ký cloud (sẽ cắt chính kết nối đang dùng) — server cũng đã chặn; lưu cấu hình thì GIỮ thông số cloud
+    /// và trả lời TRƯỚC rồi mới khởi động lại (khởi động lại đóng MQTT → câu trả lời sau đó sẽ mất).
+    /// </summary>
+    internal async Task<(int Status, string Json)> HandleRpcAsync(string method, string path, string body)
+    {
+        var route = method.ToUpperInvariant() + " " + path.Split('?')[0];
+        _log.Add("INFO", "radmin", $"cài đặt từ xa: {route}");
+        if (route is "POST /api/run" or "POST /api/cloud") return Err("rpc_blocked", 403);
+        if (route == "PUT /api/config")
+        {
+            try { return await OnUi(() => ApplyRemoteAsync(body, fromCloud: true)); }
+            catch (JsonException) { return Err("bad_json"); }
+        }
+        return await HandleApi(method, path, body);
+    }
+
+    async Task<(int, string)> ApplyRemoteAsync(string body, bool fromCloud = false)
     {
         var inc = JsonSerializer.Deserialize<ApiConfig>(body, J);
         if (inc == null) return Err("bad_request");
+        if (fromCloud)
+        {
+            // đường từ xa đi qua chính kết nối cloud này: không cho đổi danh tính/kết nối cloud (đổi sai là mất luôn đường cứu)
+            var c = inc.Config;
+            c.Site = _cfg.Site; c.Device = _cfg.Device; c.Mobile = _cfg.Mobile; c.MqttId = _cfg.MqttId;
+            c.CloudHost = _cfg.CloudHost; c.CloudPort = _cfg.CloudPort; c.CloudTransport = _cfg.CloudTransport; c.CloudWsPath = _cfg.CloudWsPath;
+            c.CloudUser = _cfg.CloudUser; c.CloudPassword = _cfg.CloudPassword; c.CloudPinSha256 = _cfg.CloudPinSha256;
+            c.CloudCmdKey = _cfg.CloudCmdKey; c.GatewayQr = _cfg.GatewayQr; c.CloudApiUrl = _cfg.CloudApiUrl; c.CloudSendData = _cfg.CloudSendData;
+        }
         // mật khẩu để trống = giữ mật khẩu hiện có (gateway không gửi mật khẩu về tool)
         if (string.IsNullOrEmpty(inc.Config.CloudPassword)) inc.Config.CloudPassword = _cfg.CloudPassword;
         if (string.IsNullOrEmpty(inc.Config.WebCertPassword)) inc.Config.WebCertPassword = _cfg.WebCertPassword;
@@ -195,6 +222,12 @@ public sealed partial class MainForm
         if (err != null) return Err(err);
         CopyFrom(inc.Config);
         _meta.Replace(inc.Fields, inc.Devices);
+        if (fromCloud)
+        {
+            // trả lời qua MQTT trước, khởi động lại sau (gateway nối lại cloud sau vài giây)
+            _ = Task.Delay(1500).ContinueWith(_ => BeginInvoke(async () => { await ApplyAsync("Quản trị viên (từ xa) đã cập nhật cấu hình gateway"); _dash.Rebuild(); }));
+            return Ok(true);
+        }
         await ApplyAsync("Quản trị viên đã cập nhật cấu hình gateway");
         _dash.Rebuild();
         return Ok(Running);

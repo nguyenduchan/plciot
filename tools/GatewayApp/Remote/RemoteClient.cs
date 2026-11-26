@@ -36,6 +36,16 @@ public sealed class RemoteClient : IDisposable
         _http = new HttpClient(handler) { BaseAddress = new Uri($"{(tls ? "https" : "http")}://{host}:{port}/"), Timeout = Timeout.InfiniteTimeSpan };   // hạn chờ đặt riêng từng yêu cầu (SendAsync / OtaAsync)
     }
 
+    /// <summary>
+    /// Đường truyền khác LAN (GatewayAdmin: relay qua server → MQTT tới gateway): <paramref name="handler"/> nhận đúng yêu cầu HTTP
+    /// của API LAN (method, /api/…, thân) và trả lời như gateway. Mọi hộp thoại dùng RemoteClient chạy nguyên vẹn.
+    /// </summary>
+    public RemoteClient(HttpMessageHandler handler, string address)
+    {
+        Address = address;
+        _http = new HttpClient(handler) { BaseAddress = new Uri("http://relay/"), Timeout = Timeout.InfiniteTimeSpan };
+    }
+
     /// <summary>Mã phần cứng: 20 ký tự Crockford đầu của SHA-256(SPKI) — trùng GatewayIdentity.Hw và idHw() của firmware.</summary>
     public static string HwOf(byte[] spki)
     {
@@ -113,6 +123,11 @@ public sealed class RemoteClient : IDisposable
         SendAsync<ApiLease>(HttpMethod.Post, "api/lease", doMinMs == null ? new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec }
             : new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec, DoMinMs = doMinMs });
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
+    /// <summary>Logic khi mất mạng của board (xem OfflineContract.cs).</summary>
+    public Task<ApiOffline> OfflineAsync(CancellationToken ct = default) => SendAsync<ApiOffline>(HttpMethod.Get, "api/offline", null, ct);
+    public Task<ApiOfflineSaved> PutOfflineAsync(ApiOffline p) => SendAsync<ApiOfflineSaved>(HttpMethod.Put, "api/offline", new ApiOffline { Rev = p.Rev, TzMin = p.TzMin, Do = p.Do });
+    /// <summary>Thử mất mạng sec giây (0 = dừng): logic chạy ngay, bỏ qua thời gian chờ.</summary>
+    public Task<ApiResult> OfflineTestAsync(int sec) => SendAsync<ApiResult>(HttpMethod.Post, "api/offline/test", new { Sec = sec });
     public Task<ApiNetwork> NetworkAsync() => SendAsync<ApiNetwork>(HttpMethod.Get, "api/network", null);
     /// <summary>Board MCU: quét Wi-Fi (~3–5 giây). Trả mạng đã bỏ trùng SSID, mỗi mạng một dòng.</summary>
     public Task<List<ApiWifiNet>> WifiScanAsync() => SendAsync<List<ApiWifiNet>>(HttpMethod.Get, "api/wifi/scan", null, longOp: true);
@@ -222,6 +237,10 @@ public sealed class RemoteClient : IDisposable
         "ota_incomplete" => "Đứt kết nối giữa chừng — board giữ nguyên firmware cũ. Thử lại.",
         "ota_unsupported" => "Thiết bị này không hỗ trợ cập nhật firmware qua mạng.",
         "bad_json" => "Thiết bị trả dữ liệu không đúng định dạng (phiên bản không khớp?).",
+        "rev_conflict" => "Cài đặt vừa bị thay đổi ở nơi khác (GatewayApp/GatewayAdmin khác) — đã tải lại bản mới nhất, hãy sửa lại.",
+        "safe_mode" => "Board đang ở CHẾ ĐỘ AN TOÀN (vừa khởi động lại bất thường nhiều lần liền) — chỉ cho TẮT đầu ra. Kiểm tra nguồn cấp và tải nối vào DO.",
+        "not_found" => "Firmware board chưa có chức năng này — cập nhật firmware (nút Firmware…).",
+        { } c when c.Contains(' ') => c,   // board trả câu báo lỗi tiếng Việt (kiểm tra cài đặt)
         "toggle_too_fast" => "Đầu ra vừa đổi trạng thái — chưa đủ thời gian tối thiểu giữa 2 lần bật/tắt (bảo vệ tiếp điểm relay). Đợi rồi thử lại.",
         _ => "Thiết bị báo lỗi: " + r.Code,
     } : e.Message;

@@ -33,6 +33,7 @@ import { mountSite } from './siteRoutes.js';
 import { mountPush } from './webPush.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
+import { mountRemoteAdmin } from './remoteAdmin.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext, setSolutionChangedHook } from './gatewaySolution.js';
@@ -303,6 +304,7 @@ setSolutionChangedHook((d, site, device, sol) => {
 });
 /* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
+mountRemoteAdmin(app, { db, requireAuth });   // GatewayAdmin cài đặt gateway từ xa (ký bằng khoá máy, chủ gateway phải cho phép)
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,
   dataDir: DATA_DIR,

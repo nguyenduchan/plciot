@@ -17,6 +17,8 @@ public sealed class RemoteForm : Form, IGatewayApp
     static readonly JsonSerializerOptions J = new() { PropertyNameCaseInsensitive = true };
 
     RemoteClient _client;
+    /// <summary>Mở qua cloud (GatewayAdmin): không có nút mạng/Wi-Fi/firmware/PC quản trị/chế độ (server không cho các route đó), không tự đăng nhập lại.</summary>
+    readonly bool _relay;
     readonly ApiHello _hello;
     readonly string _host;
     readonly int _port;
@@ -50,6 +52,8 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly DashboardPage _dash;
     readonly DevicesPage _devices;
     readonly CloudPage _cloud;
+    /// <summary>Logic khi mất mạng — chỉ board MCU (firmware có /api/offline).</summary>
+    readonly OfflinePage? _offline;
     readonly LogPage _log = new() { Dock = DockStyle.Fill };
     readonly List<(NavButton Btn, Control Page, string Title)> _pages = new();
     Control _current = null!;
@@ -58,9 +62,10 @@ public sealed class RemoteForm : Form, IGatewayApp
     public string[] Protocols => _hello.Protocols;
     string KindName => _hello.Kind == "mcu" ? "Waveshare" : "Gateway PC";
 
-    RemoteForm(RemoteClient client, ApiHello hello, string host, int port, ApiConfig first)
+    RemoteForm(RemoteClient client, ApiHello hello, string host, int port, ApiConfig first, bool relay = false)
     {
-        _client = client; _hello = hello; _host = host; _port = port;
+        _client = client; _hello = hello; _host = host; _port = port; _relay = relay;
+        if (relay) _ui.Interval = 2000;   // mỗi lần hỏi trạng thái đi một vòng server ↔ MQTT ↔ gateway
         LoadFrom(first);
         Text = $"Thiết lập {KindName} — {client.Address}" + (hello.Name.Length > 0 ? $" ({hello.Name})" : "");
         Width = 1400; Height = 860; MinimumSize = new Size(1100, 700); StartPosition = FormStartPosition.CenterScreen;
@@ -69,9 +74,13 @@ public sealed class RemoteForm : Form, IGatewayApp
         _dash = new DashboardPage(this) { Dock = DockStyle.Fill };
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
+        if (hello.Kind == "mcu") _offline = new OfflinePage(this, () => _client) { Dock = DockStyle.Fill };
 
-        var brand = new Brand { Title = KindName, IconId = "grid", Sub = "QUA LAN · " + client.Address };
-        foreach (var (icon, name, page) in new (string, string, Control)[] { ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("list", "Nhật ký", _log) })
+        var brand = new Brand { Title = KindName, IconId = "grid", Sub = (relay ? "QUA CLOUD · " : "QUA LAN · ") + client.Address };
+        var pages = new List<(string, string, Control)> { ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices) };
+        if (_offline != null) pages.Add(("signal", "Khi mất mạng", _offline));
+        pages.Add(("cloud", "Cloud", _cloud)); pages.Add(("list", "Nhật ký", _log));
+        foreach (var (icon, name, page) in pages)
         {
             var b = new NavButton { Icon = icon, Caption = name };
             var p = page;
@@ -91,7 +100,7 @@ public sealed class RemoteForm : Form, IGatewayApp
         _fwBtn.Click += (_, _) => { if (RequireEdit()) UpdateFirmware(); };
         _wifiBtn.Click += (_, _) => { if (RequireEdit()) SetupWifi(); };
         _modeBtn.Click += async (_, _) => { if (RequireEdit()) await ChooseModeAsync(); };
-        Shown += async (_, _) => { try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _wifiBtn.Visible = _modeBtn.Visible = _client.Tls; ShowMode(); LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
+        Shown += async (_, _) => { if (_relay) return; try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _wifiBtn.Visible = _modeBtn.Visible = _client.Tls; ShowMode(); LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
         _head.Resize += (_, _) => LayoutHead();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -110,7 +119,11 @@ public sealed class RemoteForm : Form, IGatewayApp
 
     /// <summary>Kiểm thử (--lantest): mở cửa sổ với phiên đã nối sẵn, không qua hộp thoại.</summary>
     internal static RemoteForm ForTest(RemoteClient c, ApiHello h, string host, int port, ApiConfig first) => new(c, h, host, port, first);
+    /// <summary>GatewayAdmin: cửa sổ thiết lập một gateway qua cloud (relay) — cùng các trang như qua LAN.</summary>
+    public static Form OpenRelay(RemoteClient c, ApiHello h, ApiConfig first) => new RemoteForm(c, h, "", 0, first, relay: true);
     internal void ShowPage(int i) => Show(_pages[i].Page);
+    internal OfflinePage? OfflinePageForTest => _offline;
+    internal void ShowOffline() { if (_offline != null) Show(_offline); }
     internal string LogText => string.Join(Environment.NewLine, _logLines);
     readonly List<string> _logLines = new();
     void Log(string dir, string ch, string text) { _log.Add(dir, ch, text); lock (_logLines) _logLines.Add($"{dir} {ch} {text}"); }
@@ -183,7 +196,7 @@ public sealed class RemoteForm : Form, IGatewayApp
     /// <summary>Thiết bị khởi động lại (mất phiên). Board MCU: tự đăng nhập lại bằng khoá PC (đã ghép, không hỏi gì). Gateway PC: hỏi mã mới.</summary>
     async Task ReconnectAsync()
     {
-        if (_reconnecting) return;
+        if (_reconnecting || _relay) return;
         _reconnecting = true; _ui.Stop();
         try
         {
@@ -410,7 +423,7 @@ public sealed class RemoteForm : Form, IGatewayApp
     {
         if (IsDisposed || Disposing) return;
         _log.Flush();
-        _chipLink.Caption = _lost ? "LAN: mất kết nối" : $"LAN: {_client.Address}";
+        _chipLink.Caption = (_relay ? "Cloud" : "LAN") + (_lost ? ": mất kết nối" : $": {_client.Address}");
         _chipLink.Dot = _lost ? Theme.Red : Theme.Green;
         var st = _state.Running ? _state.Status : "đã dừng";
         _chipPlc.Caption = _state.Running ? $"PLC: {st}" : "Gateway: dừng";

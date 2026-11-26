@@ -167,7 +167,7 @@ void storeApply() {
     if (!f.localIo() || f.access == Access::Read || !f.lossOffSec) continue;
     for (int i = 0; i < 8; i++) if (f.addr == 1 || f.addr == 20 + i) loss[i] = loss[i] ? min(loss[i], f.lossOffSec) : f.lossOffSec;
   }
-  safetyLossCfg(loss);
+  offlineLegacyLoss(loss);
 }
 
 // ---------------------------------------------------------------- kiểm tra cấu hình admin gửi (tập con của ScadaConfig.Validate + giới hạn của board)

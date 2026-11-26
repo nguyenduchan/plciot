@@ -147,6 +147,14 @@ void engineAges(JsonObject out) {
   for (auto& kv : s_lastOk) out[kv.first] = now - kv.second;
 }
 
+bool engineValue(const String& key, double& v) {
+  Lock l;
+  auto it = s_values.find(key);
+  if (it == s_values.end()) return false;
+  v = it->second;
+  return true;
+}
+
 int32_t engineAgeMs(const String& key) {
   Lock l;
   auto it = s_lastOk.find(key);

@@ -198,6 +198,8 @@ function buildGatewayKit(db, hw, mqttResult, { includePassword = true } = {}) {
     ack: `${base}/ack`,
     config: `${base}/config`,
     history: `${base}/history`,
+    rpc: `${base}/rpc`,     // cài đặt từ xa (GatewayAdmin): server → gateway, ký rpc1|…
+    rpcr: `${base}/rpcr`,   // trả lời rpc, chia phần
   };
   const role = resolveDeviceTypeId(hw.profile) === 'iot-hub' || children.length > 1 ? 'hub' : 'leaf';
   // limits: khoảng giá trị mỗi trường do tem đặt — gateway tự kiểm lại trước khi ghi xuống PLC (phòng thủ nhiều lớp)

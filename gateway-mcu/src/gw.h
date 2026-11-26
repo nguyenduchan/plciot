@@ -174,7 +174,8 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
 void engineValues(JsonObject out);               // "child.field" → số (cho GET /api/state)
 String engineTelemetry();                        // {"schema":2,"d":{child:{khoá:số}}}; rỗng = chưa có giá trị
 void engineAges(JsonObject out);                 // "child.field" → ms từ lần đọc được gần nhất (field chưa đọc được lần nào: không có)
-int32_t engineAgeMs(const String& key);          // -1 = chưa từng đọc được (logic dùng: tuổi quá lớn → coi như mất cảm biến)
+int32_t engineAgeMs(const String& key);
+bool engineValue(const String& key, double& v);  // giá trị mới nhất "child.field" (false = vòng đọc gần nhất không có)          // -1 = chưa từng đọc được (logic dùng: tuổi quá lớn → coi như mất cảm biến)
 uint32_t engineSeq();                            // tăng mỗi chu kỳ đọc xong
 
 // ---------------------------------------------------------------- alert.cpp: cảnh báo ngưỡng tính tại gateway (AlertEngine.cs)
@@ -212,9 +213,19 @@ int64_t nowMs();
 void safetyBegin();                              // sau wdtBegin (cần bootReason), trước ioBegin
 bool safeMode();
 uint32_t safetyBootFails();                      // số lần khởi động lại bất thường liên tiếp (gồm lần này)
-void safetyLossCfg(const uint32_t* sec8);        // từ cấu hình (storeApply)
 void safetyLink(bool cloudExpected, bool lease, bool cloudUp);   // loop(): cloud có bật không, PC đang giữ lease không, MQTT đang nối không
-void safetyTick();                               // task io (500 ms): bộ đếm khởi động, hết chế độ an toàn, tắt DO khi mất kết nối
+void safetyTick();                               // task io (500 ms): bộ đếm khởi động, hết chế độ an toàn
+bool safetyLinkExpected();                       // có cần người điều khiển (cloud đã cài / PC từng giữ lease)
+bool safetyLinkDown(uint32_t& downMs);           // đang mất người điều khiển; downMs = mất bao lâu
+
+// ---------------------------------------------------------------- offline.cpp: logic khi mất mạng theo từng DO (/offline.json)
+void offlineBegin();                             // sau storeBegin: đọc /offline.json
+void offlineLegacyLoss(const uint32_t* sec8);    // Field::lossOffSec theo chân (storeApply) — dùng khi chân chưa có trong file
+void offlineTick();                              // task io (500 ms)
+void offlineGet(JsonDocument& out);              // GET /api/offline: chính sách + trạng thái chạy
+String offlinePut(JsonObjectConst in, uint32_t& rev);   // PUT /api/offline: "" = ok | "rev_conflict" | câu báo lỗi
+void offlineTest(uint32_t sec);                  // thử mất mạng sec giây (0 = dừng)
+void offlineNoteManual(uint8_t changed);         // DO đổi bằng tay (API LAN) — chân đang chạy logic offline thì nhường
 
 // ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó
 // Mỗi task gọi wdtFeed() mỗi vòng; quá hạn → ghi tên task vào NVS ("wdt") rồi khởi động lại (DO về TẮT ở ioBegin).

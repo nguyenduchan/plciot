@@ -13,7 +13,8 @@ public static class CmdSignature
     const string Marker = ",\"sig\":\"";
 
     /// <summary>true = chữ ký đúng; <paramref name="unsigned"/> là JSON lệnh đã bỏ thuộc tính sig (đưa tiếp cho CommandPolicy).</summary>
-    public static bool TryVerify(byte[] payload, string mqttId, string serverKeySpkiB64Url, out byte[] unsigned)
+    /// <param name="prefix">"cmd1" = lệnh điều khiển; "rpc1" = yêu cầu cài đặt từ xa (GatewayAdmin) — chữ ký loại này không dùng được cho loại kia.</param>
+    public static bool TryVerify(byte[] payload, string mqttId, string serverKeySpkiB64Url, out byte[] unsigned, string prefix = "cmd1")
     {
         unsigned = payload;
         try
@@ -26,7 +27,7 @@ public static class CmdSignature
             if (sig.Length != 64) return false;
             using var key = ECDsa.Create();
             key.ImportSubjectPublicKeyInfo(FromB64u(serverKeySpkiB64Url), out _);
-            var ok = key.VerifyData(Encoding.UTF8.GetBytes($"cmd1|{mqttId}|{json}"), sig, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            var ok = key.VerifyData(Encoding.UTF8.GetBytes($"{prefix}|{mqttId}|{json}"), sig, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
             if (ok) unsigned = Encoding.UTF8.GetBytes(json);
             return ok;
         }

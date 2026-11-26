@@ -16,7 +16,8 @@ import crypto from 'crypto';
 export const SCHEMA_VERSION = 1;
 /** Schema telemetry IoT (monitor + UI bind). */
 export const TELEMETRY_SCHEMA = 2;
-export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert']);
+// rpc / rpcr: cài đặt từ xa (GatewayAdmin, remoteAdmin.js) — server ghi rpc, gateway trả rpcr; người dùng app KHÔNG đọc/ghi được
+export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert', 'rpc', 'rpcr']);
 /** Tiền tố topic của mọi gateway. */
 export const GW_NS = 'gw';
 export const DEFAULT_TENANT = 'default';

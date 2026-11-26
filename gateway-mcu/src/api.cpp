@@ -385,6 +385,25 @@ void hRoot() {
   r_->html(h);
 }
 
+/// Logic khi mất mạng (offline.cpp): GET = chính sách + trạng thái chạy; PUT {Rev,TzMin,Do:[…]} (Rev khác = người khác vừa sửa → 409);
+/// POST /api/offline/test {Sec} = thử mất mạng (0 = dừng).
+void hOfflineGet() { JsonDocument d; offlineGet(d); d["Ok"] = true; String s; serializeJson(d, s); send(200, s); }
+void hOfflinePut() {
+  JsonDocument d; if (!body(d)) return;
+  uint32_t rev = 0;
+  String e = offlinePut(d.as<JsonObjectConst>(), rev);
+  if (e == "rev_conflict") { err(e, 409); return; }
+  if (e.length()) { err(e); return; }
+  JsonDocument o; o["Ok"] = true; o["Rev"] = rev; o["Running"] = g_running; String s; serializeJson(o, s); send(200, s);
+}
+void hOfflineTest() {
+  JsonDocument d; if (!body(d)) return;
+  long sec = d["Sec"] | 0L;
+  if (sec < 0 || sec > 3600) { err("bad_request"); return; }
+  offlineTest((uint32_t)sec);
+  ok();
+}
+
 struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
@@ -392,6 +411,7 @@ const Route kRoutes[] = {
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true}, {"POST", "/api/ota", hOta, true},
+  {"GET", "/api/offline", hOfflineGet, true}, {"PUT", "/api/offline", hOfflinePut, true}, {"POST", "/api/offline/test", hOfflineTest, true},
   {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
 };
 

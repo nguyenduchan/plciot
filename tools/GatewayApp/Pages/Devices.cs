@@ -160,9 +160,6 @@ sealed class DeviceDialog : Form
         Text = "Đổi trạng thái (bật↔tắt) sớm hơn khoảng này bị từ chối ở mọi nơi: webapp, script/API, màn hình gateway và firmware board. " +
                "Gửi lại đúng trạng thái đang có thì không bị chặn. 0 = không giới hạn. Relay thường: 1–2 giây; máy nén/động cơ: vài phút.",
     };
-    // ----- Board Waveshare chạy độc lập: mất kết nối điều khiển (cloud / PC giữ lease) quá N giây → firmware tự TẮT đầu ra (PackMap.LossOffSec)
-    readonly NumericUpDown _lossSec = new() { Minimum = 0, Maximum = 86400, DecimalPlaces = 0, Increment = 30, Value = 0 };
-    Control _lossBox = null!;
     readonly Label _wNote = new() { ForeColor = Theme.Accent, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Top, Height = 38, Visible = false };
     FlowLayoutPanel _rowProto = null!;
     bool _wBusy; string _autoTitle = "";
@@ -264,15 +261,8 @@ sealed class DeviceDialog : Form
         _wDiBox = Field("Chân DI phản hồi / cảm biến (tuỳ chọn)", _wDi, 300); _wDoBox = Field("Chân DO điều khiển (tuỳ chọn)", _wDo, 300);
         _wire.Controls.Add(_wDoBox); _wire.Controls.Add(_wDiBox);
         _rowGuard.Controls.Add(Field("Tối thiểu giữa 2 lần bật/tắt (giây)", _toggleSec, 250));
-        _lossBox = Field("Tắt khi mất kết nối điều khiển (giây, 0 = giữ)", _lossSec, 300);
-        _lossBox.Visible = _board;   // chỉ firmware board làm việc này (trạm độc lập); gateway PC không dùng
-        _rowGuard.Controls.Add(_lossBox); _rowGuard.Controls.Add(_toggleNote);
-        if (_board)
-        {
-            _toggleNote.Text += " Tắt khi mất kết nối: board không nối được cloud (hoặc PC giữ lease) liên tục quá ngần này thì tự TẮT đầu ra; " +
-                                "có kết nối lại cũng không tự bật. 0 = giữ nguyên (mặc định).";
-            _toggleNote.Height = 88;
-        }
+        _rowGuard.Controls.Add(_toggleNote);
+        if (_board) { _toggleNote.Text += " Hành vi khi mất mạng: trang \"Khi mất mạng\"."; _toggleNote.Height = 68; }
         _wDi.SelectedIndexChanged += (_, _) => { if (!_wBusy) { UpdateWireUi(); ApplyWire(); } };
         _wDo.SelectedIndexChanged += (_, _) => { if (!_wBusy) { UpdateWireUi(); ApplyWire(); } };
         BuildGrid();
@@ -602,8 +592,6 @@ sealed class DeviceDialog : Form
         _swap.SelectedIndex = first.WordSwap ? 1 : 0;
         var mt = _app.Config.Pack.Where(x => x.Child == child).Select(x => x.MinToggleMs).DefaultIfEmpty(0).Max();
         _toggleSec.Value = Math.Clamp(mt / 1000m, _toggleSec.Minimum, _toggleSec.Maximum);
-        var lossMin = _app.Config.Pack.Where(x => x.Child == child && x.LossOffSec > 0).Select(x => x.LossOffSec).DefaultIfEmpty(0).Min();
-        _lossSec.Value = Math.Clamp(lossMin, (int)_lossSec.Minimum, (int)_lossSec.Maximum);
         foreach (var p in _app.Config.Pack.Where(x => x.Child == child))
         {
             var m = _app.Meta.Get(child, p.Field);
@@ -719,7 +707,8 @@ sealed class DeviceDialog : Form
         }
         var toggleMs = (int)Math.Round(_toggleSec.Value * 1000m);
         foreach (var (p, m) in packs) p.MinToggleMs = IsOutput(p, m) ? toggleMs : 0;
-        var lossSec = _board ? (int)_lossSec.Value : 0;
+        // PackMap.LossOffSec (cách cũ "tắt sau N giây") không còn ô sửa — đã chuyển sang trang "Khi mất mạng"; giữ nguyên giá trị đang có
+        var lossSec = _board ? _app.Config.Pack.Where(x => x.Child == (_edit ?? child) && x.LossOffSec > 0).Select(x => x.LossOffSec).DefaultIfEmpty(0).Min() : 0;
         foreach (var (p, m) in packs) p.LossOffSec = IsOutput(p, m) ? lossSec : 0;
         foreach (var (p, m) in packs)
             if (m.Feedback.Length > 0 && !packs.Any(x => x.Item1.Field == m.Feedback)) { _err.Text = $"Field phản hồi \"{m.Feedback}\" của \"{p.Field}\" không có trong thiết bị này."; return; }

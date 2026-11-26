@@ -41,10 +41,12 @@ function staticHeader(secure) {
   if (secure) {
     lines.push('user ctl');
     lines.push(`topic write ${GW_NS}/+/cmd`);
+    lines.push(`topic write ${GW_NS}/+/rpc`);   // cài đặt từ xa (remoteAdmin.js) — chỉ server
     lines.push('');
   }
   lines.push('user ingest');
   lines.push(...DEVICE_WRITE_KINDS.map((k) => `topic read ${GW_NS}/+/${k}`));
+  lines.push(`topic read ${GW_NS}/+/rpcr`);
   lines.push('');
   lines.push('# MARKER_USER_ACL');
   lines.push('');
@@ -107,7 +109,9 @@ export function deviceAclBlock(mqttUser, { mqttId }) {
   const lines = [
     `user ${u}`,
     ...DEVICE_WRITE_KINDS.map((k) => `topic write ${base}/${k}`),
+    `topic write ${base}/rpcr`,
     `topic read ${base}/cmd`,
+    `topic read ${base}/rpc`,
     '',
   ];
   return lines.join('\n');

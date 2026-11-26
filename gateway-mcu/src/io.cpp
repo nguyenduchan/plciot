@@ -115,6 +115,7 @@ void ioTask(void*) {
       tcaSetOk(ok);
     }
     safetyTick();
+    offlineTick();
     delay(500);
   }
 }

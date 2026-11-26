@@ -56,6 +56,7 @@ void setup() {
     logf("Không khởi động được W5500 — kiểm tra chân SPI trong board.h");
   storeBegin();          // sau ETH.begin: tên thiết bị mặc định lấy từ MAC
   wifiBegin();           // Wi-Fi station song song Ethernet (mạng đã lưu tự nối)
+  offlineBegin();        // logic khi mất mạng (/offline.json) — sau storeBegin (kiểm field theo cấu hình)
   netApply();            // IP tĩnh mặc định 192.168.1.200 (hoặc DHCP / IP đã đặt) — cần NVS nên sau storeBegin
   cryptoBegin();
   modbusBegin();
