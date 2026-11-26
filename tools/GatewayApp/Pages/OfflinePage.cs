@@ -224,6 +224,9 @@ sealed class OfflinePage : UserControl
         foreach (var r in _rows)
         {
             var x = new OfflineRule { Ch = r.Ch, Mode = r.ModeId, DelaySec = (int)r.Delay.Value };
+            // trang này chỉ sửa phần "khi mất mạng": giữ nguyên chặn lệnh + hẹn giờ của chương trình (sửa bằng GatewayAdmin / webapp)
+            if (_cur.Do.FirstOrDefault(d => d.Ch == r.Ch) is { } old)
+            { x.Need = old.Need; x.NeedHold = old.NeedHold; x.Block = old.Block; x.MaxOnSec = old.MaxOnSec; x.Timer = old.Timer; }
             switch (x.Mode)
             {
                 case "schedule":

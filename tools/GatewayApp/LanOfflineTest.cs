@@ -95,6 +95,44 @@ public sealed partial class MainForm
             try { await c.PutOfflineAsync(new ApiOffline { Rev = saved.Rev, Do = new() { new OfflineRule { Ch = 2, Mode = "threshold", Field = "khong.co", On = 1, Off = 2 } } }); Check("ngưỡng với field không có → board từ chối", false); }
             catch (RemoteException ex) { Check("ngưỡng với field không có → board từ chối (câu báo tiếng Việt)", ex.Code.Contains("không có"), ex.Code); }
 
+            // ---- CHƯƠNG TRÌNH LOGIC: chặn lệnh + hẹn giờ (luôn chạy, không cần mất mạng)
+            await rf.WriteAsync(dev, "run", 0); await Task.Delay(300);
+            async Task PutProg(params OfflineRule[] rules) => await c.PutOfflineAsync(new ApiOffline { Rev = (await c.OfflineAsync()).Rev, Do = rules.ToList() });
+            File.WriteAllText(diFile, "0");
+            await PutProg(new OfflineRule { Ch = 1, Mode = "hold", Need = new() { new OfflineCond { Di = 3, Is = 1 } }, NeedHold = true });
+            await Task.Delay(800);
+            var wn = await rf.WriteAsync(dev, "run", 1);
+            Check("need DI3: DI3 = 0 → lệnh BẬT bị chặn (logic_need), DO1 tắt", wn != null && wn.Contains("logic_need") && (Do() & 1) == 0, $"err={wn} do=0x{Do():X2}");
+            File.WriteAllText(diFile, "0x04"); await Task.Delay(800);
+            wn = await rf.WriteAsync(dev, "run", 1);
+            Check("need DI3: DI3 = 1 → bật được", wn == null && await WaitDo(d => (d & 1) == 1, 3), $"err={wn} do=0x{Do():X2}");
+            File.WriteAllText(diFile, "0");
+            Check("hold: DI3 mất → DO1 tự TẮT", await WaitDo(d => d >= 0 && (d & 1) == 0, 4), $"do=0x{Do():X2}");
+            await page.RefreshForTestAsync();
+            var st1 = (await c.OfflineAsync()).Status?.Ch.First(x => x.Ch == 1);
+            Check("board báo mô tả chặn lệnh + lý do tự tắt", st1 != null && st1.Guard.Contains("DI3") && st1.GuardWhy.Contains("tự tắt"), $"{st1?.Guard} | {st1?.GuardWhy}");
+            Check("tắt luôn được phép", await rf.WriteAsync(dev, "run", 0) == null);
+
+            await PutProg(new OfflineRule { Ch = 1, Mode = "hold", MaxOnSec = 2 });
+            await Task.Delay(800);
+            wn = await rf.WriteAsync(dev, "run", 1);
+            Check("maxon 2s: bật được, rồi tự TẮT", wn == null && await WaitDo(d => (d & 1) == 1, 2) && await WaitDo(d => d >= 0 && (d & 1) == 0, 5), $"err={wn} do=0x{Do():X2}");
+
+            var do4 = (Do() & 8) != 0;
+            await PutProg(new OfflineRule { Ch = 1, Mode = "hold", Block = new() { 4 } });
+            await Task.Delay(800);
+            wn = await rf.WriteAsync(dev, "run", 1);
+            Check("block do4: DO4 đang bật → BẬT DO1 bị chặn (logic_interlock)", !do4 || (wn != null && wn.Contains("logic_interlock") && (Do() & 1) == 0), $"do4={do4} err={wn} do=0x{Do():X2}");
+
+            var at = DateTime.UtcNow.AddHours(7).AddMinutes(1);
+            await PutProg(new OfflineRule { Ch = 1, Mode = "hold", Timer = new() { new OfflineTimer { On = at.ToString("HH:mm"), Off = at.AddMinutes(1).ToString("HH:mm") } } });
+            var tv = (await c.OfflineAsync()).Do.First(x => x.Ch == 1).Timer;
+            Check("hẹn giờ lưu + đọc lại đúng", tv?.Count == 1 && tv[0].On == at.ToString("HH:mm"), tv?.FirstOrDefault()?.On ?? "null");
+            Check("hẹn giờ: đúng phút → DO1 tự BẬT", await WaitDo(d => (d & 1) == 1, 75), $"do=0x{Do():X2}");
+            Check("hẹn giờ: phút tắt → DO1 tự TẮT", await WaitDo(d => d >= 0 && (d & 1) == 0, 70), $"do=0x{Do():X2}");
+            try { await PutProg(new OfflineRule { Ch = 1, Mode = "hold", Timer = new() { new OfflineTimer { On = "08:00", Off = "08:00" } } }); Check("hẹn giờ bật = tắt → board từ chối", false); }
+            catch (RemoteException ex) { Check("hẹn giờ bật = tắt → board từ chối", ex.Code.Contains("khác nhau"), ex.Code); }
+
             SaveForm(rf, Path.Combine(outDir, "offline-page.png"));
             await c.PutOfflineAsync(new ApiOffline { Rev = (await c.OfflineAsync()).Rev, Do = new() });   // dọn: mọi chân giữ nguyên
             File.WriteAllText(diFile, "0");

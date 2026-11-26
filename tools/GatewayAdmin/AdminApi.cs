@@ -43,7 +43,12 @@ public sealed class AdminKey
 public sealed record GatewayRow(string Site, string Device, string MqttId, string? Version, long? LastSeen, bool Allowed, string? Owner, string Kind);
 
 /// <summary>Lỗi do server trả (radmin_*, gateway_timeout…).</summary>
-public sealed class AdminApiException(string code, int status) : Exception(code) { public string Code { get; } = code; public int Status { get; } = status; }
+public sealed class AdminApiException(string code, int status, string? detail = null) : Exception(detail ?? code)
+{
+    public string Code { get; } = code; public int Status { get; } = status;
+    /// <summary>Câu chi tiết của server (vd lỗi cú pháp logic: "Dòng 3: …").</summary>
+    public string? Detail { get; } = detail;
+}
 
 /// <summary>Gọi /api/v1/radmin/* — mỗi yêu cầu ký radm1|METHOD|path|ts|nonce|sha256(thân) (cloud/app/src/remoteAdmin.js).</summary>
 public sealed class AdminApi : IDisposable
@@ -65,7 +70,8 @@ public sealed class AdminApi : IDisposable
         var nonce = AdminKey.B64u(RandomNumberGenerator.GetBytes(16));
         var bytes = Encoding.UTF8.GetBytes(body);
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-        var sig = _key.Key.SignData(Encoding.UTF8.GetBytes($"radm1|{m.Method}|{path}|{ts}|{nonce}|{hash}"), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        // ký đường dẫn KHÔNG kèm query (?site=…): server kiểm theo req.path
+        var sig = _key.Key.SignData(Encoding.UTF8.GetBytes($"radm1|{m.Method}|{path.Split('?')[0]}|{ts}|{nonce}|{hash}"), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
         using var req = new HttpRequestMessage(m, path.TrimStart('/'));
         if (body.Length > 0) req.Content = new ByteArrayContent(bytes) { Headers = { ContentType = new("application/json") } };
         req.Headers.Add("X-Radm-Key", _key.KeyId); req.Headers.Add("X-Radm-Ts", ts); req.Headers.Add("X-Radm-Nonce", nonce); req.Headers.Add("X-Radm-Sig", AdminKey.B64u(sig));
@@ -73,9 +79,15 @@ public sealed class AdminApi : IDisposable
         var text = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
         {
-            string code = ((int)res.StatusCode).ToString();
-            try { using var d = JsonDocument.Parse(text); if (d.RootElement.TryGetProperty("error", out var e)) code = e.GetString() ?? code; } catch (JsonException) { }
-            throw new AdminApiException(code, (int)res.StatusCode);
+            string code = ((int)res.StatusCode).ToString(); string? detail = null;
+            try
+            {
+                using var d = JsonDocument.Parse(text);
+                if (d.RootElement.TryGetProperty("error", out var e)) code = e.GetString() ?? code;
+                if (d.RootElement.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == JsonValueKind.String) detail = msgEl.GetString();
+            }
+            catch (JsonException) { }
+            throw new AdminApiException(code, (int)res.StatusCode, detail);
         }
         return text;
     }
@@ -94,6 +106,16 @@ public sealed class AdminApi : IDisposable
         return (d.RootElement.GetProperty("status").GetInt32(), d.RootElement.GetProperty("body").GetString() ?? "");
     }
 
+    // ---- chương trình logic (text) — đề xuất cho chủ trạm duyệt trên webapp (cloud/app/src/gatewayLogic.js)
+    /// <summary>Chương trình đang chạy + đề xuất gần đây (JSON thô của server).</summary>
+    public Task<string> LogicAsync(string site, string device) =>
+        SendAsync(HttpMethod.Get, $"/api/v1/radmin/logic?site={Uri.EscapeDataString(site)}&device={Uri.EscapeDataString(device)}", "");
+    /// <summary>Kiểm text → {program, text, rows, changed}. Lỗi cú pháp: AdminApiException Code "logic_syntax", Detail = "Dòng n: …".</summary>
+    public Task<string> LogicCheckAsync(string site, string device, string text) =>
+        SendAsync(HttpMethod.Post, "/api/v1/radmin/logic/check", JsonSerializer.Serialize(new { site, device, text }));
+    public Task<string> LogicProposeAsync(string site, string device, string text, string note) =>
+        SendAsync(HttpMethod.Post, "/api/v1/radmin/logic/propose", JsonSerializer.Serialize(new { site, device, text, note }));
+
     public void Dispose() => _http.Dispose();
 
     /// <summary>Câu báo cho mã lỗi của server.</summary>
@@ -106,6 +128,8 @@ public sealed class AdminApi : IDisposable
         "gateway_timeout" => "Gateway không trả lời (đang tắt, mất mạng, hoặc bản cũ chưa hỗ trợ cài đặt từ xa).",
         "gateway_not_found" => "Không thấy gateway này trên server.",
         "mqtt_unavailable" => "Server chưa nối được broker MQTT.",
+        "logic_syntax" => a.Detail ?? "Lỗi cú pháp.",
+        "not_mcu" => "Chỉ board Waveshare có chương trình logic.",
         _ => "Server báo lỗi: " + a.Code,
     } : e is HttpRequestException ? "Không nối được server: " + e.Message : e.Message;
 }

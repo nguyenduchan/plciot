@@ -35,6 +35,7 @@ import { mountPush } from './webPush.js';
 import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountRemoteAdmin } from './remoteAdmin.js';
+import { mountGatewayLogic } from './gatewayLogic.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext, setSolutionChangedHook } from './gatewaySolution.js';
@@ -307,7 +308,8 @@ setSolutionChangedHook((d, site, device, sol) => {
 });
 /* ---------- Trang kích hoạt gateway trên điện thoại: Internet + đăng nhập admin + BẮT BUỘC Face ID ---------- */
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
-mountRemoteAdmin(app, { db, requireAuth });   // GatewayAdmin cài đặt gateway từ xa (ký bằng khoá máy, chủ gateway phải cho phép)
+const radmin = mountRemoteAdmin(app, { db, requireAuth });   // GatewayAdmin cài đặt gateway từ xa (ký bằng khoá máy, chủ gateway phải cho phép)
+mountGatewayLogic(app, { db, requireAuth, security: controlApi, admin: radmin });   // chương trình logic: admin đề xuất (text) → chủ trạm duyệt; chủ trạm tự cài hẹn giờ
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,
   dataDir: DATA_DIR,

@@ -190,6 +190,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _devices = new DevicesPage(this) { Dock = DockStyle.Fill };
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
         _backupPage = new BackupPage(this) { Dock = DockStyle.Fill };
+        _logicPage = new LogicPage(this) { Dock = DockStyle.Fill };
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
@@ -197,9 +198,10 @@ public sealed partial class MainForm : Form, IGatewayApp
         var brand = new Brand { Title = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", IconId = SolutionHost.Icon.Length > 0 ? SolutionHost.Icon : "grid", Sub = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ" };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("💾", "Sao lưu", _backupPage), ("list", "Nhật ký", _log),
+            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("⚙", "Logic", _logicPage), ("💾", "Sao lưu", _backupPage), ("list", "Nhật ký", _log),
         };   // tool Admin đã gộp vào đây: không còn trang "Kết nối admin" (không mở cổng cho tool ngoài)
-        if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log).ToArray();   // bản khách: chỉ xem + điều khiển
+        // bản khách: chỉ xem + điều khiển — và trang Logic (chủ trạm duyệt đề xuất logic tại gateway)
+        if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log || x.Page == _logicPage).ToArray();
         if (SolutionHost.ExtraPage is { } extra)   // MỘT gateway = MỘT loại UI: giao diện giải pháp GỘP vào trang chính (một mục, không tách "Tổng quan" riêng)
         {
             var x = extra(this);
@@ -532,6 +534,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             h.Core.Publish += OnPublish;
             h.Core.ControlGate = () => Unlocked;   // điều khiển (ghi xuống PLC, kể cả từ cloud/điện thoại) chỉ sau khi đã nhập OTP
             h.RpcHandler = HandleRpcAsync;         // cài đặt từ xa bằng GatewayAdmin (qua server, chủ gateway phải cho phép trên webapp)
+            LoadLogicInto(h);                      // chương trình logic (chặn lệnh, hẹn giờ, khi mất mạng) — trước StartAsync để bản tin config mang theo
             _host = h;
             await h.StartAsync();
         }

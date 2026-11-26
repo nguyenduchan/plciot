@@ -144,14 +144,18 @@ bool verifySig(const String& spkiB64u, const String& msg, const String& sigB64u)
   return ok;
 }
 
-bool verifyCmd(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
+bool verifySigned(const char* domain, const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
   static const char* marker = ",\"sig\":\"";
   int i = raw.lastIndexOf(marker);
   if (i < 0 || !raw.endsWith("\"}")) return false;
   String json = raw.substring(0, i) + "}";
-  if (!verifySig(keyB64u, "cmd1|" + mqttId + "|" + json, raw.substring(i + strlen(marker), raw.length() - 2))) return false;
+  if (!verifySig(keyB64u, String(domain) + "|" + mqttId + "|" + json, raw.substring(i + strlen(marker), raw.length() - 2))) return false;
   unsignedOut = json;
   return true;
+}
+
+bool verifyCmd(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
+  return verifySigned("cmd1", raw, mqttId, keyB64u, unsignedOut);
 }
 
 mbedtls_pk_context* idKey() { return &s_pk; }

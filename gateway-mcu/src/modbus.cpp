@@ -103,6 +103,9 @@ bool localWrite(int addr, const uint16_t* w, int count, String& err) {
     if (safeMode() && (m & ~ioDo())) { err = "safe_mode"; logf("Từ chối BẬT DO: đang ở chế độ an toàn"); return false; }
     uint32_t wait = ioDoWaitMs(m);
     if (wait) { err = "toggle_too_fast"; logf("Từ chối đổi DO quá nhanh (còn %lu ms)", (unsigned long)wait); return false; }   // bảo vệ tiếp điểm relay
+    String why;   // chương trình logic: điều kiện cho phép bật + liên động (mọi nguồn ghi: webapp, LAN, slave)
+    err = offlineGuard(ioDo(), m, why);
+    if (err.length()) { logf("Chương trình logic chặn lệnh: %s", why.c_str()); return false; }
     uint8_t before = ioDo();
     if (!ioSetDo(m)) { err = "do_unavailable"; return false; }
     offlineNoteManual(before ^ m);   // người tại chỗ đổi DO lúc đang chạy logic mất mạng → logic nhường chân đó

@@ -309,6 +309,34 @@ String configMessage() {
       if (r.kind == "tank" || r.kind == "gauge") { if (!m["Low"].isNull()) o["low"] = m["Low"]; if (!m["High"].isNull()) o["high"] = m["High"]; }
     }
   }
+  // Chương trình logic của board (offline.cpp) — server lưu, webapp chỉ XEM (sơ đồ khối). Kèm tên DI/DO/giá trị để vẽ cho dễ đọc.
+  // Thứ tự khoá Lock → OLock (offline.cpp không lấy Lock khi đang giữ OLock).
+  JsonObject lg = d["logic"].to<JsonObject>();
+  offlineCloud(lg);
+  JsonObject nm = lg["names"].to<JsonObject>();
+  JsonObject nDo = nm["do"].to<JsonObject>(), nDi = nm["di"].to<JsonObject>(), nF = nm["f"].to<JsonObject>();
+  JsonObject keys = lg["keys"].to<JsonObject>();   // DO → "<thiết bị>.<khoá MQTT>" của nút điều khiển (webapp đặt nút hẹn giờ cạnh nút đó)
+  for (auto& p : g_cfg.pack) {
+    if (!p.localIo()) continue;
+    FieldLook fl = fieldLook(p);
+    String label = fl.devTitle.length() && fl.devTitle != fl.label ? fl.devTitle + " · " + fl.label : fl.label;
+    if (p.addr >= 20 && p.addr <= 27 && p.access != Access::Read) keys[String(p.addr - 19)] = p.child + "." + p.wire;
+    if (p.addr >= 20 && p.addr <= 27) nDo[String(p.addr - 19)] = label;
+    else if (p.addr >= 10 && p.addr <= 17) nDi[String(p.addr - 9)] = label;
+  }
+  auto nameField = [&](const String& key) {
+    if (!key.length() || !nF[key].isNull()) return;
+    for (auto& p : g_cfg.pack) if (p.child + "." + p.field == key) {
+      FieldLook fl = fieldLook(p);
+      String s = (fl.devTitle.length() ? fl.devTitle + " · " : String("")) + fl.label;
+      if (fl.unit.length()) s += " (" + fl.unit + ")";
+      nF[key] = s; return;
+    }
+  };
+  for (JsonObject o : lg["do"].as<JsonArray>()) {
+    nameField(o["Field"] | "");
+    for (JsonObject c : o["Need"].as<JsonArray>()) nameField(c["Field"] | "");
+  }
   String out; serializeJson(d, out);
   return out;
 }

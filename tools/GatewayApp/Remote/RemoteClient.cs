@@ -251,6 +251,9 @@ public sealed class RemoteClient : IDisposable
         "ota_not_approved" => "Board có chủ: chỉ nhận cập nhật trong 15 phút sau khi CHỦ TRẠM bấm \"Cho phép cập nhật\" trên webapp (Cài đặt → Lịch sử hệ thống).",
         "ota_unsigned" => "Firmware chưa được ký — chạy cloud/app/scripts/sign-mcu-firmware.js sign … (sinh firmware.bin.json cạnh file .bin).",
         "ota_bad_signature" => "Board TỪ CHỐI: chữ ký firmware không khớp khoá của nhà phát triển (file bị sửa hoặc ký bằng khoá khác).",
+        "logic_need" => "Chương trình logic của board chặn: chưa đủ điều kiện để BẬT (logic_need).",
+        "logic_interlock" => "Chương trình logic của board chặn: đầu ra liên động đang bật (logic_interlock).",
+        "owner_approval_required" => "Đổi chương trình logic từ xa cần chủ trạm duyệt trên webapp (GatewayAdmin → 📝 Logic → Gửi đề xuất).",
         "toggle_too_fast" => "Đầu ra vừa đổi trạng thái — chưa đủ thời gian tối thiểu giữa 2 lần bật/tắt (bảo vệ tiếp điểm relay). Đợi rồi thử lại.",
         _ => "Thiết bị báo lỗi: " + r.Code,
     } : e.Message;

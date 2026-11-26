@@ -50,7 +50,9 @@ bool windowOpen() { return (int32_t)(s_windowUntil - millis()) > 0; }
 String hex(const uint8_t* p, size_t n) { String s; char b[3]; for (size_t i = 0; i < n; i++) { sprintf(b, "%02X", p[i]); s += b; } return s; }
 
 String s_sessionPk;   // khoá PC của phiên đang xử lý (authed() đặt)
+String s_rpcAdm;      // yêu cầu đang xử lý đến từ xa (rpc có chữ ký server, cloud.cpp đã kiểm): tên máy GatewayAdmin; "" = LAN
 bool authed() {
+  if (s_rpcAdm.length()) return true;
   String a = q_->auth;
   if (!a.startsWith("Bearer ")) return false;
   String t = a.substring(7); t.trim();
@@ -386,7 +388,7 @@ void hOfflineGet() { JsonDocument d; offlineGet(d); d["Ok"] = true; String s; se
 void hOfflinePut() {
   JsonDocument d; if (!body(d)) return;
   uint32_t rev = 0;
-  String e = offlinePut(d.as<JsonObjectConst>(), rev);
+  String e = offlinePut(d.as<JsonObjectConst>(), rev, s_rpcAdm.length() ? "từ xa: " + s_rpcAdm : String("LAN"));
   if (e == "rev_conflict") { err(e, 409); return; }
   if (e.length()) { err(e); return; }
   JsonDocument o; o["Ok"] = true; o["Rev"] = rev; o["Running"] = g_running; String s; serializeJson(o, s); send(200, s);
@@ -460,6 +462,28 @@ void apiOpenWindow(uint32_t ms) {
 }
 
 void apiForgetAdmins() { secretSet("admins", "[]"); }
+
+int apiRpc(const String& method, const String& path, const String& body, const String& adm, const String& appr, String& resp) {
+  // Board chỉ mở cho cài đặt từ xa: xem trạng thái/nhật ký + đọc/ghi CHƯƠNG TRÌNH LOGIC. Thử mất mạng (đóng/ngắt DO thật),
+  // ghi DO, đổi cấu hình thiết bị/mạng/cloud, OTA, PC quản trị: CHỈ tại chỗ.
+  static const char* const kRemote[][2] = {
+    {"GET", "/api/state"}, {"GET", "/api/config"}, {"GET", "/api/config-message"},
+    {"GET", "/api/offline"}, {"PUT", "/api/offline"}, {"GET", "/api/events"}, {"GET", "/api/ota"},
+  };
+  bool allowed = false;
+  for (auto& r : kRemote) if (method == r[0] && path == r[1]) { allowed = true; break; }
+  if (!allowed) { resp = "{\"Ok\":false,\"Err\":\"remote_route_blocked\"}"; return 403; }
+  // Đổi chương trình logic từ xa: chỉ khi CHỦ TRẠM đã duyệt trên webapp (server gắn mã duyệt "appr" vào phần được ký).
+  if (method == "PUT" && path == "/api/offline" && !appr.length()) { resp = "{\"Ok\":false,\"Err\":\"owner_approval_required\"}"; return 403; }
+  HttpRequest q; q.method = method; q.path = path; q.body = body; q.tls = true;
+  HttpResponse r;
+  s_rpcAdm = (adm.length() ? adm : String("GatewayAdmin")) + (appr.length() ? ", chủ trạm duyệt " + appr : String(""));
+  dispatch(q, r);
+  s_rpcAdm = "";
+  q_ = nullptr; r_ = nullptr;
+  resp = r.body;
+  return r.code;
+}
 
 void apiBegin() {
   // Cấp điện chỉ mở cửa sổ ghép khi board CHƯA có PC admin nào (mới mua / vừa reset): người lạ rút điện cắm lại không ghép được.

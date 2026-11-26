@@ -83,7 +83,7 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     const events = [];
     const key = `${g.site}/${g.device}`;
     for (const r of db.prepare(`SELECT ts, event, detail FROM audit_log
-        WHERE (event IN ('ota_approve', 'radmin_rpc', 'radmin_consent_on', 'radmin_consent_off', 'gateway_lost_report'))
+        WHERE (event IN ('ota_approve', 'logic_propose', 'logic_approve', 'logic_reject', 'logic_timer', 'radmin_rpc', 'radmin_consent_on', 'radmin_consent_off', 'gateway_lost_report'))
           AND (detail LIKE ? OR detail LIKE ?) ORDER BY ts DESC LIMIT 60`).all(`% ${key} %`, `%${key}%`)) {
       events.push({ ts: Number(r.ts), src: 'server', type: r.event, text: r.detail });
     }

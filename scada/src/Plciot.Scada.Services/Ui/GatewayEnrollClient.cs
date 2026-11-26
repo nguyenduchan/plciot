@@ -51,6 +51,25 @@ public sealed class GatewayEnrollClient
         return r.TryGetProperty("qr", out var q) && q.GetString() is { Length: > 0 } s ? s : throw new InvalidOperationException("qr_missing");
     }
 
+    /// <summary>
+    /// Chương trình logic: đề xuất đang chờ chủ trạm duyệt (kèm chương trình sẽ áp dụng, bảng tiếng Việt) + bảng bản đang chạy.
+    /// Ký bằng khoá gateway ("logic-pending|site|device|ts"), xem cloud/app/src/gatewayLogic.js.
+    /// </summary>
+    public async Task<JsonElement> LogicPendingAsync(string site, string device, GatewayIdentity id, CancellationToken ct = default)
+    {
+        var (ts, sig) = id.RequestProof("logic-pending", site, device);
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/logic/pending", new { site, device, pubkey = id.PublicKey, ts, sig }, JsonOpts, ct).ConfigureAwait(false);
+        return (await ReadAsync(res, ct).ConfigureAwait(false)).Clone();
+    }
+
+    /// <summary>Báo quyết định của chủ trạm TẠI GATEWAY: decision "approve" (gateway đã áp dụng, rev mới) | "reject". Chữ ký gắn với đúng đề xuất + quyết định.</summary>
+    public async Task LogicDecideAsync(string site, string device, GatewayIdentity id, long proposalId, string decision, string by, uint rev, CancellationToken ct = default)
+    {
+        var (ts, sig) = id.RequestProof($"logic-{decision}-{proposalId}", site, device);
+        using var res = await _http.PostAsJsonAsync("/api/v1/gateway/logic/decide", new { site, device, pubkey = id.PublicKey, ts, sig, id = proposalId, decision, by, rev }, JsonOpts, ct).ConfigureAwait(false);
+        await ReadAsync(res, ct).ConfigureAwait(false);
+    }
+
     /// <summary>Lỗi do QR trên máy đã cũ (server không còn nhận) — gọi RefreshQrAsync rồi thử lại.</summary>
     public static bool IsStaleQr(Exception ex) => ex is InvalidOperationException { Message: "invalid_claim_signature" or "invalid_claim_secret" or "invalid_claim_payload" };
 

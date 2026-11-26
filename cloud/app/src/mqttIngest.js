@@ -1,4 +1,5 @@
 import { shardCount, shardUrls } from './shards.js';
+import { recordReportedLogic } from './gatewayLogic.js';
 import { onRpcReply } from './remoteAdmin.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
@@ -172,6 +173,7 @@ export function startMqttIngest(db) {
         let payload;
         try { payload = JSON.parse(text); } catch { recordDeny(db, { reason: 'invalid_json', detail: 'config', site, device, tenantId, kind }); return; }
         const r = applyGatewayConfig(db, { tenantId, site, device, payload });
+        if (payload && typeof payload.logic === 'object') { try { recordReportedLogic(db, { site, device, logic: payload.logic }); } catch (e) { console.error('[logic]', e.message); } }
         if (r.error) {
           recordDeny(db, { reason: 'policy_config_shape', detail: r.error, site, device, tenantId, kind });
           return;

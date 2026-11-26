@@ -14,7 +14,7 @@ GatewayAdmin ──HTTPS, ký bằng khoá máy──▶ server (remoteAdmin.js)
 | Máy admin | Khoá ECDSA tự sinh lần đầu (`%LOCALAPPDATA%\PlciotGatewayAdmin\admin-key.bin`, DPAPI). Server chỉ nhận khoá **đăng ký qua SSH**: nút "🔑 Khoá máy này" chép sẵn lệnh `docker compose exec -T app node scripts/remote-admin-key.js add <tên> <SPKI>`. `list` / `disable <key_id>` để xem / thu hồi. Không có màn hình đăng nhập. |
 | Mỗi yêu cầu | Header `X-Radm-Key/Ts/Nonce/Sig`, ký `radm1\|METHOD\|path\|ts\|nonce\|sha256(thân)`. Lệch giờ > 60 s hoặc nonce dùng lại → 401. |
 | Chủ gateway | Webapp → Cài đặt → **Hỗ trợ từ xa**: bật/tắt từng gateway (mặc định **TẮT**, tắt có hiệu lực ngay). API `GET/PUT /api/v1/remote-support`. |
-| Route được phép | `GET/PUT /api/config`, `GET /api/state`, `GET /api/config-message`, `POST /api/write`, `POST /api/device`, `GET/PUT /api/offline`, `POST /api/offline/test`, `GET /api/network`, `GET /api/wifi` (`ALLOWED` trong `remoteAdmin.js`). Chạy/dừng gateway, đăng ký cloud, đổi mạng/Wi-Fi, OTA, PC quản trị, lease: **chỉ tại chỗ**. |
+| Route được phép | `GET/PUT /api/config`, `GET /api/state`, `GET /api/config-message`, `POST /api/write`, `POST /api/device`, `GET /api/offline` (đổi chương trình logic: đề xuất → chủ trạm duyệt, xem `GATEWAY-LOGIC.md`; thử mất mạng chỉ tại chỗ), `GET /api/network`, `GET /api/wifi` (`ALLOWED` trong `remoteAdmin.js`). Chạy/dừng gateway, đăng ký cloud, đổi mạng/Wi-Fi, OTA, PC quản trị, lease: **chỉ tại chỗ**. |
 | Gateway PC | `ScadaHost.RpcHandler` = `MainForm.HandleRpcAsync` (cùng bộ xử lý API LAN). Lưu cấu hình từ xa **giữ nguyên thông số cloud** (site/device/MqttId/host/khoá…) và trả lời trước rồi mới khởi động lại. |
 | Nhật ký | `audit_log`: `radmin_rpc` (mọi lệnh ghi + đọc cấu hình: tên máy, route, gateway, mã trả lời), `radmin_consent_on/off`. |
 
@@ -28,4 +28,4 @@ GatewayAdmin ──HTTPS, ký bằng khoá máy──▶ server (remoteAdmin.js)
 
 - Server: `node cloud/app/scripts/smoke-remote-admin.js` (26 kiểm tra: chữ ký, phát lại, lệch giờ, sửa thân, quyền chủ, route bị chặn, tách miền chữ ký, ghép trả lời lớn, gateway khác trả lời, ACL).
 - Qua internet thật (bản Debug): `GatewayAdmin.exe --relaytest KQ --gw site/device` — đọc trạng thái/cấu hình, lưu cấu hình (gateway khởi động lại và nối lại cloud), thông số cloud không đổi được, route bị chặn, mở cửa sổ. 2026-11-26: 11/11 với gateway PC thử trên VPS, ~390 ms mỗi vòng.
-- Board Waveshare: **chưa có** — firmware chưa nghe `rpc` (GatewayAdmin báo "Gateway không trả lời").
+- Board Waveshare (từ `mcu-0.3.9`): nghe `rpc`, thân gói base64 thường (`"enc":"b64"`), chỉ mở route xem + `PUT /api/offline` có mã duyệt của chủ trạm — xem `GATEWAY-LOGIC.md`. Chưa kiểm chứng qua VPS thật.

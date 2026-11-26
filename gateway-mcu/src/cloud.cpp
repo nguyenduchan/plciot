@@ -10,6 +10,7 @@
 #include <PubSubClient.h>
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
+#include <mbedtls/base64.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -87,7 +88,65 @@ String checkReplay(JsonObjectConst r, const String& id) {
   return "";
 }
 
+// ---------------------------------------------------------------- cài đặt từ xa (GatewayAdmin → server → gw/<id>/rpc, docs/REMOTE-ADMIN.md)
+// Board không giải nén gzip: server gửi thân dạng base64 thường ("enc":"b64", nằm trong phần được ký) và board trả "enc":"b64".
+String b64enc(const String& s) {
+  size_t n = 0;
+  mbedtls_base64_encode(nullptr, 0, &n, (const uint8_t*)s.c_str(), s.length());
+  std::vector<uint8_t> o(n + 1);
+  if (mbedtls_base64_encode(o.data(), o.size(), &n, (const uint8_t*)s.c_str(), s.length())) return "";
+  String r; r.concat((const char*)o.data(), n); return r;
+}
+bool b64dec(const String& s, String& out) {
+  size_t n = 0;
+  std::vector<uint8_t> o(s.length() * 3 / 4 + 4);
+  if (mbedtls_base64_decode(o.data(), o.size(), &n, (const uint8_t*)s.c_str(), s.length())) return false;
+  out = ""; out.concat((const char*)o.data(), n); return true;
+}
+
+/// Trả lời chia phần ≤ 3000 ký tự (đường ingest của server chặn gói > 4 KB).
+void rpcReply(const String& rid, int st, const String& body) {
+  const unsigned kPart = 3000;
+  String z = b64enc(body);
+  int n = max<int>(1, (z.length() + kPart - 1) / kPart);
+  for (int i = 0; i < n; i++) {
+    JsonDocument d;
+    d["rid"] = rid; d["i"] = i; d["n"] = n; d["st"] = st; d["enc"] = "b64";
+    d["z"] = z.substring(i * kPart, min<unsigned>(z.length(), (i + 1) * kPart));
+    String s; serializeJson(d, s); publish("rpcr", s, false);
+  }
+}
+
+void onRpc(const String& raw) {
+  if (!g_cfg.cmdKey.length()) { logf("Bỏ yêu cầu cài đặt từ xa: chưa có khoá ký của server"); return; }
+  String plain;
+  if (!verifySigned("rpc1", raw, g_cfg.mqttId, g_cfg.cmdKey, plain)) {
+    logf("Từ chối cài đặt từ xa: thiếu/sai chữ ký server");
+    evLog("rpc_badsig", "Yêu cầu cài đặt từ xa sai chữ ký server — bị từ chối", true);
+    return;
+  }
+  JsonDocument d;
+  if (deserializeJson(d, plain)) return;
+  String rid = d["rid"] | "";
+  if (!rid.length() || rid.length() > 64) return;
+  if (!timeSynced()) { rpcReply(rid, 503, "{\"Ok\":false,\"Err\":\"clock_not_synced\"}"); return; }
+  long long dt = nowMs() - (d["ts"] | 0LL);
+  if (llabs(dt) > 60000) { rpcReply(rid, 401, "{\"Ok\":false,\"Err\":\"stale_rpc\"}"); return; }
+  uint32_t now = millis();
+  for (auto it = s_seenIds.begin(); it != s_seenIds.end();) { if (now - it->second > 300000) it = s_seenIds.erase(it); else ++it; }
+  String key = "rpc:" + rid;
+  if (s_seenIds.count(key)) return;   // phát lại: im lặng
+  s_seenIds[key] = now;
+  String b = d["b"] | "", enc = d["enc"] | "", body;
+  if (b.length() && (enc != "b64" || !b64dec(b, body))) { rpcReply(rid, 415, "{\"Ok\":false,\"Err\":\"bad_body_encoding\"}"); return; }
+  String m = d["m"] | "", p = d["p"] | "", adm = d["adm"] | "", appr = d["appr"] | "", resp;
+  int st = apiRpc(m, p, body, adm, appr, resp);
+  logf("Cài đặt từ xa (%s): %s %s → %d", adm.c_str(), m.c_str(), p.c_str(), st);
+  rpcReply(rid, st, resp);
+}
+
 void onMessage(char* topic, uint8_t* payload, unsigned int len) {
+  if (String(topic) == base() + "/rpc") { if (len > 0 && len <= 16000) onRpc(String((const char*)payload, len)); return; }
   if (String(topic) != base() + "/cmd" || len == 0) return;
   if (len > 1024) { logf("Cloud→GW: bỏ lệnh quá dài (%u byte)", len); return; }
   String raw((const char*)payload, len);
@@ -381,6 +440,7 @@ bool connectMqtt() {
     logf("Cloud từ chối: mã %d", s_mqtt.state()); s_tls.stop(); return false;
   }
   s_mqtt.subscribe((base() + "/cmd").c_str(), 0);
+  s_mqtt.subscribe((base() + "/rpc").c_str(), 1);   // cài đặt từ xa (GatewayAdmin): chương trình logic, xem trạng thái/nhật ký
   s_connKey = connKey();
   logf("Đã nối cloud %s:%d (mqtts, TLS, chứng chỉ đã ghim)", g_cfg.cloudHost.c_str(), g_cfg.cloudPort);
   // đồng bộ lại trạng thái hiện tại lên cloud (các bản tin retain)

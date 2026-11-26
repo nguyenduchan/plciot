@@ -259,7 +259,10 @@
       const trust = w.fb
         ? '<span class="dw-trust ok" title="Có tín hiệu phản hồi: lệnh được kiểm chứng bằng đầu vào thật"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Có xác nhận</span>'
         : '<span class="dw-trust" title="Không có tín hiệu phản hồi: chỉ biết gateway đã ghi lệnh"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="dash" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>Không xác nhận</span>';
-      return `<div class="dw ctlw ${c.critical ? 'crit' : ''}${w.fb ? ' verified' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}${trust}</div>
+      // ⏰ hẹn giờ bật/tắt (chạy trên board, cả khi mất mạng) — chỉ đầu ra DO của board Waveshare (gateway-logic.js biết DO nào)
+      const tm = c.key != null && window.GwLogic?.timerOf(gwKey(dev), dev.childId, c.key);
+      const timerBtn = tm ? `<button type="button" class="dw-timer" data-gw="${esc(gwKey(dev))}" data-ch="${esc(String(tm.ch))}" data-label="${esc(w.label)}" title="Hẹn giờ bật/tắt">⏰${tm.text ? ` <small>${esc(tm.text)}</small>` : ''}</button>` : '';
+      return `<div class="dw ctlw ${c.critical ? 'crit' : ''}${w.fb ? ' verified' : ''}" data-wid="${esc(w.id)}"><div class="k">${wic(w)}${esc(w.label)} ${star}${timerBtn}${trust}</div>
         <button type="button" class="fit dw-toggle ${on ? 'on' : ''}${left ? ' cool' : ''}" data-dev="${esc(dev.id)}" data-wid="${esc(w.id)}" aria-disabled="${left ? 'true' : 'false'}">${on ? `● ${esc(w.onText || 'Bật')}` : `○ ${esc(w.offText || 'Tắt')}`}<small>${left ? `⏳ chờ ${secTxt(left)}` : `bấm để ${on ? esc(w.offText || 'Tắt') : esc(w.onText || 'Bật')}`}</small></button><div class="dw-status">${cmdHtml(dev, w)}${fbHtml(dev, w, on)}</div>${info ? `<div class="d muted dw-info">${esc(info)}</div>` : ''}</div>`;
     }
     if (w.kind === 'slider') {
@@ -1117,7 +1120,7 @@
   }
   document.addEventListener('DOMContentLoaded', renderSample);
 
-  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard, catchUp };
+  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard, catchUp, render: () => render() };
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);

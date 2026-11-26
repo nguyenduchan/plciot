@@ -34,7 +34,9 @@ const MAX_PARTS = 64;         // trả lời tối đa ~190 KB base64
 export const ALLOWED = [
   ['GET', '/api/state'], ['GET', '/api/config'], ['PUT', '/api/config'], ['GET', '/api/config-message'],
   ['POST', '/api/write'], ['POST', '/api/device'],
-  ['GET', '/api/offline'], ['PUT', '/api/offline'], ['POST', '/api/offline/test'],
+  // Chương trình logic: chỉ ĐỌC qua đây. Đổi = GatewayAdmin gửi đề xuất (text) → chủ trạm duyệt trên webapp → gatewayLogic.js mới gửi PUT
+  // (kèm mã duyệt "appr" trong phần được ký — board không nhận PUT /api/offline từ xa nếu thiếu). Thử mất mạng (đóng/ngắt DO thật): chỉ tại chỗ.
+  ['GET', '/api/offline'],
   ['GET', '/api/network'], ['GET', '/api/wifi'],
   ['GET', '/api/events'], ['GET', '/api/ota'],   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
 ];
@@ -84,26 +86,35 @@ export function onRpcReply(mqttId, buf) {
   const p = pending.get(String(m?.rid || ''));
   if (!p || p.mqttId !== mqttId) return;
   const n = Number(m.n), i = Number(m.i);
+  if (m.enc === 'b64') p.enc = 'b64';   // board Waveshare: base64 thường, không gzip
   if (!Number.isInteger(n) || n < 1 || n > MAX_PARTS || !Number.isInteger(i) || i < 0 || i >= n || typeof m.z !== 'string') return;
   p.n = n; p.st = Number(m.st) || p.st; p.parts[i] = m.z;
   if (p.parts.filter((x) => typeof x === 'string').length < n) return;
   clearTimeout(p.timer); pending.delete(m.rid);
   try {
-    const body = zlib.gunzipSync(Buffer.from(p.parts.join(''), 'base64')).toString('utf8');
+    const raw = Buffer.from(p.parts.join(''), 'base64');
+    const body = (p.enc === 'b64' ? raw : zlib.gunzipSync(raw)).toString('utf8');
     p.resolve({ status: p.st || 200, body });
   } catch { p.resolve({ status: 502, body: JSON.stringify({ Ok: false, Err: 'bad_reply' }) }); }
 }
 
-async function callGateway(mqttId, { method, path, body, label }) {
+/**
+ * Gọi một route API LAN của gateway qua MQTT rpc. mcu = board Waveshare (không có gzip: thân base64 thường, "enc":"b64").
+ * appr = mã duyệt của chủ trạm (bắt buộc với PUT /api/offline trên board) — nằm trong phần server ký.
+ */
+export async function callGateway(mqttId, { method, path, body, label, mcu = false, appr = '' }) {
   const rid = crypto.randomBytes(12).toString('hex');
-  const b = body ? zlib.gzipSync(Buffer.from(body, 'utf8')).toString('base64') : '';
+  const b = body ? (mcu ? Buffer.from(body, 'utf8') : zlib.gzipSync(Buffer.from(body, 'utf8'))).toString('base64') : '';
   if (b.length > MAX_REQ_B64) return { status: 413, body: JSON.stringify({ Ok: false, Err: 'too_large' }) };
   const result = new Promise((resolve) => {
     const timer = setTimeout(() => { pending.delete(rid); resolve({ status: 504, body: JSON.stringify({ Ok: false, Err: 'gateway_timeout' }) }); }, RPC_TIMEOUT_MS);
     pending.set(rid, { mqttId, parts: [], n: 0, st: 0, resolve, timer });
   });
   try {
-    await publishSigned(mqttId, 'rpc', signRpc(mqttId, { rid, ts: Date.now(), m: method, p: path, b, adm: label }));
+    const msg = { rid, ts: Date.now(), m: method, p: path, b, adm: label };
+    if (mcu) msg.enc = 'b64';
+    if (appr) msg.appr = appr;
+    await publishSigned(mqttId, 'rpc', signRpc(mqttId, msg));
   } catch (e) {
     const p = pending.get(rid); if (p) { clearTimeout(p.timer); pending.delete(rid); }
     return { status: 503, body: JSON.stringify({ Ok: false, Err: 'mqtt_unavailable' }) };
@@ -168,7 +179,8 @@ export function mountRemoteAdmin(app, { db, requireAuth }) {
     const dev = db.prepare('SELECT site, device, mqtt_id FROM devices WHERE site = ? AND device = ?').get(String(site || ''), String(device || ''));
     if (!dev?.mqtt_id) return bad(res, 404, 'gateway_not_found');
     if (!consentOf(dev.site, dev.device)) return bad(res, 403, 'radmin_not_allowed');
-    const r = await callGateway(dev.mqtt_id, { method, path, body, label: req.radmin.label });
+    const cl = db.prepare('SELECT version FROM gateway_clients WHERE site = ? AND device = ?').get(dev.site, dev.device);
+    const r = await callGateway(dev.mqtt_id, { method, path, body, label: req.radmin.label, mcu: String(cl?.version || '').startsWith('mcu') });
     if (method !== 'GET' || path === '/api/config') {
       audit(db, 'radmin_rpc', { ip: clientIp(req), detail: `${req.radmin.label} ${method} ${path} ${dev.site}/${dev.device} → ${r.status}`.slice(0, 500) });
     }
@@ -196,4 +208,6 @@ export function mountRemoteAdmin(app, { db, requireAuth }) {
     audit(db, on ? 'radmin_consent_on' : 'radmin_consent_off', { userId: u.id, ip: clientIp(req), detail: `${site}/${device}` });
     res.json({ ok: true, allowed: on });
   });
+
+  return { requireAdminKey, limit, consentOf, owns };
 }

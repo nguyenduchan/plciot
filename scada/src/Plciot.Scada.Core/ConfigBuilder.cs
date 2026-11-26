@@ -61,8 +61,11 @@ public static class ConfigBuilder
     /// <summary>UTF-8 thô (không escape \uXXXX): tên/nhãn tiếng Việt chỉ tốn 2–3 byte/chữ thay vì 6 → bản tin nhỏ hơn, giới hạn kích thước của server khó vượt.</summary>
     static readonly JsonSerializerOptions Utf8Json = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All) };
 
-    public static byte[] Build(ScadaConfig cfg, IConfigDescriber? describer = null) =>
-        Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { gw = cfg.Device, solution = cfg.Solution ?? "", devices = Devices(cfg, describer) }, Utf8Json));   // solution rỗng = giao diện cơ bản (gateway quyết định, server theo)
+    /// <param name="logic">Chương trình logic của gateway (GatewayLogic.CloudSummary) — null = gateway không báo logic.</param>
+    public static byte[] Build(ScadaConfig cfg, IConfigDescriber? describer = null, object? logic = null) =>
+        Encoding.UTF8.GetBytes(logic == null
+            ? JsonSerializer.Serialize(new { gw = cfg.Device, solution = cfg.Solution ?? "", devices = Devices(cfg, describer) }, Utf8Json)
+            : JsonSerializer.Serialize(new { gw = cfg.Device, solution = cfg.Solution ?? "", devices = Devices(cfg, describer), logic }, Utf8Json));   // solution rỗng = giao diện cơ bản (gateway quyết định, server theo)
 
     static List<DeviceDto> Devices(ScadaConfig cfg, IConfigDescriber? d)
     {

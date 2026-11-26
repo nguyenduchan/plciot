@@ -43,4 +43,4 @@ Board **chưa gắn tài khoản** (chưa có chủ): PC quản trị đã ghép
 
 - Board đang chạy bản **trước mcu-0.3.8** không có cơ chế này: lần đầu lên 0.3.8 phải nạp qua LAN (GatewayApp) hoặc USB.
 - Mất khoá riêng: board không nhận bản mới nữa (phải nạp USB với khoá mới). Lộ khoá: ai cũng ký được — đổi khoá (sửa `fwkey.h`, nạp USB).
-- Phần "logic bằng script" trên gateway chưa làm — cơ chế duyệt này hiện áp cho firmware.
+- Logic của từng gateway (không dùng script) có luồng duyệt riêng: admin đề xuất, chủ trạm duyệt bảng trên webapp — xem `GATEWAY-LOGIC.md`.

@@ -27,6 +27,30 @@ static class Program
             var gw = j >= 0 && j + 1 < args.Length ? args[j + 1] : "";
             form.Shown += async (_, _) => { await RelayTest.RunAsync(form, args[i + 1], gw); form.Close(); };
         }
+        // --logicpropose KQ.txt --gw site/device --text-file FILE [--note "…"]: kiểm text + gửi đề xuất logic (đúng đường cửa sổ 📝 Logic)
+        var lp = Array.IndexOf(args, "--logicpropose");
+        if (lp >= 0 && lp + 1 < args.Length)
+        {
+            string A(string n) { var x = Array.IndexOf(args, n); return x >= 0 && x + 1 < args.Length ? args[x + 1] : ""; }
+            form.Shown += async (_, _) =>
+            {
+                var outFile = args[lp + 1]; var lines = new List<string>();
+                var gw = A("--gw").Split('/');
+                try
+                {
+                    var text = File.ReadAllText(A("--text-file"));
+                    using (var cur = JsonDocument.Parse(await form.Api.LogicAsync(gw[0], gw[1])))
+                        lines.Add($"INFO loại {cur.RootElement.GetProperty("kind")} · đang chạy: {(cur.RootElement.GetProperty("current").ValueKind == JsonValueKind.Object ? "rev " + cur.RootElement.GetProperty("current").GetProperty("rev") : "chưa báo")}");
+                    using (var chk = JsonDocument.Parse(await form.Api.LogicCheckAsync(gw[0], gw[1], text)))
+                        lines.Add($"PASS kiểm text — thay đổi: {chk.RootElement.GetProperty("changed")}");
+                    using var pr = JsonDocument.Parse(await form.Api.LogicProposeAsync(gw[0], gw[1], text, A("--note")));
+                    lines.Add($"PASS gửi đề xuất #{pr.RootElement.GetProperty("id")}");
+                }
+                catch (Exception e) { lines.Add("FAIL " + AdminApi.Explain(e)); }
+                File.WriteAllLines(outFile, lines);
+                form.Close();
+            };
+        }
 #endif
         Application.Run(form);
     }

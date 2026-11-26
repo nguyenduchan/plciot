@@ -363,6 +363,24 @@ body.ui-simple .dev-head{padding:0 2px}
 body:not(.ui-simple) .dev-card{border-radius:6px;box-shadow:none}
 body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}
 
+/* hẹn giờ DO board (gateway-logic.js) */
+.dw-timer{background:none;border:1px solid var(--line,#444);border-radius:999px;font-size:13px;line-height:1.2;cursor:pointer;padding:1px 8px;margin:0 4px;color:inherit}
+.dw-timer small{color:var(--muted,#888);font-size:11px}
+.gl-tbl{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0}
+.gl-tbl th,.gl-tbl td{border-top:1px solid var(--line,#333);padding:6px 4px;text-align:left;vertical-align:top}
+.gl-tbl th{font-weight:600;color:var(--muted,#888);font-size:12px}
+.gl-tbl tr.chg td{background:rgba(217,119,6,.12)}
+.gl-tbl tr.chg td:first-child{box-shadow:inset 3px 0 0 #d97706}
+.gl-wrap{overflow-x:auto;max-width:100%}
+@media (max-width:640px){.gl-tbl thead{display:none}.gl-tbl tr{display:block;border-top:1px solid var(--line,#333);padding:6px 0}.gl-tbl td{display:block;border:0;padding:2px 4px}.gl-tbl td[data-h]::before{content:attr(data-h) ": ";color:var(--muted,#888);font-size:12px}}
+.gl-prop{border:1px solid #d97706;border-radius:10px;padding:10px;margin:8px 0}
+.gl-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.gl-modal>div{background:var(--card,var(--bg,#1b1b1f));color:inherit;border-radius:14px;max-width:440px;width:100%;padding:16px;max-height:90vh;overflow:auto}
+.gl-trow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px dashed var(--line,#333);padding:8px 0}
+.gl-trow input[type=time]{width:7.5em}
+.gl-days{display:flex;gap:3px;flex-wrap:wrap}
+.gl-days label{border:1px solid var(--line,#444);border-radius:6px;padding:2px 6px;font-size:12px;cursor:pointer}
+.gl-days input{display:none}.gl-days label.on{background:var(--accent,#2563eb);color:#fff;border-color:transparent}
 .dw-star{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;padding:0 4px;color:var(--muted,#888)}.dw-star.on{color:#d97706}.dw-star:disabled{cursor:default;opacity:.85}
 .ctlw.crit{outline:1px solid #d9770655;border-radius:12px}.dw-info{font-size:12px;margin-top:4px}
 .dw-fb{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px;padding:5px 8px;border-radius:8px;background:rgba(127,127,127,.12)}

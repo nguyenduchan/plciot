@@ -28,7 +28,8 @@ public enum Topology
 public enum MobileAccess { Off, MonitorOnly, Control }
 
 /// <summary>Nguồn của một lệnh ghi: chính sách điều khiển được kiểm tra tại MỘT chỗ duy nhất (ScadaCore).</summary>
-public enum ControlSource { LocalScreen, RemoteScreen, Mobile, Lan }
+/// <summary>Nguồn lệnh. Logic = chương trình logic của gateway (GatewayLogic: hẹn giờ, tự tắt, logic mất mạng) — chương trình do chủ trạm duyệt nên luôn được ghi.</summary>
+public enum ControlSource { LocalScreen, RemoteScreen, Mobile, Lan, Logic }
 
 public sealed class ControlPolicy
 {
@@ -134,6 +135,7 @@ public sealed class ScadaConfig
         ControlSource.RemoteScreen => Topology == Topology.MultiScreen && Control.RemoteScreens,
         ControlSource.Mobile => Mobile == MobileAccess.Control,
         ControlSource.Lan => Control.Lan,
+        ControlSource.Logic => true,
         _ => false,
     };
 

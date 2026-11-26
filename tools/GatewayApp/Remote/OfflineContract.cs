@@ -26,6 +26,31 @@ public sealed class OfflineRule
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? MaxAgeSec { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? OnSec { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? OffSec { get; set; }
+    // ---- chặn lệnh + hẹn giờ (chương trình logic, LUÔN chạy — xem offline.cpp). Phải giữ nguyên khi lưu lại để không mất phần này.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<OfflineCond>? Need { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? NeedHold { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<int>? Block { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? MaxOnSec { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<OfflineTimer>? Timer { get; set; }
+}
+
+/// <summary>Điều kiện cho phép bật: {Di,Is} hoặc {Field,Op(">="|"<="),Val,MaxAgeSec}.</summary>
+public sealed class OfflineCond
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? Di { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? Is { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Field { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Op { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Val { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? MaxAgeSec { get; set; }
+}
+
+/// <summary>Hẹn giờ: On/Off "HH:MM" (một trong hai có thể trống), Days 1..7 (1 = thứ Hai; null = mọi ngày).</summary>
+public sealed class OfflineTimer
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? On { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Off { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<int>? Days { get; set; }
 }
 
 /// <summary>Cài đặt cũ (PackMap.LossOffSec — "tắt sau N giây" trong hộp thoại thiết bị) còn hiệu lực cho chân chưa có chính sách.</summary>
@@ -42,6 +67,10 @@ public sealed class OfflineChStatus
     public int Out { get; set; }
     public string Text { get; set; } = "";
     public string Note { get; set; } = "";
+    /// <summary>Mô tả phần chặn lệnh / hẹn giờ của chân (luôn chạy).</summary>
+    public string Guard { get; set; } = "";
+    /// <summary>Lần gần nhất chương trình chặn / tự tắt / hẹn giờ chân này và vì sao.</summary>
+    public string GuardWhy { get; set; } = "";
 }
 
 public sealed class OfflineStatus

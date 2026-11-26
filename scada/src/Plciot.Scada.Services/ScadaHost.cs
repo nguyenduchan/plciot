@@ -50,6 +50,15 @@ public sealed class ScadaHost : IAsyncDisposable
         _bridge.Log += Core.Emit;
         _bridge.CommandReceived += OnCloudCommandAsync;
         _bridge.RpcReceived += OnRpcAsync;
+        // chương trình logic: "mất mạng" = cloud đã bật mà không nối được; gateway không dùng cloud thì không bao giờ mất mạng
+        Core.Logic.LinkUp = () => _cfg.CloudEnabled ? _bridge.State == CloudState.Connected : null;
+    }
+
+    /// <summary>Chương trình logic vừa đổi (app chủ đã nạp + lưu): gửi lại bản tin config (server lưu, webapp xem) + cảnh báo chủ trạm.</summary>
+    public void LogicChanged(string text)
+    {
+        PublishConfig();
+        OnCorePublish("alert", Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { k = "sec.logic_changed", lv = "high", txt = text })), false);
     }
 
     /// <summary>
@@ -57,6 +66,9 @@ public sealed class ScadaHost : IAsyncDisposable
     /// null = gateway này không nhận cài đặt từ xa. Server đã kiểm quyền (máy admin đã đăng ký + chủ gateway cho phép) và chỉ cho route an toàn.
     /// </summary>
     public Func<string, string, string, Task<(int Status, string Json)>>? RpcHandler { get; set; }
+    /// <summary>Mã duyệt của chủ trạm ("appr", trong phần server ký) của yêu cầu rpc ĐANG xử lý — "" = không có. Đổi chương trình logic từ xa bắt buộc có.</summary>
+    public string RpcApproval => _rpcAppr.Value ?? "";
+    readonly AsyncLocal<string?> _rpcAppr = new();
 
     public async Task StartAsync()
     {
@@ -117,7 +129,7 @@ public sealed class ScadaHost : IAsyncDisposable
     /// <summary>Gateway khai báo danh sách thiết bị + field (đọc/ghi) lên &lt;base&gt;/config, retain. Gọi lúc khởi động (và mỗi lần áp cấu hình vì host được khởi động lại).</summary>
     public void PublishConfig()
     {
-        try { OnCorePublish("config", ConfigBuilder.Build(_cfg, Describer), true); }
+        try { OnCorePublish("config", ConfigBuilder.Build(_cfg, Describer, Core.Direct ? Core.Logic.CloudSummary(Describer) : null), true); }
         catch (Exception ex) { Core.Emit("Không tạo được bản tin config: " + ex.Message); }
     }
 
@@ -174,7 +186,7 @@ public sealed class ScadaHost : IAsyncDisposable
             Core.Emit("Bỏ yêu cầu cài đặt từ xa: thiếu/sai chữ ký của server");
             return;   // không trả lời: ai đó không phải server gửi vào thì cũng không nhận được gì
         }
-        string rid, m, p, b, adm; long ts;
+        string rid, m, p, b, adm, appr; long ts;
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(plain);
@@ -182,6 +194,7 @@ public sealed class ScadaHost : IAsyncDisposable
             rid = r.GetProperty("rid").GetString() ?? ""; m = r.GetProperty("m").GetString() ?? ""; p = r.GetProperty("p").GetString() ?? "";
             b = r.TryGetProperty("b", out var bv) ? bv.GetString() ?? "" : ""; adm = r.TryGetProperty("adm", out var av) ? av.GetString() ?? "" : "";
             ts = r.GetProperty("ts").GetInt64();
+            appr = r.TryGetProperty("appr", out var ap) ? ap.GetString() ?? "" : "";
         }
         catch (Exception e) when (e is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException) { return; }
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -197,6 +210,7 @@ public sealed class ScadaHost : IAsyncDisposable
         {
             var body = b.Length == 0 ? "" : Gunzip(Convert.FromBase64String(b));
             if (m != "GET" || p == "/api/config") Core.Emit($"Cài đặt từ xa ({adm}): {m} {p}");
+            _rpcAppr.Value = appr;
             try { (st, json) = await h(m, p, body); }
             catch (Exception ex) { (st, json) = (500, System.Text.Json.JsonSerializer.Serialize(new { Ok = false, Err = ex.Message })); }
         }

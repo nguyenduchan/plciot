@@ -130,7 +130,7 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   String err;
   bool ok;
   { BusLockIf bus(!f->localIo()); ok = mbWrite(*f, f->addr, w, n, err); }   // DO trên board: không chờ vòng đọc PLC
-  if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" || err == "safe_mode" ? err : "plc_error"; }
+  if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" || err == "safe_mode" || err.startsWith("logic_") ? err : "plc_error"; }
   logf("Điều khiển: %s.%s = %g → D%d", f->child.c_str(), f->field.c_str(), v, f->addr);
   if (s_task) xTaskNotifyGive(s_task);
   return "";

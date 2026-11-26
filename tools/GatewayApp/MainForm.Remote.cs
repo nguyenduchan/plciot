@@ -114,6 +114,9 @@ public sealed partial class MainForm
                 case "GET /api/state": return await OnUi(() => Task.FromResult((200, Json(StateModel()))));
                 case "GET /api/config": return await OnUi(() => Task.FromResult((200, Json(ConfigModel()))));
                 case "PUT /api/config": return await OnUi(() => ApplyRemoteAsync(body));
+                case "GET /api/offline": return await OnUi(() => Task.FromResult(LogicGet()));
+                case "PUT /api/offline": return await OnUi(() => Task.FromResult(LogicPut(body, "LAN")));
+                case "POST /api/offline/test": return await OnUi(() => Task.FromResult(LogicTest(body)));
                 case "POST /api/write":
                 {
                     var w = JsonSerializer.Deserialize<ApiWrite>(body, J);
@@ -191,7 +194,14 @@ public sealed partial class MainForm
     {
         var route = method.ToUpperInvariant() + " " + path.Split('?')[0];
         _log.Add("INFO", "radmin", $"cài đặt từ xa: {route}");
-        if (route is "POST /api/run" or "POST /api/cloud") return Err("rpc_blocked", 403);
+        if (route is "POST /api/run" or "POST /api/cloud" or "POST /api/offline/test") return Err("rpc_blocked", 403);   // thử mất mạng đóng/ngắt đầu ra thật: chỉ tại chỗ
+        if (route == "PUT /api/offline")
+        {
+            // đổi chương trình logic từ xa: chỉ khi CHỦ TRẠM đã duyệt trên webapp (server gắn mã duyệt "appr" vào phần được ký)
+            var appr = _host?.RpcApproval ?? "";
+            if (appr.Length == 0) return Err("owner_approval_required", 403);
+            return await OnUi(() => Task.FromResult(LogicPut(body, "từ xa, chủ trạm duyệt " + appr)));
+        }
         if (route == "PUT /api/config")
         {
             try { return await OnUi(() => ApplyRemoteAsync(body, fromCloud: true)); }

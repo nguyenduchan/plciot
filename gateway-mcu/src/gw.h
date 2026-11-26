@@ -119,7 +119,8 @@ void cryptoBegin();
 String idPublicKey();                            // SPKI DER base64url
 String idHw();                                   // 20 ký tự Crockford của SHA-256(SPKI)
 String idSign(const String& msg);                // chữ ký IEEE P1363 base64url
-bool verifyCmd(const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);
+bool verifyCmd(const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);   // miền "cmd1"
+bool verifySigned(const char* domain, const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);   // "<domain>|<mqttId>|<json>" (rpc1…)
 bool verifySig(const String& spkiB64u, const String& msg, const String& sigB64u);   // ECDSA P-256 P1363, khoá SPKI
 std::vector<uint8_t> tlsCertDer();               // chứng chỉ TLS tự ký từ khoá danh tính (dấu nhận dạng = idHw)
 struct mbedtls_pk_context;
@@ -191,6 +192,9 @@ void apiBegin();
 void apiLoop();
 void apiOpenWindow(uint32_t ms);                 // mở ghép PC admin mới trong khoảng này (nút BOOT / lúc khởi động)
 void apiForgetAdmins();                          // reset: xoá danh sách PC admin đã ghép
+/// Cài đặt từ xa (gw/<id>/rpc đã kiểm chữ ký server): chạy một route API LAN được phép từ xa. Trả mã HTTP, resp = thân trả lời.
+/// appr = mã duyệt của chủ trạm (bắt buộc với PUT /api/offline — đổi chương trình logic).
+int apiRpc(const String& method, const String& path, const String& body, const String& adm, const String& appr, String& resp);
 
 // ---------------------------------------------------------------- cloud.cpp
 void cloudBegin();
@@ -223,7 +227,11 @@ void offlineBegin();                             // sau storeBegin: đọc /offl
 void offlineLegacyLoss(const uint32_t* sec8);    // Field::lossOffSec theo chân (storeApply) — dùng khi chân chưa có trong file
 void offlineTick();                              // task io (500 ms)
 void offlineGet(JsonDocument& out);              // GET /api/offline: chính sách + trạng thái chạy
-String offlinePut(JsonObjectConst in, uint32_t& rev);   // PUT /api/offline: "" = ok | "rev_conflict" | câu báo lỗi
+String offlinePut(JsonObjectConst in, uint32_t& rev, const String& via);   // PUT /api/offline: "" = ok | "rev_conflict" | câu báo lỗi; via = "LAN" | "từ xa: <máy admin>"
+void offlineCloud(JsonObject out);               // chương trình gửi lên cloud (trong bản tin config): {rev,sha,tz,do:[…]}
+/// Chương trình logic chặn lệnh: DO đang = cur, muốn = next. "" = cho phép | "logic_need" | "logic_interlock" (why = câu tiếng Việt).
+/// Gọi được khi đang giữ IoLock (thứ tự IoLock → OLock). Lệnh TẮT luôn được phép.
+String offlineGuard(uint8_t cur, uint8_t next, String& why);
 void offlineTest(uint32_t sec);                  // thử mất mạng sec giây (0 = dừng)
 void offlineNoteManual(uint8_t changed);         // DO đổi bằng tay (API LAN) — chân đang chạy logic offline thì nhường
 

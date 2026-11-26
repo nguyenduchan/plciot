@@ -21,6 +21,11 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     readonly SemaphoreSlim _pollNow = new(0, 1);
     /// <summary>Thời gian tối thiểu giữa hai lần đổi trạng thái đầu ra số (<see cref="PackMap.MinToggleMs"/>), chung mọi nguồn lệnh.</summary>
     public ToggleGuard Toggle { get; } = new();
+    /// <summary>Chương trình logic của gateway (chặn lệnh, hẹn giờ, logic mất mạng) — xem <see cref="GatewayLogic"/>. App chủ nạp chương trình.</summary>
+    public GatewayLogic Logic { get; }
+    /// <summary>Giá trị mới nhất theo "child.field" (tên field nội bộ) + thời điểm đọc (ms đơn điệu) — cho chương trình logic.</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, (double V, long At)> _vals = new(StringComparer.Ordinal);
+    Task? _logicLoop;
     readonly IReadOnlySet<int> _writable;
     readonly Queue<string> _log = new();
     CancellationTokenSource? _cts;
@@ -42,6 +47,39 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         else _driver = driver;
         // địa chỉ khai báo trong Pack là các điểm điều khiển thiết bị con (cloud đã whitelist theo widget) nên được phép ghi (trừ field "chỉ đọc")
         _writable = cfg.WritableRegisters.Concat(cfg.Pack.Where(x => x.Access != PackAccess.Read).Select(x => x.Address)).ToHashSet();
+        Logic = new GatewayLogic(cfg)
+        {
+            ValueOf = k => _vals.TryGetValue(k, out var x) ? (x.V, Environment.TickCount64 - x.At) : (null, long.MaxValue),
+        };
+        Logic.Log += s => Emit("Logic: " + s);
+    }
+
+    /// <param name="readStart">lúc BẮT ĐẦU vòng đọc: giá trị vừa ghi sau thời điểm đó (lệnh tới giữa vòng đọc) không bị kết quả đọc cũ đè lên —
+    /// nếu không, chương trình logic tưởng đầu ra vẫn tắt trong một chu kỳ đọc (liên động hở).</param>
+    void NoteValues(IEnumerable<(string Key, double V)> vs, long readStart)
+    {
+        foreach (var (k, v) in vs)
+            _vals.AddOrUpdate(k, (v, readStart), (_, old) => old.At > readStart ? old : (v, readStart));
+    }
+
+    /// <summary>Nhịp chương trình logic (500 ms): hẹn giờ, tự tắt, logic mất mạng → ghi qua đúng đường lệnh (ControlSource.Logic).</summary>
+    async Task LogicLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                foreach (var w in Logic.Tick())
+                {
+                    var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id = "logic-" + Guid.NewGuid().ToString("N")[..8], child = w.Field.Child, key = w.Field.WireKey, v = w.Value }));
+                    var ack = await ExecuteKeyAsync(payload, ControlSource.Logic, "logic: " + w.Why, ct, trusted: true);
+                    if (ack != null && ack.Contains("\"ok\":false")) Emit($"Logic: {w.Field.Child}.{w.Field.Field} = {w.Value} ({w.Why}) chưa ghi được: {ack}");
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex) { Emit("Logic lỗi: " + ex.Message); }
+            try { await Task.Delay(500, ct); } catch (OperationCanceledException) { break; }
+        }
     }
 
     public ScadaConfig Config => _cfg;
@@ -78,6 +116,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         _cts = new CancellationTokenSource();
         if (_pool != null) _loop = Task.Run(() => PollBoundAsync(_cts.Token));
         else if (_driver != null) _loop = Task.Run(() => PollLoopAsync(_cts.Token));
+        if (Direct) _logicLoop = Task.Run(() => LogicLoopAsync(_cts.Token));   // chế độ gateway ESP32: logic chạy trên board, không ở đây
         return Task.CompletedTask;
     }
 
@@ -85,6 +124,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
     {
         _cts?.Cancel();
         if (_loop != null) { try { await _loop.WaitAsync(TimeSpan.FromSeconds(5)); } catch { /* ignore */ } }
+        if (_logicLoop != null) { try { await _logicLoop.WaitAsync(TimeSpan.FromSeconds(5)); } catch { /* ignore */ } }
     }
 
     // ------------------------------------------------------------------ đọc
@@ -96,11 +136,13 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             try
             {
                 var packMax = _cfg.Pack.Count == 0 ? 0 : _cfg.Pack.Max(x => x.Address) + 1;
+                var readStart = Environment.TickCount64;
                 var all = await _driver!.ReadAsync(0, Math.Max(Contract.TelemetryRegs, packMax), ct);
                 var regs = all[..Contract.TelemetryRegs];
                 _fails = 0;
                 SetStatus("online");
                 _state.SetTelemetry(regs);
+                NoteValues(_cfg.Pack.Where(x => x.Address < all.Length).Select(x => (x.Child + "." + x.Field, Math.Round(all[x.Address] / x.Scale, 3))), readStart);
                 Trace("PLC→GW", _cfg.Source.ToString(), $"read D0..D{all.Length - 1}: {string.Join(',', all.Take(Contract.TelemetryRegs))}");
                 if (Publish != null) Publish("telemetry", BuildTelemetry(regs, all), true);
                 if ((DateTime.UtcNow - lastHistory).TotalMilliseconds >= _cfg.HistoryMs)
@@ -136,6 +178,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
         {
             try
             {
+                var readStart = Environment.TickCount64;
                 var r = await _pool!.ReadAllAsync(ct);
                 if (r.Groups > 0 && r.FailedGroups == r.Groups)
                 {
@@ -147,6 +190,7 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
                     _fails = 0;
                     SetStatus("online");
                     _state.SetTelemetry(new ushort[Contract.TelemetryRegs]);
+                    NoteValues(r.Values.Select(kv => (kv.Key.Child + "." + kv.Key.Field, kv.Value)), readStart);
                     var msg = string.Join(" | ", r.Errors);
                     if (msg != lastErr) { if (msg.Length > 0) Emit("Một số PLC không đọc được: " + msg); lastErr = msg; }
                     Trace("PLC→GW", "pack", string.Join(", ", r.Values.Select(kv => $"{kv.Key.Child}.{kv.Key.Field}={kv.Value}")));
@@ -306,6 +350,12 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
             Emit($"Từ chối lệnh {child}.{key} = {v}: ngoài khoảng {field.Min}–{field.Max}");
             return CommandPolicy.AckJson(id, false, "value_out_of_range");
         }
+        // chương trình logic của gateway: điều kiện cho phép bật + liên động (mọi nguồn, kể cả chính chương trình: hẹn giờ bật vẫn phải đủ điều kiện)
+        if (field != null && field.Access != PackAccess.Read && Logic.Guard(field, v, out var why) is { } lerr)
+        {
+            Emit($"Chương trình logic chặn lệnh ({actor}): {why}");
+            return CommandPolicy.AckJson(id, false, lerr);
+        }
         // bảo vệ tiếp điểm: đổi trạng thái đầu ra số quá sớm sau lần đổi trước → từ chối, báo còn phải chờ bao lâu
         var prevToggle = field != null ? Toggle.Peek(field) : (null, 0);
         if (field != null && field.Access != PackAccess.Read && !Toggle.TryTake(field, v, out var waitMs))
@@ -327,6 +377,8 @@ public sealed class ScadaCore : IScadaView, IAsyncDisposable
                 Trace("GW→PLC", field.Protocol, $"write {field.Child}.{field.Field} = {v} → D{field.Address} [{field.DataType}{(field.WordSwap ? ", đảo word" : "")}]");
                 await _pool.WriteAsync(field, v, ct);
                 Emit($"Điều khiển ({actor}): {field.Child}.{field.Field} = {v}");
+                _vals[field.Child + "." + field.Field] = (v, Environment.TickCount64 + 1);   // chương trình thấy ngay, không chờ vòng đọc (+1: mới hơn vòng đọc bắt đầu cùng ms)
+                if (source != ControlSource.Logic) Logic.NoteManual(field);
                 ackB = CommandPolicy.AckJson(id, true);
                 if (_pollNow.CurrentCount == 0) { try { _pollNow.Release(); } catch (SemaphoreFullException) { } }
             }

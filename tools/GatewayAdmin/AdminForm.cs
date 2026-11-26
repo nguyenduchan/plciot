@@ -38,6 +38,14 @@ sealed class AdminForm : Form
             return b;
         }
         bar.Controls.Add(Btn("Mở cài đặt", 150, async () => { if (_tbl.CurrentRow is { Index: >= 0 } r && r.Index < _rows.Count) await OpenAsync(_rows[r.Index]); }, primary: true));
+        bar.Controls.Add(Btn("📝 Logic", 120, () =>
+        {
+            if (_tbl.CurrentRow is { Index: >= 0 } r && r.Index < _rows.Count)
+            {
+                new LogicForm(_api, _rows[r.Index]).Show(this);   // board (doN) và gateway PC (đầu ra theo field)
+            }
+            return Task.CompletedTask;
+        }));
         bar.Controls.Add(Btn("↻ Tải lại", 110, LoadAsync));
         bar.Controls.Add(Btn("🔑 Khoá máy này", 160, () => { ShowKey(); return Task.CompletedTask; }));
         bar.Controls.Add(new Label { Text = $"Server: {_api.Server} · máy {_key.KeyId}", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(16, 12, 0, 0) });
