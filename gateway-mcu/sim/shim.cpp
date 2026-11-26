@@ -294,4 +294,22 @@ int NetworkUDP::read(char* b, int n) { int k = min(n, len_); if (k > 0) memcpy(b
 IPAddress NetworkUDP::remoteIP() const { const uint8_t* b = (const uint8_t*)&from_.sin_addr; return IPAddress(b[0], b[1], b[2], b[3]); }
 int NetworkUDP::endPacket() { return sendto(s_, out_.data(), (int)out_.size(), 0, (const sockaddr*)&from_, sizeof from_) > 0; }
 
+
+// ---------------------------------------------------------------- Update (OTA) giả: ghi ra <SIM_DATA>/ota-new.bin
+#include <Update.h>
+UpdateClass Update;
+bool UpdateClass::begin(size_t size, int) {
+  abort();
+  f_ = fopen(dataPath("ota-new.part").c_str(), "wb"); want_ = size; got_ = 0;
+  err_ = f_ ? "" : "không mở được file"; return f_ != nullptr;
+}
+size_t UpdateClass::write(uint8_t* p, size_t n) { if (!f_) return 0; size_t w = fwrite(p, 1, n, f_); got_ += w; return w; }
+bool UpdateClass::end(bool) {
+  if (!f_) { err_ = "chưa begin"; return false; }
+  fclose(f_); f_ = nullptr;
+  if (got_ != want_) { err_ = "thiếu dữ liệu"; return false; }
+  remove(dataPath("ota-new.bin").c_str());
+  return rename(dataPath("ota-new.part").c_str(), dataPath("ota-new.bin").c_str()) == 0;
+}
+void UpdateClass::abort() { if (f_) { fclose(f_); f_ = nullptr; remove(dataPath("ota-new.part").c_str()); } }
 #endif  // GW_SIM

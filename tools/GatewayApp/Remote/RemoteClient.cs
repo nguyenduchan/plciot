@@ -123,6 +123,9 @@ public sealed class RemoteClient : IDisposable
         SendAsync<ApiLease>(HttpMethod.Post, "api/lease", doMinMs == null ? new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec }
             : new { Action = acquire ? "acquire" : "release", TtlSec = ttlSec, DoMinMs = doMinMs });
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
+    /// <summary>Board MCU: trạng thái cập nhật (Version, Approved, ApprovedBy, RemainSec, PendingVerify, Enrolled) và nhật ký sự kiện.</summary>
+    public Task<System.Text.Json.JsonElement> OtaStateAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/ota", null);
+    public Task<System.Text.Json.JsonElement> EventsAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/events", null);
     /// <summary>Logic khi mất mạng của board (xem OfflineContract.cs).</summary>
     public Task<ApiOffline> OfflineAsync(CancellationToken ct = default) => SendAsync<ApiOffline>(HttpMethod.Get, "api/offline", null, ct);
     public Task<ApiOfflineSaved> PutOfflineAsync(ApiOffline p) => SendAsync<ApiOfflineSaved>(HttpMethod.Put, "api/offline", new ApiOffline { Rev = p.Rev, TzMin = p.TzMin, Do = p.Do });
@@ -144,11 +147,15 @@ public sealed class RemoteClient : IDisposable
     /// Board MCU: nạp firmware qua mạng (POST /api/ota, thân = file .bin thô, X-Sha256 = SHA-256 của file). Board kiểm SHA-256 rồi mới đổi
     /// phân vùng và tự khởi động lại sau ~1,5 giây — phiên hiện tại mất, nối lại sau 10–15 giây. Lỗi giữa chừng: board giữ nguyên bản cũ.
     /// </summary>
-    public async Task<ApiResult> OtaAsync(byte[] firmware, IProgress<double>? progress = null, CancellationToken ct = default)
+    /// <param name="version">Phiên bản + <paramref name="sig"/>: chữ ký nhà phát triển "fw1|&lt;sha256&gt;|&lt;phiên bản&gt;" (file firmware.bin.json do
+    /// cloud/app/scripts/sign-mcu-firmware.js sinh). Board từ chối bản không ký / sai chữ ký; board có chủ còn cần chủ trạm duyệt trên webapp.</param>
+    public async Task<ApiResult> OtaAsync(byte[] firmware, string version, string sig, IProgress<double>? progress = null, CancellationToken ct = default)
     {
         var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(firmware)).ToLowerInvariant();
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/ota") { Content = new ProgressContent(firmware, progress) };
         req.Headers.Add("X-Sha256", sha);
+        req.Headers.Add("X-Fw-Version", version);
+        req.Headers.Add("X-Fw-Sig", sig);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromMinutes(3));
         try
@@ -241,6 +248,9 @@ public sealed class RemoteClient : IDisposable
         "safe_mode" => "Board đang ở CHẾ ĐỘ AN TOÀN (vừa khởi động lại bất thường nhiều lần liền) — chỉ cho TẮT đầu ra. Kiểm tra nguồn cấp và tải nối vào DO.",
         "not_found" => "Firmware board chưa có chức năng này — cập nhật firmware (nút Firmware…).",
         { } c when c.Contains(' ') => c,   // board trả câu báo lỗi tiếng Việt (kiểm tra cài đặt)
+        "ota_not_approved" => "Board có chủ: chỉ nhận cập nhật trong 15 phút sau khi CHỦ TRẠM bấm \"Cho phép cập nhật\" trên webapp (Cài đặt → Lịch sử hệ thống).",
+        "ota_unsigned" => "Firmware chưa được ký — chạy cloud/app/scripts/sign-mcu-firmware.js sign … (sinh firmware.bin.json cạnh file .bin).",
+        "ota_bad_signature" => "Board TỪ CHỐI: chữ ký firmware không khớp khoá của nhà phát triển (file bị sửa hoặc ký bằng khoá khác).",
         "toggle_too_fast" => "Đầu ra vừa đổi trạng thái — chưa đủ thời gian tối thiểu giữa 2 lần bật/tắt (bảo vệ tiếp điểm relay). Đợi rồi thử lại.",
         _ => "Thiết bị báo lỗi: " + r.Code,
     } : e.Message;

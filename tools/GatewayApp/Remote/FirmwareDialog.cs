@@ -14,6 +14,7 @@ sealed class FirmwareDialog : Form
     readonly Label _msg = new() { Dock = DockStyle.Fill, ForeColor = Theme.Muted, Font = Theme.Small, Padding = new Padding(14, 8, 14, 0), UseMnemonic = false };
     readonly FlatButton _pick = new() { Caption = "Chọn file…", Width = 110 }, _go = new() { Caption = "Cập nhật", Primary = true, Width = 120 }, _close = new() { Caption = "Đóng", Width = 90 };
     byte[]? _fw;
+    string _ver = "", _sig = "";
     bool _busy;
     /// <summary>true = đã nạp xong, board đang khởi động lại (cửa sổ cài đặt phải nối lại).</summary>
     public bool Updated { get; private set; }
@@ -66,8 +67,15 @@ sealed class FirmwareDialog : Form
         {
             var b = File.ReadAllBytes(file);
             if (b.Length < 100_000 || b.Length > 6_000_000 || b[0] != 0xE9) { Msg("Không phải file firmware ESP32 (firmware.bin, ~1 MB, bắt đầu bằng byte 0xE9).", true); return; }
+            // chữ ký nhà phát triển: firmware.bin.json (sign-mcu-firmware.js) — board từ chối bản không ký
+            var sigFile = file + ".json";
+            if (!File.Exists(sigFile)) { Msg("Firmware chưa được ký: thiếu " + Path.GetFileName(sigFile) + " (chạy cloud/app/scripts/sign-mcu-firmware.js sign <firmware.bin> <phiên bản>).", true); return; }
+            using var j = System.Text.Json.JsonDocument.Parse(File.ReadAllText(sigFile));
+            _ver = j.RootElement.GetProperty("Version").GetString() ?? ""; _sig = j.RootElement.GetProperty("Sig").GetString() ?? "";
+            var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b)).ToLowerInvariant();
+            if (j.RootElement.TryGetProperty("Sha256", out var s) && s.GetString() != sha) { Msg("File chữ ký không khớp firmware.bin (build lại sau khi ký?) — ký lại.", true); return; }
             _fw = b; _go.Enabled = true;
-            Msg($"{b.Length / 1024} KB · build {File.GetLastWriteTime(file):dd/MM/yyyy HH:mm}. Bấm Cập nhật để gửi lên board.", false);
+            Msg($"{b.Length / 1024} KB · phiên bản {_ver} · đã ký · build {File.GetLastWriteTime(file):dd/MM/yyyy HH:mm}. Bấm Cập nhật để gửi lên board.", false);
         }
         catch (Exception e) { Msg(e.Message, true); }
     }
@@ -82,7 +90,7 @@ sealed class FirmwareDialog : Form
         try
         {
             var prog = new Progress<double>(p => { _bar.Value = (int)(p * 1000); Msg($"Đang gửi firmware… {p:P0}", false); });
-            var r = await _client.OtaAsync(_fw, prog);
+            var r = await _client.OtaAsync(_fw, _ver, _sig, prog);
             _bar.Value = 1000; Updated = true;
             Msg(string.IsNullOrEmpty(r.Msg) ? "Đã nạp xong, board khởi động lại." : r.Msg, false);
             await Task.Delay(1200);

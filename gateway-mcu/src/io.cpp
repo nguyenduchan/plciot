@@ -2,6 +2,7 @@
 #include "gw.h"
 #include "board.h"
 #include <Wire.h>
+#include <Preferences.h>
 
 namespace {
 uint8_t s_do = 0;          // trạng thái logic của DO (bit n = DOn+1 bật)
@@ -126,6 +127,13 @@ SemaphoreHandle_t g_io = xSemaphoreCreateRecursiveMutex();
 void ioBegin() {
   for (int p : DI_PINS) pinMode(p, INPUT);
   diStep(millis());                                     // mẫu đầu tiên làm trạng thái ban đầu
+  {   // khởi động lại có chủ đích (cập nhật firmware, đổi mạng): enterSafeState() đã lưu bộ đếm xung DI → đọc lại
+    Preferences p; p.begin("gw", false);
+    if (p.isKey("dicnt")) { String c = p.getString("dicnt", ""); int ch = 0, from = 0;
+      for (int i = 0; i <= (int)c.length() && ch < 8; i++) if (i == (int)c.length() || c[i] == ',') { s_diCount[ch++] = strtoul(c.substring(from, i).c_str(), nullptr, 10); from = i + 1; }
+      p.remove("dicnt"); }
+    p.end();
+  }
   xTaskCreatePinnedToCore(diTask, "di", 3072, nullptr, 2, nullptr, 0);
   pinMode(PIN_BOOT, INPUT_PULLUP);
   pinMode(PIN_BUZZER, OUTPUT); digitalWrite(PIN_BUZZER, LOW);
@@ -195,7 +203,9 @@ void ioLoop() {
     uint32_t held = now - s_btnDown;
     if (s_resetArmed) {
       logf("Giữ BOOT 10 giây: xoá cấu hình, khởi động lại");
+      evLog("factory_reset", "Giữ nút BOOT 10 giây: xoá cấu hình", true);
       storeReset();
+      enterSafeState("xoá cấu hình");
       delay(200); ESP.restart();
     } else if (held > 30 && held < 3000) {
       apiOpenWindow(SETUP_WINDOW_MS);

@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+/** Smoke test: cập nhật firmware board có duyệt (mcuOta.js) — bản phát hành đã ký, tải về, chủ duyệt (step-up), lệnh ota_allow có chữ ký,
+ *  lịch sử hệ thống (audit + cảnh báo bảo mật của board), cảnh báo bảo mật có tiêu đề riêng. */
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
+import express from 'express';
+import { execFileSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plc-ota-'));
+process.env.APP_JWT_SECRET = 'x'.repeat(32);
+process.env.DATA_DIR = tmp;
+
+const { openDb } = await import('../src/db.js');
+const { migrateUserDevices } = await import('../src/userDevices.js');
+const { setPublisher } = await import('../src/controlPublisher.js');
+const { verifySignedCmd } = await import('../src/cmdSign.js');
+const { mountMcuOta, readMcuRelease } = await import('../src/mcuOta.js');
+const { insertEvent } = await import('../src/historyStore.js');
+
+let fails = 0;
+const ok = (c, l) => { if (!c) { fails++; console.error('FAIL', l); } else console.log('ok  ', l); };
+
+const db = openDb(tmp); migrateUserDevices(db);
+const MQ = 'b1b2c3d4e5f60718';
+const cols = db.prepare("PRAGMA table_info('devices')").all().map((c) => c.name);
+if (!cols.includes('mqtt_id')) db.exec('ALTER TABLE devices ADD COLUMN mqtt_id TEXT');
+for (const [site, dev, id] of [['siteA', 'gw01', MQ], ['siteA', 'pc01', 'c1c2c3d4e5f60718']]) {
+  db.prepare(`INSERT INTO devices (tenant_id, site, device, mqtt_user, mqtt_pass, created_at, updated_at, mqtt_id) VALUES ('default', ?, ?, 'u', 'p', ?, ?, ?)`).run(site, dev, Date.now(), Date.now(), id);
+}
+db.prepare(`INSERT INTO users (username, password_hash, folder_path, role, notify_site, notify_device) VALUES ('owner1', 'x', 'f', 'operator', 'siteA', 'gw01')`).run();
+db.prepare(`INSERT INTO users (username, password_hash, folder_path, role, notify_site, notify_device) VALUES ('other1', 'x', 'f', 'operator', 'siteB', 'gw09')`).run();
+const uid = db.prepare("SELECT id FROM users WHERE username='owner1'").get().id;
+db.prepare(`INSERT INTO user_devices (id, user_id, site, gateway_device, child_id, type, title, binds, created_at) VALUES ('x1', ?, 'siteA', 'pc01', 'c1', 't', 't', '[]', ?)`).run(uid, Date.now());
+db.prepare("INSERT INTO gateway_clients (site, device, version, first_seen, last_seen) VALUES ('siteA','gw01','mcu-0.3.6',?,?), ('siteA','pc01','abc123',?,?)").run(Date.now(), Date.now(), Date.now(), Date.now());
+
+// bản phát hành ký bằng khoá tạm (đúng công cụ thật)
+const rel = path.join(tmp, 'releases');
+const keyFile = path.join(tmp, 'k.pem'); const bin = path.join(tmp, 'firmware.bin');
+fs.writeFileSync(bin, crypto.randomBytes(70_000));
+const env = { ...process.env, FW_SIGN_KEY: keyFile };
+const pub = execFileSync(process.execPath, [path.join(here, 'sign-mcu-firmware.js'), '--genkey'], { env, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+
+const published = [];
+setPublisher(async (_s, _d, payload, opts) => { published.push({ payload, opts }); });
+
+let stepUp = false;   // authorize giả: có yếu tố thứ hai hay chưa
+const app = express();
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+app.use((req, _res, next) => { const u = db.prepare('SELECT * FROM users WHERE username = ?').get(req.get('x-test-user') || ''); if (u) req.user = u; next(); });
+const requireAuth = (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'unauthorized' }));
+mountMcuOta(app, { db, requireAuth, security: { authorize: () => (stepUp ? {} : { error: 'step_up_required', status: 401 }) }, releasesDir: rel });
+const srv = app.listen(0); const base = `http://127.0.0.1:${srv.address().port}`;
+const call = (user, method, p, b) => fetch(base + p, { method, headers: { 'content-type': 'application/json', 'x-test-user': user || '' }, body: b ? JSON.stringify(b) : undefined })
+  .then(async (r) => ({ status: r.status, j: await r.json().catch(() => null), r }));
+
+ok((await call('', 'GET', '/api/v1/mcu-firmware')).status === 404, 'chưa có bản phát hành → 404');
+execFileSync(process.execPath, [path.join(here, 'sign-mcu-firmware.js'), 'sign', bin, 'mcu-0.4.0', '--notes', 'Sửa lỗi X', '--out', path.join(rel, 'mcu')], { env, stdio: 'ignore' });
+const meta = await call('', 'GET', '/api/v1/mcu-firmware');
+ok(meta.status === 200 && meta.j.version === 'mcu-0.4.0' && meta.j.size === 70_000 && meta.j.notes === 'Sửa lỗi X', 'thông tin bản mới (công khai)');
+const sha = crypto.createHash('sha256').update(fs.readFileSync(bin)).digest('hex');
+const key = crypto.createPublicKey({ key: Buffer.from(pub, 'base64url'), format: 'der', type: 'spki' });
+ok(meta.j.sha256 === sha && crypto.verify('sha256', Buffer.from(`fw1|${sha}|mcu-0.4.0`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(meta.j.sig, 'base64url')), 'chữ ký fw1|sha256|phiên bản kiểm được bằng khoá công khai (như board)');
+ok(!crypto.verify('sha256', Buffer.from(`fw1|${sha}|mcu-9.9.9`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(meta.j.sig, 'base64url')), 'đổi phiên bản → chữ ký không còn hợp lệ');
+const dl = await fetch(`${base}/api/v1/mcu-firmware/download`);
+ok(dl.status === 200 && Buffer.from(await dl.arrayBuffer()).equals(fs.readFileSync(bin)), 'tải firmware đúng từng byte');
+ok(fs.existsSync(`${bin}.json`) && JSON.parse(fs.readFileSync(`${bin}.json`, 'utf8')).Sig === meta.j.sig, 'firmware.bin.json cho GatewayApp nạp qua LAN');
+
+ok((await call('', 'POST', '/api/v1/ota/approve', { gw: 'siteA/gw01' })).status === 401, 'duyệt không đăng nhập → 401');
+ok((await call('other1', 'POST', '/api/v1/ota/approve', { gw: 'siteA/gw01' })).j.error === 'forbidden_gateway', 'người khác duyệt → forbidden_gateway');
+ok((await call('owner1', 'POST', '/api/v1/ota/approve', { gw: 'siteA/pc01' })).j.error === 'not_mcu', 'gateway PC → not_mcu');
+const noStep = await call('owner1', 'POST', '/api/v1/ota/approve', { gw: 'siteA/gw01' });
+ok(noStep.status === 401 && noStep.j.error === 'step_up_required' && published.length === 0, 'chưa Face ID/TOTP → step_up_required, chưa gửi gì xuống board');
+stepUp = true;
+const ap = await call('owner1', 'POST', '/api/v1/ota/approve', { gw: 'siteA/gw01' });
+await new Promise((r) => setTimeout(r, 50));
+ok(ap.status === 200 && ap.j.version === 'mcu-0.4.0', 'chủ trạm duyệt (đã xác thực) → ok');
+const p = published.at(-1);
+ok(p && p.opts.mqttId === MQ && p.payload.sys === 'ota_allow' && p.payload.ttl === 900 && p.payload.by === 'owner1', 'server gửi {sys:"ota_allow", ttl:900, by} tới đúng gateway');
+
+insertEvent(db, { ts: Date.now(), site: 'siteA', device: 'gw01', kind: 'alert', payload: JSON.stringify({ schema: 1, k: 'sec.ota_badsig', lv: 'high', txt: 'Từ chối firmware: CHỮ KÝ KHÔNG HỢP LỆ' }), o: null, i: null, a: null, c: null, s: null });
+insertEvent(db, { ts: Date.now(), site: 'siteA', device: 'gw01', kind: 'alert', payload: JSON.stringify({ schema: 1, k: 'tank.level', lv: 'high', txt: 'Mức nước cao' }), o: null, i: null, a: null, c: null, s: null });
+const h = await call('owner1', 'GET', '/api/v1/system-history?gw=siteA/gw01');
+ok(h.status === 200 && h.j.kind === 'mcu' && h.j.version === 'mcu-0.3.6' && h.j.updateAvailable && h.j.release.version === 'mcu-0.4.0', 'lịch sử: phiên bản đang chạy + có bản mới');
+ok(h.j.events.some((e) => e.type === 'ota_approve' && e.text.includes('mcu-0.4.0')), 'lịch sử có lần duyệt cập nhật (server)');
+ok(h.j.events.some((e) => e.src === 'gateway' && e.type === 'ota_badsig' && e.alert) && !h.j.events.some((e) => e.text === 'Mức nước cao'), 'lịch sử có cảnh báo bảo mật của board, không lẫn cảnh báo dữ liệu');
+ok((await call('other1', 'GET', '/api/v1/system-history?gw=siteA/gw01')).j.error === 'forbidden_gateway', 'người khác không xem được lịch sử');
+
+const { forwardGatewayAlert } = await import('../src/pushAlerts.js');
+ok(typeof forwardGatewayAlert === 'function', 'cảnh báo sec.* đi qua forwardGatewayAlert (tiêu đề "Cảnh báo bảo mật")');
+ok(readMcuRelease(path.join(tmp, 'khong-co')) === null, 'thư mục phát hành hỏng/thiếu → không phát gì');
+
+srv.close();
+console.log(fails ? `\n${fails} FAIL` : '\nTẤT CẢ OK');
+process.exit(fails ? 1 : 0);

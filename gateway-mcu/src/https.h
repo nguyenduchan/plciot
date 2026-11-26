@@ -4,7 +4,7 @@
 #include <functional>
 
 struct HttpRequest {
-  String method, path, body, auth, sha256; IPAddress ip; bool tls = false;
+  String method, path, body, auth, sha256, fwVersion, fwSig; IPAddress ip; bool tls = false;   // fwVersion/fwSig: X-Fw-Version, X-Fw-Sig (POST /api/ota)
   /// Thân lớn (chỉ POST /api/ota, sau khi đã xác thực): đọc từng khúc, không nạp vào RAM. contentLen = số byte khai báo.
   size_t contentLen = 0;
   std::function<int(uint8_t*, size_t)> readBody;   // trả số byte đọc được, 0 = chưa có (gọi lại), <0 = lỗi/đứt

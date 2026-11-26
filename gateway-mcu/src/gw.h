@@ -227,6 +227,26 @@ String offlinePut(JsonObjectConst in, uint32_t& rev);   // PUT /api/offline: "" 
 void offlineTest(uint32_t sec);                  // thử mất mạng sec giây (0 = dừng)
 void offlineNoteManual(uint8_t changed);         // DO đổi bằng tay (API LAN) — chân đang chạy logic offline thì nhường
 
+// ---------------------------------------------------------------- ota.cpp: cập nhật firmware có DUYỆT + chữ ký + tự quay lại; nhật ký sự kiện
+// Board có chủ (đã gắn tài khoản cloud): chỉ cài trong 15 phút sau khi chủ trạm bấm "Cho phép cập nhật" trên webapp (sys ota_allow).
+// Mọi bản cài phải có chữ ký nhà phát triển `fw1|<sha256>|<phiên bản>` khớp FW_SIGN_PUBKEY (fwkey.h).
+void otaBegin();                                 // sau storeBegin: phát hiện vừa cập nhật / vừa quay về bản cũ
+void otaLoop();                                  // loop(): xác nhận bản mới khi khoẻ (hoặc quay về), tải từ server khi vừa được duyệt
+void otaAllow(uint32_t ttlSec, const String& by);   // tín hiệu ota_allow có chữ ký server
+bool otaApproved(String& why);
+String otaStatusJson();                          // GET /api/ota
+bool otaStart(size_t total, const String& ver, const String& shaHex, const String& sig, const String& src, String& err);
+bool otaWrite(const uint8_t* p, size_t n, String& err);
+bool otaFinish(String& err);                     // đối chiếu SHA-256 → đặt bản mới → khởi động lại sau 1,5 s (qua enterSafeState)
+void otaAbort();
+void enterSafeState(const char* why);            // TẮT mọi DO + lưu bộ đếm DI — gọi trước MỌI lần khởi động lại có chủ đích
+/// Nhật ký sự kiện (/events.log). alertOwner = cảnh báo bảo mật: gửi gw/<id>/alert k="sec.<type>" → thông báo đỏ về điện thoại chủ trạm.
+void evLog(const char* type, const String& text, bool alertOwner = false);
+String evRecent(int n);                          // JSON array các sự kiện mới nhất
+bool evNextAlert(String& out);                   // cảnh báo bảo mật chờ gửi (cloudLoop)
+void evAlertSent();
+int httpsGet(const String& url, String& resp);   // cloud.cpp: GET HTTPS (CA của ESP-IDF)
+
 // ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó
 // Mỗi task gọi wdtFeed() mỗi vòng; quá hạn → ghi tên task vào NVS ("wdt") rồi khởi động lại (DO về TẮT ở ioBegin).
 // Task giám sát được Task WDT của ESP-IDF canh: chính nó treo (hoặc cả scheduler) thì chip tự reset.

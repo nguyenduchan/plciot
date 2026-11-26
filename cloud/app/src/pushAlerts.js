@@ -27,7 +27,9 @@ export function parseGatewayAlert(text) {
 
 /** Chuyển tiếp cảnh báo của gateway tới các tài khoản đang xem gateway đó (không tính toán gì thêm). */
 export function forwardGatewayAlert(db, { site, device, alert }) {
-  pushToGatewayUsers(db, site, device, { t: '⚠ Cảnh báo nguy hiểm', b: alert.text, tag: `${site}/${device}/${alert.key || 'alert'}`, url: '/' })
+  // k = "sec.*": cảnh báo BẢO MẬT của gateway (ghép PC lạ, nạp firmware chưa duyệt/sai chữ ký, tự quay về bản cũ, chế độ an toàn…)
+  const sec = String(alert.key || '').startsWith('sec.');
+  pushToGatewayUsers(db, site, device, { t: sec ? '🔴 Cảnh báo bảo mật gateway' : '⚠ Cảnh báo nguy hiểm', b: sec ? `${site}/${device}: ${alert.text}` : alert.text, tag: `${site}/${device}/${alert.key || 'alert'}`, url: sec ? '/#set' : '/' })
     .catch((e) => console.error('push alert', e.message));
 }
 

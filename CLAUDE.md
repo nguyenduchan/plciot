@@ -46,6 +46,7 @@ Không ghi đè: `cloud/.env`, `cloud/config/passwd`, `cloud/app/data`.
 - Type/widget chỉ trên server (tem + `/api/v1/ui/dashboard`). Chi tiết: `docs/PROVISIONING-FLOW.md`.
 - UI contract: `GET /api/v1/ui/dashboard` — web + C# cùng schema (`docs/UI-CONTRACT.md`).
 - Cài đặt gateway từ xa: CHỈ app **GatewayAdmin** (`tools/GatewayAdmin`, client thuần, khoá máy đăng ký qua SSH) qua relay MQTT `rpc`/`rpcr`; chủ gateway bật "Hỗ trợ từ xa" trên webapp (mặc định tắt). Webapp KHÔNG có giao diện cài logic. Chi tiết: `docs/REMOTE-ADMIN.md`.
+- Firmware board Waveshare: chỉ cài bản **có chữ ký** (khoá riêng NGOÀI repo `~/.plciot/fw-sign.pem`, ký bằng `cloud/app/scripts/sign-mcu-firmware.js`, khoá công khai `gateway-mcu/src/fwkey.h`) và — board có chủ — sau khi **chủ trạm bấm duyệt** trên webapp (cửa sổ 15 phút). Tự quay về bản cũ nếu bản mới không khoẻ. Chi tiết: `docs/OTA-APPROVAL.md`.
 - Đăng ký có rate-limit chống spam DB (`RATE_LIMIT_REGISTER*`, `REGISTER_MAX_*`).
 - QR mẫu test: `tools/sample-qrs/` (gen: `cd cloud/app && node scripts/gen-sample-device-qrs.js`).
 - Rule Cursor: `.cursor/rules/vps-dev-sync.mdc`.

@@ -18,10 +18,6 @@
 #include <ETH.h>
 #include <NetworkUdp.h>
 #include <esp_random.h>
-#ifndef GW_SIM
-#include <Update.h>
-#include <mbedtls/sha256.h>
-#endif
 
 namespace {
 const char* const kProtocols[] = BOARD_PROTOCOLS;
@@ -97,6 +93,7 @@ void addAdmin(const String& pk, const String& name, const char* how, bool active
   JsonObject a = arr.add<JsonObject>(); a["Pk"] = pk; a["Name"] = name; a["How"] = how; a["Active"] = active; a["Waited"] = 0;
   saveAdmins(d);
   logf(active ? "Đã ghép PC quản trị \"%s\" (%s) — từ nay vào thẳng" : "PC \"%s\" (%s) xin ghép — chờ PC quản trị cũ đồng ý/từ chối, hoặc tự kích hoạt sau 24 giờ", name.c_str(), how);
+  evLog(active ? "pc_paired" : "pc_pair_request", String(active ? "Đã ghép PC quản trị mới \"" : "PC lạ \"") + name + "\" (" + how + ")" + (active ? "" : " xin ghép quản trị"), true);
   if (!active) ioBeep(150);
 }
 
@@ -127,7 +124,11 @@ void hChallenge() {
 void hLogin() {
   uint32_t now = millis();
   if (s_fails >= 5 && now - s_failStart < 60000) { err("too_many_attempts", 429); return; }
-  auto fail = [&](const char* e, int code) { if (now - s_failStart >= 60000) { s_fails = 0; s_failStart = now; } s_fails++; err(e, code); };
+  auto fail = [&](const char* e, int code) {
+    if (now - s_failStart >= 60000) { s_fails = 0; s_failStart = now; }
+    if (++s_fails == 5) evLog("login_fail", "Đăng nhập quản trị sai 5 lần trong 1 phút từ " + q_->ip.toString() + " — tạm khoá 60 giây", true);
+    err(e, code);
+  };
   JsonDocument d; if (!body(d)) return;
   String pk = d["Pubkey"] | "", nonce = d["Nonce"] | "", sig = d["Sig"] | "", name = d["Name"] | "", web = d["WebToken"] | "";
   bool fresh = false;
@@ -154,6 +155,7 @@ void hLogin() {
   if (s_sessions.size() >= 4) s_sessions.erase(s_sessions.begin());   // tối đa 4 phiên
   s_sessions.push_back({hex(r, sizeof r), now, pk});
   logf("Admin \"%s\" đăng nhập từ %s (HTTPS)", name.c_str(), q_->ip.toString().c_str());
+  evLog("pc_login", "PC quản trị \"" + name + "\" đăng nhập từ " + q_->ip.toString());
   JsonDocument o; o["Ok"] = true; o["Token"] = s_sessions.back().token; o["Paired"] = newly;
   String s; serializeJson(o, s); send(200, s);
 }
@@ -321,37 +323,30 @@ void hPutNetwork() {
 /// Chỉ PC admin đã đăng nhập (kênh HTTPS đã ghim khoá). Ghi vào phân vùng OTA kia, kiểm SHA-256 rồi mới đổi phân vùng khởi động và khởi động lại;
 /// hỏng giữa chừng (đứt mạng, sai SHA) → bản đang chạy giữ nguyên. Lease/khoá cấu hình không đổi.
 void hOta() {
-#ifdef GW_SIM
-  err("ota_unsupported", 501);
-#else
-  if (!q_->readBody || !q_->contentLen) { err("bad_request"); return; }
-  String want = q_->sha256; want.trim(); want.toLowerCase();
-  if (want.length() != 64) { err("thiếu header X-Sha256"); return; }
-  size_t total = q_->contentLen;
-  if (!Update.begin(total, U_FLASH)) { err(String("ota_begin: ") + Update.errorString()); return; }
-  logf("OTA: nhận firmware %u byte từ %s", (unsigned)total, q_->ip.toString().c_str());
-  mbedtls_sha256_context sha; mbedtls_sha256_init(&sha); mbedtls_sha256_starts(&sha, 0);
+  if (!q_->readBody || !q_->contentLen) { err("bad_request"); return; }   // bản giả lập: ghi ra SIM_DATA/ota-new.bin (sim/include/Update.h)
+  // chìa khoá 2 lớp: chữ ký nhà phát triển (X-Fw-Version + X-Fw-Sig ký "fw1|<sha256>|<phiên bản>") + chủ trạm đã duyệt (board có chủ)
+  String e;
+  if (!otaStart(q_->contentLen, q_->fwVersion, q_->sha256, q_->fwSig, "LAN " + q_->ip.toString(), e)) {
+    // từ chối ngay đầu nhưng PC vẫn đang gửi file: đọc bỏ phần còn lại rồi mới trả lời (không thì PC chỉ thấy "đứt kết nối")
+    static uint8_t sink[2048]; size_t left = q_->contentLen; uint32_t t0 = millis();
+    while (left && millis() - t0 < 20000) { int n = q_->readBody(sink, min(left, sizeof sink)); if (n < 0) break; if (n == 0) { delay(1); continue; } left -= n; wdtFeed(WD_LOOP); }
+    err(e, e == "ota_not_approved" ? 403 : 400); return;
+  }
   static uint8_t buf[2048];
   size_t got = 0; uint32_t lastData = millis();
-  while (got < total) {
+  while (got < q_->contentLen) {
     int n = q_->readBody(buf, sizeof buf);
     if (n < 0) break;
     wdtFeed(WD_LOOP);   // nhận firmware chạy trong loop(): có thể lâu hơn hạn watchdog của loop
     if (n == 0) { if (millis() - lastData > 15000) break; delay(1); continue; }
     lastData = millis();
-    mbedtls_sha256_update(&sha, buf, n);
-    if (Update.write(buf, n) != (size_t)n) { Update.abort(); mbedtls_sha256_free(&sha); err(String("ota_write: ") + Update.errorString()); return; }
+    if (!otaWrite(buf, n, e)) { err(e); return; }
     got += n;
   }
-  uint8_t dig[32]; mbedtls_sha256_finish(&sha, dig); mbedtls_sha256_free(&sha);
-  if (got != total) { Update.abort(); logf("OTA: đứt giữa chừng (%u/%u)", (unsigned)got, (unsigned)total); err("ota_incomplete"); return; }
-  if (!hex(dig, 32).equalsIgnoreCase(want)) { Update.abort(); logf("OTA: sai SHA-256 — huỷ"); err("ota_bad_sha256"); return; }
-  if (!Update.end(true)) { err(String("ota_end: ") + Update.errorString()); return; }
-  logf("OTA: xong, khởi động lại với firmware mới");
-  s_restartAt = millis() + 1500;
-  JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Msg"] = "Đã nạp firmware, board khởi động lại.";
+  if (got != q_->contentLen) { otaAbort(); logf("OTA: đứt giữa chừng (%u/%u)", (unsigned)got, (unsigned)q_->contentLen); err("ota_incomplete"); return; }
+  if (!otaFinish(e)) { err(e); return; }
+  JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Msg"] = "Đã nạp firmware, board khởi động lại (tự quay về bản cũ nếu bản mới không chạy ổn).";
   String s; serializeJson(o, s); send(200, s);
-#endif
 }
 
 /// Wi-Fi: quét mạng, xem trạng thái, nối (mật khẩu chỉ đi vào, không bao giờ trả ra).
@@ -404,6 +399,10 @@ void hOfflineTest() {
   ok();
 }
 
+/// Nhật ký sự kiện (cập nhật, duyệt, quay về bản cũ, ghép/đăng nhập PC…) — 100 dòng mới nhất; trạng thái cập nhật firmware.
+void hEvents() { send(200, "{\"Ok\":true,\"Events\":" + evRecent(100) + "}"); }
+void hOtaState() { send(200, otaStatusJson()); }
+
 struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
@@ -411,6 +410,7 @@ const Route kRoutes[] = {
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true}, {"POST", "/api/ota", hOta, true},
+  {"GET", "/api/events", hEvents, true}, {"GET", "/api/ota", hOtaState, true},
   {"GET", "/api/offline", hOfflineGet, true}, {"PUT", "/api/offline", hOfflinePut, true}, {"POST", "/api/offline/test", hOfflineTest, true},
   {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
 };
@@ -479,5 +479,5 @@ void apiLoop() {
   s_http.handle(dispatch);
   udpLoop();
   tickPending();
-  if (s_restartAt && (int32_t)(millis() - s_restartAt) >= 0) { logf("Khởi động lại để áp mạng mới"); delay(100); ESP.restart(); }
+  if (s_restartAt && (int32_t)(millis() - s_restartAt) >= 0) { logf("Khởi động lại để áp mạng mới"); enterSafeState("đổi mạng"); delay(100); ESP.restart(); }
 }

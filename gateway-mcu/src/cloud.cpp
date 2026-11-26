@@ -118,6 +118,10 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
     } else if (sys == "lock" || sys == "unlock") {
       if (!trusted) { logf("Bỏ lệnh %s không có chữ ký server", sys.c_str()); return; }   // chỉ server (khoá ký) mới khoá/mở được
       setLocked(sys == "lock", r["reason"] | "server");
+    } else if (sys == "ota_allow") {
+      // chủ trạm bấm "Cho phép cập nhật" trên webapp (đã qua Face ID/TOTP ở server) — chỉ nhận khi có chữ ký server
+      if (!trusted) { logf("Bỏ ota_allow không có chữ ký server"); return; }
+      otaAllow(r["ttl"] | 900, String(r["by"] | ""));
     } else if (sys == "live") {
       int ttl = constrain((int)(r["ttl"] | 60), 5, 600);
       if (!live()) logf("Có người xem webapp — gửi dữ liệu nhanh");
@@ -451,6 +455,11 @@ void cloudLoop() {
     }
   }
 
+  if (s_mqtt.connected()) {   // cảnh báo bảo mật (ghép PC lạ, nạp firmware chưa duyệt, quay về bản cũ…) → server đẩy thông báo đỏ cho chủ trạm
+    String a;
+    if (evNextAlert(a)) { publish("alert", a, false); evAlertSent(); }
+  }
+
   bool want = hasIp && g_cfg.cloudOn() && mqttIdOk(g_cfg.mqttId) && g_cfg.cloudHost.length() && !leaseActive();   // chế độ gateway: PC là đường báo duy nhất
   if (s_restart) {
     s_restart = false;
@@ -499,3 +508,6 @@ void cloudLoop() {
   // hỏi lại server: chưa có user thì dày (60 s), đã có thì thưa (5 phút)
   if ((int32_t)(millis() - s_nextRefresh) >= 0) { s_nextRefresh = millis() + (g_cfg.sendData ? 300000UL : 60000UL); refreshConfig(); }
 }
+
+/// GET HTTPS cho ota.cpp (thông tin bản firmware mới trên server).
+int httpsGet(const String& url, String& resp) { return httpsJson(url, "", "", resp, true); }

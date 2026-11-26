@@ -57,6 +57,7 @@ void setup() {
   storeBegin();          // sau ETH.begin: tên thiết bị mặc định lấy từ MAC
   wifiBegin();           // Wi-Fi station song song Ethernet (mạng đã lưu tự nối)
   offlineBegin();        // logic khi mất mạng (/offline.json) — sau storeBegin (kiểm field theo cấu hình)
+  otaBegin();            // vừa cập nhật / vừa quay về bản cũ? + sự kiện khởi động (cần LittleFS từ storeBegin)
   netApply();            // IP tĩnh mặc định 192.168.1.200 (hoặc DHCP / IP đã đặt) — cần NVS nên sau storeBegin
   cryptoBegin();
   modbusBegin();
@@ -75,6 +76,7 @@ void loop() {
   apiLoop();
   slaveLoop();
   cloudLoop();
+  otaLoop();
   safetyLink(g_cfg.cloudOn() && g_cfg.cloudHost.length() > 0 && g_cfg.mqttId.length() > 0, leaseActive(), cloudLinkOk());   // cloud đã cài (đã enroll) mới tính là "cần người điều khiển"
   rtcLoop();
   ledTick();

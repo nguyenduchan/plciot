@@ -1,9 +1,12 @@
 namespace GatewayApp;
 
 /// <summary>
-/// Kiểm thử cập nhật firmware qua LAN trên board thật (--otatest KQ.txt --lan-target IP:443 --fw firmware.bin):
-/// nối (PC đã ghép hoặc board đang mở cửa sổ ghép) → ghi phiên bản đang chạy → OtaAsync → chờ board khởi động lại →
-/// tìm lại bằng UDP, phiên bản phải đổi. Thêm kiểm tra: file hỏng (sai SHA) bị board từ chối mà vẫn giữ bản cũ.
+/// Kiểm thử cập nhật firmware CÓ DUYỆT qua LAN (--otatest KQ.txt --lan-target IP:CỔNG --fw firmware.bin [--io-data SIM_DATA] [--ota-only]), bản Debug.
+/// firmware.bin phải có firmware.bin.json (sign-mcu-firmware.js). Board thật hoặc gw-sim:
+///   1. không chữ ký → ota_unsigned; chữ ký cho phiên bản khác → ota_bad_signature; file cụt (SHA khác bản đã ký) → ota_bad_signature
+///   2. board CÓ CHỦ (giả lập bằng cách đặt CloudCmdKey) mà chưa được chủ trạm duyệt → ota_not_approved (rồi trả cấu hình cũ)
+///   3. nhật ký sự kiện board có các lần từ chối (cảnh báo bảo mật)
+///   4. board chưa có chủ + đúng chữ ký → nạp được; board thật: khởi động lại với phiên bản mới; gw-sim: SIM_DATA/ota-new.bin = file gửi
 /// </summary>
 public sealed partial class MainForm
 {
@@ -12,44 +15,62 @@ public sealed partial class MainForm
         var log = new List<string>();
         void Check(string name, bool ok, string detail = "") => log.Add($"{(ok ? "PASS" : "FAIL")} {name}{(detail.Length > 0 ? " — " + detail : "")}");
         var args = RunOptions.Args;
-        var target = ArgValue(args, "--lan-target"); var fw = ArgValue(args, "--fw");
+        var target = ArgValue(args, "--lan-target"); var fw = ArgValue(args, "--fw"); var data = ArgValue(args, "--io-data");
         var i = target.LastIndexOf(':');
         var host = i > 0 ? target[..i] : target; var port = i > 0 ? int.Parse(target[(i + 1)..]) : 443;
-        async Task<string> Version()
-        {
-            var f = await RemoteClient.DiscoverAsync(TimeSpan.FromSeconds(2));
-            return f.FirstOrDefault(x => x.Ip.ToString() == host).Hello?.Version ?? "";
-        }
+        async Task<string> Code(Func<Task> f) { try { await f(); return "ok"; } catch (RemoteException e) { return e.Code; } }
         try
         {
             var bytes = File.ReadAllBytes(fw);
-            var before = await Version();
-            Check("tìm thấy board, đọc phiên bản", before.Length > 0, before);
+            using var sj = System.Text.Json.JsonDocument.Parse(File.ReadAllText(fw + ".json"));
+            var ver = sj.RootElement.GetProperty("Version").GetString()!; var sig = sj.RootElement.GetProperty("Sig").GetString()!;
             var c = (await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => true)).Client;
-            Check("nối board bằng khoá PC", true);
+            var st = await c.OtaStateAsync();
+            var before = st.GetProperty("Version").GetString() ?? "";
+            Check("nối board, đọc trạng thái cập nhật", before.Length > 0, $"{before}, có chủ: {st.GetProperty("Enrolled").GetBoolean()}");
 
-            // 1) file hỏng giữa chừng: đổi 1 byte nhưng X-Sha256 tính theo file đã đổi thì board vẫn nhận — nên gửi đúng nội dung nhưng cắt cụt
-            //    → Content-Length khớp, SHA khớp, image hỏng: Update.end() phải từ chối. Kiểm bằng cách cắt đuôi 4 KB.
-            if (!args.Contains("--ota-only"))   // --ota-only: bỏ bước thử file cụt (nạp bản thật, không thử phá)
+            Check("không chữ ký → ota_unsigned", await Code(() => c.OtaAsync(bytes, "", "")) == "ota_unsigned");
+            Check("chữ ký của phiên bản khác → ota_bad_signature", await Code(() => c.OtaAsync(bytes, ver + "x", sig)) == "ota_bad_signature");
+            Check("file cụt (SHA khác bản đã ký) → ota_bad_signature", await Code(() => c.OtaAsync(bytes[..(bytes.Length - 4096)], ver, sig)) == "ota_bad_signature");
+
+            if (!st.GetProperty("Enrolled").GetBoolean() && !args.Contains("--ota-only"))
             {
-                var cut = bytes[..(bytes.Length - 4096)];
-                string bad = "";
-                try { await c.OtaAsync(cut); } catch (RemoteException e) { bad = e.Code; }
-                Check("firmware cụt bị từ chối", bad.Length > 0, bad);
-                await Task.Delay(1500);
-                var still = await Version();
-                Check("board giữ bản cũ sau khi từ chối", still == before, still);
+                // giả lập board CÓ CHỦ: đặt khoá ký của server → chưa có chủ trạm duyệt thì không nạp được
+                var cfg = await c.ConfigAsync();
+                var keep = cfg.Config.CloudCmdKey;
+                cfg.Config.CloudCmdKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWGNiC3CNpaoPIHa9XSExgyjBoGYOycqAdZV-neVMMw9mR7FZUL6Q4yZXO5dYFsISAgT0AMIOkJ18RctHe5zvpw";
+                await c.PutConfigAsync(cfg); await Task.Delay(800);
+                Check("board có chủ: trạng thái Enrolled, chưa được duyệt", (await c.OtaStateAsync()) is var s2 && s2.GetProperty("Enrolled").GetBoolean() && !s2.GetProperty("Approved").GetBoolean());
+                Check("board có chủ, chưa duyệt, đúng chữ ký → ota_not_approved", await Code(() => c.OtaAsync(bytes, ver, sig)) == "ota_not_approved");
+                cfg.Config.CloudCmdKey = keep; await c.PutConfigAsync(cfg); await Task.Delay(800);
             }
+            var ev = (await c.EventsAsync()).GetProperty("Events").EnumerateArray().Select(e => e.GetProperty("k").GetString()).ToList();
+            Check("nhật ký board ghi các lần từ chối (ota_badsig, ota_denied)", ev.Contains("ota_badsig") && (args.Contains("--ota-only") || ev.Contains("ota_denied")), string.Join(",", ev.TakeLast(8)));
 
-            // 2) nạp bản đúng
-            double last = 0; var prog = new Progress<double>(p => last = p);
-            var r = await c.OtaAsync(bytes, prog);
-            Check("nạp firmware đúng: board báo Ok", r.Ok, r.Msg ?? "");
-            c.Dispose();
-            string after = "";
-            for (var k = 0; k < 40 && after.Length == 0; k++) { await Task.Delay(1000); try { after = await Version(); } catch { } if (k < 3) after = ""; }
-            Check("board khởi động lại với firmware mới", after.Length > 0, $"{before} → {after}");
-            if (Path.GetFileName(fw).Length > 0) log.Add($"INFO file {bytes.Length} byte");
+            if ((await c.OtaStateAsync()).GetProperty("Enrolled").GetBoolean()) { Check("board có chủ thật: bỏ bước nạp (cần chủ trạm duyệt trên webapp)", true); }
+            else
+            {
+                if (data.Length > 0) File.Delete(Path.Combine(data, "ota-new.bin"));
+                var r = await c.OtaAsync(bytes, ver, sig);
+                Check("board chưa có chủ + đúng chữ ký → nạp được", r.Ok, r.Msg ?? "");
+                c.Dispose();
+                if (data.Length > 0)
+                {
+                    var f = Path.Combine(data, "ota-new.bin");
+                    Check("gw-sim: firmware ghi ra đúng từng byte", File.Exists(f) && File.ReadAllBytes(f).SequenceEqual(bytes));
+                }
+                else
+                {
+                    string after = "";
+                    for (var k = 0; k < 40 && after.Length == 0; k++)
+                    {
+                        await Task.Delay(1500);
+                        try { var f = await RemoteClient.DiscoverAsync(TimeSpan.FromSeconds(2)); after = f.FirstOrDefault(x => x.Ip.ToString() == host).Hello?.Version ?? ""; } catch { }
+                        if (after == before) after = "";
+                    }
+                    Check("board khởi động lại với firmware mới", after == ver, $"{before} → {after}");
+                }
+            }
         }
         catch (Exception e) { Check("ngoại lệ", false, RemoteClient.Explain(e) + " | " + e.GetType().Name); }
         File.WriteAllLines(result, log);

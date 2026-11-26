@@ -27,6 +27,7 @@ import { adoptSolution, listUsers, createUser, updateUser, deleteUser, applyBoot
 import { retentionInfo, retentionFloor, defaultDays } from './retention.js';
 import { mountPlcControl } from './plcControlRoutes.js';
 import { mountHwReports } from './hwReports.js';
+import { mountMcuOta } from './mcuOta.js';
 import { plcControlConfig } from './plcCommands.js';
 import { startControlPublisher } from './controlPublisher.js';
 import { mountSite } from './siteRoutes.js';
@@ -278,6 +279,8 @@ app.delete('/api/admin/users/:id', ...adminOnly, adminWrite, reauth, (req, res) 
 /* ---------- Điều khiển: step-up (Passkey / TOTP), PC trạm, nút vật lý ---------- */
 mountPlcControl(app, { db, requireAuth, security: controlApi });
 mountHwReports(app, { db, requireAuth, security: controlApi });
+// cập nhật firmware board có duyệt của chủ trạm + lịch sử hệ thống
+mountMcuOta(app, { db, requireAuth, security: controlApi, releasesDir: path.resolve(process.env.RELEASES_DIR || path.join(DATA_DIR, '..', '..', '..', 'releases')) });
 /* ---------- Nhà máy tự phục vụ: nhận thiết bị, mời thành viên, ghép PC ---------- */
 mountSite(app, { db, requireAuth, reauth });
 mountPush(app, { db, requireAuth, dataDir: DATA_DIR });

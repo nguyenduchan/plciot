@@ -36,6 +36,7 @@ export const ALLOWED = [
   ['POST', '/api/write'], ['POST', '/api/device'],
   ['GET', '/api/offline'], ['PUT', '/api/offline'], ['POST', '/api/offline/test'],
   ['GET', '/api/network'], ['GET', '/api/wifi'],
+  ['GET', '/api/events'], ['GET', '/api/ota'],   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
 ];
 export const isAllowed = (m, p) => ALLOWED.some(([am, ap]) => am === m && ap === p);
 

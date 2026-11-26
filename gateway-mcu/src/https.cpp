@@ -106,6 +106,8 @@ static bool readRequest(std::function<int(uint8_t*, size_t)> rd, HttpRequest& q,
       if (k == "content-length") len = strtoul(v.c_str(), nullptr, 10);
       if (k == "authorization") q.auth = String(v.c_str());
       if (k == "x-sha256") q.sha256 = String(v.c_str());
+      if (k == "x-fw-version") q.fwVersion = String(v.c_str());
+      if (k == "x-fw-sig") q.fwSig = String(v.c_str());
     }
     p = e;
   }
