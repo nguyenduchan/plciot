@@ -13,7 +13,7 @@ import { audit, clientIp, rateLimit } from '@plciot/security';
 import { gatewaysOfUser } from './mqttIds.js';
 import { callGateway } from './remoteAdmin.js';
 import { pushToGatewayUsers } from './webPush.js';
-import { parseLogic, formatLogic, describeLogic, LogicError, idOf } from './logicDsl.js';
+import { parseLogic, formatLogic, describeLogic, LogicError, idOf, sortOuts } from './logicDsl.js';
 import { verifyProof, requestMessage, ensureKeyColumns, parsePubkey } from './gatewayKey.js';
 import { isHwBlocked } from './hwBlock.js';
 
@@ -102,7 +102,7 @@ export function mergeOwnerTimers(proposal, current) {
     if (!o) out.Do.push({ ...(c.Out ? { Out: c.Out } : { Ch: c.Ch }), Mode: 'hold', DelaySec: 60, Timer: c.Timer });
     else if (!o.Timer) o.Timer = c.Timer;
   }
-  out.Do.sort((a, b) => (a.Ch && b.Ch ? a.Ch - b.Ch : 0));
+  out.Do = sortOuts(out.Do);
   return out;
 }
 
@@ -145,15 +145,31 @@ async function sendProgram(db, { site, device, program, rev, label, appr }) {
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Kiểm danh sách hẹn giờ của chủ trạm (webapp). → mảng sạch hoặc chuỗi lỗi. */
-export function cleanTimers(list) {
+/**
+ * Hẹn giờ của chủ trạm (kiểu báo thức iPhone): Days = các ngày LẶP LẠI; mốc CHẠY 1 LẦN = {Date:"YYYY-MM-DD", Days:[]}
+ * (ngày theo giờ địa phương của gateway). Days RỖNG là cố ý: gateway bản cũ không hiểu Date sẽ TỪ CHỐI chương trình
+ * thay vì chạy mỗi ngày. Mốc 1 lần đã qua (trước hôm qua) bị bỏ khi lưu. tzMin = múi giờ của chương trình.
+ */
+/** "YYYY-MM-DD" là ngày có thật. */
+export const validDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+export function cleanTimers(list, tzMin = 420) {
   if (!Array.isArray(list) || list.length > 4) return 'timer_invalid';
   const out = [];
+  const yesterday = new Date(Date.now() + tzMin * 60000 - 86400000).toISOString().slice(0, 10);
   for (const t of list) {
     const e = {};
     if (t?.On) { if (!TIME_RE.test(t.On)) return 'timer_invalid'; e.On = t.On; }
     if (t?.Off) { if (!TIME_RE.test(t.Off)) return 'timer_invalid'; e.Off = t.Off; }
     if (!e.On && !e.Off) return 'timer_invalid';
     if (e.On && e.On === e.Off) return 'timer_invalid';
+    if (t?.Date != null) {   // chạy 1 lần
+      if (!validDate(t.Date) || (Array.isArray(t.Days) && t.Days.length)) return 'timer_invalid';
+      if (t.Date < yesterday) continue;   // đã qua: bỏ
+      e.Date = t.Date; e.Days = [];
+      out.push(e);
+      continue;
+    }
     if (t?.Days != null) {
       if (!Array.isArray(t.Days) || !t.Days.length || t.Days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) return 'timer_invalid';
       const d = [...new Set(t.Days)].sort((a, b) => a - b);
@@ -287,7 +303,7 @@ export function mountGatewayLogic(app, { db, requireAuth, security, admin }) {
     for (const o of cur?.program?.Do || []) if (o.Timer?.length) timers[idOf(o)] = o.Timer;
     res.json({
       site: g.site, device: g.device, kind,
-      current: cur ? { rev: cur.rev, updatedAt: cur.updatedAt, rows: describeLogic(cur.program, cur.names), keys: cur.keys, names: cur.names, timers } : null,
+      current: cur ? { rev: cur.rev, updatedAt: cur.updatedAt, tz: cur.program.TzMin ?? 420, rows: describeLogic(cur.program, cur.names), keys: cur.keys, names: cur.names, timers } : null,
       pending: pending ? propRow(pending, cur) : null,
       history: props.filter((p) => p.status !== 'pending').slice(0, 8).map((p) => ({ id: p.id, status: p.status, note: p.note || '', by: p.proposed_by, createdAt: p.created_at, decidedBy: p.decided_by, decidedAt: p.decided_at, result: p.result || '' })),
     });
@@ -340,26 +356,28 @@ export function mountGatewayLogic(app, { db, requireAuth, security, admin }) {
     if (!g) return out(res, 403, { error: 'forbidden_gateway' });
     const kind = kindOf(db, g.site, g.device);
     const id = String(req.body?.id ?? req.body?.ch ?? '');
-    const ch = kind === 'mcu' ? Number(id) : id;
-    if (kind === 'mcu' ? !(Number.isInteger(ch) && ch >= 1 && ch <= 8) : !/^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(id)) return out(res, 400, { error: 'bad_request' });
-    const timers = cleanTimers(req.body?.timers);
+    // board: số DO 1…8 HOẶC đầu ra field (thiết bị RS485/Modbus TCP, firmware ≥ mcu-0.4.0); gateway PC: luôn field
+    const isField = /^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(id);
+    const ch = kind === 'mcu' && !isField ? Number(id) : id;
+    if (!isField && !(kind === 'mcu' && Number.isInteger(ch) && ch >= 1 && ch <= 8)) return out(res, 400, { error: 'bad_request' });
+    const timers = cleanTimers(req.body?.timers, currentLogic(db, g.site, g.device)?.program?.TzMin ?? 420);
     if (typeof timers === 'string') return out(res, 400, { error: timers });
     const cur = currentLogic(db, g.site, g.device);
     if (!cur) return out(res, 409, { error: 'logic_unknown' });   // gateway chưa báo chương trình (firmware / app cũ, chưa nối)
-    if (kind === 'pc' && !Object.prototype.hasOwnProperty.call(cur.keys || {}, id)) return out(res, 400, { error: 'bad_request' });   // không phải đầu ra gateway báo
+    if (isField && !Object.prototype.hasOwnProperty.call(cur.keys || {}, id)) return out(res, 400, { error: 'bad_request' });   // không phải đầu ra gateway báo
     const a = authorize(req);
     if (a.error) { audit(db, 'control_denied', { userId: req.user.id, ip: clientIp(req), detail: `logic_timer ${a.reason || a.error}` }); return out(res, a.status || 401, a); }
     const by = String(req.user.username || `user${req.user.id}`).slice(0, 40);
     const program = { TzMin: cur.program.TzMin, Do: cur.program.Do.map((o) => ({ ...o })) };
     let o = program.Do.find((x) => idOf(x) === String(ch));
     if (!o) {
-      o = { ...(kind === 'mcu' ? { Ch: ch } : { Out: ch }), Mode: 'hold', DelaySec: 60 };
-      program.Do.push(o); program.Do.sort((x, y) => (x.Ch && y.Ch ? x.Ch - y.Ch : 0));
+      o = { ...(isField ? { Out: ch } : { Ch: ch }), Mode: 'hold', DelaySec: 60 };
+      program.Do.push(o); program.Do = sortOuts(program.Do);
     }
     if (timers.length) o.Timer = timers; else delete o.Timer;
     const r = await sendProgram(db, { site: g.site, device: g.device, program, rev: cur.rev, label: 'webapp', appr: `${by}#timer` });
     const txt = timers.map((t) => `${t.On || '—'}→${t.Off || '—'}${t.Days ? ` [${t.Days.join(',')}]` : ''}`).join(' · ') || 'xoá';
-    audit(db, 'logic_timer', { userId: req.user.id, ip: clientIp(req), detail: `${g.site}/${g.device} ${kind === 'mcu' ? `DO${ch}` : ch}: ${txt} → ${r.ok ? `rev ${r.rev}` : `lỗi ${r.error}`}`.slice(0, 500) });
+    audit(db, 'logic_timer', { userId: req.user.id, ip: clientIp(req), detail: `${g.site}/${g.device} ${isField ? ch : `DO${ch}`}: ${txt} → ${r.ok ? `rev ${r.rev}` : `lỗi ${r.error}`}`.slice(0, 500) });
     if (!r.ok) return out(res, r.status, { error: r.error, message: r.detail });
     res.json({ ok: true, rev: r.rev });
   });

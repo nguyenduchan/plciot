@@ -23,7 +23,17 @@ Board **chưa gắn tài khoản** (chưa có chủ): PC quản trị đã ghép
 2. Server chỉ **thông báo**: webapp của chủ trạm hiện "Bản mới" + ghi chú. Server không tự đẩy.
 3. Chủ trạm bấm **Cho phép cập nhật (15 phút)** → board tự tải `/api/v1/mcu-firmware/download`, kiểm chữ ký + SHA-256, cài.
 4. Trước khi khởi động lại: `enterSafeState()` — **TẮT mọi DO**, lưu bộ đếm xung DI (đọc lại sau khi khởi động). Cũng chạy trước khi khởi động lại do đổi mạng / xoá cấu hình.
-5. Bản mới ở trạng thái "chờ xác nhận" (bootloader ESP-IDF, `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`): chạy ổn ≥ 60 s **và** nối lại được cloud (nếu có cài) trong 3 phút → xác nhận. Không thì **tự quay về bản cũ**; treo / crash / watchdog trước đó → bootloader cũng tự quay về. Lần khởi động sau ghi sự kiện + cảnh báo đỏ `ota_rollback`.
+5. Bản mới chạy ở trạng thái **chờ xác nhận**, và phải qua **kiểm tra sức khoẻ** trong 5 phút (`/api/ota` → `Health`). Không đạt thì **tự quay về bản cũ**:
+   - **up**: chạy liên tục ≥ 60 s.
+   - **net**: lấy lại mức mạng như **trước khi cập nhật**. Trước đó cloud đang nối thì phải nối lại cloud; trước đó chỉ có LAN thì phải có IP; trước đó đã mất mạng sẵn thì không đòi (không quay về oan).
+   - **ota**: còn cập nhật tiếp được. Phải có phân vùng OTA kế tiếp và cổng HTTPS LAN đã mở; nếu trước đó cloud đang nối thì còn phải tải được thông tin firmware từ server qua HTTPS. Bản mới làm hỏng đường cập nhật thì không được giữ, vì giữ nó là mất luôn cách sửa từ xa.
+   - **io**: DO trên board (TCA9554) trả lời và vòng đọc thiết bị đang chạy.
+   - Khởi động lại 3 lần liền mà chưa xác nhận (crash / watchdog / panic) thì quay về ngay, không chờ đủ 5 phút.
+
+   **Quay về làm trong ứng dụng**, không trông vào bootloader. Đã thử trên board thật: bootloader dựng sẵn của Arduino không đưa ảnh mới vào `PENDING_VERIFY` (`ImgState` = 2 ngay sau khi cài). Vì vậy:
+   - bản mới tự nhận ra mình qua NVS `try`, đếm số lần khởi động qua NVS `boots`;
+   - khi quay về: gọi `esp_ota_mark_app_invalid_rollback_and_reboot()`; nếu bootloader không làm được thì tự `esp_ota_set_boot_partition(phân vùng kia)` rồi khởi động lại;
+   - bản cũ đọc NVS `why` để ghi lý do vào sự kiện + cảnh báo đỏ `ota_rollback`, vd "không đạt kiểm tra sau 5 phút: không nối lại được cloud".
 
 ## Nhật ký & cảnh báo đỏ
 
@@ -38,6 +48,18 @@ Board **chưa gắn tài khoản** (chưa có chủ): PC quản trị đã ghép
 - Server: `node cloud/app/scripts/smoke-mcu-ota.js` (18 kiểm tra).
 - Board (gw-sim hoặc board thật, bản Debug): `GatewayApp.exe --otatest KQ.txt --noauth --lan-target IP:CỔNG --fw firmware.bin [--io-data SIM_DATA]` — không chữ ký / sai chữ ký / file cụt / có chủ chưa duyệt bị từ chối, nhật ký có sự kiện, chưa có chủ + đúng chữ ký thì nạp được.
 - Bản giả lập không chạy được firmware mới: sau "khởi động lại" nó báo `ota_rollback` (đúng — phiên bản không đổi). Xác nhận / quay về thật chỉ kiểm được trên board.
+
+## Kênh phát hành dev (thử OTA thật mà không cần khoá phát hành)
+
+- Env `waveshare-dev` trong `gateway-mcu/platformio.ini` tin THÊM khoá dev `FW_DEV_PUBKEY` (khoá riêng `~/.plciot/fw-sign-dev.pem`, KHÔNG phải khoá phát hành) và tải bản mới ở `?ch=dev`.
+  - Server: `releases/mcu-dev/`. Kênh của board suy ra từ phiên bản (đuôi `-dev`), dùng cho cả nút duyệt lẫn mục "Bản mới".
+  - Env chính (bản phát hành) không có hai cờ này, nên không bao giờ nhận bản ký bằng khoá dev.
+- Build: `$env:PLATFORMIO_BUILD_FLAGS='-DFW_VERSION=\"mcu-0.4.6-dev\"'; pio run -e waveshare-dev`. Thêm `-DFW_TEST_BREAK_CLOUD` để có bản **hỏng có chủ đích** (không nối cloud), dùng thử tự quay về.
+- Ký: cùng định dạng `sign-mcu-firmware.js` (`FW_SIGN_KEY=~/.plciot/fw-sign-dev.pem`); manifest + bin chép vào `/root/plciot/releases/mcu-dev/` trên VPS.
+- Đã kiểm trên board thật u15/gw03 qua Wi-Fi (2026-11-27):
+  - 0.4.1 → 0.4.2 → 0.4.4 → 0.4.6: tải từ server, kiểm chữ ký, xác nhận sau 60 s.
+  - 0.4.5 / 0.4.7 (hỏng): sau 5 phút tự quay về, lý do "không nối lại được cloud".
+  - Trong 5 phút mất cloud đó, chương trình logic (hẹn giờ 1 lần đặt từ webapp + maxon) vẫn tự chạy (sự kiện `logic_act … (đang mất mạng)`).
 
 ## Lưu ý
 

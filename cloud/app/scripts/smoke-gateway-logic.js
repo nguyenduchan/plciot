@@ -40,6 +40,48 @@ for (const [bad, part] of [['do1: need di9=1', 'di9'], ['do1: offline: level a.b
   ok(m.startsWith('Dòng 1:') && m.includes(part), `DSL lỗi: "${bad}" → ${m}`);
 }
 
+// ---------------------------------------------------------------- DSL: board điều khiển thiết bị RS485 / Modbus TCP (mcu-0.4.0)
+{
+  const T = `tz 7
+bientan.run: need di1=1, bon.muc>=10, hold | block do2 | offline 2m: level bon.muc on<=20 off>=90
+do2: block bientan.run
+plc.van: need plc.apsuat>=2, hold | block do1
+do3: offline: follow plc.apsuat
+plc.cmd: offline: follow di4 invert`;
+  const M = D.parseLogic(T, { kind: 'mcu' });
+  ok(M.Do.map(D.idOf).join(',') === '2,3,bientan.run,plc.van,plc.cmd', `DSL board: DO trước, đầu ra field sau (${M.Do.map(D.idOf)})`);
+  const bt = M.Do.find((o) => o.Out === 'bientan.run');
+  ok(bt.Need[0].Di === 1 && bt.Need[1].Field === 'bon.muc' && bt.Block[0] === 2 && bt.Mode === 'threshold', 'DSL board: đầu ra RS485 có DI + field + liên động DO');
+  ok(M.Do.find((o) => o.Ch === 2).Block[0] === 'bientan.run', 'DSL board: DO liên động với field (chuỗi)');
+  ok(M.Do.find((o) => o.Ch === 3).Field === 'plc.apsuat' && !M.Do.find((o) => o.Ch === 3).Di, 'DSL board: follow theo field');
+  ok(M.Do.find((o) => o.Out === 'plc.cmd').Di === 4, 'DSL board: đầu ra field follow DI');
+  ok(JSON.stringify(D.parseLogic(D.formatLogic(M), { kind: 'mcu' })) === JSON.stringify(M), 'DSL board: text → JSON → text khớp (trộn DO + field)');
+  const rr = D.describeLogic(M, { do: { 2: 'Bơm tăng áp' }, out: { 'bientan.run': 'Biến tần · Chạy' } });
+  ok(rr.length === 5 && rr.find((r) => r.id === '2').user.join(' ').includes('Biến tần · Chạy') && rr.find((r) => r.id === 'bientan.run').user.join(' ').includes('Bơm tăng áp'), 'bảng: liên động hai chiều DO ↔ RS485 có tên');
+  const many = ['tz 7', ...Array.from({ length: 9 }, (_, i) => `tb.o${i}: offline: off`)].join(String.fromCharCode(10));
+  let m = ''; try { D.parseLogic(many, { kind: 'mcu' }); } catch (e) { m = e.message; }
+  ok(m.includes('tối đa 8'), `DSL board: tối đa 8 đầu ra field → ${m}`);
+  m = ''; try { D.parseLogic('pump.run: block do2', { kind: 'pc' }); } catch (e) { m = e.message; }
+  ok(m.includes('gateway PC'), `DSL PC: không có doN trong block → ${m}`);
+  m = ''; try { D.parseLogic('pump.run: need di1=1', { kind: 'pc' }); } catch (e) { m = e.message; }
+  ok(m.includes('không có DI'), `DSL PC: không có DI → ${m}`);
+}
+
+// ---------------------------------------------------------------- hẹn giờ 1 lần (kiểu báo thức iPhone)
+{
+  const T = D.parseLogic('do1: timer 22:00-06:00 2026-12-24', { kind: 'mcu' });
+  const t = T.Do[0].Timer[0];
+  ok(t.Date === '2026-12-24' && Array.isArray(t.Days) && t.Days.length === 0, 'DSL: timer 1 lần → {Date, Days:[]} (gateway cũ từ chối)');
+  ok(D.formatLogic(T).includes('timer 22:00-06:00 2026-12-24'), 'DSL: text giữ ngày chạy 1 lần');
+  ok(D.describeLogic(T)[0].timer[0].includes('1 lần, ngày 24/12/2026'), 'bảng: hẹn giờ 1 lần có ngày');
+  let m = ''; try { D.parseLogic('do1: timer on 06:00 2026-02-30'); } catch (e) { m = e.message; }
+  ok(m.includes('không hợp lệ'), `DSL: ngày sai → ${m}`);
+  const future = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const c = L.cleanTimers([{ On: '06:00', Date: future, Days: [] }, { On: '07:00', Date: '2020-01-01', Days: [] }, { On: '08:00', Days: [1, 2] }]);
+  ok(Array.isArray(c) && c.length === 2 && c[0].Date === future && c[1].Days.join() === '1,2', 'timer: 1 lần đã qua bị bỏ, lặp lại giữ');
+  ok(L.cleanTimers([{ On: '06:00', Date: future, Days: [3] }]) === 'timer_invalid' && L.cleanTimers([{ On: '06:00', Date: '2026-13-01' }]) === 'timer_invalid', 'timer: 1 lần kèm ngày lặp / ngày sai → timer_invalid');
+}
+
 // ---------------------------------------------------------------- server
 const db = openDb(tmp);
 const { migrateUserDevices } = await import('../src/userDevices.js');

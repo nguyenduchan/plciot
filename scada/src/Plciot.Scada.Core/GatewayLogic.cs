@@ -25,8 +25,10 @@ public sealed class LogicTimer
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? On { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Off { get; set; }
-    /// <summary>1 = thứ Hai … 7 = Chủ nhật; null = mọi ngày.</summary>
+    /// <summary>1 = thứ Hai … 7 = Chủ nhật; null = mọi ngày. Rỗng CHỈ khi chạy 1 lần (<see cref="Date"/>): gateway cũ không hiểu Date sẽ từ chối.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<int>? Days { get; set; }
+    /// <summary>CHẠY 1 LẦN (kiểu báo thức iPhone): "YYYY-MM-DD" theo giờ địa phương của chương trình. Giờ tắt nhỏ hơn giờ bật = sang hôm sau.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Date { get; set; }
 }
 
 public sealed class LogicRule
@@ -161,7 +163,12 @@ public sealed class GatewayLogic
                 if ((t.On != null && on < 0) || (t.Off != null && off < 0)) return $"{w}: giờ hẹn giờ phải dạng HH:MM.";
                 if (on < 0 && off < 0) return $"{w}: mốc hẹn giờ cần giờ bật hoặc giờ tắt.";
                 if (on == off) return $"{w}: giờ bật và giờ tắt của hẹn giờ phải khác nhau.";
-                if (t.Days != null && (t.Days.Count == 0 || t.Days.Any(d => d is < 1 or > 7))) return $"{w}: ngày hẹn giờ phải từ 1 (thứ Hai) đến 7 (Chủ nhật).";
+                if (t.Date != null)
+                {
+                    if (!DateOnly.TryParseExact(t.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) return $"{w}: ngày hẹn giờ phải dạng YYYY-MM-DD.";
+                    if (t.Days is { Count: > 0 }) return $"{w}: hẹn giờ 1 lần không kèm ngày lặp lại.";
+                }
+                else if (t.Days != null && (t.Days.Count == 0 || t.Days.Any(d => d is < 1 or > 7))) return $"{w}: ngày hẹn giờ phải từ 1 (thứ Hai) đến 7 (Chủ nhật).";
             }
         }
         return null;
@@ -188,7 +195,23 @@ public sealed class GatewayLogic
 
     Rt R(string key) => _rt.TryGetValue(key, out var r) ? r : _rt[key] = new Rt();
     LogicRule? RuleOf(string key) => _prog.Do.FirstOrDefault(r => r.Out == key);
-    bool IsOn(string key) => ValueOf(key).Value is { } v && v != 0;
+    bool IsOn(string key) => StateOf(key) == true;
+
+    /// <summary>Giá trị đọc cũ hơn ngần này (ms) = KHÔNG RÕ trạng thái: thiết bị RS485 / Modbus TCP mất kết nối (giá trị cuối vẫn còn trong bộ nhớ).</summary>
+    public long StaleMs => Math.Max(10_000, _cfg.PollMs * 5L);
+
+    /// <summary>
+    /// Trạng thái đầu ra: true = bật, false = tắt, null = KHÔNG RÕ (chưa đọc được / thiết bị mất kết nối quá <see cref="StaleMs"/>).
+    /// Field CHỈ GHI (không đọc lại được, vd cuộn coil của biến tần) → theo giá trị ghi gần nhất (ScadaCore ghi vào ValueOf ngay khi ghi xong).
+    /// </summary>
+    public bool? StateOf(string key)
+    {
+        var (v, age) = ValueOf(key);
+        if (v == null) return null;
+        var f = _cfg.Pack.FirstOrDefault(p => p.Child + "." + p.Field == key);
+        if (f?.Access != PackAccess.Write && age > StaleMs) return null;
+        return v != 0;
+    }
 
     static string CondText(LogicCond c) => $"{c.Field} {(c.Op == ">=" ? "≥" : "≤")} {c.Val?.ToString(CultureInfo.InvariantCulture)}";
     string? FailedCond(LogicRule r)
@@ -220,9 +243,10 @@ public sealed class GatewayLogic
                 why = $"{key}: chưa đủ điều kiện để bật — {fc}";
                 R(key).GuardWhy = why; return "logic_need";
             }
-            if (_blk.TryGetValue(key, out var bs) && bs.FirstOrDefault(IsOn) is { } other)
+            // liên động: đầu ra kia đang bật — HOẶC không rõ trạng thái (thiết bị RS485/TCP mất kết nối): không bật mạo hiểm
+            if (_blk.TryGetValue(key, out var bs) && bs.FirstOrDefault(o => StateOf(o) != false) is { } other)
             {
-                why = $"{key}: liên động — {other} đang bật";
+                why = StateOf(other) == true ? $"{key}: liên động — {other} đang bật" : $"{key}: liên động — không rõ trạng thái {other} (mất kết nối thiết bị)";
                 R(key).GuardWhy = why; return "logic_interlock";
             }
         }
@@ -254,6 +278,16 @@ public sealed class GatewayLogic
             var local = _now().ToUniversalTime().AddMinutes(_prog.TzMin);
             int minute = local.Hour * 60 + local.Minute;
             int wd = ((int)local.DayOfWeek + 6) % 7;   // 0 = thứ Hai
+            var today = DateOnly.FromDateTime(local.DateTime);
+            // mốc hẹn giờ đến lúc chưa: lặp theo thứ, hoặc 1 lần đúng ngày (giờ tắt < giờ bật: tắt hôm sau)
+            bool Hit(LogicTimer t, bool on)
+            {
+                if (Hhmm(on ? t.On : t.Off) != minute) return false;
+                if (t.Date == null) return t.Days == null || t.Days.Contains(wd + 1);
+                if (!DateOnly.TryParseExact(t.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return false;
+                var next = !on && t.On != null && Hhmm(t.Off) < Hhmm(t.On);
+                return today == (next ? d.AddDays(1) : d);
+            }
             void Want(LogicRule r, double v, string why, bool retry = true)
             {
                 var f = OutField(r.Out); if (f == null) return;
@@ -274,9 +308,8 @@ public sealed class GatewayLogic
                     foreach (var r in _prog.Do)
                         foreach (var t in r.Timer ?? new())
                         {
-                            if (t.Days != null && !t.Days.Contains(wd + 1)) continue;
-                            if (Hhmm(t.On) == minute) { R(r.Out).LastTry = 0; Want(r, 1, $"hẹn giờ bật lúc {t.On}", retry: false); }
-                            if (Hhmm(t.Off) == minute) { R(r.Out).LastTry = 0; Want(r, 0, $"hẹn giờ tắt lúc {t.Off}", retry: false); }
+                            if (Hit(t, true)) { R(r.Out).LastTry = 0; Want(r, 1, $"hẹn giờ bật lúc {t.On}", retry: false); }
+                            if (Hit(t, false)) { R(r.Out).LastTry = 0; Want(r, 0, $"hẹn giờ tắt lúc {t.Off}", retry: false); }
                         }
             }
 

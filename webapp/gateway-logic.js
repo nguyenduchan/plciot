@@ -36,7 +36,7 @@
 
   // ------------------------------------------------------------------ bộ nhớ: logic từng gateway (cho nút ⏰)
   const cache = new Map();   // "site/device" → body của GET /api/v1/gateway-logic
-  const timerText = (list) => (list || []).map((t) => `${t.On || ''}${t.On && t.Off ? '–' : ''}${t.Off ? (t.On ? t.Off : `tắt ${t.Off}`) : ''}`).join(', ');
+  const timerText = (list) => (list || []).map((t) => `${t.On || ''}${t.On && t.Off ? '–' : ''}${t.Off ? (t.On ? t.Off : `tắt ${t.Off}`) : ''}${t.Date ? ` (${t.Date.slice(8, 10)}/${t.Date.slice(5, 7)})` : ''}`).join(', ');   // mốc 1 lần kèm ngày
 
   /** devices.js gọi khi vẽ nút bật/tắt: {ch, text} nếu là DO của board có logic. */
   function timerOf(gw, child, key) {
@@ -133,23 +133,47 @@
   sec?.addEventListener('toggle', () => { if (sec.open) loadSection(); });
 
   // ------------------------------------------------------------------ hộp hẹn giờ (nút ⏰)
+  // Kiểu báo thức iPhone: chọn ngày = LẶP LẠI các ngày đó; KHÔNG chọn ngày nào = chạy 1 LẦN (lần tới của giờ đã đặt).
+  // Mốc 1 lần gửi {Date:"YYYY-MM-DD", Days:[]} theo giờ địa phương của gateway (tz của chương trình).
+  const pad = (n) => String(n).padStart(2, '0');
+  const localNow = (tzMin) => new Date(Date.now() + tzMin * 60000);   // đọc bằng getUTC*: giờ địa phương của gateway
+  const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const dmy = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  /** Ngày chạy của mốc 1 lần: hôm nay nếu giờ (bật, không có thì tắt) còn ở phía trước, không thì ngày mai. */
+  function onceDate(at, tzMin) {
+    const n = localNow(tzMin);
+    const [h, m] = at.split(':').map(Number);
+    if (h * 60 + m <= n.getUTCHours() * 60 + n.getUTCMinutes()) n.setUTCDate(n.getUTCDate() + 1);
+    return ymd(n);
+  }
+  function repText(row, tzMin) {
+    const days = [...row.querySelectorAll('.gl-days input:checked')].map((x) => Number(x.value));
+    if (days.length === 7) return 'Lặp lại: hằng ngày';
+    if (days.length) return `Lặp lại: ${days.map((d) => DAYS[d - 1]).join(', ')}`;
+    const at = row.querySelector('.t-on').value || row.querySelector('.t-off').value;
+    const old = row.dataset.date;
+    if (old && row.dataset.dirty !== '1') return old < ymd(localNow(tzMin)) ? `1 lần — đã chạy ngày ${dmy(old)}` : `1 lần — ngày ${dmy(old)}`;
+    return at ? `Không lặp lại — chạy 1 lần, ngày ${dmy(onceDate(at, tzMin))}` : 'Không lặp lại — chạy 1 lần';
+  }
   function timerRow(t = {}) {
-    const days = t.Days || [1, 2, 3, 4, 5, 6, 7];
-    return `<div class="gl-trow">
+    const days = t.Date ? [] : t.Days || [1, 2, 3, 4, 5, 6, 7];
+    return `<div class="gl-trow" ${t.Date ? `data-date="${esc(t.Date)}"` : ''}>
       <label>Bật <input type="time" class="t-on" value="${esc(t.On || '')}"></label>
       <label>Tắt <input type="time" class="t-off" value="${esc(t.Off || '')}"></label>
       <span class="gl-days">${DAYS.map((d, i) => `<label class="${days.includes(i + 1) ? 'on' : ''}"><input type="checkbox" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}>${d}</label>`).join('')}</span>
-      <button type="button" class="fit t-del" title="Xoá mốc">✕</button></div>`;
+      <button type="button" class="fit t-del" title="Xoá mốc">✕</button>
+      <div class="muted t-rep" style="font-size:12px;flex-basis:100%"></div></div>`;
   }
 
   async function openTimer(gw, ch, label) {
     const L = cache.get(gw) || (await fetchLogic(gw)).body;
     const list = L?.current?.timers?.[ch] || [];
+    const tz = Number(L?.current?.tz ?? 420);
     const box = document.createElement('div');
     box.className = 'gl-modal';
     box.innerHTML = `<div role="dialog" aria-modal="true">
       <h3 style="margin:0 0 4px">⏰ Hẹn giờ — ${esc(label)}</h3>
-      <div class="muted" style="font-size:13px">Gateway tự bật/tắt đúng giờ, kể cả khi mất mạng. Giữa hai mốc bạn vẫn bật/tắt tay được. Để trống "Bật" hoặc "Tắt" nếu chỉ cần một chiều.</div>
+      <div class="muted" style="font-size:13px">Gateway tự bật/tắt đúng giờ, kể cả khi mất mạng. Giữa hai mốc bạn vẫn bật/tắt tay được. Để trống "Bật" hoặc "Tắt" nếu chỉ cần một chiều. Không chọn ngày nào = chạy 1 lần.</div>
       <div class="t-list">${list.map(timerRow).join('')}</div>
       <button type="button" class="fit t-add" style="margin:6px 0">+ Thêm mốc</button>
       <div class="t-err" style="color:var(--bad,#c33);min-height:1.2em"></div>
@@ -158,12 +182,15 @@
     document.body.append(box);
     const lst = box.querySelector('.t-list'), err = box.querySelector('.t-err');
     const close = () => box.remove();
+    const refresh = () => lst.querySelectorAll('.gl-trow').forEach((r) => { r.querySelector('.t-rep').textContent = repText(r, tz); });
+    refresh();
+    lst.addEventListener('input', (e) => { const r = e.target.closest('.gl-trow'); if (r) { r.dataset.dirty = '1'; refresh(); } });
     box.addEventListener('click', (e) => {
       if (e.target === box || e.target.closest('.t-cancel')) return close();
       if (e.target.closest('.t-del')) return e.target.closest('.gl-trow').remove();
-      if (e.target.closest('.t-add')) { if (lst.children.length < 4) lst.insertAdjacentHTML('beforeend', timerRow({ On: '06:00', Off: '18:00' })); else err.textContent = 'Tối đa 4 mốc.'; return; }
+      if (e.target.closest('.t-add')) { if (lst.children.length < 4) { lst.insertAdjacentHTML('beforeend', timerRow({ On: '06:00', Off: '18:00', Days: [] })); refresh(); } else err.textContent = 'Tối đa 4 mốc.'; return; }   // mốc mới: 1 lần (như báo thức mới trên iPhone)
       const dl = e.target.closest('.gl-days label');
-      if (dl) { setTimeout(() => dl.classList.toggle('on', dl.querySelector('input').checked)); }
+      if (dl) { setTimeout(() => { dl.classList.toggle('on', dl.querySelector('input').checked); refresh(); }); }
     });
     box.querySelector('.t-save').addEventListener('click', async () => {
       const timers = [];
@@ -172,8 +199,11 @@
         const days = [...row.querySelectorAll('.gl-days input:checked')].map((x) => Number(x.value));
         if (!on && !off) { err.textContent = 'Mỗi mốc cần giờ bật hoặc giờ tắt.'; return; }
         if (on && on === off) { err.textContent = 'Giờ bật và giờ tắt phải khác nhau.'; return; }
-        if (!days.length) { err.textContent = 'Chọn ít nhất một ngày.'; return; }
-        const t = {}; if (on) t.On = on; if (off) t.Off = off; if (days.length < 7) t.Days = days;
+        const t = {}; if (on) t.On = on; if (off) t.Off = off;
+        if (!days.length) {   // chạy 1 lần: giữ ngày cũ nếu không sửa mốc, không thì lần tới của giờ đã đặt
+          t.Date = row.dataset.date && row.dataset.dirty !== '1' ? row.dataset.date : onceDate(on || off, tz);
+          t.Days = [];
+        } else if (days.length < 7) t.Days = days;
         timers.push(t);
       }
       const btn = box.querySelector('.t-save');

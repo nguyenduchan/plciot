@@ -11,7 +11,10 @@ namespace GatewayApp;
 /// <summary>Chính sách một chân DO khi mất mạng. Mode: hold | off | on | schedule | follow | threshold | cycle.</summary>
 public sealed class OfflineRule
 {
+    /// <summary>Số DO 1..8 — hoặc 0 khi đầu ra là field của thiết bị RS485 / Modbus TCP (<see cref="Out"/>, firmware ≥ mcu-0.4.0).</summary>
     public int Ch { get; set; }
+    /// <summary>Đầu ra là field ghi được "&lt;thiết bị&gt;.&lt;field&gt;" của thiết bị RS485 / Modbus TCP (null = DO của board).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Out { get; set; }
     public string Mode { get; set; } = "hold";
     /// <summary>Mất mạng liên tục quá ngần này giây mới chạy chính sách.</summary>
     public int DelaySec { get; set; } = 60;
@@ -29,7 +32,8 @@ public sealed class OfflineRule
     // ---- chặn lệnh + hẹn giờ (chương trình logic, LUÔN chạy — xem offline.cpp). Phải giữ nguyên khi lưu lại để không mất phần này.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<OfflineCond>? Need { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? NeedHold { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<int>? Block { get; set; }
+    /// <summary>Liên động: số = DO, chuỗi = field đầu ra của thiết bị RS485 / Modbus TCP (trộn được). object để giữ nguyên khi lưu lại.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<object>? Block { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? MaxOnSec { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<OfflineTimer>? Timer { get; set; }
 }
@@ -51,6 +55,8 @@ public sealed class OfflineTimer
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? On { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Off { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<int>? Days { get; set; }
+    /// <summary>Chạy 1 lần "YYYY-MM-DD" (Days rỗng) — giữ nguyên khi lưu lại.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Date { get; set; }
 }
 
 /// <summary>Cài đặt cũ (PackMap.LossOffSec — "tắt sau N giây" trong hộp thoại thiết bị) còn hiệu lực cho chân chưa có chính sách.</summary>
@@ -59,6 +65,10 @@ public sealed class OfflineLegacy { public int Ch { get; set; } public int Delay
 public sealed class OfflineChStatus
 {
     public int Ch { get; set; }
+    /// <summary>Đầu ra field (Ch = 0): "&lt;thiết bị&gt;.&lt;field&gt;".</summary>
+    public string? Key { get; set; }
+    /// <summary>Đầu ra field: 1 bật, 0 tắt, -1 KHÔNG RÕ (thiết bị mất kết nối / chưa ghi lần nào).</summary>
+    public int State { get; set; }
     public string Mode { get; set; } = "";
     /// <summary>Đang chạy theo chính sách (đã quá thời gian chờ).</summary>
     public bool Active { get; set; }

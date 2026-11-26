@@ -333,10 +333,19 @@ String configMessage() {
       nF[key] = s; return;
     }
   };
+  // đầu ra là field của thiết bị RS485 / Modbus TCP (mcu-0.4.0): tên + nút điều khiển (webapp đặt nút ⏰) như gateway PC
+  JsonObject nOut = nm["out"].to<JsonObject>();
   for (JsonObject o : lg["do"].as<JsonArray>()) {
     nameField(o["Field"] | "");
     for (JsonObject c : o["Need"].as<JsonArray>()) nameField(c["Field"] | "");
+    for (JsonVariant b : o["Block"].as<JsonArray>()) if (b.is<const char*>()) nameField(b.as<const char*>());
+    String out = o["Out"] | "";
+    if (!out.length()) continue;
+    nameField(out);
+    nOut[out] = nF[out];
+    for (auto& p : g_cfg.pack) if (p.child + "." + p.field == out && p.access != Access::Read) { keys[out] = p.child + "." + p.wire; break; }
   }
+  if (nOut.size() == 0) nm.remove("out");
   String out; serializeJson(d, out);
   return out;
 }

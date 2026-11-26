@@ -245,6 +245,8 @@ sealed class OfflinePage : UserControl
             }
             o.Do.Add(x);
         }
+        // đầu ra là thiết bị RS485 / Modbus TCP (soạn bằng GatewayAdmin, chủ trạm duyệt): trang này không sửa — giữ nguyên khi lưu
+        foreach (var f in _cur.Do.Where(d => !string.IsNullOrEmpty(d.Out))) o.Do.Add(f);
         return o;
     }
 
@@ -311,6 +313,11 @@ sealed class OfflinePage : UserControl
                 : $"{now} · mất mạng: {c.Text}" + (c.Note.Length > 0 ? $" ({c.Note})" : "");
             r.State.ForeColor = c.Active ? Theme.Yellow : Theme.Muted;
         }
+        // đầu ra thiết bị ngoài: tóm tắt một dòng dưới trạng thái chung
+        var ext = s.Ch.Where(c => !string.IsNullOrEmpty(c.Key)).Select(c =>
+            $"{c.Key}: {(c.State < 0 ? "KHÔNG RÕ (mất kết nối)" : c.State > 0 ? "đang BẬT" : "đang tắt")}{(c.Active ? $" · ▶ {c.Text}" : "")}{(c.Note.Length > 0 ? $" — {c.Note}" : "")}").ToList();
+        if (ext.Count > 0) _status.Text += Environment.NewLine + "🔌 Thiết bị RS485/TCP: " + string.Join(" · ", ext);
+        _status.Height = ext.Count > 0 ? 48 : 30;
     }
 
     static string Dur(long sec) => sec < 120 ? $"{sec} giây" : sec < 7200 ? $"{sec / 60} phút" : $"{sec / 3600} giờ {sec % 3600 / 60} phút";

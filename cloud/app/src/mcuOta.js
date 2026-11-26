@@ -19,9 +19,12 @@ import { queryEvents } from './historyStore.js';
 export const OTA_WINDOW_SEC = 15 * 60;
 const FILE_RE = /^firmware-[0-9A-Za-z._-]{1,32}\.bin$/;
 
-export function readMcuRelease(releasesDir) {
+/** Kênh phát hành: "" (chính thức, releases/mcu) | "dev" (bản thử cho board build dev, releases/mcu-dev — firmware dev tin thêm khoá ký dev). */
+export const channelOf = (v) => (String(v || '') === 'dev' || /-dev$/.test(String(v || '')) ? 'dev' : '');
+
+export function readMcuRelease(releasesDir, channel = '') {
   try {
-    const dir = path.join(releasesDir, 'mcu');
+    const dir = path.join(releasesDir, channel === 'dev' ? 'mcu-dev' : 'mcu');
     const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
     if (!/^[0-9A-Za-z._-]{1,32}$/.test(String(m.version)) || !FILE_RE.test(String(m.file)) || !/^[0-9a-f]{64}$/.test(String(m.sha256)) || !m.sig) return null;
     const bin = path.join(dir, m.file);
@@ -40,14 +43,14 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
   const out = (res, st, b) => res.status(st).json(b);
   const mine = (req, gw) => gatewaysOfUser(db, req.user).find((g) => `${g.site}/${g.device}` === gw);
 
-  app.get('/api/v1/mcu-firmware', (_req, res) => {
-    const r = readMcuRelease(releasesDir);
+  app.get('/api/v1/mcu-firmware', (req, res) => {
+    const r = readMcuRelease(releasesDir, channelOf(req.query.ch));
     if (!r) return out(res, 404, { error: 'no_release' });
     res.json({ version: r.version, size: r.size, sha256: r.sha256, sig: r.sig, builtAt: r.builtAt, notes: r.notes });
   });
 
-  app.get('/api/v1/mcu-firmware/download', (_req, res) => {
-    const r = readMcuRelease(releasesDir);
+  app.get('/api/v1/mcu-firmware/download', (req, res) => {
+    const r = readMcuRelease(releasesDir, channelOf(req.query.ch));
     if (!r) return out(res, 404, { error: 'no_release' });
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Length', String(r.size));
@@ -62,7 +65,7 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     if (!g) return out(res, 403, { error: 'forbidden_gateway' });
     const cl = db.prepare('SELECT version FROM gateway_clients WHERE site = ? AND device = ?').get(g.site, g.device);
     if (kindOf(cl?.version) !== 'mcu') return out(res, 400, { error: 'not_mcu' });
-    const rel = readMcuRelease(releasesDir);
+    const rel = readMcuRelease(releasesDir, channelOf(cl?.version));   // board build dev ("…-dev") tải kênh dev
     if (!rel) return out(res, 404, { error: 'no_release' });
     const a = authorize(req);
     if (a.error) { audit(db, 'control_denied', { userId: req.user.id, ip: clientIp(req), detail: `ota_approve ${a.reason || a.error}` }); return out(res, a.status || 401, a); }
@@ -79,7 +82,7 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     if (!g) return out(res, 403, { error: 'forbidden_gateway' });
     const cl = db.prepare('SELECT version, last_seen AS lastSeen FROM gateway_clients WHERE site = ? AND device = ?').get(g.site, g.device);
     const kind = kindOf(cl?.version);
-    const rel = kind === 'mcu' ? readMcuRelease(releasesDir) : null;
+    const rel = kind === 'mcu' ? readMcuRelease(releasesDir, channelOf(cl?.version)) : null;   // đúng kênh của board (dev / chính thức)
     const events = [];
     const key = `${g.site}/${g.device}`;
     for (const r of db.prepare(`SELECT ts, event, detail FROM audit_log

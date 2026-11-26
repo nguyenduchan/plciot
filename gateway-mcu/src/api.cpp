@@ -485,6 +485,8 @@ int apiRpc(const String& method, const String& path, const String& body, const S
   return r.code;
 }
 
+bool apiStarted() { return s_started; }
+
 void apiBegin() {
   // Cấp điện chỉ mở cửa sổ ghép khi board CHƯA có PC admin nào (mới mua / vừa reset): người lạ rút điện cắm lại không ghép được.
   // Đã có PC ghép: muốn ghép PC mới phải nhấn BOOT (trong tủ điện) hoặc chủ board xác nhận bằng webapp.

@@ -117,6 +117,12 @@ void ioTask(void*) {
     }
     safetyTick();
     offlineTick();
+    // stack còn ít = sắp tràn (panic khi chạy nhánh ít gặp, vd đúng phút hẹn giờ — lỗi thật ở mcu-0.4.0 với stack 3 KB): báo sớm
+#ifndef GW_SIM
+    static uint32_t s_stackWarn = 0;
+    UBaseType_t free = uxTaskGetStackHighWaterMark(nullptr);
+    if (free < 1536 && (!s_stackWarn || millis() - s_stackWarn > 3600000UL)) { s_stackWarn = millis(); evLog("stack_low", "Task io còn " + String((unsigned)free) + " byte stack", false); }
+#endif
     delay(500);
   }
 }
@@ -147,7 +153,7 @@ void ioBegin() {
     if (!s_tca) { i2cRecover(); s_tca = tcaApply(0); }
   }
   if (!s_tca) logf("Không thấy TCA9554 (0x%02X) trên I2C SDA%d/SCL%d — DO không dùng được (task io sẽ dò lại)", TCA9554_ADDR, I2C_SDA, I2C_SCL);
-  xTaskCreatePinnedToCore(ioTask, "io", 3072, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(ioTask, "io", 8192, nullptr, 2, nullptr, 0);   // chạy cả chương trình logic (offlineTick): 3 KB từng tràn stack → panic
   ioLed(0, 0, 16);
 }
 

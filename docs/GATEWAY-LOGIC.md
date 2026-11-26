@@ -53,8 +53,42 @@ do6: offline: cycle on 10m off 20m
 | `need <đk>[, …][, hold]` | Chỉ cho **BẬT** khi mọi điều kiện đều thoả (tối đa 4). `<đk>`: `di3=1`, `di3=0`, `tb.field>=5`, `tb.field<=5` `[age 60s]`. Mất số liệu thì coi như không thoả. `hold`: đang bật mà mất điều kiện thì tự **TẮT**. |
 | `block do2[, do5]` | Liên động **hai chiều**: không bật khi DO kia đang bật. |
 | `maxon 30m` | Bật liên tục quá thời gian này thì tự tắt. |
-| `timer 06:00-06:30 [ngày]` · `timer on 06:00` · `timer off 22:00` | Hẹn giờ (tối đa 4 mốc). Đúng phút **On** thì bật, đúng phút **Off** thì tắt (chạy theo sự kiện, nên giữa hai mốc vẫn bật/tắt tay được). Ngày: `t2-t6`, `t2,t4,cn`, `t7-cn`. Không có giờ tin được thì bỏ qua. Lệnh bật vẫn phải qua `need`/`block`. |
+| `timer 06:00-06:30 [ngày]` · `timer on 06:00` · `timer off 22:00` | Hẹn giờ (tối đa 4 mốc). Đúng phút **On** thì bật, đúng phút **Off** thì tắt (chạy theo sự kiện, nên giữa hai mốc vẫn bật/tắt tay được). Ngày: `t2-t6`, `t2,t4,cn`, `t7-cn`. Không có giờ tin được thì bỏ qua. Lệnh bật vẫn phải qua `need`/`block`. | **Chạy 1 lần** (kiểu báo thức iPhone): `timer 06:00-06:30 2026-11-27`, JSON `{Date, Days:[]}`. Giờ tắt nhỏ hơn giờ bật thì tắt vào hôm sau. `Days` rỗng là cố ý: gateway bản cũ không hiểu `Date` sẽ từ chối, thay vì chạy mỗi ngày. Webapp ⏰: không chọn ngày nào = 1 lần (lần tới của giờ đã đặt); mốc 1 lần đã qua bị bỏ khi lưu.
 | `offline [chờ]: <kiểu>` | Khi mất mạng quá thời gian chờ (mặc định 60 s): `hold`, `off`, `on`, `schedule 18:00-05:30`, `follow di2 [invert]`, `level tb.field on<=20 off>=90 [age 30s]`, `cycle on 10m off 20m`. Chi tiết trong `gateway-mcu/src/offline.cpp`. |
+
+### Đầu ra là thiết bị RS485 / Modbus TCP (board, firmware ≥ mcu-0.4.0)
+
+Ngoài `do1`…`do8`, board điều khiển được **field ghi được** của thiết bị ngoài, tối đa 8 đầu ra. Các mệnh đề giống hệt DO.
+
+```
+tz 7
+bientan.run: need di1=1, bon.muc>=10, hold | block do2 | maxon 2h | offline 2m: level bon.muc on<=20 off>=90
+do2: block bientan.run                       # liên động trộn DO ↔ RS485, hai chiều
+plc.van: need plc.apsuat>=2, hold | block do1 # Modbus TCP
+do3: offline: level plc.apsuat on>=5 off<=1   # giá trị Modbus TCP điều khiển relay board
+plc.cmd: offline: follow plc.apsuat           # follow theo field
+```
+
+- JSON: `{"Out":"<thiết bị>.<field>", …}` nằm chung `Do[]` với các mục `{"Ch":n}`. `Block` trộn được số (DO) và chuỗi (field). `follow` nhận `Di` hoặc `Field`.
+- Trạng thái đầu ra field:
+  - field đọc-ghi: lấy theo giá trị đọc lại;
+  - field **chỉ ghi** (vd lệnh chạy biến tần): lấy theo giá trị ghi gần nhất;
+  - không đọc được quá `max(10 s, 5 × PollMs)` (thiết bị mất kết nối) thì coi là **không rõ**.
+- **Liên động coi "không rõ" như đang bật**: thiết bị bên kia mất kết nối thì không bật đầu ra này. Gateway PC (C#) làm giống hệt (`GatewayLogic.StateOf`).
+- Lệnh ghi do chương trình quyết định được xếp hàng và chạy trên task đọc. Nhờ vậy RS485/TCP chậm không làm chậm DO/DI. Lệnh ghi lỗi (`plc_error`) thì 5 s sau thử lại.
+- Chặn lệnh của người dùng tới field đầu ra nằm trong `engineWrite` (mọi nguồn: webapp, LAN).
+- PC giữ lease (chế độ gateway) thì các mục field tạm dừng: PC lo thiết bị ngoài.
+- Hẹn giờ ⏰ của chủ trạm dùng được cho đầu ra field (`keys` trong bản tin config có `"<thiết bị>.<field>"`).
+- Trang Logic của GatewayApp **giữ nguyên** các mục field khi lưu: trang chỉ sửa DO, mục field soạn bằng GatewayAdmin.
+
+### Kịch bản theo nguồn I/O
+
+| Nguồn | Ví dụ | Ghi chú |
+|---|---|---|
+| Digital (DI/DO board) | `do1: need di3=1, hold` | DI đã lọc rung, đọc tức thời |
+| RS485 (Modbus RTU) | `bientan.run: need bon.muc>=10 \| block do2` | chậm (19200 baud): `age` của điều kiện nên ≥ 3 × chu kỳ đọc |
+| Modbus TCP | `plc.van: need plc.apsuat>=2, hold` | mất kết nối → điều kiện "mất số liệu", liên động chặn |
+| Trộn | `do2: block bientan.run` | liên động hai chiều giữa mọi loại đầu ra |
 
 Thời gian viết dạng `30s`, `5m`, `2h`, `1d` hoặc số giây. `tb.field` là tên field nội bộ (`<thiết bị>.<field>`), không phải khoá MQTT.
 Text **copy được sang gateway khác**. Board kiểm lại tên field khi áp dụng; field sai thì board từ chối và đề xuất chuyển sang `failed`.
@@ -93,6 +127,25 @@ Firmware từ `mcu-0.3.9` nghe topic `gw/<id>/rpc`:
 - Board trả lời lên `rpcr`, chia phần ≤ 3000 ký tự.
 - Route mở cho rpc trên board: `GET /api/state|config|config-message|offline|events|ota` và `PUT /api/offline` (chỉ khi có `appr`). Mọi route khác bị chặn (`apiRpc` trong `api.cpp`).
 
+## Logic tại biên: nạp qua internet, chạy không cần internet
+
+- Chương trình và hẹn giờ lưu **trên gateway** (`/offline.json` của board, `<config>.logic.json` của gateway PC) và chạy ở đó. VPS chỉ:
+  - lưu đề xuất;
+  - chuyển lệnh rpc có chữ ký kèm mã duyệt;
+  - giữ bản sao để webapp hiển thị.
+- Đổi logic **không cần đổi firmware**: GatewayAdmin → duyệt → rpc → gateway áp dụng ngay (rev tăng, cảnh báo `sec.logic_changed`).
+- Board ghi sự kiện `logic_act` mỗi lần hẹn giờ hoặc tự tắt, thêm "(đang mất mạng)" khi không có cloud. Mỗi lần logic đổi DO, board gửi telemetry ngay; nếu đang mất mạng thì gửi bù sau.
+- Lỗi đã sửa nhờ thử trên board thật (2026-11-27):
+  - Task `io` 3 KB stack tràn → **panic** mỗi khi logic tự hành động (hẹn giờ, tự tắt). Đã nâng lên 8 KB, chép chính sách ra heap, ghi sự kiện `stack_low` khi stack còn dưới 1,5 KB.
+  - Maxon tắt **ngay** khi hẹn giờ vừa bật DO trong cùng nhịp (trừ không dấu tràn số). Đã chuyển sang so sánh có dấu.
+- Gateway PC, kiểm qua cloud thật (bản Debug, BẢN SAO cấu hình gateway đã ghép):
+  - Lệnh: `GATEWAYAPP_SETTINGS=<bản sao> GatewayApp.exe --pccloudlogictest KQ --noauth [--plc-port 15021]`.
+  - PLC giả nhúng trong tiến trình; điều khiển từ ngoài bằng `KQ/cmd.txt` (`cloud-down` / `cloud-up` / `set D56=1` / `quit`).
+  - Kết quả 2026-11-27 (u15/gw02):
+    - GatewayAdmin đề xuất → duyệt → rev 1 (`need`, `hold`, `maxon 40s`);
+    - ⏰ 1 lần 01:48 → rev 2;
+    - cắt cloud thật: 01:48:00 tự bật, 01:48:40 tự tắt.
+
 ## Kiểm thử
 
 - Server: `node cloud/app/scripts/smoke-gateway-logic.js` (31 kiểm tra), gồm:
@@ -108,4 +161,9 @@ Firmware từ `mcu-0.3.9` nghe topic `gw/<id>/rpc`:
   - lệnh cloud bị chặn (`logic_need`, `logic_interlock`), `hold` tự tắt;
   - hẹn giờ của chủ trạm.
   Lần chạy ngày 2026-11-26: 24/24.
-- **Chưa kiểm chứng**: board thật, broker mosquitto + ACL trên VPS thật, giao diện webapp/GatewayAdmin bấm tay.
+- C#: `dotnet test scada/tests/Plciot.Scada.Tests --filter GatewayLogic` (12 test, gồm 6 kịch bản Digital / RS485 / Modbus TCP trong `GatewayLogicScenarioTests`).
+- **Board thật** (bản Debug, `GATEWAYAPP_SETTINGS` riêng, nhấn BOOT để ghép lần đầu): `GatewayApp.exe --boardlogictest KQ --lan-target <IP board>:443 [--tcp-port 15020]`.
+  - Bài test sao lưu cấu hình + chương trình của board, cài thiết bị thử, chạy kịch bản, rồi trả lại nguyên trạng.
+  - Modbus TCP là PLC giả chạy trong tiến trình test; board nối tới nó qua mạng thật. Tường lửa cần cho `GatewayApp.exe` bản Debug nhận kết nối vào.
+  - RS485 dùng Unit 7 không có trên bus, để thử kịch bản "thiết bị mất kết nối".
+- **Chưa kiểm chứng**: broker mosquitto + ACL trên VPS thật, giao diện webapp/GatewayAdmin bấm tay, thiết bị RS485 thật có trả lời.

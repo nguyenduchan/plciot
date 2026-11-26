@@ -16,6 +16,7 @@
  *   block do2[, do5]             liên động: không bật khi DO kia đang bật (hai chiều)
  *   maxon 30m                    bật liên tục quá lâu thì tự tắt
  *   timer 06:00-06:30 [ngày]     hẹn giờ (theo sự kiện): bật lúc 06:00, tắt lúc 06:30 · timer on 06:00 · timer off 22:00
+ *                                chạy 1 lần: timer 06:00-06:30 2026-11-27 (JSON {Date, Days:[]} — gateway cũ từ chối thay vì chạy mỗi ngày)
  *                                ngày: t2-t6 | t2,t4,cn | t7-cn (mặc định mọi ngày) — chủ trạm cũng tự sửa được trên webapp
  *   offline [chờ]: <kiểu>        khi mất mạng (sau thời gian chờ, mặc định 60s): hold | off | on | schedule 18:00-05:30
  *                                | follow di2 [invert] | level <field> on<=20 off>=90 [age 30s] | cycle on 10m off 20m
@@ -26,7 +27,18 @@
  *   pump1.run: need tank1.level_pct>=10, hold | block pump1.boost | maxon 30m | timer 06:00-06:30 | offline 2m: level tank1.level_pct on<=20 off>=90
  *   valve1.open: offline: follow pump1.run            (follow <field> [invert] — bật khi field ≠ 0)
  * JSON: {Out:"<thiết bị>.<field>", …, Block:["<thiết bị>.<field>"]}. "<field>=1" / "=0" là cách viết gọn của ">=1" / "<=0".
+ *
+ * BOARD WAVESHARE (firmware ≥ mcu-0.4.0) điều khiển được cả THIẾT BỊ NGOÀI, không chỉ DO1…DO8 trên board:
+ *   - Digital I/O trên board:  do1…do8 (đầu ra), di1…di8 (điều kiện / follow)
+ *   - RS485 (Modbus RTU) và Modbus TCP: đầu ra = field ghi được "<thiết bị>.<field>" (tối đa 8), điều kiện / level / follow theo field
+ *   vd  bientan.run: need di1=1, bon.muc>=10, hold | block do2 | offline 2m: level bon.muc on<=20 off>=90
+ *       do2: block bientan.run                     (liên động trộn DO ↔ thiết bị RS485/TCP, hai chiều)
+ *       quat.run: offline: follow cambien.co_nguoi  (follow theo field)
+ *   JSON: mục DO {Ch:n,…} và mục field {Out:"tb.field",…} cùng trong Do[]; Block trộn số (DO) và chuỗi (field).
  */
+
+/** Tối đa đầu ra kiểu field trên board (RAM của ESP32). */
+export const MCU_MAX_FIELD_OUTS = 8;
 
 const DAY = ['t2', 't3', 't4', 't5', 't6', 't7', 'cn'];
 
@@ -133,13 +145,21 @@ function parseTimer(spec, line) {
     e.On = hhmm(m[1], line); e.Off = hhmm(m[2], line); i = 1;
     if (e.On === e.Off) fail(line, 'timer: giờ bật và giờ tắt phải khác nhau.');
   }
+  if (t[i] && /^\d{4}-\d{2}-\d{2}$/.test(t[i])) {   // chạy 1 lần vào ngày này
+    const d = new Date(`${t[i]}T00:00:00Z`);
+    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t[i] || t.length > i + 1) fail(line, `timer: ngày "${t.slice(i).join(' ')}" không hợp lệ (vd 2026-11-27).`);
+    e.Date = t[i]; e.Days = [];
+    return e;
+  }
   if (t[i]) e.Days = parseDays(t.slice(i).join(''), line);
   if (e.Days && e.Days.length === 7) delete e.Days;
   return e;
 }
 
-/** id của một mục: số DO (board) hoặc tên field đầu ra (gateway PC). */
+/** id của một mục: số DO (board) hoặc tên field đầu ra (gateway PC / thiết bị RS485-TCP của board). */
 export const idOf = (o) => (o?.Out ? String(o.Out) : String(o?.Ch));
+/** Thứ tự ổn định: DO theo số, rồi đầu ra field theo thứ tự khai. */
+export const sortOuts = (list) => [...list.filter((o) => !o.Out).sort((a, b) => a.Ch - b.Ch), ...list.filter((o) => o.Out)];
 
 /**
  * Text → {TzMin, Do:[…]} (đúng định dạng PUT /api/offline). Ném LogicError với câu báo tiếng Việt.
@@ -158,8 +178,7 @@ export function parseLogic(text, { kind } = {}) {
     if (m) { const tz = Math.round(Number(m[1]) * 60); if (tz < -720 || tz > 840) fail(line, 'múi giờ phải từ -12 đến +14.'); prog.TzMin = tz; return; }
     m = /^(?:do([1-8])|([A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+))\s*:\s*(.*)$/i.exec(s);
     if (!m) fail(line, kind === 'pc' ? 'mỗi dòng bắt đầu bằng <thiết bị>.<field>: (vd pump1.run: need tank1.level_pct>=10) hoặc tz 7.' : 'mỗi dòng bắt đầu bằng doN: (vd do1: need di3=1) hoặc tz 7.');
-    const isPc = Boolean(m[2]);
-    if (kind === 'mcu' && isPc) fail(line, 'board Waveshare: đầu ra viết doN (do1…do8).');
+    const isPc = Boolean(m[2]);   // đầu ra là field (gateway PC, hoặc thiết bị RS485/Modbus TCP của board)
     if (kind === 'pc' && !isPc) fail(line, 'gateway PC: đầu ra viết theo field ghi được (vd pump1.run:), không có doN.');
     const ch = isPc ? m[2] : Number(m[1]);
     const o = byCh.get(String(ch)) || (isPc ? { Out: ch } : { Ch: ch });
@@ -176,20 +195,21 @@ export function parseLogic(text, { kind } = {}) {
         for (const p of parts) {
           if (/^hold$/i.test(p)) { o.NeedHold = true; continue; }
           const c = parseCond(p, line);
-          if (isPc && c.Di) fail(line, 'gateway PC không có DI của board — dùng field (vd pump1.float=1).');
+          if (kind === 'pc' && c.Di) fail(line, 'gateway PC không có DI của board — dùng field (vd pump1.float=1).');
           o.Need.push(c);
         }
         if (o.Need.length > 4) fail(line, `${tag}: tối đa 4 điều kiện.`);
       } else if (kw === 'block') {
         o.Block = o.Block || [];
         for (const p of rest.split(',').map((x) => x.trim()).filter(Boolean)) {
-          if (isPc) {
-            if (!FIELD.test(p) || p === ch) fail(line, 'block cần đầu ra khác (vd block pump1.boost).');
+          if (FIELD.test(p)) {   // đầu ra field (PC, hoặc thiết bị RS485/TCP của board)
+            if (p === ch) fail(line, 'block cần đầu ra khác (vd block pump1.boost).');
             if (!o.Block.includes(p)) o.Block.push(p);
             continue;
           }
           const b = /^do([1-8])$/i.exec(p);
-          if (!b || Number(b[1]) === ch) fail(line, `block cần DO khác (vd block do2).`);
+          if (kind === 'pc' && b) fail(line, 'gateway PC: block theo field (vd block pump1.boost), không có doN.');
+          if (!b || Number(b[1]) === ch) fail(line, `block cần đầu ra khác (vd block do2, block bientan.run).`);
           if (!o.Block.includes(Number(b[1]))) o.Block.push(Number(b[1]));
         }
       } else if (kw === 'maxon') {
@@ -206,14 +226,17 @@ export function parseLogic(text, { kind } = {}) {
         o.DelaySec = om[1].trim() ? parseDuration(om[1].trim(), line) : 60;
         if (o.DelaySec > 86400) fail(line, 'thời gian chờ tối đa 24 giờ.');
         parseOffline(om[2], line, o);
-        if (isPc && o.Mode === 'follow' && o.Di) fail(line, 'gateway PC: follow theo field (vd follow pump1.run), không có DI.');
-        if (!isPc && o.Mode === 'follow' && !o.Di) fail(line, 'board: follow theo DI (vd follow di2).');
+        if (kind === 'pc' && o.Mode === 'follow' && o.Di) fail(line, 'gateway PC: follow theo field (vd follow pump1.run), không có DI.');
       } else fail(line, `không hiểu "${kw}" (need, block, maxon, timer, offline).`);
     }
     if (o.NeedHold && !(o.Need || []).length) fail(line, `${tag}: hold cần ít nhất một điều kiện.`);
   });
   if (byCh.size > 32) fail(0, 'Tối đa 32 đầu ra trong một chương trình.');
-  for (const o of [...byCh.values()].sort((a, b) => (a.Ch && b.Ch ? a.Ch - b.Ch : 0))) {
+  const outs = [...byCh.values()];
+  if (kind === 'mcu' && outs.filter((o) => o.Out).length > MCU_MAX_FIELD_OUTS) fail(0, `Board: tối đa ${MCU_MAX_FIELD_OUTS} đầu ra là thiết bị RS485/Modbus TCP.`);
+  if (outs.some((o) => o.Out) && outs.some((o) => o.Ch) && kind === 'pc') fail(0, 'Chỉ board Waveshare có cả doN và đầu ra theo field.');
+  // liên động phải trỏ tới đầu ra có thật trong cấu hình — kiểm ở gateway; ở đây chỉ chặn trộn kiểu sai
+  for (const o of sortOuts(outs)) {
     if (!o.Mode) { o.Mode = 'hold'; o.DelaySec = o.DelaySec ?? 60; }
     prog.Do.push(o);
   }
@@ -240,6 +263,7 @@ const daysText = (days) => {
 };
 const timerText = (t) => {
   const base = t.On && t.Off ? `${t.On}-${t.Off}` : t.On ? `on ${t.On}` : `off ${t.Off}`;
+  if (t.Date) return `${base} ${t.Date}`;
   const d = daysText(t.Days);
   return d ? `${base} ${d}` : base;
 };
@@ -280,6 +304,7 @@ const human = (sec) => {
 };
 const DAYV = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const daysV = (days) => (!days || days.length === 7 ? 'mỗi ngày' : days.map((d) => DAYV[d - 1]).join(', '));
+const whenV = (t) => (t.Date ? `1 lần, ngày ${t.Date.slice(8, 10)}/${t.Date.slice(5, 7)}/${t.Date.slice(0, 4)}` : daysV(t.Days));
 const num = (v) => String(v).replace('.', ',');
 
 /**
@@ -292,13 +317,11 @@ export function describeLogic(prog, names = {}) {
   const nF = (k) => names?.f?.[k] || k;
   const list = prog?.Do || prog?.do || [];
   const rows = [];
-  if (list.some((o) => o.Out) || names?.out) {   // gateway PC: đầu ra theo field
-    const outs = [...new Set([...list.filter((o) => o.Out).map((o) => o.Out), ...Object.keys(names?.out || {})])];
-    for (const out of outs) rows.push(describeOne(list.find((x) => x.Out === out) || { Out: out, Mode: 'hold' }, out));
-    return rows;
-  }
-  const chs = new Set([...list.map((o) => o.Ch), ...Object.keys(names?.do || {}).map(Number)]);
+  // DO của board trước (theo số), rồi đầu ra theo field (gateway PC, hoặc thiết bị RS485/Modbus TCP của board)
+  const chs = new Set([...list.filter((o) => !o.Out).map((o) => o.Ch), ...Object.keys(names?.do || {}).map(Number)]);
   for (const ch of [...chs].filter((c) => c >= 1 && c <= 8).sort((a, b) => a - b)) rows.push(describeOne(list.find((x) => x.Ch === ch) || { Ch: ch, Mode: 'hold' }, ch));
+  const outs = [...new Set([...list.filter((o) => o.Out).map((o) => o.Out), ...Object.keys(names?.out || {})])];
+  for (const out of outs) rows.push(describeOne(list.find((x) => x.Out === out) || { Out: out, Mode: 'hold' }, out));
   return rows;
 
   function describeOne(o, ch) {
@@ -311,10 +334,10 @@ export function describeLogic(prog, names = {}) {
     }
     const blk = new Set(o.Block || []);
     for (const x of list) if ((x.Block || []).includes(ch)) blk.add(x.Out || x.Ch);   // liên động hai chiều
-    if (blk.size) user.push(`Không bật cùng lúc với ${[...blk].sort().map(nDo).join(', ')}.`);
+    if (blk.size) user.push(`Không bật cùng lúc với ${[...blk].map(nDo).join(', ')}.`);
     if (o.MaxOnSec) user.push(`Chạy quá ${human(o.MaxOnSec)} thì tự tắt.`);
     if (!user.length) user.push('Bật/tắt tự do.');
-    const timer = (o.Timer || []).map((t) => `${t.On ? `Bật ${t.On}` : ''}${t.On && t.Off ? ', ' : ''}${t.Off ? `tắt ${t.Off}` : ''} · ${daysV(t.Days)}`);
+    const timer = (o.Timer || []).map((t) => `${t.On ? `Bật ${t.On}` : ''}${t.On && t.Off ? ', ' : ''}${t.Off ? `tắt ${t.Off}` : ''} · ${whenV(t)}`);
     const wait = o.DelaySec ? `Sau ${human(o.DelaySec)} mất mạng: ` : 'Ngay khi mất mạng: ';
     let off;
     switch (o.Mode) {

@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import Database from 'better-sqlite3';
 import { applyGatewayConfig, getGatewayConfig, sanitizeConfig } from '../src/gatewayConfig.js';
 import { migrateUserDevices, getDashboardFor } from '../src/userDevices.js';
 import { widgetsFromFields } from '../src/uiContract.js';
@@ -15,10 +14,12 @@ let fails = 0;
 const ok = (c, m) => { if (c) console.log('OK', m); else { fails++; console.error('FAIL', m); } };
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gwcfg-'));
-const db = new Database(path.join(tmp, 't.db'));
-db.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, notify_site TEXT, notify_device TEXT);
-  CREATE TABLE hardware_devices (site TEXT, device TEXT, ui_meta TEXT);`);
-db.prepare("INSERT INTO users (id, notify_site, notify_device) VALUES (1,'tram1','GW01'),(2,'other','GW99')").run();
+// schema THẬT của server (openDb) — bảng tự dựng tay cũ lệch dần (thiếu tenant_id, claimed_by…) và làm test hỏng
+process.env.DATA_DIR = tmp;
+const { openDb } = await import('../src/db.js');
+const db = openDb(tmp);
+db.prepare(`INSERT INTO users (id, username, password_hash, folder_path, role, notify_site, notify_device) VALUES
+  (1, 'u1', 'x', 'f', 'operator', 'tram1', 'GW01'), (2, 'u2', 'x', 'f', 'operator', 'other', 'GW99')`).run();
 migrateUserDevices(db);
 
 const cfg = (devs) => ({ gw: 'GW01', devices: devs });

@@ -93,7 +93,7 @@ void task(void*) {
   for (;;) {
     wdtArm(WD_POLL, (uint32_t)max(0, g_cfg.pollMs) + 30000);   // một giao dịch Modbus tối đa vài giây (TCP connect 2 s) + chờ PollMs
     uint32_t t0 = millis();
-    if (g_running && !g_locked) pollOnce();   // thiết bị bị khoá (báo mất): không đọc PLC
+    if (g_running && !g_locked) { offlineDrainWrites(); pollOnce(); }   // lệnh của chương trình logic tới thiết bị ngoài, rồi đọc; bị khoá (báo mất): không làm gì
     int wait = max(20, g_cfg.pollMs - (int)(millis() - t0));
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait));   // lệnh ghi xong → đánh thức đọc ngay
   }
@@ -110,7 +110,7 @@ void engineRestart() {
 
 uint32_t engineSeq() { return s_seq; }
 
-String engineWrite(const String& child, const String& key, double v, bool byWire) {
+String engineWrite(const String& child, const String& key, double v, bool byWire, bool byLogic) {
   Field copy; bool found = false;
   {
     Lock l;
@@ -127,11 +127,17 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   if (!f->enabled) return "device_paused";
   uint16_t w[4]; int n = 0;
   if (!encode(v * f->scale, f->type, f->swap, w, n)) return "bad_value";
+  const String fk = f->child + "." + f->field;
+  if (!f->localIo()) {   // DO trên board có chặn riêng (localWrite); thiết bị RS485/TCP: chặn theo chương trình logic ở đây
+    String why, g = offlineGuardField(fk, v, byLogic, why);
+    if (g.length()) { logf("Chương trình logic chặn lệnh: %s", why.c_str()); return g; }
+  }
   String err;
   bool ok;
   { BusLockIf bus(!f->localIo()); ok = mbWrite(*f, f->addr, w, n, err); }   // DO trên board: không chờ vòng đọc PLC
   if (!ok) { logf("Ghi %s.%s lỗi: %s", f->child.c_str(), f->field.c_str(), err.c_str()); return err == "toggle_too_fast" || err == "safe_mode" || err.startsWith("logic_") ? err : "plc_error"; }
   logf("Điều khiển: %s.%s = %g → D%d", f->child.c_str(), f->field.c_str(), v, f->addr);
+  if (!f->localIo()) offlineFieldWritten(fk, v, byLogic);
   if (s_task) xTaskNotifyGive(s_task);
   return "";
 }

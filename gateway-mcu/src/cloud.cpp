@@ -28,6 +28,10 @@ std::map<String, uint32_t> s_seenIds;   // id lệnh → millis (chặn phát l�
 uint32_t s_rateSec = 0; int s_rateCount = 0;
 
 String base() { return "gw/" + g_cfg.mqttId; }
+}  // namespace
+/// Logic tại biên vừa đổi đầu ra: gửi telemetry ngay (không chờ chu kỳ gửi chậm khi không ai xem webapp).
+void cloudExpedite() { s_expediteUntil = millis() + 3000; }
+namespace {
 // thông số kết nối cloud lúc nối gần nhất: cấu hình đổi mà các thông số này giữ nguyên thì KHÔNG nối lại (xem cloudRestart)
 String s_connKey;
 bool s_republish = false;
@@ -499,6 +503,9 @@ bool cloudOwnsBoard(const String& webToken, String& why) {
 }
 
 void cloudLoop() {
+#ifdef FW_TEST_BREAK_CLOUD
+  return;   // CHỈ bản thử quay về firmware cũ (build dev): giả lập firmware mới làm mất kết nối cloud
+#endif
   bool hasIp = netUp();
   if (hasIp && !s_ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); s_ntpStarted = true; }
 

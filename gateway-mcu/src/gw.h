@@ -171,7 +171,8 @@ extern bool g_running;
 extern String g_status;                          // online | plc_fault | no_devices | đã dừng
 void engineBegin();
 void engineRestart();                            // cấu hình đổi: bỏ giá trị cũ, đọc lại ngay
-String engineWrite(const String& child, const String& key, double v, bool byWire);   // "" = ok, còn lại mã lỗi (read_only, value_out_of_range…)
+/// "" = ok, còn lại mã lỗi (read_only, value_out_of_range, logic_need…). byLogic = lệnh do chương trình logic (offline.cpp) quyết định.
+String engineWrite(const String& child, const String& key, double v, bool byWire, bool byLogic = false);
 void engineValues(JsonObject out);               // "child.field" → số (cho GET /api/state)
 String engineTelemetry();                        // {"schema":2,"d":{child:{khoá:số}}}; rỗng = chưa có giá trị
 void engineAges(JsonObject out);                 // "child.field" → ms từ lần đọc được gần nhất (field chưa đọc được lần nào: không có)
@@ -190,6 +191,7 @@ size_t backfillPending();
 // ---------------------------------------------------------------- api.cpp: API LAN cho GatewayApp + tìm thiết bị UDP
 void apiBegin();
 void apiLoop();
+bool apiStarted();                               // cổng HTTPS/HTTP + tìm thiết bị đã mở (đường nạp firmware qua LAN còn dùng được)
 void apiOpenWindow(uint32_t ms);                 // mở ghép PC admin mới trong khoảng này (nút BOOT / lúc khởi động)
 void apiForgetAdmins();                          // reset: xoá danh sách PC admin đã ghép
 /// Cài đặt từ xa (gw/<id>/rpc đã kiểm chữ ký server): chạy một route API LAN được phép từ xa. Trả mã HTTP, resp = thân trả lời.
@@ -201,6 +203,7 @@ void cloudBegin();
 void cloudLoop();
 void cloudRestart();                             // cấu hình cloud đổi: nối lại
 bool cloudLinkOk();                              // MQTT đang nối (đường mạng hiện tại ra được Internet)
+void cloudExpedite();                            // logic tại biên vừa đổi đầu ra: gửi telemetry ngay
 String cloudStateName();                         // Disabled | Disconnected | Connecting | Connected (CloudState của C#)
 // Việc cloud do admin yêu cầu (POST /api/cloud): register (value = LoginResult JSON) | enroll (value = QR). Trả (ok, câu báo).
 bool cloudAction(const String& action, const String& api, const String& value, String& msg);
@@ -222,7 +225,7 @@ void safetyTick();                               // task io (500 ms): bộ đế
 bool safetyLinkExpected();                       // có cần người điều khiển (cloud đã cài / PC từng giữ lease)
 bool safetyLinkDown(uint32_t& downMs);           // đang mất người điều khiển; downMs = mất bao lâu
 
-// ---------------------------------------------------------------- offline.cpp: logic khi mất mạng theo từng DO (/offline.json)
+// ---------------------------------------------------------------- offline.cpp: chương trình logic (/offline.json): DO1..8 + đầu ra field RS485/TCP
 void offlineBegin();                             // sau storeBegin: đọc /offline.json
 void offlineLegacyLoss(const uint32_t* sec8);    // Field::lossOffSec theo chân (storeApply) — dùng khi chân chưa có trong file
 void offlineTick();                              // task io (500 ms)
@@ -233,6 +236,11 @@ void offlineCloud(JsonObject out);               // chương trình gửi lên c
 /// Gọi được khi đang giữ IoLock (thứ tự IoLock → OLock). Lệnh TẮT luôn được phép.
 String offlineGuard(uint8_t cur, uint8_t next, String& why);
 void offlineTest(uint32_t sec);                  // thử mất mạng sec giây (0 = dừng)
+/// Đầu ra là field của thiết bị RS485 / Modbus TCP: chặn lệnh BẬT (điều kiện, liên động — kể cả khi không rõ trạng thái). "" = cho phép.
+/// Gọi KHÔNG giữ Lock/IoLock (engineWrite, trước khi ghi).
+String offlineGuardField(const String& key, double v, bool byLogic, String& why);
+void offlineFieldWritten(const String& key, double v, bool byLogic);   // ghi xong (mọi nguồn): cập nhật trạng thái, thao tác tay → nhường
+void offlineDrainWrites();                       // task đọc (engine.cpp): thực hiện lệnh ghi field chương trình đã xếp hàng
 void offlineNoteManual(uint8_t changed);         // DO đổi bằng tay (API LAN) — chân đang chạy logic offline thì nhường
 
 // ---------------------------------------------------------------- ota.cpp: cập nhật firmware có DUYỆT + chữ ký + tự quay lại; nhật ký sự kiện
@@ -242,7 +250,7 @@ void otaBegin();                                 // sau storeBegin: phát hiện
 void otaLoop();                                  // loop(): xác nhận bản mới khi khoẻ (hoặc quay về), tải từ server khi vừa được duyệt
 void otaAllow(uint32_t ttlSec, const String& by);   // tín hiệu ota_allow có chữ ký server
 bool otaApproved(String& why);
-String otaStatusJson();                          // GET /api/ota
+String otaStatusJson();                          // GET /api/ota (kèm kết quả kiểm tra sức khoẻ khi bản mới đang chờ xác nhận)
 bool otaStart(size_t total, const String& ver, const String& shaHex, const String& sig, const String& src, String& err);
 bool otaWrite(const uint8_t* p, size_t n, String& err);
 bool otaFinish(String& err);                     // đối chiếu SHA-256 → đặt bản mới → khởi động lại sau 1,5 s (qua enterSafeState)

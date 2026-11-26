@@ -27,9 +27,21 @@
 //   Timer     HẸN GIỜ (chủ trạm tự cài trên webapp, cạnh nút điều khiển): ≤ 4 mục {On:"HH:MM"?, Off:"HH:MM"?, Days:[1..7] (1 = thứ Hai)}
 //             — đúng phút On thì BẬT, đúng phút Off thì TẮT (theo sự kiện: giữa hai mốc người dùng vẫn điều khiển tay). Không có giờ tin được → bỏ qua.
 // Lệnh TẮT luôn được phép. Logic khi mất mạng cũng phải qua các điều kiện này.
+//
+// ĐẦU RA LÀ THIẾT BỊ NGOÀI (mcu-0.4.0): ngoài DO1..DO8, chương trình điều khiển được field GHI ĐƯỢC của thiết bị RS485 (Modbus RTU,
+// Unit ≠ 0) và Modbus TCP — mục {"Out":"<thiết bị>.<field>", …} (tối đa kMaxFieldOuts), cùng các mệnh đề như DO.
+//   - Block trộn được: số = DO, chuỗi = field đầu ra (liên động hai chiều DO ↔ thiết bị ngoài).
+//   - follow theo DI ({"Di":n}) hoặc theo field ({"Field":"tb.f"}).
+//   - Trạng thái field đầu ra: đọc lại (field đọc-ghi) nếu còn mới; field CHỈ GHI = giá trị ghi gần nhất;
+//     đọc cũ quá staleMs() (thiết bị mất kết nối) = KHÔNG RÕ → liên động coi như ĐANG BẬT (không bật mạo hiểm).
+//   - Lệnh ghi do chương trình quyết định xếp hàng (s_fq) và chạy trên task đọc (engine.cpp): trao đổi RS485/TCP chậm
+//     không làm chậm task io (DO/DI/watchdog).
+//   - PC giữ lease (chế độ gateway): board không đọc thiết bị ngoài → các mục field tạm dừng (PC điều khiển).
+//   - Chặn lệnh của người dùng tới field đầu ra: offlineGuardField (gọi trong engineWrite — mọi nguồn: webapp, LAN).
 #include "gw.h"
 #include <LittleFS.h>
 #include <time.h>
+#include <math.h>
 
 namespace {
 enum class OMode : uint8_t { Hold, Off, On, Schedule, Follow, Threshold, Cycle };
@@ -42,17 +54,40 @@ struct Pol {
   OMode mode = OMode::Hold;
   uint32_t delaySec = 60;
   int fromMin = 0, toMin = 0;        // schedule: phút trong ngày (giờ địa phương)
-  int di = 1; bool invert = false;   // follow: DI 1..8
+  int di = 1; bool invert = false;   // follow: DI 1..8 (di = 0: theo field — dùng `field`)
   String field; double on = 0, off = 0; uint32_t maxAgeSec = 30;   // threshold
   uint32_t onSec = 600, offSec = 600;                                // cycle
   // chặn lệnh (luôn chạy)
   struct Cond { bool isDi = true; int di = 1, is = 1; String field; bool ge = true; double val = 0; uint32_t maxAgeSec = 60; };
   std::vector<Cond> need; bool needHold = false; uint8_t block = 0; uint32_t maxOnSec = 0;
-  struct Tmr { int on = -1, off = -1; uint8_t days = 0x7F; };   // phút trong ngày (-1 = không có); days bit0 = thứ Hai … bit6 = Chủ nhật
+  std::vector<String> blockF;        // liên động với đầu ra là field (thiết bị RS485/TCP)
+  // phút trong ngày (-1 = không có); days bit0 = thứ Hai … bit6 = Chủ nhật.
+  // CHẠY 1 LẦN (kiểu báo thức iPhone, mcu-0.4.0): day = số ngày từ 1970-01-01 (giờ địa phương), JSON {Date:"YYYY-MM-DD", Days:[]}.
+  //   Days RỖNG cố ý: firmware cũ không hiểu Date sẽ từ chối chương trình thay vì chạy mỗi ngày.
+  struct Tmr { int on = -1, off = -1; uint8_t days = 0x7F; int32_t day = -1; };
   std::vector<Tmr> timer;
-  bool guarded() const { return !need.empty() || block || maxOnSec; }
+  bool guarded() const { return !need.empty() || block || !blockF.empty() || maxOnSec; }
 };
 struct Rt { bool active = false, manual = false, thr = false, want = false; uint32_t since = 0; String note; };
+
+/// Đầu ra là field của thiết bị ngoài (RS485 / Modbus TCP).
+const int kMaxFieldOuts = 8;
+struct FOut {
+  String key, child, field;          // "<thiết bị>.<field>"
+  Pol p; Rt rt; String why;
+  bool fieldOk = false;              // điều kiện theo giá trị field của Need đang thoả (tính mỗi nhịp)
+  uint32_t lastTry = 0; double lastVal = NAN;   // chống dồn lệnh: cùng giá trị thì chờ 5 s mới thử lại
+  uint32_t onSince = 0;
+};
+/// Trạng thái một field đầu ra (mọi field nằm trong chương trình hoặc bị liên động tới).
+struct FState { int8_t st = -1; bool writeOnly = false; double lastW = NAN; uint32_t wAt = 0; };
+struct FBlk { uint8_t d = 0; std::vector<String> f; };   // field bị cấm bật khi các DO / field này bật (hai chiều)
+struct FWrite { String child, field, why; double v; };
+std::vector<FOut> s_fo;
+std::map<String, FState> s_fst;
+std::map<String, FBlk> s_fblk;
+std::vector<String> s_dblkF[8];      // DO i bị cấm bật khi các field này bật (hoặc không rõ)
+std::vector<FWrite> s_fq;            // lệnh ghi chờ task đọc thực hiện
 
 Pol s_pol[8];
 Rt s_rt[8];
@@ -71,6 +106,37 @@ struct OLock { OLock() { xSemaphoreTakeRecursive(s_mx, portMAX_DELAY); } ~OLock(
 
 int modeOf(const String& s) { for (int i = 0; i < 7; i++) if (s == kModes[i]) return i; return -1; }
 
+/// Số ngày từ 1970-01-01 của ngày dương lịch (thuật toán days_from_civil).
+int32_t civilDay(int y, int m, int d) {
+  y -= m <= 2;
+  int era = (y >= 0 ? y : y - 399) / 400;
+  int yoe = y - era * 400, doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+/// "YYYY-MM-DD" → số ngày; -1 = sai.
+int32_t parseDate(const String& s) {
+  int y, m, d;
+  if (s.length() != 10 || sscanf(s.c_str(), "%4d-%2d-%2d", &y, &m, &d) != 3 || y < 2000 || y > 2200 || m < 1 || m > 12 || d < 1 || d > 31) return -1;
+  int32_t n = civilDay(y, m, d);
+  int32_t chk = civilDay(y, m, 1) + d - 1;
+  if (d > 28 && civilDay(m == 12 ? y + 1 : y, m == 12 ? 1 : m + 1, 1) <= chk) return -1;   // 31/02 …
+  return n;
+}
+String fmtDate(int32_t n) {
+  // civil_from_days
+  n += 719468; int era = (n >= 0 ? n : n - 146096) / 146097; unsigned doe = n - era * 146097;
+  unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; int y = yoe + era * 400; unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  unsigned mp = (5 * doy + 2) / 153, d = doy - (153 * mp + 2) / 5 + 1, m = mp < 10 ? mp + 3 : mp - 9;
+  char b[11]; snprintf(b, sizeof b, "%04d-%02u-%02u", y + (m <= 2), m, d); return b;
+}
+/// Mốc hẹn giờ k có đến lúc (phút m, thứ wd 0 = thứ Hai, ngày dn) không — on = mốc bật / tắt.
+/// Mốc 1 lần qua nửa đêm (tắt < bật): giờ tắt rơi vào ngày hôm sau.
+bool tmrHit(const Pol::Tmr& k, bool on, int m, int wd, int32_t dn) {
+  if ((on ? k.on : k.off) != m) return false;
+  if (k.day < 0) return k.days & (1 << wd);
+  return dn == k.day + (!on && k.on >= 0 && k.off < k.on ? 1 : 0);
+}
+
 /// "HH:MM" → phút trong ngày; -1 = sai.
 int hhmm(const String& s) {
   int h, m; char c;
@@ -85,6 +151,18 @@ bool fieldReadable(const String& key) {
   for (auto& f : g_cfg.pack) if (f.child + "." + f.field == key && f.access != Access::Write) return true;
   return false;
 }
+/// field "child.field" là đầu ra của thiết bị NGOÀI (RS485 Unit ≠ 0 / Modbus TCP) và ghi được. Lấy Lock.
+bool fieldOutput(const String& key, bool* writeOnly = nullptr) {
+  Lock l;
+  for (auto& f : g_cfg.pack)
+    if (f.child + "." + f.field == key && f.access != Access::Read && !f.localIo() && (f.proto == Proto::ModbusRtu || f.proto == Proto::ModbusTcp)) {
+      if (writeOnly) *writeOnly = f.access == Access::Write;
+      return true;
+    }
+  return false;
+}
+/// Giá trị đọc cũ hơn ngần này = thiết bị mất kết nối → trạng thái KHÔNG RÕ.
+uint32_t staleMs() { return max<uint32_t>(10000, (uint32_t)max(0, g_cfg.pollMs) * 5); }
 
 /// Chính sách thật sự áp dụng cho chân ch (file > LossOffSec cũ > giữ nguyên).
 Pol effective(int ch) {
@@ -95,10 +173,12 @@ Pol effective(int ch) {
 }
 
 /// Đọc một chính sách từ JSON (API / file). "" = hợp lệ, còn lại câu báo lỗi tiếng Việt (hiện trên GatewayApp).
-String parse(JsonObjectConst o, Pol& p, int& ch) {
-  ch = o["Ch"] | 0;
-  String w = "DO" + String(ch);
-  if (ch < 1 || ch > 8) return "Chân DO phải từ 1 đến 8.";
+String parse(JsonObjectConst o, Pol& p, int& ch, String& out) {
+  out = o["Out"] | ""; out.trim();
+  ch = out.length() ? 0 : (o["Ch"] | 0);
+  String w = out.length() ? out : "DO" + String(ch);
+  if (out.length()) { if (!fieldOutput(out)) return w + ": không phải field ghi được của thiết bị RS485 / Modbus TCP trong cấu hình."; }
+  else if (ch < 1 || ch > 8) return "Chân DO phải từ 1 đến 8.";
   int m = modeOf(o["Mode"] | "hold");
   if (m < 0) return w + ": kiểu không hợp lệ.";
   p = Pol(); p.set = true; p.mode = (OMode)m;
@@ -113,7 +193,10 @@ String parse(JsonObjectConst o, Pol& p, int& ch) {
       break;
     case OMode::Follow:
       p.di = o["Di"] | 0; p.invert = o["Invert"] | false;
-      if (p.di < 1 || p.di > 8) return w + ": chân DI phải từ 1 đến 8.";
+      if (o["Field"].is<const char*>()) {   // follow theo field (vd cảm biến hiện diện RS485, trạng thái PLC)
+        p.di = 0; p.field = o["Field"] | ""; p.field.trim();
+        if (!fieldReadable(p.field)) return w + ": follow theo \"" + p.field + "\" — không có trong cấu hình (hoặc là field chỉ ghi).";
+      } else if (p.di < 1 || p.di > 8) return w + ": chân DI phải từ 1 đến 8.";
       break;
     case OMode::Threshold: {
       p.field = o["Field"] | ""; p.field.trim();
@@ -161,6 +244,13 @@ String parse(JsonObjectConst o, Pol& p, int& ch) {
   p.needHold = o["NeedHold"] | false;
   if (p.needHold && p.need.empty()) return w + ": \"tự tắt khi mất điều kiện\" cần ít nhất một điều kiện.";
   for (JsonVariantConst b : o["Block"].as<JsonArrayConst>()) {
+    if (b.is<const char*>()) {   // đầu ra field của thiết bị ngoài
+      String k = b | ""; k.trim();
+      if (k == out || !fieldOutput(k)) return w + ": liên động \"" + k + "\" phải là đầu ra khác (field ghi được của thiết bị RS485 / Modbus TCP).";
+      bool dup = false; for (auto& x : p.blockF) dup |= x == k;
+      if (!dup) p.blockF.push_back(k);
+      continue;
+    }
     int c = b | 0;
     if (c < 1 || c > 8 || c == ch) return w + ": liên động phải là DO khác (1 đến 8).";
     p.block |= 1 << (c - 1);
@@ -176,7 +266,11 @@ String parse(JsonObjectConst o, Pol& p, int& ch) {
     if (!t["Off"].isNull()) { k.off = hhmm(t["Off"] | ""); if (k.off < 0) return w + ": giờ tắt hẹn giờ phải dạng HH:MM."; }
     if (k.on < 0 && k.off < 0) return w + ": mốc hẹn giờ cần giờ bật hoặc giờ tắt.";
     if (k.on == k.off) return w + ": giờ bật và giờ tắt của hẹn giờ phải khác nhau.";
-    if (!t["Days"].isNull()) {
+    if (!t["Date"].isNull()) {   // chạy 1 lần
+      k.day = parseDate(t["Date"] | "");
+      if (k.day < 0) return w + ": ngày hẹn giờ phải dạng YYYY-MM-DD.";
+      if (t["Days"].as<JsonArrayConst>().size()) return w + ": hẹn giờ 1 lần không kèm ngày lặp lại.";
+    } else if (!t["Days"].isNull()) {
       k.days = 0;
       for (JsonVariantConst dv : t["Days"].as<JsonArrayConst>()) { int dd = dv | 0; if (dd < 1 || dd > 7) return w + ": ngày hẹn giờ phải từ 1 (thứ Hai) đến 7 (Chủ nhật)."; k.days |= 1 << (dd - 1); }
       if (!k.days) return w + ": hẹn giờ phải chọn ít nhất một ngày.";
@@ -196,13 +290,14 @@ String guardText(const Pol& p) {
   String s;
   for (auto& k : p.need) s += (s.length() ? " và " : "chỉ bật khi ") + condText(k);
   if (p.needHold) s += " (mất điều kiện → tắt)";
-  if (p.block) { s += s.length() ? "; " : ""; s += "không cùng"; for (int j = 0; j < 8; j++) if (p.block & (1 << j)) s += " DO" + String(j + 1); }
+  if (p.block || !p.blockF.empty()) { s += s.length() ? "; " : ""; s += "không cùng"; for (int j = 0; j < 8; j++) if (p.block & (1 << j)) s += " DO" + String(j + 1); for (auto& k : p.blockF) s += " " + k; }
   if (p.maxOnSec) { s += s.length() ? "; " : ""; s += "tự tắt sau " + String(p.maxOnSec) + " s"; }
   for (auto& k : p.timer) {
     s += s.length() ? "; " : ""; s += "hẹn giờ";
     if (k.on >= 0) s += " bật " + fmtHm(k.on);
     if (k.off >= 0) s += " tắt " + fmtHm(k.off);
-    if (k.days != 0x7F) { s += " ("; for (int j = 0; j < 7; j++) if (k.days & (1 << j)) s += j == 6 ? "CN" : "T" + String(j + 2); s += ")"; }
+    if (k.day >= 0) s += " (1 lần " + fmtDate(k.day) + ")";
+    else if (k.days != 0x7F) { s += " ("; for (int j = 0; j < 7; j++) if (k.days & (1 << j)) s += j == 6 ? "CN" : "T" + String(j + 2); s += ")"; }
   }
   return s;
 }
@@ -219,11 +314,13 @@ String failedCond(int i, const Pol& p, uint8_t di) {
   return "điều kiện";
 }
 
-void toJson(int ch, const Pol& p, JsonObject o) {
-  o["Ch"] = ch + 1; o["Mode"] = kModes[(int)p.mode]; o["DelaySec"] = p.delaySec;
+/// ch: chỉ số DO (0..7) — hoặc out ≠ "" cho đầu ra field.
+void toJson(int ch, const Pol& p, JsonObject o, const String& out = String()) {
+  if (out.length()) o["Out"] = out; else o["Ch"] = ch + 1;
+  o["Mode"] = kModes[(int)p.mode]; o["DelaySec"] = p.delaySec;
   switch (p.mode) {
     case OMode::Schedule: o["From"] = fmtHm(p.fromMin); o["To"] = fmtHm(p.toMin); break;
-    case OMode::Follow: o["Di"] = p.di; o["Invert"] = p.invert; break;
+    case OMode::Follow: if (p.di) o["Di"] = p.di; else o["Field"] = p.field; o["Invert"] = p.invert; break;
     case OMode::Threshold: o["Field"] = p.field; o["On"] = p.on; o["Off"] = p.off; o["MaxAgeSec"] = p.maxAgeSec; break;
     case OMode::Cycle: o["OnSec"] = p.onSec; o["OffSec"] = p.offSec; break;
     default: break;
@@ -237,7 +334,7 @@ void toJson(int ch, const Pol& p, JsonObject o) {
     }
     if (p.needHold) o["NeedHold"] = true;
   }
-  if (p.block) { JsonArray a = o["Block"].to<JsonArray>(); for (int j = 0; j < 8; j++) if (p.block & (1 << j)) a.add(j + 1); }
+  if (p.block || !p.blockF.empty()) { JsonArray a = o["Block"].to<JsonArray>(); for (int j = 0; j < 8; j++) if (p.block & (1 << j)) a.add(j + 1); for (auto& k : p.blockF) a.add(k); }
   if (p.maxOnSec) o["MaxOnSec"] = p.maxOnSec;
   if (!p.timer.empty()) {
     JsonArray a = o["Timer"].to<JsonArray>();
@@ -245,7 +342,8 @@ void toJson(int ch, const Pol& p, JsonObject o) {
       JsonObject t = a.add<JsonObject>();
       if (k.on >= 0) t["On"] = fmtHm(k.on);
       if (k.off >= 0) t["Off"] = fmtHm(k.off);
-      if (k.days != 0x7F) { JsonArray dd = t["Days"].to<JsonArray>(); for (int j = 0; j < 7; j++) if (k.days & (1 << j)) dd.add(j + 1); }
+      if (k.day >= 0) { t["Date"] = fmtDate(k.day); t["Days"].to<JsonArray>(); }
+      else if (k.days != 0x7F) { JsonArray dd = t["Days"].to<JsonArray>(); for (int j = 0; j < 7; j++) if (k.days & (1 << j)) dd.add(j + 1); }
     }
   }
 }
@@ -257,7 +355,7 @@ String describe(const Pol& p) {
     case OMode::Off: return "tắt";
     case OMode::On: return "bật";
     case OMode::Schedule: return "bật " + fmtHm(p.fromMin) + " → tắt " + fmtHm(p.toMin);
-    case OMode::Follow: return String(p.invert ? "ngược " : "theo ") + "DI" + String(p.di);
+    case OMode::Follow: return String(p.invert ? "ngược " : "theo ") + (p.di ? "DI" + String(p.di) : p.field);
     case OMode::Threshold: return p.field + (p.on < p.off ? " ≤ " : " ≥ ") + String(p.on, 2) + " bật, " + (p.on < p.off ? "≥ " : "≤ ") + String(p.off, 2) + " tắt";
     case OMode::Cycle: return "bật " + String(p.onSec) + " s / nghỉ " + String(p.offSec) + " s";
   }
@@ -277,14 +375,38 @@ bool saveFile(const JsonDocument& d) {
 /// Áp tài liệu {Rev,TzMin,Do:[…]} vào bộ nhớ. "" = ok.
 String applyDoc(JsonObjectConst d, bool strict) {
   Pol np[8]; int tz = d["TzMin"] | 420;
+  std::vector<FOut> nf;
   if (tz < -720 || tz > 840) return "Múi giờ không hợp lệ.";
   for (JsonObjectConst o : d["Do"].as<JsonArrayConst>()) {
-    Pol p; int ch; String e = parse(o, p, ch);
+    Pol p; int ch; String out; String e = parse(o, p, ch, out);
     if (e.length()) { if (strict) return e; logf("offline.json: bỏ %s", e.c_str()); continue; }
+    if (out.length()) {
+      bool dup = false; for (auto& x : nf) dup |= x.key == out;
+      if (dup) { if (strict) return out + " bị khai hai lần."; continue; }
+      if ((int)nf.size() >= kMaxFieldOuts) { if (strict) return "Tối đa " + String(kMaxFieldOuts) + " đầu ra là thiết bị RS485 / Modbus TCP."; continue; }
+      FOut f; f.key = out; f.p = p; int dot = out.indexOf('.'); f.child = out.substring(0, dot); f.field = out.substring(dot + 1);
+      nf.push_back(f);
+      continue;
+    }
     if (np[ch - 1].set && strict) return "DO" + String(ch) + " bị khai hai lần.";
     np[ch - 1] = p;
   }
+  // liên động hai chiều giữa DO và field đầu ra
+  std::map<String, FBlk> fb; std::vector<String> dbf[8];
+  auto addF = [](std::vector<String>& v, const String& k) { for (auto& x : v) if (x == k) return; v.push_back(k); };
+  for (int i = 0; i < 8; i++) for (auto& k : np[i].blockF) { addF(dbf[i], k); fb[k].d |= 1 << i; }
+  for (auto& f : nf) {
+    for (int j = 0; j < 8; j++) if (f.p.block & (1 << j)) { fb[f.key].d |= 1 << j; addF(dbf[j], f.key); }
+    for (auto& k : f.p.blockF) { addF(fb[f.key].f, k); addF(fb[k].f, f.key); }
+  }
+  std::map<String, FState> fst;
+  for (auto& f : nf) fst[f.key];
+  for (auto& kv : fb) fst[kv.first];
+  for (auto& kv : fst) fieldOutput(kv.first, &kv.second.writeOnly);   // Lock: trước OLock
   OLock l;
+  for (auto& kv : fst) { auto it = s_fst.find(kv.first); if (it != s_fst.end()) { kv.second.lastW = it->second.lastW; kv.second.wAt = it->second.wAt; } }   // giữ giá trị ghi gần nhất (field chỉ ghi)
+  s_fo.swap(nf); s_fblk.swap(fb); s_fst.swap(fst); s_fq.clear();
+  for (int i = 0; i < 8; i++) s_dblkF[i] = dbf[i];
   for (int i = 0; i < 8; i++) { s_pol[i] = np[i]; s_rt[i] = Rt(); s_guardWhy[i] = ""; s_blk[i] = 0; }
   for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (np[i].block & (1 << j)) { s_blk[i] |= 1 << j; s_blk[j] |= 1 << i; }   // liên động hai chiều
   s_fieldOk = 0;   // chân có điều kiện theo giá trị: chưa tính → coi như chưa thoả (task io tính lại sau ≤ 500 ms)
@@ -295,6 +417,20 @@ String applyDoc(JsonObjectConst d, bool strict) {
 }
 
 bool inWindow(int m, int from, int to) { return from < to ? (m >= from && m < to) : (m >= from || m < to); }
+
+/// Trạng thái field đầu ra (đang giữ OLock): 1 bật, 0 tắt, -1 không rõ.
+int8_t fstate(const String& k) { auto it = s_fst.find(k); return it == s_fst.end() ? -1 : it->second.st; }
+FOut* fout(const String& k) { for (auto& f : s_fo) if (f.key == k) return &f; return nullptr; }
+
+/// Xếp lệnh ghi field (đang giữ OLock). retry = false: hẹn giờ — ghi ngay, không chờ 5 s.
+void fwant(FOut& f, double v, const String& why, uint32_t now, bool retry = true) {
+  int8_t cur = fstate(f.key);
+  if (cur >= 0 && (cur != 0) == (v != 0)) return;
+  if (retry && now - f.lastTry < 5000 && f.lastVal == v) return;   // vừa thử cùng giá trị: chờ đọc lại, không dồn lệnh
+  f.lastTry = now; f.lastVal = v;
+  for (auto& q : s_fq) if (q.child == f.child && q.field == f.field) { q.v = v; q.why = why; return; }
+  if (s_fq.size() < 16) s_fq.push_back({f.child, f.field, why, v});
+}
 }  // namespace
 
 void offlineBegin() {
@@ -315,6 +451,7 @@ void offlineGet(JsonDocument& out) {
   out["Rev"] = s_rev; out["TzMin"] = s_tzMin; out["Sha"] = s_sha;
   JsonArray a = out["Do"].to<JsonArray>();
   for (int i = 0; i < 8; i++) if (s_pol[i].set) toJson(i, s_pol[i], a.add<JsonObject>());
+  for (auto& f : s_fo) toJson(0, f.p, a.add<JsonObject>(), f.key);
   JsonArray lg = out["Legacy"].to<JsonArray>();   // LossOffSec cũ còn hiệu lực (chân chưa có trong file)
   for (int i = 0; i < 8; i++) if (!s_pol[i].set && s_legacy[i]) { JsonObject o = lg.add<JsonObject>(); o["Ch"] = i + 1; o["DelaySec"] = s_legacy[i]; }
   uint32_t downMs = 0; bool down = safetyLinkDown(downMs);
@@ -332,6 +469,15 @@ void offlineGet(JsonDocument& out) {
     String g = guardText(p); if (g.length()) o["Guard"] = g;
     if (s_guardWhy[i].length()) o["GuardWhy"] = s_guardWhy[i];
   }
+  // đầu ra field: Ch = 0 (GatewayApp cũ bỏ qua), Key = "<thiết bị>.<field>", Out = 1/0, State = -1 khi không rõ (mất kết nối)
+  for (auto& f : s_fo) {
+    JsonObject o = ca.add<JsonObject>();
+    int8_t s = fstate(f.key);
+    o["Ch"] = 0; o["Key"] = f.key; o["Mode"] = kModes[(int)f.p.mode]; o["Active"] = f.rt.active; o["Manual"] = f.rt.manual;
+    o["Out"] = s > 0 ? 1 : 0; o["State"] = s; o["Text"] = describe(f.p); o["Note"] = f.rt.note;
+    String g = guardText(f.p); if (g.length()) o["Guard"] = g;
+    if (f.why.length()) o["GuardWhy"] = f.why;
+  }
 }
 
 void offlineCloud(JsonObject out) {
@@ -340,6 +486,7 @@ void offlineCloud(JsonObject out) {
   JsonArray a = out["do"].to<JsonArray>();
   for (int i = 0; i < 8; i++) if (s_pol[i].set) toJson(i, s_pol[i], a.add<JsonObject>());
   for (int i = 0; i < 8; i++) if (!s_pol[i].set && s_legacy[i]) { JsonObject o = a.add<JsonObject>(); o["Ch"] = i + 1; o["Mode"] = "off"; o["DelaySec"] = s_legacy[i]; }
+  for (auto& f : s_fo) toJson(0, f.p, a.add<JsonObject>(), f.key);
 }
 
 String offlineGuard(uint8_t cur, uint8_t next, String& why) {
@@ -360,8 +507,76 @@ String offlineGuard(uint8_t cur, uint8_t next, String& why) {
       why = "DO" + String(i + 1) + ": liên động — DO" + String(j + 1) + " đang bật";
       s_guardWhy[i] = why; return "logic_interlock";
     }
+    for (auto& k : s_dblkF[i]) {   // liên động với thiết bị RS485/TCP: đang bật HOẶC không rõ (mất kết nối) → không bật
+      int8_t st = fstate(k);
+      if (st == 0) continue;
+      why = "DO" + String(i + 1) + ": liên động — " + (st > 0 ? k + " đang bật" : "không rõ trạng thái " + k + " (mất kết nối thiết bị)");
+      s_guardWhy[i] = why; return "logic_interlock";
+    }
   }
   return "";
+}
+
+String offlineGuardField(const String& key, double v, bool byLogic, String& why) {
+  if (v == 0) return "";   // TẮT luôn được phép
+  uint8_t di = ioDi(), d = ioDo();
+  OLock l;
+  if (fstate(key) > 0) return "";   // đang bật: gửi lại / đổi mức không phải "bật mới"
+  FOut* f = fout(key);
+  if (f) {
+    if (byLogic && safeMode()) { why = key + ": chế độ an toàn — không bật"; f->why = why; return "safe_mode"; }
+    if (!diCondsOk(f->p, di) || !f->fieldOk) {
+      String fc;
+      for (auto& k : f->p.need) if (k.isDi && (((di >> (k.di - 1)) & 1) != k.is)) { fc = condText(k); break; }
+      if (!fc.length()) for (auto& k : f->p.need) if (!k.isDi) { fc = condText(k) + " (hoặc mất số liệu)"; break; }
+      why = key + ": chưa đủ điều kiện để bật — " + fc;
+      f->why = why; return "logic_need";
+    }
+  }
+  auto it = s_fblk.find(key);
+  if (it != s_fblk.end()) {
+    if (d & it->second.d) {
+      int j = 0; while (j < 8 && !((d & it->second.d) & (1 << j))) j++;
+      why = key + ": liên động — DO" + String(j + 1) + " đang bật";
+      if (f) f->why = why;
+      return "logic_interlock";
+    }
+    for (auto& k : it->second.f) {
+      int8_t st = fstate(k);
+      if (st == 0) continue;
+      why = key + ": liên động — " + (st > 0 ? k + " đang bật" : "không rõ trạng thái " + k + " (mất kết nối thiết bị)");
+      if (f) f->why = why;
+      return "logic_interlock";
+    }
+  }
+  return "";
+}
+
+void offlineFieldWritten(const String& key, double v, bool byLogic) {
+  OLock l;
+  auto it = s_fst.find(key);
+  if (it == s_fst.end()) return;
+  it->second.lastW = v; it->second.wAt = millis(); it->second.st = v != 0;
+  FOut* f = fout(key);
+  if (f && !byLogic && f->rt.active && !f->rt.manual) {
+    f->rt.manual = true; f->rt.note = "đã thao tác tay — logic nhường tới khi có mạng lại";
+    logf("%s đổi tay lúc đang chạy logic mất mạng → nhường", key.c_str());
+  }
+}
+
+void offlineDrainWrites() {
+  std::vector<FWrite> q;
+  { OLock l; q.swap(s_fq); }
+  for (auto& w : q) {
+    String e = engineWrite(w.child, w.field, w.v, false, true);
+    String key = w.child + "." + w.field;
+    OLock l;
+    FOut* f = fout(key);
+    if (!f) continue;
+    f->why = key + ": " + w.why + (e.length() ? " — không thực hiện: " + e : String(""));
+    logf("Chương trình logic: %s = %g (%s)%s", key.c_str(), w.v, w.why.c_str(), e.length() ? (" lỗi " + e).c_str() : "");
+    if (!e.length()) cloudExpedite();
+  }
 }
 
 String offlinePut(JsonObjectConst in, uint32_t& rev, const String& via) {
@@ -370,9 +585,15 @@ String offlinePut(JsonObjectConst in, uint32_t& rev, const String& via) {
   JsonArray a = d["Do"].to<JsonArray>();
   for (JsonObjectConst o : in["Do"].as<JsonArrayConst>()) a.add(o);
   // kiểm hết trước khi ghi (parse đủ mọi lỗi), rồi mới lưu và áp
-  { Pol p; int ch; bool seen[8] = {false};
+  { Pol p; int ch; String out; bool seen[8] = {false}; std::vector<String> seenF;
     for (JsonObjectConst o : d["Do"].as<JsonArrayConst>()) {
-      String e = parse(o, p, ch); if (e.length()) return e;
+      String e = parse(o, p, ch, out); if (e.length()) return e;
+      if (out.length()) {
+        for (auto& k : seenF) if (k == out) return out + " bị khai hai lần.";
+        seenF.push_back(out);
+        if ((int)seenF.size() > kMaxFieldOuts) return "Tối đa " + String(kMaxFieldOuts) + " đầu ra là thiết bị RS485 / Modbus TCP.";
+        continue;
+      }
       if (seen[ch - 1]) return "DO" + String(ch) + " bị khai hai lần.";
       seen[ch - 1] = true;
     }
@@ -410,7 +631,7 @@ void offlineTick() {
   uint32_t now = millis();
   // giá trị cho ngưỡng: đọc TRƯỚC khi giữ IoLock (thứ tự khoá: không lấy Lock khi đang giữ IoLock)
   double val[8] = {0}; bool valOk[8] = {false};
-  Pol pol[8];
+  std::vector<Pol> pol(8);   // heap, không phải stack: task io chỉ có vài KB stack (Pol chứa String/vector)
   { OLock l; for (int i = 0; i < 8; i++) pol[i] = effective(i); }
   for (int i = 0; i < 8; i++) {
     if (pol[i].mode != OMode::Threshold) continue;
@@ -428,6 +649,64 @@ void offlineTick() {
     }
     if (ok) fieldOk |= 1 << i;
   }
+  // follow theo field của DO (mất số liệu → coi như 0)
+  bool folOn[8] = {false};
+  for (int i = 0; i < 8; i++) {
+    if (pol[i].mode != OMode::Follow || pol[i].di) continue;
+    double v; int32_t age = engineAgeMs(pol[i].field);
+    folOn[i] = age >= 0 && (uint32_t)age <= staleMs() && engineValue(pol[i].field, v) && v != 0;
+  }
+
+  // ---- ĐẦU RA FIELD (thiết bị RS485 / Modbus TCP): đọc trạng thái + điều kiện TRƯỚC khi giữ OLock (engine* lấy Lock)
+  struct FSnap { String key; Pol p; bool fieldOk = true, valOk = false, folOn = false; double val = 0; };
+  std::vector<FSnap> fs;
+  std::vector<std::pair<String, bool>> tracked;   // key, writeOnly
+  { OLock l; for (auto& f : s_fo) fs.push_back({f.key, f.p}); for (auto& kv : s_fst) tracked.push_back({kv.first, kv.second.writeOnly}); }
+  const uint32_t stale = staleMs();
+  struct RB { bool fresh = false; double v = 0; uint32_t at = 0; };
+  std::vector<RB> rb(tracked.size());
+  for (size_t k = 0; k < tracked.size(); k++) {
+    if (tracked[k].second) continue;   // chỉ ghi: không đọc lại được
+    int32_t age = engineAgeMs(tracked[k].first);
+    rb[k].fresh = age >= 0 && (uint32_t)age <= stale && engineValue(tracked[k].first, rb[k].v);
+    rb[k].at = age >= 0 ? now - (uint32_t)age : 0;
+  }
+  for (auto& f : fs) {
+    for (auto& k : f.p.need) {
+      if (k.isDi) continue;
+      double v; int32_t age = engineAgeMs(k.field);
+      if (age < 0 || (uint32_t)age > k.maxAgeSec * 1000UL || !engineValue(k.field, v) || (k.ge ? v < k.val : v > k.val)) { f.fieldOk = false; break; }
+    }
+    if (f.p.mode == OMode::Threshold) { int32_t age = engineAgeMs(f.p.field); f.valOk = age >= 0 && (uint32_t)age <= f.p.maxAgeSec * 1000UL && engineValue(f.p.field, f.val); }
+    if (f.p.mode == OMode::Follow) {
+      if (f.p.di) f.folOn = ((ioDi() >> (f.p.di - 1)) & 1) != 0;
+      else { double v; int32_t age = engineAgeMs(f.p.field); f.folOn = age >= 0 && (uint32_t)age <= stale && engineValue(f.p.field, v) && v != 0; }
+    }
+  }
+  const bool lease = leaseActive();
+  {
+    OLock l;
+    for (size_t k = 0; k < tracked.size(); k++) {
+      auto it = s_fst.find(tracked[k].first);
+      if (it == s_fst.end()) continue;   // chương trình vừa đổi
+      FState& st = it->second;
+      bool wroteRecently = st.wAt && (int32_t)(now - st.wAt) < (int32_t)stale && !std::isnan(st.lastW);   // có dấu: lần ghi ở task khác có thể mới hơn now
+      if (st.writeOnly) st.st = std::isnan(st.lastW) ? -1 : (st.lastW != 0);
+      else if (rb[k].fresh && !(wroteRecently && (int32_t)(rb[k].at - st.wAt) < 0)) st.st = rb[k].v != 0;   // kết quả đọc cũ hơn lần ghi: chưa tính
+      else if (wroteRecently) st.st = st.lastW != 0;
+      else st.st = -1;   // thiết bị không trả lời: KHÔNG RÕ
+      if (lease) st.st = st.writeOnly ? st.st : -1;   // PC giữ lease: board không đọc thiết bị ngoài
+    }
+    for (auto& f : fs) if (FOut* o = fout(f.key)) {
+      o->fieldOk = f.fieldOk;
+      int8_t st = fstate(f.key);
+      if (st > 0) { if (!o->onSince) o->onSince = now; } else if (st == 0) o->onSince = 0;
+      if (lease) { o->rt.note = "PC đang giữ quyền điều khiển (chế độ gateway) — logic thiết bị ngoài tạm dừng"; continue; }
+      // luôn chạy: mất điều kiện / chạy quá lâu → tự TẮT
+      if (st > 0 && f.p.needHold && (!diCondsOk(f.p, ioDi()) || !f.fieldOk)) fwant(*o, 0, "mất điều kiện → tự tắt", now);
+      else if (st > 0 && f.p.maxOnSec && o->onSince && (int32_t)(now - o->onSince) >= (int32_t)(f.p.maxOnSec * 1000UL)) fwant(*o, 0, "chạy quá " + String(f.p.maxOnSec) + " s → tự tắt", now);
+    }
+  }
 
   // ---- HẸN GIỜ (luôn chạy): đúng phút On → bật, đúng phút Off → tắt. Bật vẫn phải qua điều kiện + liên động.
   if (timeTrusted()) {
@@ -435,14 +714,21 @@ void offlineTick() {
     int64_t loc = (int64_t)t + (int64_t)s_tzMin * 60;
     int m = (int)((loc % 86400 + 86400) % 86400 / 60);
     int wd = (int)(((loc / 86400) % 7 + 7 + 3) % 7);   // 1970-01-01 là thứ Năm → 0 = thứ Hai
+    int32_t dn = (int32_t)(loc >= 0 ? loc / 86400 : (loc - 86399) / 86400);   // ngày (giờ địa phương) — hẹn giờ 1 lần
     if (m != s_lastMin) {
       bool first = s_lastMin < 0;
       s_lastMin = m;
       uint8_t onM = 0, offM = 0;
+      if (!first && !lease) {
+        OLock l;
+        for (auto& f : s_fo) for (auto& k : f.p.timer) {
+          if (tmrHit(k, true, m, wd, dn)) { f.lastTry = 0; fwant(f, 1, "hẹn giờ bật lúc " + fmtHm(m), now, false); }
+          if (tmrHit(k, false, m, wd, dn)) { f.lastTry = 0; fwant(f, 0, "hẹn giờ tắt lúc " + fmtHm(m), now, false); }
+        }
+      }
       if (!first) for (int i = 0; i < 8; i++) for (auto& k : pol[i].timer) {
-        if (!(k.days & (1 << wd))) continue;
-        if (k.on == m) onM |= 1 << i;
-        if (k.off == m) offM |= 1 << i;
+        if (tmrHit(k, true, m, wd, dn)) onM |= 1 << i;
+        if (tmrHit(k, false, m, wd, dn)) offM |= 1 << i;
       }
       if (onM | offM) {
         String why[8]; uint8_t from, to;
@@ -460,13 +746,20 @@ void offlineTick() {
           }
           if (to != from && !ioSetDo(to)) to = from;
         }
-        OLock l;
-        for (int i = 0; i < 8; i++) {
-          uint8_t b = 1 << i;
-          if (!((onM | offM) & b)) continue;
-          s_guardWhy[i] = "DO" + String(i + 1) + ": hẹn giờ " + ((onM & b) ? "bật" : "tắt") + " lúc " + fmtHm(m) + (why[i].length() ? " — không thực hiện: " + why[i] : String(""));
-          logf("Chương trình logic: %s", s_guardWhy[i].c_str());
+        String act;
+        {
+          OLock l;
+          for (int i = 0; i < 8; i++) {
+            uint8_t b = 1 << i;
+            if (!((onM | offM) & b)) continue;
+            s_guardWhy[i] = "DO" + String(i + 1) + ": hẹn giờ " + ((onM & b) ? "bật" : "tắt") + " lúc " + fmtHm(m) + (why[i].length() ? " — không thực hiện: " + why[i] : String(""));
+            logf("Chương trình logic: %s", s_guardWhy[i].c_str());
+            if ((from ^ to) & b || why[i].length()) act += (act.length() ? "; " : "") + s_guardWhy[i];
+          }
         }
+        // logic TẠI BIÊN đã hành động (có mạng hay không): ghi nhật ký board (kiểm chứng sau) + gửi trạng thái lên cloud ngay
+        if (act.length()) evLog("logic_act", act + (cloudLinkOk() ? String("") : String(" (đang mất mạng)")));
+        if (to != from) cloudExpedite();
       }
     }
   }
@@ -483,7 +776,9 @@ void offlineTick() {
         if (pol[i].needHold && (!diCondsOk(pol[i], di) || !((fieldOk >> i) & 1))) { off |= 1 << i; why[i] = "mất điều kiện (" + failedCond(i, pol[i], di) + ") → tự tắt"; }
         else if (pol[i].maxOnSec) {
           uint32_t last = ioDoLastChange(i);
-          if (last && now - last >= pol[i].maxOnSec * 1000UL) { off |= 1 << i; why[i] = "chạy quá " + String(pol[i].maxOnSec) + " s → tự tắt"; }
+          // so sánh CÓ DẤU: hẹn giờ vừa bật DO trong CHÍNH nhịp này thì last > now (now lấy đầu nhịp) — trừ không dấu tràn thành số rất lớn
+          // → tự tắt ngay (lỗi thật thấy trên board mcu-0.4.4-dev: bật 01:39:00, "chạy quá 30 s" cũng 01:39:00)
+          if (last && (int32_t)(now - last) >= (int32_t)(pol[i].maxOnSec * 1000UL)) { off |= 1 << i; why[i] = "chạy quá " + String(pol[i].maxOnSec) + " s → tự tắt"; }
         }
       }
     }
@@ -495,8 +790,13 @@ void offlineTick() {
         if (to != from && !ioDoWaitMs(to)) done = ioSetDo(to);   // chưa đủ thời gian tối thiểu bật/tắt: thử lại vòng sau
       }
       if (done) {
-        OLock l;
-        for (int i = 0; i < 8; i++) if ((from ^ to) & (1 << i)) { s_guardWhy[i] = "DO" + String(i + 1) + ": " + why[i]; logf("Chương trình logic: %s", s_guardWhy[i].c_str()); }
+        String act;
+        {
+          OLock l;
+          for (int i = 0; i < 8; i++) if ((from ^ to) & (1 << i)) { s_guardWhy[i] = "DO" + String(i + 1) + ": " + why[i]; logf("Chương trình logic: %s", s_guardWhy[i].c_str()); act += (act.length() ? "; " : "") + s_guardWhy[i]; }
+        }
+        evLog("logic_act", act + (cloudLinkOk() ? String("") : String(" (đang mất mạng)")));
+        cloudExpedite();
       }
     }
   }
@@ -510,9 +810,10 @@ void offlineTick() {
   bool down = safetyLinkDown(downMs) || test;
   if (!down) {
     if (s_wasDown) {
-      bool any = false; for (auto& r : s_rt) any |= r.active;
+      bool any = false; for (auto& r : s_rt) any |= r.active; for (auto& f : s_fo) any |= f.rt.active;
       if (any) logf("Có mạng lại — dừng logic khi mất mạng, DO giữ trạng thái hiện tại (0x%02X)", ioDo());
       for (auto& r : s_rt) r = Rt();
+      for (auto& f : s_fo) f.rt = Rt();
     }
     s_wasDown = false;
     return;
@@ -538,7 +839,10 @@ void offlineTick() {
         if (!timeTrusted()) { on = false; r.note = "không có giờ tin được → tắt"; }
         else { on = inWindow(localMin, p.fromMin, p.toMin); r.note = String(on ? "trong" : "ngoài") + " khung giờ (" + fmtHm(localMin) + ")"; }
         break;
-      case OMode::Follow: on = (((ioDi() >> (p.di - 1)) & 1) != 0) != p.invert; r.note = "DI" + String(p.di) + (on != p.invert ? " có" : " không"); break;
+      case OMode::Follow:
+        if (p.di) { on = (((ioDi() >> (p.di - 1)) & 1) != 0) != p.invert; r.note = "DI" + String(p.di) + (on != p.invert ? " có" : " không"); }
+        else { on = folOn[i] != p.invert; r.note = p.field + (folOn[i] ? " = 1" : " = 0 / mất số liệu"); }
+        break;
       case OMode::Threshold:
         if (!valOk[i]) { r.thr = false; on = false; r.note = "mất số liệu → tắt"; break; }
         if (p.on < p.off) { if (val[i] <= p.on) r.thr = true; else if (val[i] >= p.off) r.thr = false; }
@@ -555,6 +859,43 @@ void offlineTick() {
     r.want = on;
     ctrl |= 1 << i;
     want = on ? (want | (1 << i)) : (want & ~(1 << i));
+  }
+  for (auto& sn : fs) {
+    FOut* f = fout(sn.key);
+    if (!f || lease) continue;
+    const Pol& p = sn.p; Rt& r = f->rt;
+    if (p.mode == OMode::Hold) { r.note = ""; continue; }
+    if (!r.active) {
+      if (!test && downMs < p.delaySec * 1000UL) { r.note = "chờ " + String((p.delaySec * 1000UL - downMs + 999) / 1000) + " s"; continue; }
+      r.active = true; r.since = now; r.thr = fstate(sn.key) > 0;
+      logf("Mất mạng %lu s — %s chạy theo: %s", (unsigned long)(downMs / 1000), sn.key.c_str(), describe(p).c_str());
+    }
+    if (r.manual) continue;
+    bool on = false;
+    switch (p.mode) {
+      case OMode::Off: on = false; r.note = ""; break;
+      case OMode::On: on = true; r.note = ""; break;
+      case OMode::Schedule:
+        if (!timeTrusted()) { on = false; r.note = "không có giờ tin được → tắt"; }
+        else { on = inWindow(localMin, p.fromMin, p.toMin); r.note = String(on ? "trong" : "ngoài") + " khung giờ (" + fmtHm(localMin) + ")"; }
+        break;
+      case OMode::Follow: on = sn.folOn != p.invert; r.note = (p.di ? "DI" + String(p.di) : p.field) + (sn.folOn ? " = 1" : " = 0"); break;
+      case OMode::Threshold:
+        if (!sn.valOk) { r.thr = false; on = false; r.note = "mất số liệu → tắt"; break; }
+        if (p.on < p.off) { if (sn.val <= p.on) r.thr = true; else if (sn.val >= p.off) r.thr = false; }
+        else { if (sn.val >= p.on) r.thr = true; else if (sn.val <= p.off) r.thr = false; }
+        on = r.thr; r.note = "giá trị " + String(sn.val, 2);
+        break;
+      case OMode::Cycle: {
+        uint32_t per = p.onSec + p.offSec, ph = ((now - r.since) / 1000) % per;
+        on = ph < p.onSec; r.note = String(on ? "đang chạy" : "đang nghỉ") + " (" + String(on ? p.onSec - ph : per - ph) + " s nữa đổi)";
+        break;
+      }
+      default: break;
+    }
+    r.want = on;
+    if (fstate(sn.key) < 0 && !on) r.note += " · không rõ trạng thái thiết bị — vẫn gửi lệnh tắt";
+    fwant(*f, on ? 1 : 0, String("mất mạng: ") + kModes[(int)p.mode], now);
   }
   }   // hết OLock: KHÔNG giữ khoá logic khi lấy IoLock (localWrite giữ IoLock rồi mới gọi offlineNoteManual)
   if (!ctrl || want == cur) return;
@@ -575,7 +916,7 @@ void offlineTick() {
       next = m;
     }
     if (next != cur) {
-      if (ioSetDo(next)) logf("Logic mất mạng: DO 0x%02X → 0x%02X", cur, next);
+      if (ioSetDo(next)) { logf("Logic mất mạng: DO 0x%02X → 0x%02X", cur, next); cloudExpedite(); }
       else logf("Logic mất mạng: ghi DO 0x%02X lỗi", next);
     }
   }

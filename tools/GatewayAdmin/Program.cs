@@ -27,6 +27,21 @@ static class Program
             var gw = j >= 0 && j + 1 < args.Length ? args[j + 1] : "";
             form.Shown += async (_, _) => { await RelayTest.RunAsync(form, args[i + 1], gw); form.Close(); };
         }
+        // --rpcget KQ.txt --gw site/device --path /api/events: đọc một route GET của gateway qua relay cloud (cần "Hỗ trợ từ xa" bật)
+        var rg = Array.IndexOf(args, "--rpcget");
+        if (rg >= 0 && rg + 1 < args.Length)
+        {
+            string A(string n) { var x = Array.IndexOf(args, n); return x >= 0 && x + 1 < args.Length ? args[x + 1] : ""; }
+            form.Shown += async (_, _) =>
+            {
+                var gw = A("--gw").Split('/');
+                string text;
+                try { var (st, body) = await form.Api.RpcAsync(gw[0], gw[1], "GET", A("--path"), ""); text = $"HTTP {st}" + Environment.NewLine + body; }
+                catch (Exception e) { text = "FAIL " + AdminApi.Explain(e); }
+                File.WriteAllText(args[rg + 1], text);
+                form.Close();
+            };
+        }
         // --logicpropose KQ.txt --gw site/device --text-file FILE [--note "…"]: kiểm text + gửi đề xuất logic (đúng đường cửa sổ 📝 Logic)
         var lp = Array.IndexOf(args, "--logicpropose");
         if (lp >= 0 && lp + 1 < args.Length)
