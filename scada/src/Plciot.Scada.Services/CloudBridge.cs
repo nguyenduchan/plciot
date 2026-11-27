@@ -125,13 +125,11 @@ public sealed class CloudBridge : IAsyncDisposable
 
     bool ValidateServerCert(MqttClientCertificateValidationEventArgs ctx)
     {
-        var pin = _cfg.CloudPinSha256.Replace(":", "").Replace(" ", "");
-        if (pin.Length > 0)
+        if (CloudPins.Parse(_cfg.CloudPinSha256).Length > 0)
         {
-            // ghim chứng chỉ: chấp nhận đúng chứng chỉ này (kể cả tự ký), từ chối mọi chứng chỉ khác
+            // ghim chứng chỉ: chấp nhận đúng các chứng chỉ trong danh sách (đang dùng + dự phòng, kể cả tự ký), từ chối mọi chứng chỉ khác
             using var cert = new X509Certificate2(ctx.Certificate);
-            return string.Equals(Convert.ToHexString(cert.GetCertHash(System.Security.Cryptography.HashAlgorithmName.SHA256)),
-                pin, StringComparison.OrdinalIgnoreCase);
+            return CloudPins.Matches(_cfg.CloudPinSha256, Convert.ToHexString(cert.GetCertHash(System.Security.Cryptography.HashAlgorithmName.SHA256)));
         }
         return ctx.SslPolicyErrors == System.Net.Security.SslPolicyErrors.None;
     }

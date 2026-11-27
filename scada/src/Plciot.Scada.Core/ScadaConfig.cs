@@ -172,7 +172,7 @@ public sealed class ScadaConfig
     public string CloudWsPath { get; set; } = "/";
     public string CloudUser { get; set; } = "gw";
     public string CloudPassword { get; set; } = "";
-    /// <summary>SHA-256 (hex) của chứng chỉ máy chủ; trống = xác thực chuỗi chứng chỉ thông thường. Dùng cho chứng chỉ tự ký.</summary>
+    /// <summary>SHA-256 (hex) của chứng chỉ máy chủ, nhiều cái cách nhau dấu phẩy (đang dùng + dự phòng, xem <see cref="CloudPins"/>); trống = xác thực chuỗi chứng chỉ thông thường. Dùng cho chứng chỉ tự ký.</summary>
     public string CloudPinSha256 { get; set; } = "";
     /// <summary>Nhịp tim: telemetry KHÔNG đổi chỉ gửi lại sau khoảng này (giữ webapp thấy gateway còn sống).</summary>
     public int CloudTelemetryMinMs { get; set; } = 1000;

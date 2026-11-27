@@ -87,7 +87,7 @@ static class Program
     }
 
     /// <summary>
-    ///   GatewayApp.exe --updatetest KQ.txt   không giao diện: hỏi VPS bản mới → tải → kiểm sha256 → cài → tự mở lại (cũng với --updatetest). Ghi kết quả từng bước vào KQ.txt.
+    ///   GatewayApp.exe --updatetest KQ.txt   không giao diện: hỏi VPS bản mới → tải → kiểm sha256 + chữ ký → cài → tự mở lại (cũng với --updatetest). Ghi kết quả từng bước vào KQ.txt.
     /// </summary>
     static void UpdateTest(string result)
     {
@@ -98,7 +98,7 @@ static class Program
         Log($"co ban moi {info.Version} ({info.Size} bytes) apiLevel={info.ApiLevel} breaking={info.Breaking}");
         var (err, stage) = AppUpdate.DownloadAsync(server, info, _ => { }).GetAwaiter().GetResult();
         if (err != null || stage == null) { Log("LOI tai: " + err); return; }
-        Log("da tai + kiem sha256, goi trinh cai");
+        Log("da tai + kiem sha256 + chu ky, goi trinh cai");
         // "bad": cố ý làm hỏng file chạy trong gói để thử đường tự quay về bản cũ của trình cài
         var bad = RunOptions.Args.Contains("bad");
         if (bad) File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(stage, Path.GetFileName(Environment.ProcessPath!)), true);   // exe hợp lệ nhưng thoát ngay = giả lập crash lúc khởi động

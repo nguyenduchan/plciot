@@ -86,6 +86,14 @@ export function withSchema(obj) {
   return { schema: SCHEMA_VERSION, ...obj };
 }
 
+/**
+ * Dấu vân tay chứng chỉ broker tự ký được ghim: MQTT_PUBLIC_PIN_SHA256 = "<đang phục vụ>,<dự phòng>" (SHA-256 hex, bỏ ":"/khoảng trắng).
+ * Cái ĐẦU TIÊN phải là chứng chỉ HAProxy đang phục vụ (gateway cũ chỉ đọc pinSha256 = cái đầu). Đổi chứng chỉ: docs/MQTT-CERT-ROTATION.md.
+ */
+export function mqttPins() {
+  return [...new Set((process.env.MQTT_PUBLIC_PIN_SHA256 || '').split(/[,;]/).map((p) => p.replace(/[:\s]/g, '').toLowerCase()).filter(Boolean))];
+}
+
 /** Endpoint công khai trả cho partner/firmware khi provision. */
 export function mqttPublicEndpoints(shard = 0) {
   const host = process.env.MQTT_PUBLIC_HOST || process.env.MQTT_DOMAIN || '';
@@ -96,8 +104,10 @@ export function mqttPublicEndpoints(shard = 0) {
     || (host ? `wss://${host}` : (process.env.WEBAPP_PUBLIC_URL || '').replace(/^https/i, 'wss').replace(/\/$/, '') + '-mqtt');
   return {
     host: host || null,
-    /** SHA-256 (hex, không dấu :) của chứng chỉ TLS broker khi tự ký; gateway ghim đúng chứng chỉ này (CloudPinSha256). Rỗng = chứng chỉ CA thật. */
-    pinSha256: (process.env.MQTT_PUBLIC_PIN_SHA256 || '').replace(/[:\s]/g, '').toLowerCase() || null,
+    /** SHA-256 (hex, không dấu :) của chứng chỉ TLS broker ĐANG phục vụ khi tự ký (gateway cũ ghim đúng cái này). Rỗng = chứng chỉ CA thật. */
+    pinSha256: mqttPins()[0] || null,
+    /** Mọi chứng chỉ được ghim (đang phục vụ + dự phòng): gateway mới ghim cả danh sách và cập nhật mỗi lần đồng bộ cấu hình (HTTPS). */
+    pins: mqttPins().length ? mqttPins() : null,
     mqtts: host ? `mqtts://${host}:${mqttsPort}` : (process.env.MQTT_PUBLIC_MQTTS || null),
     wss: process.env.MQTT_PUBLIC_WSS || (host ? `wss://${host}/mqtt${wssSuffix}` : null),
     /** Listener nội bộ Docker — không đưa cho thiết bị ngoài. */

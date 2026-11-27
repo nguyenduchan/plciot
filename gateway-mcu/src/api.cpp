@@ -142,13 +142,20 @@ void hLogin() {
   bool newly = false;
   String why;
   if (st != 2 && web.length() && cloudOwnsBoard(web, why)) { addAdmin(pk, name, "webapp", true); newly = true; st = 2; }   // chủ board xác nhận: dùng ngay
-  if (st == 0) {
-    if (windowOpen()) {
-      bool first = activeAdmins() == 0;   // chưa có PC quản trị (mới / vừa reset): dùng ngay
-      addAdmin(pk, name, "BOOT", first);
-      if (first) { newly = true; st = 2; } else { st = 1; remain = PAIR_WAIT_MS / 60000; }
-    } else { err(web.length() ? (why.length() ? why : String("not_owner")) : String("not_paired"), 403); return; }
+  // Người cầm board được tin (mô hình: chỉ chống tấn công từ internet): nhấn BOOT (hoặc board mới chưa có PC) → PC này dùng NGAY,
+  // không cần gì từ PC cũ (bán/chuyển board). Board ĐANG CÓ CHỦ (PC quản trị khác) → PC lạ = người mới: phải đồng ý XOÁ dữ liệu chủ cũ
+  // (Wipe=true; thiếu → wipe_required để GatewayApp hỏi trước) — không lộ cấu hình/nhật ký/chương trình của chủ cũ. Giữ mạng + khoá danh tính.
+  bool wiped = false;
+  if (st != 2 && windowOpen()) {
+    if (activeAdmins() > 0) {
+      if (!(d["Wipe"] | false)) { err("wipe_required", 409); return; }
+      storeWipeOwner(); wiped = true;
+      evLog("owner_wiped", "PC lạ \"" + name + "\" ghép bằng nút BOOT: đã xoá dữ liệu chủ cũ", false);
+      s_restartAt = millis() + 1500;   // trả lời xong mới khởi động lại (RAM còn trạng thái của chủ cũ)
+    }
+    addAdmin(pk, name, "BOOT", true); newly = true; st = 2;
   }
+  if (st == 0) { err(web.length() ? (why.length() ? why : String("not_owner")) : String("not_paired"), 403); return; }
   if (st == 1) {   // đang chờ: PC quản trị cũ đồng ý, chủ board xác nhận webapp, hoặc hết 24 giờ
     JsonDocument o; o["Ok"] = false; o["Err"] = "pair_pending"; o["RemainMin"] = remain; o["Running"] = g_running;
     String s; serializeJson(o, s); send(403, s); return;
@@ -158,7 +165,7 @@ void hLogin() {
   s_sessions.push_back({hex(r, sizeof r), now, pk});
   logf("Admin \"%s\" đăng nhập từ %s (HTTPS)", name.c_str(), q_->ip.toString().c_str());
   evLog("pc_login", "PC quản trị \"" + name + "\" đăng nhập từ " + q_->ip.toString());
-  JsonDocument o; o["Ok"] = true; o["Token"] = s_sessions.back().token; o["Paired"] = newly;
+  JsonDocument o; o["Ok"] = true; o["Token"] = s_sessions.back().token; o["Paired"] = newly; if (wiped) o["Wiped"] = true;
   String s; serializeJson(o, s); send(200, s);
 }
 
@@ -513,5 +520,5 @@ void apiLoop() {
   s_http.handle(dispatch);
   udpLoop();
   tickPending();
-  if (s_restartAt && (int32_t)(millis() - s_restartAt) >= 0) { logf("Khởi động lại để áp mạng mới"); enterSafeState("đổi mạng"); delay(100); ESP.restart(); }
+  if (s_restartAt && (int32_t)(millis() - s_restartAt) >= 0) { logf("Khởi động lại (đổi mạng / đổi chủ)"); enterSafeState("khởi động lại"); delay(100); ESP.restart(); }
 }

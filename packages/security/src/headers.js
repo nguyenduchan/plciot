@@ -15,6 +15,35 @@ export function securityHeaders(_req, res, next) {
   next();
 }
 
+/** Trình duyệt tới qua http hay https: Cloudflare (Tunnel) ghi CF-Visitor {"scheme":"http|https"}; proxy khác dùng X-Forwarded-Proto. Không qua proxy → null. */
+function visitorScheme(req) {
+  const cf = req.headers['cf-visitor'];
+  if (cf) { try { const s = JSON.parse(cf).scheme; if (s === 'http' || s === 'https') return s; } catch { /* header hỏng: xét tiếp */ } }
+  const xf = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  return xf === 'http' || xf === 'https' ? xf : null;
+}
+
+/**
+ * Chống hạ cấp xuống HTTP (SSL-strip) khi chạy sau Cloudflare/proxy: người dùng gõ http://… → 301 sang https; lệnh ghi (POST/PUT…)
+ * qua http bị từ chối (không chuyển hướng để mật khẩu/token không đi lần thứ hai qua đường hở). Trả lời qua https kèm HSTS
+ * (HSTS_MAX_AGE giây, mặc định 1 năm; 0 = tắt) → trình duyệt tự dùng https từ lần sau, kẻ giữa đường không chen được bản http.
+ * Truy cập thẳng không qua proxy (server cài trong LAN, http://192.168…) không bị ảnh hưởng. Tắt hẳn: HTTPS_REDIRECT=0.
+ */
+export function httpsOnly(req, res, next) {
+  if (process.env.HTTPS_REDIRECT === '0') return next();
+  const scheme = visitorScheme(req);
+  if (scheme === 'http') {
+    const host = String(req.headers.host || '').replace(/[^a-z0-9.:\-[\]]/gi, '');
+    if (host && (req.method === 'GET' || req.method === 'HEAD')) return res.redirect(301, `https://${host}${req.originalUrl || req.url}`);
+    return res.status(403).json({ error: 'https_required' });
+  }
+  if (scheme === 'https') {
+    const age = Number.parseInt(process.env.HSTS_MAX_AGE ?? '31536000', 10);
+    if (age > 0) res.setHeader('Strict-Transport-Security', `max-age=${age}`);
+  }
+  next();
+}
+
 export function buildCorsOptions() {
   const raw = process.env.CORS_ORIGINS || process.env.WEBAPP_PUBLIC_URL || '';
   const allowed = raw.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);

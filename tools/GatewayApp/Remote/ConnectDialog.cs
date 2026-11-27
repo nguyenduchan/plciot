@@ -124,9 +124,16 @@ sealed class ConnectDialog : Form
         finally { if (!IsDisposed) _scan.Enabled = true; }
     }
 
-    /// <summary>Board lạ: người dùng đối chiếu mã phần cứng (in ra cổng USB, trang trạng thái http://IP/, nên dán tem) — chỉ hỏi một lần.</summary>
-    bool ConfirmBoard(string hw) =>
-        Ask.Yes(this, $"Lần đầu kết nối board này qua kênh mã hoá.\n\nMã phần cứng: {hw}\n\nĐối chiếu với mã in trên tem board (hoặc trang http://{_host.Text.Trim()}/). Đúng thì tin cậy — lần sau PC tự kiểm, board giả mạo sẽ bị từ chối.", "Tin cậy board?");
+    /// <summary>Board lạ trong LAN: không hỏi (LAN được tin, xem RemoteClient.ConnectMcuAsync).</summary>
+    static bool ConfirmBoard(string hw) => true;
+
+    /// <summary>Board đang thuộc chủ khác (bán / chuyển board): hỏi trước khi board xoá dữ liệu chủ cũ.</summary>
+    internal static bool ConfirmWipe(IWin32Window? owner) =>
+        Ask.Yes(owner, "Board này đang thuộc chủ khác (đã ghép với PC quản trị khác).\n\n" +
+            "Để dùng trên PC này, board sẽ XOÁ toàn bộ dữ liệu của chủ cũ: cấu hình thiết bị, kết nối cloud, chương trình logic, nhật ký, các PC quản trị cũ. " +
+            "Giữ nguyên cài đặt mạng. Board tự khởi động lại (~10 giây).\n\n" +
+            "Nếu đây là board của bạn và bạn chỉ muốn thêm PC: bấm Không, rồi khôi phục bản sao lưu GatewayApp hoặc dùng \"Đăng nhập webapp…\".\n\n" +
+            "Xoá dữ liệu cũ và dùng board?", "Board của chủ khác");
 
     async Task GoAsync(string webToken = "")
     {
@@ -140,7 +147,7 @@ sealed class ConnectDialog : Form
         try
         {
             var paired = false;
-            if (mcu) (c, paired) = await RemoteClient.ConnectMcuAsync(host, port, RemoteForm.IdentityProvider!(), ConfirmBoard, webToken);
+            if (mcu) (c, paired) = await RemoteClient.ConnectMcuAsync(host, port, RemoteForm.IdentityProvider!(), ConfirmBoard, webToken, confirmWipe: () => ConfirmWipe(this));
             else c = await RemoteClient.ConnectAsync(host, port, code);
             var cfg = await c.ConfigAsync();
             _ = await c.StateAsync();   // kiểm tra phiên dùng được trước khi mở cửa sổ

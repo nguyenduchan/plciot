@@ -96,14 +96,16 @@ public sealed partial class MainForm
         try
         {
             _cfg.Site = "truoc-khi-sua"; _cfg.CloudPassword = "mat-khau-bi-mat"; SaveCfg();
+            TrustedBoards.Add("TESTBOARDHW000000001", "192.168.1.77"); TrustedBoards.SetMode("TESTBOARDHW000000001", TrustedBoards.Standalone);   // board đã tin cậy phải theo bản sao lưu sang PC khác
             var key = Backup.CreateKey();
             await BackupNowAsync("manual", interactive: false);
             Log($"da sao luu; site tren dia={DiskSite()}; so ban={Backup.List().Count}");
             _cfg.Site = "SAU-KHI-SUA"; SaveCfg();
+            foreach (var n in new[] { "remote-boards.json", "remote-board-modes.json" }) File.Delete(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(SettingsPath))!, n));   // giả lập PC mới chưa có
             Log($"da sua; site tren dia={DiskSite()}");
             Ask.Override = true;
             await RestoreAsync(Backup.List().First(i => i.Reason == "manual").Path);
-            Log($"da khoi phuc; site trong bo nho={_cfg.Site}; tren dia={DiskSite()}; pass={ConfigStore.Load(SettingsPath).CloudPassword}; pre-restore={Backup.List().Any(i => i.Reason == "pre-restore")}");
+            Log($"da khoi phuc; site trong bo nho={_cfg.Site}; tren dia={DiskSite()}; pass={ConfigStore.Load(SettingsPath).CloudPassword}; pre-restore={Backup.List().Any(i => i.Reason == "pre-restore")}; board tin cay={TrustedBoards.Contains("TESTBOARDHW000000001")}; che do={TrustedBoards.ModeOf("TESTBOARDHW000000001")}");
             await Task.Delay(2500);   // cho cửa sổ dựng lại
             Log($"sau khi dung lai cua so; site tren dia={DiskSite()}");
         }

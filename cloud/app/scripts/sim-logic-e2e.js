@@ -115,7 +115,7 @@ const H = { 'content-type': 'application/json', authorization: `Bearer ${login.T
 const cfg = await (await fetch(`${lan}/api/config`, { headers: H })).json();
 cfg.Config = {
   ...cfg.Config, Site: 'siteA', Device: 'gw01', MqttId: MQ, Mobile: 'Control', CloudHost: '127.0.0.1', CloudPort: BPORT, CloudUser: 'gw', CloudPassword: 'x',
-  CloudPinSha256: PIN, CloudCmdKey: cmdPublicKey(), CloudSendData: true, CloudApiUrl: '',
+  CloudPinSha256: 'f'.repeat(64) + ',' + PIN, CloudCmdKey: cmdPublicKey(), CloudSendData: true, CloudApiUrl: '',   // danh sách ghim (dự phòng giả + đang dùng)
   Connections: [{ Protocol: 'ModbusRtu', Host: 'RS485', Port: 9600, Options: { parity: 'Even', difilter: '0' } }],
   Pack: [
     { Child: 'pump', Field: 'run', MqttKey: 'run', Address: 20, Protocol: 'ModbusRtu', Access: 'ReadWrite', DataType: 'Bool', Scale: 1, Params: { unit: '0' } },

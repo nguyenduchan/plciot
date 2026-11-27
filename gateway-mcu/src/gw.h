@@ -82,7 +82,8 @@ void storeBegin();
 String storeValidate(JsonObjectConst cfg);       // "" = hợp lệ, ngược lại câu báo lỗi (tiếng Việt, hiện trên GatewayApp)
 void storeApply();                               // g_raw → g_cfg
 bool storeSave();                                // g_raw → /config.json (mật khẩu cloud tách ra NVS)
-void storeReset();                               // xoá cấu hình (giữ khoá danh tính + mã kết nối)
+void storeReset();                               // xoá cấu hình + dữ liệu chủ (giữ khoá danh tính), mạng về mặc định
+void storeWipeOwner();                           // đổi chủ: xoá như storeReset nhưng GIỮ mạng; người gọi phải khởi động lại
 String secretGet(const char* key);
 void secretSet(const char* key, const String& v);
 String cloudPassword();

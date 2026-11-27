@@ -90,6 +90,29 @@ public class TlsBridgeTests
     }
 
     [Fact]
+    public async Task Pin_list_accepts_backup_certificate()
+    {
+        // danh sách ghim "khác,đúng": broker đổi sang chứng chỉ dự phòng vẫn nối được (server cấp sẵn cả hai)
+        await using var rig = new Rig();
+        rig.Cfg.CloudPinSha256 = new string('a', 64) + "," + rig.Cloud.PinSha256.ToLowerInvariant();
+        await rig.StartAsync();
+        for (var i = 0; i < 50 && rig.Engine.Cloud != CloudState.Connected; i++) await Task.Delay(100);
+        Assert.Equal(CloudState.Connected, rig.Engine.Cloud);
+    }
+
+    [Fact]
+    public void Pin_parsing_normalises_and_filters()
+    {
+        var h = new string('A', 64);
+        Assert.Equal(new[] { h.ToLowerInvariant() }, CloudPins.Parse($" {h} ,xyz,{h.ToLowerInvariant()}"));
+        Assert.Equal("", CloudPins.FromKit(null, "short"));
+        Assert.Equal(new string('b', 64), CloudPins.FromKit(null, string.Join(":", Enumerable.Repeat("bb", 32))));
+        Assert.Equal(new string('c', 64) + "," + new string('d', 64), CloudPins.FromKit(new[] { new string('c', 64), new string('D', 64) }, new string('e', 64)));
+        Assert.True(CloudPins.Matches(new string('c', 64) + "," + new string('d', 64), new string('D', 64)));
+        Assert.False(CloudPins.Matches(new string('c', 64), new string('d', 64)));
+    }
+
+    [Fact]
     public async Task Cmd_topic_is_never_sent_up_to_the_cloud()
     {
         await using var rig = new Rig();

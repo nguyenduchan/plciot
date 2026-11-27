@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace GatewayApp;
 
 /// <summary>Thông tin bản mới trên VPS (GET /api/gateway/update).</summary>
-sealed record UpdateInfo(string Version, long Size, string Sha256, int ApiLevel)
+sealed record UpdateInfo(string Version, long Size, string Sha256, int ApiLevel, string Sig = "")
 {
     /// <summary>Bản mới đổi giao thức với server (apiLevel cao hơn bản đang chạy): gateway cũ không còn chạy đúng → cập nhật bắt buộc.</summary>
     public bool Breaking => ApiLevel > AppUpdate.ApiLevel;
@@ -15,7 +15,7 @@ sealed record UpdateInfo(string Version, long Size, string Sha256, int ApiLevel)
 /// <summary>
 /// Cập nhật chính GatewayApp từ VPS. Bản build do máy lập trình tạo (cloud/scripts/publish-gateway.ps1) và đẩy lên cùng sync-vps.
 /// Version của bản đang chạy = file <c>version.txt</c> cạnh file chạy (có trong gói cập nhật). Bản dựng tay (không có version.txt) không tự hỏi cập nhật.
-/// Cài: tải zip → kiểm sha256 → giải nén ra thư mục tạm → thoát app → script chép đè (giữ server.json của máy) → mở lại với đúng tham số cũ.
+/// Cài: tải zip → kiểm sha256 + CHỮ KÝ (UpdateSignature, gói không ký/ký sai bị bỏ) → giải nén ra thư mục tạm → thoát app → script chép đè (giữ server.json của máy) → mở lại với đúng tham số cũ.
 /// </summary>
 static partial class AppUpdate
 {
@@ -40,6 +40,7 @@ static partial class AppUpdate
     {
         var local = LocalVersion;
         if (string.IsNullOrEmpty(local)) return null;
+        if (!UpdateSignature.ServerAllowed(server, out _)) return null;
         try
         {
             using var http = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(15) };
@@ -49,8 +50,10 @@ static partial class AppUpdate
             var r = d.RootElement;
             var v = r.TryGetProperty("version", out var vv) ? vv.GetString() : null;
             if (string.IsNullOrEmpty(v) || v == local || v == FailedVersion) return null;
-            return new UpdateInfo(v, r.TryGetProperty("size", out var s) ? s.GetInt64() : 0, r.TryGetProperty("sha256", out var h) ? h.GetString() ?? "" : "",
-                r.TryGetProperty("apiLevel", out var al) && al.TryGetInt32(out var lv) ? lv : 1);
+            var info = new UpdateInfo(v, r.TryGetProperty("size", out var s) ? s.GetInt64() : 0, r.TryGetProperty("sha256", out var h) ? h.GetString() ?? "" : "",
+                r.TryGetProperty("apiLevel", out var al) && al.TryGetInt32(out var lv) ? lv : 1, r.TryGetProperty("sig", out var sg) ? sg.GetString() ?? "" : "");
+            // chữ ký sai/thiếu → coi như không có bản mới (không hiện nút, không ép "bắt buộc" theo apiLevel giả)
+            return UpdateSignature.Verify(info.Sha256, info.Version, info.ApiLevel, info.Sig) ? info : null;
         }
         catch { return null; }
     }
@@ -61,6 +64,8 @@ static partial class AppUpdate
         var root = Path.Combine(Path.GetTempPath(), "GatewayApp-update");
         var zip = Path.Combine(root, $"GatewayApp-{info.Version}.zip");
         var stage = Path.Combine(root, $"stage-{info.Version}");
+        if (!UpdateSignature.ServerAllowed(server, out var why)) return ("Không cập nhật: " + why, null);
+        if (!UpdateSignature.Verify(info.Sha256, info.Version, info.ApiLevel, info.Sig)) return ("Gói cập nhật không có chữ ký hợp lệ, không cài.", null);
         try
         {
             if (Directory.Exists(root)) Directory.Delete(root, true);
@@ -80,11 +85,11 @@ static partial class AppUpdate
                     if (total > 0) progress((int)(got * 100 / total));
                 }
             }
-            if (info.Sha256.Length > 0)
+            // sha256 đã nằm trong thông điệp có chữ ký → khớp sha256 = đúng gói đã ký
+            await using (var f = File.OpenRead(zip))
             {
-                await using var f = File.OpenRead(zip);
                 var h = Convert.ToHexString(await SHA256.HashDataAsync(f)).ToLowerInvariant();
-                if (!string.Equals(h, info.Sha256, StringComparison.OrdinalIgnoreCase)) return ("Gói tải về bị hỏng (sai mã sha256), không cài.", null);
+                if (!string.Equals(h, info.Sha256, StringComparison.OrdinalIgnoreCase)) return ("Gói tải về bị hỏng hoặc bị tráo (sai mã sha256), không cài.", null);
             }
             ZipFile.ExtractToDirectory(zip, stage, true);
             if (!File.Exists(Path.Combine(stage, Path.GetFileName(Environment.ProcessPath ?? "GatewayApp.exe")))) return ("Gói cập nhật không có file chạy.", null);

@@ -272,4 +272,6 @@ public sealed class GatewayMqttConfig
     public bool UseTls { get; set; }
     /// <summary>SHA-256 (hex) chứng chỉ TLS tự ký của broker do server trao; gateway ghim đúng chứng chỉ này.</summary>
     public string? PinSha256 { get; set; }
+    /// <summary>Mọi chứng chỉ broker được ghim (đang dùng + dự phòng); server cũ không có → dùng <see cref="PinSha256"/>. Xem CloudPins.FromKit.</summary>
+    public List<string>? Pins { get; set; }
 }

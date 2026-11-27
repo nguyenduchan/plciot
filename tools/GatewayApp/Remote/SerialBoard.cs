@@ -48,8 +48,11 @@ static class SerialBoard
         throw new TimeoutException("Board không trả lời qua cáp USB.");
     }
 
-    /// <summary>Gửi Wi-Fi cho board. Trả (IP Wi-Fi của board, null) khi nối được; (null, mã lỗi) khi thất bại. Mật khẩu không ghi log.</summary>
-    public static Task<(string? Ip, string? Err)> SetWifiAsync(string port, string ssid, string password, Action<string> say) => Task.Run<(string?, string?)>(() =>
+    /// <summary>
+    /// Gửi Wi-Fi cho board. Trả (IP Wi-Fi của board, null, mã phần cứng) khi nối được; (null, mã lỗi, …) khi thất bại. Mật khẩu không ghi log.
+    /// Mã phần cứng đọc qua dây USB → ghim luôn (TrustedBoards), lần nối LAN sau không phải hỏi.
+    /// </summary>
+    public static Task<(string? Ip, string? Err, string? Hw)> SetWifiAsync(string port, string ssid, string password, Action<string> say) => Task.Run<(string?, string?, string?)>(() =>
     {
         using var sp = new SerialPort(port, 115200) { DtrEnable = false, RtsEnable = false, ReadTimeout = 500, WriteTimeout = 2000, NewLine = "\n" };
         sp.Open();
@@ -59,15 +62,16 @@ static class SerialBoard
         {
             try { hello = Request(sp, "{\"cmd\":\"info\"}", 1500); } catch (TimeoutException) { Thread.Sleep(800); }
         }
-        if (hello == null) return (null, "usb_no_reply");
+        if (hello == null) return (null, "usb_no_reply", null);
+        var hw = hello.RootElement.TryGetProperty("Hw", out var hv) ? hv.GetString() : null;
         using (hello) say($"Board {hello.RootElement.GetProperty("Version").GetString()} — đang gửi Wi-Fi \"{ssid}\" (tối đa 20 giây)…");
         using var r = Request(sp, JsonSerializer.Serialize(new { cmd = "wifi.set", Ssid = ssid, Password = password }), 30000);
         var root = r.RootElement;
         if (root.GetProperty("Ok").GetBoolean())
         {
             var ip = root.TryGetProperty("Wifi", out var w) && w.TryGetProperty("Ip", out var ipv) ? ipv.GetString() : "";
-            return (string.IsNullOrEmpty(ip) ? null : ip, string.IsNullOrEmpty(ip) ? "wifi_timeout" : null);
+            return (string.IsNullOrEmpty(ip) ? null : ip, string.IsNullOrEmpty(ip) ? "wifi_timeout" : null, hw);
         }
-        return (null, root.TryGetProperty("Err", out var e) ? e.GetString() : "unknown");
+        return (null, root.TryGetProperty("Err", out var e) ? e.GetString() : "unknown", hw);
     });
 }

@@ -96,15 +96,26 @@ bool storeSave() {
   return LittleFS.rename(kTmp, kPath);
 }
 
-void storeReset() {
+/// Xoá dữ liệu của chủ hiện tại: cấu hình (site, QR, id/khoá MQTT, thiết bị), mật khẩu cloud, chương trình logic (offline.cpp), nhật ký
+/// sự kiện (ota.cpp), dữ liệu chờ gửi bù (backfill.cpp), PC quản trị. GIỮ khoá danh tính (server nhận ra board → chuyển chủ theo người cầm máy).
+static void wipeOwnerData() {
   LittleFS.remove(kTmp);
   LittleFS.remove(kPath);
+  for (const char* f : {"/offline.json", "/offline.tmp", "/events.log", "/events.old", "/bf0.q", "/bf1.q", "/bf.pos"}) LittleFS.remove(f);
   s_nvs.remove("cloud_pw");
-  netReset();   // quên IP đã đặt vẫn tìm lại được board: về 192.168.1.200
   apiForgetAdmins();   // mọi PC admin phải ghép lại (nhấn BOOT)
   defaults();
   storeSave();
+}
+
+void storeReset() {
+  wipeOwnerData();
+  netReset();   // quên IP đã đặt vẫn tìm lại được board: về 192.168.1.200
   storeApply();
+}
+
+void storeWipeOwner() {
+  wipeOwnerData();   // GIỮ mạng (IP / Wi-Fi): PC mới đang nối qua đó. Người gọi phải khởi động lại (RAM còn trạng thái cũ).
 }
 
 // ---------------------------------------------------------------- JSON → g_cfg

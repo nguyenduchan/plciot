@@ -109,7 +109,11 @@ const { mqttPublicEndpoints } = await import('../src/contract.js');
 ok(mqttPublicEndpoints().pinSha256 === 'b2dd5c55', 'pinSha256: bỏ dấu : và khoảng trắng, chữ thường');
 const provPin = provisionDevice(db, 'acme', { site: 'plant1', device: 'gw02' });
 ok(provPin.mqtt.pinSha256 === 'b2dd5c55', 'kit provision/enroll mang pinSha256');
+process.env.MQTT_PUBLIC_PIN_SHA256 = 'AA:bb, cc dd ;aabb';
+ok(mqttPublicEndpoints().pinSha256 === 'aabb' && JSON.stringify(mqttPublicEndpoints().pins) === '["aabb","ccdd"]', 'nhiều pin: cái đầu = pinSha256 (gateway cũ), pins = cả danh sách không trùng');
+ok(JSON.stringify(provisionDevice(db, 'acme', { site: 'plant1', device: 'gw02' }).mqtt.pins) === '["aabb","ccdd"]', 'kit provision/enroll mang pins');
 delete process.env.MQTT_PUBLIC_PIN_SHA256;
+ok(mqttPublicEndpoints().pins === null, 'không đặt env → pins null');
 ok(mqttPublicEndpoints().pinSha256 === null, 'không đặt env → pinSha256 null (chứng chỉ CA thật)');
 
 // ---- migrate DB cũ: thiết bị chưa có id được cấp id ngẫu nhiên

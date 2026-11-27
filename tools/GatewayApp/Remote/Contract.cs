@@ -56,7 +56,9 @@ public sealed class ApiAdmin { public string Id { get; set; } = ""; public strin
 /// <summary>Board MCU: thử thách đăng nhập (GET /api/challenge) — Nonce dùng một lần; Window = đang mở ghép PC mới (nhấn BOOT).</summary>
 public sealed class ApiChallenge { public string Nonce { get; set; } = ""; public string Hw { get; set; } = ""; public bool Window { get; set; } }
 /// <summary>Board MCU: POST /api/login — Sig = khoá PC ký "admin-login|&lt;mã phần cứng board&gt;|&lt;Nonce&gt;". WebToken (tuỳ chọn) = phiên webapp của chủ board để ghép PC khi không nhấn được BOOT.</summary>
-public sealed class ApiKeyLogin { public string Pubkey { get; set; } = ""; public string Nonce { get; set; } = ""; public string Sig { get; set; } = ""; public string Name { get; set; } = ""; public string WebToken { get; set; } = ""; }
+public sealed class ApiKeyLogin { public string Pubkey { get; set; } = ""; public string Nonce { get; set; } = ""; public string Sig { get; set; } = ""; public string Name { get; set; } = ""; public string WebToken { get; set; } = "";
+    /// <summary>Đồng ý xoá dữ liệu chủ cũ khi ghép bằng BOOT vào board đang có chủ (board trả wipe_required nếu thiếu).</summary>
+    public bool Wipe { get; set; } }
 /// <summary>Một mạng Wi-Fi board thấy khi quét (GET /api/wifi/scan). Open = không mật khẩu.</summary>
 public sealed class ApiWifiNet { public string Ssid { get; set; } = ""; public int Rssi { get; set; } public bool Open { get; set; } }
 /// <summary>Trạng thái Wi-Fi của board (GET/PUT /api/wifi). Không bao giờ có mật khẩu. Saved = mạng đã lưu (tự nối lại khi khởi động).</summary>

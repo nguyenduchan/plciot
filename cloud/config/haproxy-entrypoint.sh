@@ -59,6 +59,29 @@ ensure_pem() {
 
 ensure_pem
 
+# Chứng chỉ DỰ PHÒNG (chỉ khi đang dùng self-signed): tạo sẵn một lần, giữ trong volume, KHÔNG phục vụ. Dấu vân tay của nó được
+# ghim sẵn trên mọi gateway (MQTT_PUBLIC_PIN_SHA256="<đang dùng>,<dự phòng>") → khi chứng chỉ đang dùng hết hạn / phải thay,
+# chỉ cần đưa bản dự phòng lên (docs/MQTT-CERT-ROTATION.md), gateway nối lại ngay, không phải đăng ký lại hay cập nhật tay.
+NEXT=/persist/mqtt-next.pem
+ensure_next() {
+  [ -f "$PERSIST" ] && cmp -s "$PERSIST" "$PEM" || return 0
+  command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl >/dev/null 2>&1 || return 0
+  if [ ! -f "$NEXT" ]; then
+    san="DNS:${DOMAIN}"
+    [ -n "${MQTT_PUBLIC_IP:-}" ] && san="${san},IP:${MQTT_PUBLIC_IP}"
+    umask 077
+    openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes -keyout /tmp/next.key -out /tmp/next.crt \
+      -subj "/CN=${DOMAIN}" -addext "subjectAltName=${san}" 2>/dev/null || return 0
+    cat /tmp/next.crt /tmp/next.key > "$NEXT" && chmod 600 "$NEXT"
+    rm -f /tmp/next.key /tmp/next.crt
+    echo "HAProxy MQTTS: đã tạo chứng chỉ dự phòng $NEXT (chưa phục vụ)"
+  fi
+  cur=$(openssl x509 -in "$PEM" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+  nxt=$(openssl x509 -in "$NEXT" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+  echo "MQTT_PUBLIC_PIN_SHA256=${cur},${nxt}   (đang dùng, dự phòng — đặt vào cloud/.env)"
+}
+ensure_next || true
+
 # Chia nhóm Mosquitto (MQTT_SHARDS, "auto" = số core − MQTT_RESERVE_CORES; phải khớp config/mqtt-entrypoint.sh):
 # mỗi nhóm k ≥ 1 có cổng mqtts nghe :8883+k (công khai = cổng gốc + k) và wss ở đường dẫn /mqtt-k, sinh tự động vào /tmp/haproxy.shards.cfg.
 # Nhóm 0 dùng cấu hình tĩnh trong haproxy.cfg (như trước). Nhóm ≥ 1 chỉ có kênh mã hoá (không có mqtt/ws thuần).

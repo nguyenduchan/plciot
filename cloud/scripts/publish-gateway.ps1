@@ -35,7 +35,7 @@ if ($apiLevel -lt 1) { throw 'Khong doc duoc AppUpdate.ApiLevel' }
 $manPath = Join-Path $out 'manifest.json'
 if (-not $Force -and (Test-Path $manPath)) {
   $old = Get-Content $manPath -Raw | ConvertFrom-Json
-  if ($old.version -eq $version -and (Test-Path (Join-Path $out $old.file))) { Write-Host "==> Gateway khong doi ($version)"; return }
+  if ($old.version -eq $version -and $old.sig -and (Test-Path (Join-Path $out $old.file))) { Write-Host "==> Gateway khong doi ($version)"; return }
 }
 
 # version.txt nằm TRONG gói: sau khi cập nhật, gateway biết mình đang ở bản nào
@@ -44,7 +44,14 @@ $zipName = "GatewayApp-$version.zip"
 $zip = Join-Path $out $zipName
 Get-ChildItem $out -Filter 'GatewayApp-*.zip' | Remove-Item -Force
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
-$man = [ordered]@{ version = $version; apiLevel = $apiLevel; file = $zipName; sha256 = (Get-Hex ([IO.File]::ReadAllBytes($zip))); size = (Get-Item $zip).Length; builtAt = (Get-Date).ToUniversalTime().ToString('o') }
+# Ký gói (khoá ~/.plciot/gw-sign.pem hoặc GW_SIGN_KEY, NGOÀI repo): gateway từ chối gói không có chữ ký khớp UpdateSignature.TrustedKeys
+$signJs = Join-Path $repo 'cloud\app\scripts\sign-gateway-release.js'
+$signed = & node $signJs sign $zip $version $apiLevel
+if ($LASTEXITCODE -ne 0) { Remove-Item -Force $zip; throw "Ky goi gateway that bai - can khoa ~/.plciot/gw-sign.pem (chep tu may phat hanh) hoac chay sync-vps -SkipGateway" }
+$signed = $signed | ConvertFrom-Json
+$trusted = Get-Content (Join-Path $repo 'tools\GatewayApp\UpdateSignature.cs') -Raw
+if (-not $trusted.Contains('"' + $signed.pub + '"')) { Remove-Item -Force $zip; throw "Khoa ky ($($signed.pub.Substring(0,24))...) khong nam trong UpdateSignature.TrustedKeys - gateway se tu choi goi nay" }
+$man = [ordered]@{ version = $version; apiLevel = $apiLevel; file = $zipName; sha256 = $signed.sha256; sig = $signed.sig; size = (Get-Item $zip).Length; builtAt = (Get-Date).ToUniversalTime().ToString('o') }
 [IO.File]::WriteAllText($manPath, ($man | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 Remove-Item -Recurse -Force $stage
 Write-Host ("==> Gateway {0} ({1} MB) -> {2}" -f $version, [math]::Round($man.size / 1MB, 1), $out)

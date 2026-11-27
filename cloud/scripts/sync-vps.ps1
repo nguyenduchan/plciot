@@ -31,9 +31,10 @@ foreach ($p in $paths) {
   if (-not (Test-Path (Join-Path $repo $p))) { throw "Thiếu thư mục: $p" }
 }
 
+$gatewayOk = $false
 if (-not $SkipGateway -and -not $WhatIf) {
   # Gateway tự hỏi VPS có bản mới không: build ở máy lập trình rồi đẩy kèm (releases/gateway/manifest.json + zip).
-  try { & (Join-Path $PSScriptRoot 'publish-gateway.ps1') }
+  try { & (Join-Path $PSScriptRoot 'publish-gateway.ps1'); $gatewayOk = $true }
   catch { Write-Warning "Bo qua build gateway: $($_.Exception.Message) (dung -SkipGateway de tat buoc nay)" }
 }
 New-Item -ItemType Directory -Force (Join-Path $repo 'releases\gateway') | Out-Null
@@ -49,6 +50,8 @@ $excludes = @(
   '--exclude=node_modules',
   '--exclude=.git'
 )
+# Không build/ký được bản gateway mới → KHÔNG đẩy releases/gateway của máy này (có thể cũ hơn VPS, không có chữ ký) đè lên VPS
+if (-not $gatewayOk) { $excludes += '--exclude=releases/gateway' }
 
 $composeArgs = @('up', '-d')
 if ($Build) { $composeArgs += '--build' }

@@ -79,7 +79,9 @@ public sealed partial class MainForm
                 if (com != null)
                 {
                     prog.Say($"Đã thấy board qua cáp USB ({com}). Đang cài Wi-Fi — PC giữ nguyên mạng (tối đa ~20 giây)…");
-                    (boardIp, err) = await SerialBoard.SetWifiAsync(com, ssid, pass, prog.Say);
+                    string? hw;
+                    (boardIp, err, hw) = await SerialBoard.SetWifiAsync(com, ssid, pass, prog.Say);
+                    if (boardIp != null && !string.IsNullOrEmpty(hw)) TrustedBoards.Add(hw, boardIp);   // mã đọc qua dây USB (tin được) → ghim sẵn, nối LAN không phải hỏi
                 }
                 else (boardIp, err) = await WifiViaHotspotAsync(ssid, pass, prog);
             }
@@ -144,7 +146,8 @@ public sealed partial class MainForm
             if (hot.Hello == null) return (null, "Không thấy board ở chế độ hotspot (192.168.4.x).");
 
             prog.Say($"Đã thấy board ở {hot.Ip}. Đang đăng nhập và gửi Wi-Fi \"{ssid}\" (tối đa 20 giây)…");
-            using var client = (await RemoteClient.ConnectMcuAsync(hot.Ip.ToString(), hot.Hello.Port, Identity(), _ => true)).Client;
+            // Hotspot của board ở ngay cạnh người cài: tin như mạng LAN (chỉ chống tấn công từ internet)
+            using var client = (await RemoteClient.ConnectMcuAsync(hot.Ip.ToString(), hot.Hello.Port, Identity(), _ => false, confirmWipe: () => ConnectDialog.ConfirmWipe(prog))).Client;
             var st = await client.PutWifiAsync(ssid, pass);
             return string.IsNullOrEmpty(st.Ip) ? (null, "wifi_timeout") : (st.Ip, null);
         }

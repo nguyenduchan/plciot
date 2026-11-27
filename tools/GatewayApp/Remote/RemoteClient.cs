@@ -62,12 +62,32 @@ public sealed class RemoteClient : IDisposable
     }
 
     /// <summary>
-    /// Board MCU qua HTTPS, không mã: lấy thử thách → kiểm/ghim mã phần cứng (board lạ: hỏi người dùng đối chiếu với tem) →
+    /// Board MCU qua HTTPS, không mã: lấy thử thách → kiểm/ghim mã phần cứng →
     /// ký "admin-login|&lt;mã phần cứng&gt;|&lt;nonce&gt;" bằng khoá PC → phiên. PC chưa ghép: board nhận nếu đang mở ghép (nhấn BOOT),
     /// hoặc <paramref name="webToken"/> là phiên webapp của chủ board; không thì lỗi not_paired.
+    /// Board đang có chủ (PC khác) mà PC này ghép bằng BOOT → board đòi XOÁ dữ liệu chủ cũ (wipe_required): hỏi <paramref name="confirmWipe"/>,
+    /// đồng ý thì ghép lại kèm Wipe, chờ board khởi động lại rồi đăng nhập lại. Không truyền confirmWipe = không xoá (lỗi wipe_required).
     /// </summary>
     public static async Task<(RemoteClient Client, bool Paired)> ConnectMcuAsync(string host, int port, Plciot.Scada.Services.Ui.GatewayIdentity id,
-        Func<string, bool> confirmNewBoard, string webToken = "", CancellationToken ct = default)
+        Func<string, bool> confirmNewBoard, string webToken = "", CancellationToken ct = default, Func<bool>? confirmWipe = null)
+    {
+        try { return await LoginMcuAsync(host, port, id, webToken, wipe: false, ct); }
+        catch (RemoteException e) when (e.Code == "wipe_required" && confirmWipe != null)
+        {
+            if (!confirmWipe()) throw new RemoteException("wipe_declined");
+            var (c, _) = await LoginMcuAsync(host, port, id, webToken, wipe: true, ct);
+            c.Dispose();   // board xoá dữ liệu chủ cũ rồi tự khởi động lại sau ~1,5 giây: phiên này mất hiệu lực
+            await Task.Delay(4000, ct);
+            for (var i = 0; ; i++)
+            {
+                try { var (c2, _) = await LoginMcuAsync(host, port, id, "", wipe: false, ct); return (c2, true); }
+                catch (RemoteException) when (i < 30) { await Task.Delay(1500, ct); }
+            }
+        }
+    }
+
+    static async Task<(RemoteClient Client, bool Paired)> LoginMcuAsync(string host, int port, Plciot.Scada.Services.Ui.GatewayIdentity id,
+        string webToken, bool wipe, CancellationToken ct)
     {
         var c = new RemoteClient(host.Trim(), port, tls: true);
         try
@@ -75,11 +95,13 @@ public sealed class RemoteClient : IDisposable
             var ch = await c.SendAsync<ApiChallenge>(HttpMethod.Get, "api/challenge", null, ct);
             var hw = c.ObservedHw;
             if (hw.Length == 0) throw new RemoteException("tls_failed");
-            if (!TrustedBoards.Contains(hw) && !confirmNewBoard(hw)) throw new RemoteException("untrusted_board");
+            // Mô hình an toàn: TIN mạng LAN và người cầm board, chỉ chống tấn công từ internet. Board lạ trong LAN được ghim ngay lần đầu,
+            // không hỏi người dùng (board không dán nhãn). Board tự bảo vệ mình: PC mới chỉ đăng nhập được khi board đang mở ghép (nhấn BOOT /
+            // board mới) hoặc chủ board đăng nhập webapp. confirmNewBoard (ConnectMcuAsync): không còn dùng, giữ chữ ký cho các bài kiểm thử cũ.
             c._pinHw = hw;
             var r = await c.SendAsync<ApiLoginResult>(HttpMethod.Post, "api/login", new ApiKeyLogin
             {
-                Pubkey = id.PublicKey, Nonce = ch.Nonce, Sig = id.Sign($"admin-login|{hw}|{ch.Nonce}"), Name = Environment.MachineName, WebToken = webToken,
+                Pubkey = id.PublicKey, Nonce = ch.Nonce, Sig = id.Sign($"admin-login|{hw}|{ch.Nonce}"), Name = Environment.MachineName, WebToken = webToken, Wipe = wipe,
             }, ct);
             if (!r.Ok || r.Token.Length == 0) throw new RemoteException("unauthorized");
             c._http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", r.Token);
@@ -227,12 +249,14 @@ public sealed class RemoteClient : IDisposable
         "too_many_attempts" => "Thử sai quá nhiều lần — thiết bị tạm khoá 60 giây.",
         "press_boot" => "Board Waveshare đang đóng cài đặt — nhấn nút BOOT trên board (mở 10 phút) rồi kết nối lại.",
         "device_locked" => "Board này đã bị KHOÁ vì được báo mất trộm. Không cài đặt được — liên hệ nhà cung cấp để mở khoá.",
-        "pair_pending" => "Đã gửi yêu cầu ghép PC này. Board đã có PC quản trị: chờ PC đó bấm Đồng ý (\"PC quản trị…\"), hoặc tự kích hoạt sau 24 giờ nếu không ai từ chối. Chủ board đăng nhập webapp thì kích hoạt ngay.",
+        "wipe_required" => "Board này đang thuộc chủ khác. Muốn dùng phải xoá dữ liệu của chủ cũ (cấu hình, chương trình logic, nhật ký).",
+        "wipe_declined" => "Đã huỷ: không xoá dữ liệu của chủ cũ nên không ghép được PC này.",
+        "pair_pending" => "PC này đang chờ ghép. Nhấn nút BOOT trên board rồi kết nối lại để dùng ngay (hoặc đăng nhập webapp của chủ board).",
         "not_paired" => "PC này chưa được ghép với board. Nhấn nút BOOT trên board (mở ghép 10 phút) rồi kết nối lại — hoặc đăng nhập webapp của chủ board.",
         "not_owner" => "Tài khoản webapp vừa đăng nhập không phải chủ board này — nhấn nút BOOT trên board để ghép.",
         "board_not_registered" => "Board chưa đăng ký server nào nên không xác nhận được bằng webapp — nhấn nút BOOT trên board để ghép.",
         "server_unreachable" => "Board không hỏi được server (offline?) — nhấn nút BOOT trên board để ghép.",
-        "untrusted_board" => "Đã huỷ: không tin cậy board này.",
+        "untrusted_board" => "Board này chưa ghép với PC — nhấn nút BOOT trên board (mở ghép 10 phút) rồi kết nối lại.",
         "tls_failed" => "Không lập được kênh bảo mật với board.",
         "bad_signature" or "bad_nonce" => "Board từ chối chữ ký đăng nhập (thử lại).",
         "use_https" => "Board chỉ nhận cài đặt qua HTTPS (cổng 443).",

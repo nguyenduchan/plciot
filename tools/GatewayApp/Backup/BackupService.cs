@@ -48,6 +48,11 @@ sealed class BackupService
         ["config.json"] = _settings,
         ["ui.json"] = Path.ChangeExtension(_settings, ".ui.json"),
         ["lock.json"] = Path.ChangeExtension(_settings, ".lock.json"),
+        // Board Waveshare đã tin cậy (mã phần cứng ghim, TrustedBoards) + chế độ slave/độc lập + giao thức: khôi phục sang PC khác thì
+        // board nối lại ngay, không phải ghép/xác nhận lại (khoá PC nằm trong config.json nên board cũng nhận ra PC).
+        ["remote-boards.json"] = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_settings))!, "remote-boards.json"),
+        ["remote-board-modes.json"] = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_settings))!, "remote-board-modes.json"),
+        ["remote-board-protocols.json"] = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_settings))!, "remote-board-protocols.json"),
     };
 
     // ------------------------------------------------------------------ khoá khôi phục

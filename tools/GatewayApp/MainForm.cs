@@ -670,7 +670,8 @@ public sealed partial class MainForm : Form, IGatewayApp
             {
                 _cfg.CloudUser = kit.Mqtt.Username ?? _cfg.CloudUser;
                 _cfg.CloudPassword = kit.Mqtt.Password ?? _cfg.CloudPassword;
-                if (!string.IsNullOrWhiteSpace(kit.Mqtt.PinSha256)) _cfg.CloudPinSha256 = kit.Mqtt.PinSha256.Replace(":", "").Trim();   // broker tự ký: server trao sẵn dấu vân tay
+                var pins = CloudPins.FromKit(kit.Mqtt.Pins, kit.Mqtt.PinSha256);
+                if (pins.Length > 0) _cfg.CloudPinSha256 = pins;   // broker tự ký: server trao sẵn dấu vân tay (đang dùng + dự phòng)
                 if (Uri.TryCreate(kit.Mqtt.Mqtts, UriKind.Absolute, out var u)) { _cfg.CloudHost = u.Host; _cfg.CloudPort = u.Port; _cfg.CloudTransport = "mqtts"; }
             }
             // Pack: tem chỉ cho biết thiết bị/field/giới hạn. Giao thức, kiểu, quyền, thanh ghi D và hệ số KHÔNG đoán:
@@ -757,6 +758,7 @@ public sealed partial class MainForm : Form, IGatewayApp
             using var http = new HttpClient { BaseAddress = new Uri(_cfg.CloudApiUrl), Timeout = TimeSpan.FromSeconds(10) };
             var kit = await RefreshKitAsync(http);
             if (kit != null) ApplySkin(kit);
+            RefreshPins(kit);
             if (!string.IsNullOrEmpty(kit?.CmdKey) && kit!.CmdKey != _cfg.CloudCmdKey) { _cfg.CloudCmdKey = kit.CmdKey; try { SaveCfg(); } catch (IOException) { } }   // server đổi khoá ký: nhận qua HTTPS có chữ ký
             if (kit?.StoreEveryMs is >= 0 && kit.StoreEveryMs != _cfg.CloudIdleTelemetryMs) { _cfg.CloudIdleTelemetryMs = kit.StoreEveryMs.Value; try { SaveCfg(); } catch (IOException) { } }   // đổi gói: tốc độ gửi khi không ai xem đổi theo
             if (kit?.RetentionDays is >= 0 && kit.RetentionDays != _cfg.CloudRetentionDays) { _cfg.CloudRetentionDays = kit.RetentionDays.Value; try { SaveCfg(); } catch (IOException) { } }   // đổi gói trên server → thời hạn bù dữ liệu offline cập nhật theo
@@ -769,6 +771,22 @@ public sealed partial class MainForm : Form, IGatewayApp
         }
         catch (Exception) { /* mất mạng: thử lại sau */ }
         finally { _polling = false; }
+    }
+
+    /// <summary>
+    /// Danh sách chứng chỉ broker được ghim theo server (đổi chứng chỉ MQTTS không phải đăng ký lại). Chỉ nhận khi đồng bộ qua https
+    /// (chứng chỉ kiểm theo kho CA Windows) và gateway đang ở chế độ ghim; http trong LAN / chứng chỉ CA thật thì giữ nguyên.
+    /// CloudBridge đọc cùng đối tượng cấu hình nên lần nối lại sau dùng ngay danh sách mới.
+    /// </summary>
+    void RefreshPins(GatewayProvisionKit? kit)
+    {
+        if (kit?.Mqtt == null || CloudPins.Parse(_cfg.CloudPinSha256).Length == 0) return;
+        if (!Uri.TryCreate(_cfg.CloudApiUrl, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps) return;
+        var pins = CloudPins.FromKit(kit.Mqtt.Pins, kit.Mqtt.PinSha256);
+        if (pins.Length == 0 || pins == string.Join(",", CloudPins.Parse(_cfg.CloudPinSha256))) return;
+        _cfg.CloudPinSha256 = pins;
+        _log.Add("INFO", "cloud", $"server đổi danh sách chứng chỉ broker được ghim ({CloudPins.Parse(pins).Length} chứng chỉ)");
+        try { SaveCfg(); } catch (IOException) { }
     }
 
     // ------------------------------------------------------------------ nhịp giao diện

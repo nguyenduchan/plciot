@@ -142,8 +142,8 @@ public sealed partial class MainForm
 
     /// <summary>Board MCU: mạng mặc định 192.168.1.200/24, từ chối cấu hình sai, đổi IP → board khởi động lại → nối lại → đã lưu; trả về mặc định.</summary>
     /// <summary>
-    /// Board MCU, kênh bảo mật: cổng HTTP thường không nhận lệnh; PC đầu ghép dùng ngay; PC sau chờ → PC cũ đồng ý / từ chối;
-    /// PC chờ đủ thời gian tự kích hoạt (SIM_PAIR_WAIT_SEC); ghim khoá: board lạ phải được người dùng xác nhận.
+    /// Board MCU, kênh bảo mật: cổng HTTP thường không nhận lệnh; PC đầu ghép dùng ngay; PC sau (đang mở ghép bằng BOOT) cũng dùng ngay;
+    /// không gỡ được PC quản trị cuối cùng.
     /// </summary>
     async Task McuSecurityTestAsync(string host, int port, int httpPort, string boardHw, Action<string, bool, string> Check, List<string> log)
     {
@@ -156,9 +156,9 @@ public sealed partial class MainForm
             }
             catch (Exception e) { Check("cổng HTTP thường không nhận lệnh cấu hình (use_https)", false, e.Message); }
         }
-        var asked = "";
-        try { using var _ = (await RemoteClient.ConnectMcuAsync(host, port, Identity(), hw => { asked = hw; return false; })).Client; Check("board lạ: hỏi người dùng đối chiếu mã phần cứng", false, "không hỏi"); }
-        catch (RemoteException e) { Check("board lạ: hỏi người dùng đối chiếu mã phần cứng (khoá trong chứng chỉ TLS = mã của board)", e.Code == "untrusted_board" && asked == boardHw, $"hỏi {asked}, board {boardHw}"); }
+        // LAN được tin (board lạ ghim ngay, không hỏi): chỉ kiểm mã trong thử thách đúng là mã của khoá TLS board
+        var peek = await RemoteClient.PeekAsync(host, port);
+        Check("mã phần cứng trong thử thách = mã khoá TLS của board", peek?.Hw == boardHw, $"{peek?.Hw} / {boardHw}");
 
         var (c1, paired1) = await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => true);
         Check("PC đầu tiên (board chưa có PC quản trị): ghép dùng ngay", paired1, "");
@@ -168,30 +168,10 @@ public sealed partial class MainForm
             try { using var x = (await RemoteClient.ConnectMcuAsync(host, port, id, _ => true)).Client; return "ok"; }
             catch (RemoteException e) { return e.Code; }
         }
-        async Task<ApiAdmin?> Find(string name) => (await c1.AdminsAsync()).FirstOrDefault(a => !a.Self && !a.Active);
-        // PC thứ hai: chờ → PC cũ đồng ý → vào được
+        // PC thứ hai trong lúc board đang mở ghép (người cầm board nhấn BOOT): dùng NGAY, không chờ PC cũ (bán/chuyển board)
         var pc2 = NewKey();
-        Check("PC thứ hai (đã có PC quản trị): phải chờ", await Try(pc2) == "pair_pending", "");
-        var p2 = await Find("");
-        Check("PC quản trị thấy PC đang chờ", p2 != null && p2.RemainMin > 0, p2 == null ? "không thấy" : $"còn {p2.RemainMin} phút");
-        if (p2 != null) await c1.AdminActionAsync(p2.Id, "approve");
-        Check("PC cũ bấm Đồng ý → PC thứ hai vào được ngay", await Try(pc2) == "ok", "");
-        // PC thứ ba: chờ → PC cũ từ chối → bị gỡ khỏi danh sách
-        var pc3 = NewKey();
-        await Try(pc3);
-        var p3 = await Find("");
-        if (p3 != null) await c1.AdminActionAsync(p3.Id, "reject");
-        var after = await c1.AdminsAsync();
-        Check("PC cũ bấm Từ chối → PC thứ ba bị gỡ", p3 != null && after.All(a => a.Id != p3.Id), $"{after.Count} PC trong danh sách");
-        foreach (var a in after.Where(a => !a.Self)) await c1.AdminActionAsync(a.Id, "remove");   // dọn PC thứ hai trước bài thử tự kích hoạt
-        // PC thứ tư: chờ, không ai từ chối → tự kích hoạt khi hết thời gian chờ
-        var pc4 = NewKey();
-        await Try(pc4);
-        var p4 = await Find("");
-        log.Add($"PC thứ tư chờ {p4?.RemainMin} phút (bản giả lập rút ngắn bằng SIM_PAIR_WAIT_SEC)");
-        var r4 = "";
-        for (var i = 0; i < 40 && (r4 = await Try(pc4)) != "ok"; i++) await Task.Delay(1000);
-        Check("PC chờ đủ thời gian, không ai từ chối → tự kích hoạt", r4 == "ok", r4);
+        Check("PC thứ hai khi đang mở ghép (BOOT): vào được ngay, không chờ PC cũ", await Try(pc2) == "ok", "");
+        Check("PC thứ hai ở trạng thái đang dùng", (await c1.AdminsAsync()).Count(a => !a.Self && a.Active) == 1, "");
         foreach (var a in (await c1.AdminsAsync()).Where(a => !a.Self)) await c1.AdminActionAsync(a.Id, "remove");
         var rmSelf = await c1.AdminActionAsync((await c1.AdminsAsync()).First(a => a.Self).Id, "remove").ContinueWith(t => t.IsFaulted ? (t.Exception!.InnerException as RemoteException)?.Code ?? "lỗi" : t.Result.Ok ? "ok" : t.Result.Err ?? "");
         Check("không gỡ được PC quản trị cuối cùng", rmSelf != "ok", rmSelf);

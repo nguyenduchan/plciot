@@ -12,7 +12,7 @@ export { findUserById, findUserByUsername } from './accounts.js';
 export {
   accountSecuritySummary, regenerateRecoveryCodes, processDueChanges, cancelToken, htmlToText,
 } from './accountSecurity.js';
-export { securityHeaders, buildCorsOptions } from './headers.js';
+export { securityHeaders, httpsOnly, buildCorsOptions } from './headers.js';
 export { rateLimit } from './rateLimit.js';
 export { clientIp, netOf, ipInCidrs } from './net.js';
 export { audit, countAudit } from './audit.js';

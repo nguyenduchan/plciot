@@ -4,9 +4,10 @@ import path from 'path';
 /**
  * Cập nhật GatewayApp: gateway hỏi bản mới nhất rồi tự tải về.
  * Bản build do máy lập trình tạo (cloud/scripts/publish-gateway.ps1) và đẩy lên VPS cùng sync-vps → releases/gateway/{manifest.json, GatewayApp-<version>.zip}.
- *   GET /api/gateway/update           → { version, size, sha256, builtAt }   (404 nếu chưa có bản)
+ *   GET /api/gateway/update           → { version, size, sha256, sig, builtAt }   (404 nếu chưa có bản)
  *   GET /api/gateway/update/download  → file zip
- * Công khai (file chỉ là chương trình, không chứa cấu hình/khoá); gateway kiểm sha256 trước khi cài.
+ * Công khai (file chỉ là chương trình, không chứa cấu hình/khoá). `sig` = chữ ký ECDSA của máy phát hành (sign-gateway-release.js);
+ * gateway kiểm chữ ký bằng khoá công khai gắn cứng (UpdateSignature.cs) — server KHÔNG giữ khoá ký, chiếm server cũng không phát được bản lạ.
  */
 /**
  * Mức tương thích gateway ↔ server. TĂNG khi đổi KHÔNG tương thích ngược (đổi định dạng kit/config/MQTT mà gateway cũ không hiểu).
@@ -25,7 +26,7 @@ export function readGatewayRelease(releasesDir) {
     if (!/^[0-9a-f]{6,32}$/.test(String(m.version)) || !ZIP_RE.test(String(m.file))) return null;
     const zip = path.join(dir, m.file);
     if (!fs.existsSync(zip)) return null;
-    return { version: m.version, apiLevel: Number(m.apiLevel) || 1, sha256: String(m.sha256 || ''), size: fs.statSync(zip).size, builtAt: m.builtAt || null, zip };
+    return { version: m.version, apiLevel: Number(m.apiLevel) || 1, sha256: String(m.sha256 || ''), sig: String(m.sig || ''), size: fs.statSync(zip).size, builtAt: m.builtAt || null, zip };
   } catch { return null; }
 }
 
@@ -34,7 +35,7 @@ export function mountGatewayUpdate(app, { releasesDir }) {
     const r = readGatewayRelease(releasesDir);
     if (!r) return res.status(404).json({ error: 'no_release' });
     if (r.apiLevel > GATEWAY_API_LEVEL) return res.status(409).json({ error: 'server_outdated', apiLevel: r.apiLevel, serverApiLevel: GATEWAY_API_LEVEL });
-    res.json({ version: r.version, apiLevel: r.apiLevel, serverApiLevel: GATEWAY_API_LEVEL, size: r.size, sha256: r.sha256, builtAt: r.builtAt });
+    res.json({ version: r.version, apiLevel: r.apiLevel, serverApiLevel: GATEWAY_API_LEVEL, size: r.size, sha256: r.sha256, sig: r.sig, builtAt: r.builtAt });
   });
   app.get('/api/gateway/update/download', (_req, res) => {
     const r = readGatewayRelease(releasesDir);

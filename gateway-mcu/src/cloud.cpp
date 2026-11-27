@@ -324,6 +324,38 @@ bool siteDeviceOfQr(const String& qr, String& site, String& device) {
   return site.length() && device.length();
 }
 
+/// Một dấu vân tay SHA-256: bỏ ":"/khoảng trắng, chữ thường; không đúng 64 hex → rỗng.
+static String normPin(String p) {
+  p.replace(":", ""); p.replace(" ", ""); p.trim(); p.toLowerCase();
+  if (p.length() != 64) return "";
+  for (size_t i = 0; i < p.length(); i++) if (!isxdigit((unsigned char)p[i])) return "";
+  return p;
+}
+
+/// Danh sách chứng chỉ broker được ghim từ kit (CloudPins.FromKit của C#): "pins" (đang dùng + dự phòng), server cũ chỉ có "pinSha256".
+/// Trả chuỗi "a,b" (lưu CloudPinSha256); rỗng nếu không có pin hợp lệ.
+static String pinsOfKit(JsonObjectConst m) {
+  String out;
+  for (JsonVariantConst v : m["pins"].as<JsonArrayConst>()) {
+    String p = normPin(v | "");
+    if (p.length() && out.indexOf(p) < 0) out += (out.length() ? "," : "") + p;
+  }
+  if (!out.length()) out = normPin(m["pinSha256"] | "");
+  return out;
+}
+
+/// Hash chứng chỉ (hex thường) có nằm trong danh sách ghim "a,b,…" không.
+static bool pinMatches(const String& pins, const String& hash) {
+  if (hash.length() != 64) return false;
+  int from = 0;
+  while (from <= (int)pins.length()) {
+    int comma = pins.indexOf(',', from); if (comma < 0) comma = pins.length();
+    if (normPin(pins.substring(from, comma)) == hash) return true;
+    from = comma + 1;
+  }
+  return false;
+}
+
 /// Áp kit server trả (ApplyKitAsync của GatewayApp): site/device, id MQTT, tài khoản MQTT, ghim chứng chỉ, khoá ký lệnh, gói cloud.
 bool applyKit(JsonObjectConst kit, const String& qr, const String& api, String& msg) {
   String mqttId = kit["mqttId"] | "";
@@ -347,7 +379,7 @@ bool applyKit(JsonObjectConst kit, const String& qr, const String& api, String& 
     if (!m.isNull()) {
       if (m["username"].is<const char*>()) c["CloudUser"] = String(m["username"].as<const char*>());
       if (m["password"].is<const char*>()) setCloudPassword(m["password"].as<const char*>());
-      String pin = m["pinSha256"] | ""; pin.replace(":", ""); pin.trim(); if (pin.length()) c["CloudPinSha256"] = pin;
+      String pins = pinsOfKit(m); if (pins.length()) c["CloudPinSha256"] = pins;   // đang dùng + dự phòng
       String u = m["mqtts"] | "";   // mqtts://host:port
       int s = u.indexOf("://"); if (s >= 0) u = u.substring(s + 3);
       int colon = u.lastIndexOf(':');
@@ -465,6 +497,14 @@ void refreshConfig() {
     if (k["retentionDays"].is<int>() && k["retentionDays"].as<int>() >= 0) setIf("CloudRetentionDays", k["retentionDays"]);
     if (k["claimed"].is<bool>()) setIf("CloudSendData", k["claimed"]);
     if (k["solution"].is<const char*>()) setIf("Solution", k["solution"]);
+    // Danh sách chứng chỉ broker được ghim (server đổi chứng chỉ MQTTS → không phải đăng ký lại). Chỉ nhận qua https (đã kiểm CA),
+    // và chỉ khi đang ghim (broker tự ký); đổi danh sách → connKey đổi → nối lại MQTT với danh sách mới.
+    JsonObjectConst m = k["mqtt"];
+    String cur = c["CloudPinSha256"] | "";
+    if (!m.isNull() && cur.length() && apiBase("").startsWith("https://")) {
+      String pins = pinsOfKit(m);
+      if (pins.length() && pins != cur) { c["CloudPinSha256"] = pins; changed = true; }
+    }
   }
   if (changed) { storeSave(); storeApply(); g_rev++; logf("Cấu hình từ server đã đổi (gói / khoá ký / user)"); }
 }
@@ -482,8 +522,7 @@ bool connectMqtt() {
   s_tls.setInsecure();                    // kiểm bằng ghim chứng chỉ ngay sau bắt tay (broker tự ký), như ValidateServerCert của C#
   s_tls.setHandshakeTimeout(10);
   if (!s_tls.connect(g_cfg.cloudHost.c_str(), g_cfg.cloudPort)) { logf("Cloud: không nối được %s:%d", g_cfg.cloudHost.c_str(), g_cfg.cloudPort); return false; }
-  String pin = g_cfg.cloudPin; pin.toLowerCase();
-  if (certSha256() != pin) { logf("Cloud: chứng chỉ broker KHÔNG khớp dấu vân tay đã ghim — ngắt"); s_tls.stop(); return false; }
+  if (!pinMatches(g_cfg.cloudPin, certSha256())) { logf("Cloud: chứng chỉ broker KHÔNG khớp dấu vân tay đã ghim — ngắt"); s_tls.stop(); return false; }
   String id = "scada-" + g_cfg.site + "-" + g_cfg.device + "-" + String((uint32_t)ESP.getEfuseMac(), HEX);
   String will = base() + "/status";
   // PubSubClient chỉ giữ CON TRỎ tới tên host: dùng bản sao tĩnh, không trỏ vào g_cfg (bị thay khi cấu hình đổi)

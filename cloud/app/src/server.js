@@ -12,7 +12,7 @@ import { registryItems, detectFolders, ignoredFolders, addItem, updateItem, remo
 import { startMqttIngest, startHistoryPurge } from './mqttIngest.js';
 import { queryTelemetry, queryTelemetryRows, queryEvents, historyStats } from './historyStore.js';
 import {
-  configure, mountAuthentication, securityHeaders, buildCorsOptions, rateLimit, clientIp, audit,
+  configure, mountAuthentication, securityHeaders, httpsOnly, buildCorsOptions, rateLimit, clientIp, audit,
   purgeExpiredAudit, createAppSession, signToken,
 } from '@plciot/security';
 import { mqttClientConfig, provisionUserMqtt, rebuildAclFromUsers, reloadMosquitto } from './mqttProvision.js';
@@ -81,6 +81,7 @@ app.locals.db = db;
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Cloudflare Tunnel / CF-Connecting-IP
+app.use(httpsOnly);         // qua Cloudflare: http → https (301) + HSTS; LAN truy cập thẳng không đổi
 app.use(securityHeaders);
 app.use(adminSiteGate);   // ADMIN_HOST: tên miền admin riêng, tên miền app không phục vụ admin
 app.use(adminLocalOnly);
