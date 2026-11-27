@@ -15,6 +15,7 @@ String wifiStatusJson() { return "{\"Supported\":false,\"Saved\":\"\",\"Connecte
 bool wifiConnect(const String&, const String&, String& err) { err = "wifi_unsupported"; return false; }
 #else
 #include <WiFi.h>
+#include <ETH.h>
 #include <esp_netif.h>
 #include <ArduinoJson.h>
 
@@ -32,9 +33,27 @@ bool internetReachable() {
   }
   return false;
 }
+bool sameNet(const IPAddress& a, const IPAddress& b, const IPAddress& m) { return ((uint32_t)a & (uint32_t)m) == ((uint32_t)b & (uint32_t)m); }
+void setDns(esp_netif_t* h, const IPAddress& a, const IPAddress& b) {
+  esp_netif_dns_info_t d = {};
+  d.ip.type = ESP_IPADDR_TYPE_V4; d.ip.u_addr.ip4.addr = (uint32_t)a; esp_netif_set_dns_info(h, ESP_NETIF_DNS_MAIN, &d);
+  d.ip.u_addr.ip4.addr = (uint32_t)b; esp_netif_set_dns_info(h, ESP_NETIF_DNS_BACKUP, &d);
+}
 void setDefaultNetif(int which) {   // 1 = Ethernet, 2 = Wi-Fi
   esp_netif_t* h = esp_netif_get_handle_from_ifkey(which == 1 ? "ETH_DEF" : "WIFI_STA_DEF");
-  if (h) esp_netif_set_default_netif(h);
+  if (!h) return;
+  esp_netif_set_default_netif(h);
+  // Ethernet và Wi-Fi CÙNG DẢI (vd. dây cắm thẳng PC 192.168.1.200, Wi-Fi 192.168.1.15): gói tới địa chỉ TRONG dải (như DNS 192.168.1.1 của
+  // router Wi-Fi) bị lwIP đẩy ra netif đầu tiên khớp dải = Ethernet, nơi không có router → phân giải tên hỏng (MQTT theo IP vẫn chạy, HTTPS
+  // tới server theo tên — tải firmware/thông tin cập nhật — thì HTTP -1). Cloud đi Wi-Fi mà DNS của Wi-Fi nằm trong dải Ethernet → dùng DNS
+  // công cộng (đi theo đường mặc định = Wi-Fi). DHCP gia hạn có thể ghi lại DNS: wifiLoop gọi lại mỗi phút.
+  if (which == 2 && ETH.linkUp() && ETH.localIP() != IPAddress(0, 0, 0, 0)) {
+    IPAddress dns = WiFi.dnsIP(0);
+    if (dns == IPAddress(0, 0, 0, 0) || sameNet(dns, ETH.localIP(), ETH.subnetMask())) {
+      if (dns != IPAddress(8, 8, 8, 8)) logf("Wi-Fi và Ethernet cùng dải: DNS %s nằm trong dải Ethernet — dùng DNS 8.8.8.8 / 1.1.1.1 qua Wi-Fi", dns.toString().c_str());
+      setDns(h, IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
+    }
+  }
 }
 }  // namespace
 
@@ -94,6 +113,8 @@ void wifiLoop() {
     }
   }
   int want = eth ? ((s_ethBad && sta) ? 2 : 1) : (sta ? 2 : 0);
+  static uint32_t s_dnsAt = 0;
+  if (want == 2 && eth && want == s_pref && now - s_dnsAt >= 60000) { s_dnsAt = now; setDefaultNetif(2); }   // giữ DNS đúng sau khi DHCP Wi-Fi gia hạn
   if (want && want != s_pref) {
     setDefaultNetif(want);
     logf("Mạng chính: %s", want == 1 ? "Ethernet" : "Wi-Fi");

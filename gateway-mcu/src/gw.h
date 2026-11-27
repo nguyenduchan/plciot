@@ -250,6 +250,8 @@ void otaBegin();                                 // sau storeBegin: phát hiện
 void otaLoop();                                  // loop(): xác nhận bản mới khi khoẻ (hoặc quay về), tải từ server khi vừa được duyệt
 void otaAllow(uint32_t ttlSec, const String& by);   // tín hiệu ota_allow có chữ ký server
 bool otaApproved(String& why);
+String otaNonce();                                 // GET /api/ota/nonce: mã dùng một lần cho lệnh cho phép chuyển qua gateway PC
+bool otaAllowRelay(const String& packet, const String& via, String& err);   // POST /api/ota/allow: ota_allow server ký kèm nonce
 String otaStatusJson();                          // GET /api/ota (kèm kết quả kiểm tra sức khoẻ khi bản mới đang chờ xác nhận)
 bool otaStart(size_t total, const String& ver, const String& shaHex, const String& sig, const String& src, String& err);
 bool otaWrite(const uint8_t* p, size_t n, String& err);
@@ -261,7 +263,8 @@ void evLog(const char* type, const String& text, bool alertOwner = false);
 String evRecent(int n);                          // JSON array các sự kiện mới nhất
 bool evNextAlert(String& out);                   // cảnh báo bảo mật chờ gửi (cloudLoop)
 void evAlertSent();
-int httpsGet(const String& url, String& resp);   // cloud.cpp: GET HTTPS (CA của ESP-IDF)
+int httpsGet(const String& url, String& resp);
+String httpsLastError();                          // cloud.cpp: tên lỗi ESP-IDF của lần HTTPS gần nhất ("" = không lỗi)   // cloud.cpp: GET HTTPS (CA của ESP-IDF)
 
 // ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó
 // Mỗi task gọi wdtFeed() mỗi vòng; quá hạn → ghi tên task vào NVS ("wdt") rồi khởi động lại (DO về TẮT ở ioBegin).

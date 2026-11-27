@@ -125,6 +125,10 @@ public sealed class RemoteClient : IDisposable
     /// <summary>Cấu hình IP (chỉ board MCU có; gateway PC trả not_found).</summary>
     /// <summary>Board MCU: trạng thái cập nhật (Version, Approved, ApprovedBy, RemainSec, PendingVerify, Enrolled) và nhật ký sự kiện.</summary>
     public Task<System.Text.Json.JsonElement> OtaStateAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/ota", null);
+    /// <summary>Board MCU là slave của gateway PC này: mã dùng một lần để gói "cho phép cập nhật" do server ký gắn với đúng lần hỏi này.</summary>
+    public Task<System.Text.Json.JsonElement> OtaNonceAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/ota/nonce", null);
+    /// <summary>Chuyển gói ota_allow server đã ký (kèm nonce) xuống board → board mở cửa sổ cập nhật như khi nhận qua MQTT.</summary>
+    public Task<System.Text.Json.JsonElement> OtaAllowAsync(string packet) => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Post, "api/ota/allow", new { Packet = packet });
     public Task<System.Text.Json.JsonElement> EventsAsync() => SendAsync<System.Text.Json.JsonElement>(HttpMethod.Get, "api/events", null);
     /// <summary>Logic khi mất mạng của board (xem OfflineContract.cs).</summary>
     public Task<ApiOffline> OfflineAsync(CancellationToken ct = default) => SendAsync<ApiOffline>(HttpMethod.Get, "api/offline", null, ct);

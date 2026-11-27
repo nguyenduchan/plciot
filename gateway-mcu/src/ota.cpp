@@ -31,8 +31,10 @@
 #include <esp_http_client.h>
 #include <time.h>
 #include <esp_crt_bundle.h>
+#include <esp_random.h>
 #ifndef GW_SIM
 #include <esp_ota_ops.h>
+#include <esp_heap_caps.h>
 #endif
 
 /// Arduino-ESP32: không tự xác nhận bản đang chạy lúc khởi động — otaLoop() xác nhận khi đã "khoẻ".
@@ -47,7 +49,8 @@ const char* kEvOld = "/events.old";
 
 uint32_t s_until = 0;            // millis hết cửa sổ duyệt (0 = đóng)
 String s_by;                     // người duyệt
-bool s_pullTried = false;        // đã thử tải từ server trong cửa sổ này
+bool s_pullTried = false;        // đã thử tải từ server trong cửa sổ này (thành công / đã là bản mới nhất / board từ chối)
+uint32_t s_pullAt = 0;           // lần thử gần nhất — lỗi mạng thì thử lại mỗi phút trong cửa sổ cho phép
 bool s_pending = false;          // bản đang chạy chờ xác nhận
 String s_from, s_byPrev;         // bản trước / người duyệt (đọc từ NVS sau khi khởi động)
 // kiểm tra sức khoẻ của bản đang chờ xác nhận
@@ -120,8 +123,41 @@ void enterSafeState(const char* why) {
 void otaAllow(uint32_t ttlSec, const String& by) {
   ttlSec = ttlSec ? min<uint32_t>(ttlSec, kWindowSec) : kWindowSec;
   s_until = millis() + ttlSec * 1000UL; if (!s_until) s_until = 1;
-  s_by = by.length() ? by : String("chủ trạm"); s_pullTried = false;
+  s_by = by.length() ? by : String("chủ trạm"); s_pullTried = false; s_pullAt = 0;
   evLog("ota_allow", "Chủ trạm (" + s_by + ") cho phép cập nhật trong " + String(ttlSec / 60) + " phút");
+}
+
+// ------------------------------------------------------------------ duyệt QUA GATEWAY PC (board là slave, không tự lên cloud)
+// Board giữ lease của gateway PC thì tạm dừng MQTTS: không nhận được ota_allow từ server. Gateway PC (đã ghép, xác thực HTTPS) chuyển tiếp:
+//   1. GET /api/ota/nonce → mã dùng một lần (sống 2 phút) — thay cho kiểm giờ (board slave có thể không có internet/NTP)
+//   2. gateway PC hỏi server: chủ trạm đã cho phép chưa → server KÝ {sys:"ota_allow", ttl, by, nonce} bằng khoá lệnh (miền cmd1, gắn mqttId board)
+//   3. POST /api/ota/allow {Packet} → board kiểm chữ ký server + nonce → mở cửa sổ như nhận qua MQTT.
+// Gateway PC không tự tạo được lệnh cho phép (không có khoá server); firmware vẫn phải có chữ ký nhà phát triển.
+namespace {
+String s_nonce; uint32_t s_nonceAt = 0;
+const uint32_t kNonceMs = 120000;
+}
+
+String otaNonce() {
+  uint8_t r[12]; esp_fill_random(r, sizeof r);
+  s_nonce = hexOf(r, sizeof r); s_nonceAt = millis();
+  return s_nonce;
+}
+
+bool otaAllowRelay(const String& packet, const String& via, String& err) {
+  if (!enrolled()) { err = "not_enrolled"; return false; }   // board chưa gắn cloud: không cần duyệt (otaApproved cho qua)
+  if (!s_nonce.length() || millis() - s_nonceAt > kNonceMs) { s_nonce = ""; err = "nonce_expired"; return false; }
+  String plain;
+  if (!verifyCmd(packet, g_cfg.mqttId, g_cfg.cmdKey, plain)) {
+    evLog("ota_denied", "Lệnh cho phép cập nhật chuyển qua " + via + " SAI CHỮ KÝ server — bị từ chối", true);
+    err = "bad_sig"; return false;
+  }
+  JsonDocument d;
+  if (deserializeJson(d, plain)) { err = "bad_json"; return false; }
+  if (String(d["sys"] | "") != "ota_allow" || String(d["nonce"] | "") != s_nonce) { err = "nonce_mismatch"; return false; }
+  s_nonce = "";   // dùng một lần: gói đã ký không phát lại được
+  otaAllow(d["ttl"] | 900, String(d["by"] | "") + " · qua " + via);
+  return true;
 }
 
 bool otaApproved(String& why) {
@@ -135,6 +171,8 @@ String otaStatusJson() {
   JsonDocument d;
   d["Version"] = FW_VERSION; d["Approved"] = windowOpen(); d["ApprovedBy"] = windowOpen() ? s_by : String("");
   d["RemainSec"] = windowOpen() ? (s_until - millis()) / 1000 : 0; d["PendingVerify"] = s_pending; d["Enrolled"] = enrolled();
+  d["CloudId"] = g_cfg.mqttId; d["Channel"] = FW_CHANNEL;   // gateway PC hỏi server đúng board + đúng kênh phát hành (dev / chính thức)
+  d["Lease"] = leaseActive();
 #ifndef GW_SIM
   if (const esp_partition_t* run = esp_ota_get_running_partition()) {
     esp_ota_img_states_t stt; d["Partition"] = run->label;
@@ -216,13 +254,27 @@ esp_err_t dlEvent(esp_http_client_event_t* e) {
   return ESP_OK;
 }
 
+String heapText() {
+#ifndef GW_SIM
+  return ", RAM trống " + String(ESP.getFreeHeap() / 1024) + " KB, khối lớn nhất " + String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + " KB";
+#else
+  return "";
+#endif
+}
+
 void pullFromServer() {
   String base = g_cfg.apiUrl.length() ? g_cfg.apiUrl : String("https://plc.dieukhientudong.net");
   while (base.endsWith("/")) base.remove(base.length() - 1);
   String resp;
   int st = httpsGet(base + "/api/v1/mcu-firmware" + chq(), resp);
   JsonDocument m;
-  if (st != 200 || deserializeJson(m, resp)) { evLog("ota_info", "Đã duyệt nhưng không lấy được thông tin bản mới từ server (HTTP " + String(st) + ")"); return; }
+  if (st != 200 || deserializeJson(m, resp)) {
+    // lỗi mạng: để otaLoop thử lại sau 1 phút (s_pullTried = false). Ghi rõ lỗi + RAM để chẩn đoán không cần cổng USB.
+    s_pullTried = false;
+    evLog("ota_info", "Đã duyệt nhưng chưa lấy được thông tin bản mới từ server (HTTP " + String(st) + (httpsLastError().length() ? " " + httpsLastError() : String("")) +
+          heapText() + ") — thử lại sau 1 phút");
+    return;
+  }
   String ver = m["version"] | "", sha = m["sha256"] | "", sig = m["sig"] | ""; size_t size = m["size"] | 0;
   if (ver == FW_VERSION) { evLog("ota_info", "Đã là bản mới nhất (" + ver + ")"); return; }
   String err;
@@ -239,7 +291,11 @@ void pullFromServer() {
   esp_err_t e = h ? esp_http_client_perform(h) : ESP_FAIL;
   int code = h ? esp_http_client_get_status_code(h) : -1;
   if (h) esp_http_client_cleanup(h);
-  if (e != ESP_OK || code != 200 || d.err.length()) { otaAbort(); evLog("ota_fail", "Tải firmware " + ver + " lỗi: " + (d.err.length() ? d.err : "HTTP " + String(code))); return; }
+  if (e != ESP_OK || code != 200 || d.err.length()) {
+    otaAbort(); s_pullTried = false;   // lỗi mạng giữa chừng: thử lại sau 1 phút (còn trong cửa sổ cho phép)
+    evLog("ota_fail", "Tải firmware " + ver + " lỗi: " + (d.err.length() ? d.err : "HTTP " + String(code) + (e != ESP_OK ? String(" ") + esp_err_to_name(e) : String(""))) + heapText() + " — thử lại sau 1 phút");
+    return;
+  }
   if (!otaFinish(err)) evLog("ota_fail", "Cài firmware " + ver + " lỗi: " + err);
 }
 }  // namespace
@@ -359,6 +415,6 @@ void otaLoop() {
       logf("Không có bản cũ để quay về — giữ bản đang chạy");
     }
   }
-  if (windowOpen() && !s_pullTried && enrolled() && cloudLinkOk()) { s_pullTried = true; pullFromServer(); }
+  if (windowOpen() && !s_pullTried && enrolled() && cloudLinkOk() && (!s_pullAt || millis() - s_pullAt >= 60000)) { s_pullTried = true; s_pullAt = millis(); if (!s_pullAt) s_pullAt = 1; pullFromServer(); }
   if (s_until && !windowOpen()) { s_until = 0; logf("Hết thời gian cho phép cập nhật"); }
 }

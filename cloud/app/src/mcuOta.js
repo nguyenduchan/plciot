@@ -15,6 +15,9 @@ import { audit, clientIp, rateLimit } from '@plciot/security';
 import { gatewaysOfUser } from './mqttIds.js';
 import { notifyGateway } from './gatewayNotify.js';
 import { queryEvents } from './historyStore.js';
+import { signCmd } from './cmdSign.js';
+import { withSchema, isValidMqttId } from './contract.js';
+import { recordGatewayClient } from './gatewayUpdate.js';
 
 export const OTA_WINDOW_SEC = 15 * 60;
 const FILE_RE = /^firmware-[0-9A-Za-z._-]{1,32}\.bin$/;
@@ -75,6 +78,33 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     res.json({ ok: true, until: Date.now() + OTA_WINDOW_SEC * 1000, version: rel.version });
   });
 
+  /**
+   * Board là SLAVE của gateway PC (giữ lease → board tạm dừng MQTTS, không nhận được ota_allow): gateway PC hỏi thay.
+   * Thân: { id: mqttId của board, nonce: mã dùng một lần board vừa cấp (GET /api/ota/nonce), version: bản board đang chạy }.
+   * Chủ trạm đã cho phép (ota_approve trong 15 phút qua, ghi ở audit_log nên deploy lại không mất) → trả gói {sys:"ota_allow", ttl còn lại,
+   * by, nonce} KÝ bằng khoá lệnh server (miền cmd1, gắn mqttId board). Gateway PC chỉ chuyển gói — không tự tạo được (không có khoá),
+   * nonce chặn phát lại, board vẫn đòi chữ ký nhà phát triển trên firmware. Chưa cho phép → 404 not_approved (kèm thông tin bản mới).
+   * Phiên bản board gửi kèm được ghi vào gateway_clients để webapp hiện "Bản mới" + nút cho phép cho board không tự lên cloud.
+   */
+  const relayLimit = rateLimit({ windowMs: 60_000, max: 30, keyFn: (req) => `${clientIp(req)}:otarelay` });
+  app.post('/api/v1/mcu-firmware/allow', relayLimit, (req, res) => {
+    const id = String(req.body?.id || ''); const nonce = String(req.body?.nonce || ''); const ver = String(req.body?.version || '');
+    if (!isValidMqttId(id) || !/^[0-9a-f]{16,64}$/.test(nonce)) return out(res, 400, { error: 'bad_request' });
+    const dev = db.prepare('SELECT site, device FROM devices WHERE mqtt_id = ?').get(id);
+    if (!dev) return out(res, 404, { error: 'unknown_gateway' });
+    if (/^mcu-[0-9A-Za-z._-]{1,28}$/.test(ver)) recordGatewayClient(db, dev.site, dev.device, { 'x-gateway-version': ver });
+    const rel = readMcuRelease(releasesDir, channelOf(ver));
+    const release = rel ? { version: rel.version, size: rel.size, sha256: rel.sha256, sig: rel.sig } : null;
+    const key = `${dev.site}/${dev.device}`;
+    const ap = db.prepare("SELECT ts, user_id FROM audit_log WHERE event = 'ota_approve' AND detail LIKE ? ORDER BY ts DESC LIMIT 1").get(`${key} %`);
+    const left = ap ? Math.floor((Number(ap.ts) + OTA_WINDOW_SEC * 1000 - Date.now()) / 1000) : 0;
+    if (left < 30) return out(res, 404, { error: 'not_approved', release });
+    const by = String(db.prepare('SELECT username FROM users WHERE id = ?').get(ap.user_id)?.username || 'chủ trạm').slice(0, 40);
+    const packet = signCmd(id, withSchema({ sys: 'ota_allow', ttl: left, by, nonce, ts: Date.now() }));
+    audit(db, 'ota_relay', { ip: clientIp(req), detail: `${key} ${ver || '?'} → ${release?.version || '?'} (qua gateway PC, còn ${Math.ceil(left / 60)} phút)` });
+    res.json({ ok: true, packet, ttl: left, release });
+  });
+
   /** Lịch sử hệ thống của một gateway (chủ xem): phiên bản, bản mới, sự kiện server + cảnh báo bảo mật của board. */
   app.get('/api/v1/system-history', requireAuth, (req, res) => {
     const gw = String(req.query.gw || '');
@@ -86,7 +116,7 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     const events = [];
     const key = `${g.site}/${g.device}`;
     for (const r of db.prepare(`SELECT ts, event, detail FROM audit_log
-        WHERE (event IN ('ota_approve', 'logic_propose', 'logic_approve', 'logic_reject', 'logic_timer', 'radmin_rpc', 'radmin_consent_on', 'radmin_consent_off', 'gateway_lost_report'))
+        WHERE (event IN ('ota_approve', 'ota_relay', 'logic_propose', 'logic_approve', 'logic_reject', 'logic_timer', 'radmin_rpc', 'radmin_consent_on', 'radmin_consent_off', 'gateway_lost_report'))
           AND (detail LIKE ? OR detail LIKE ?) ORDER BY ts DESC LIMIT 60`).all(`% ${key} %`, `%${key}%`)) {
       events.push({ ts: Number(r.ts), src: 'server', type: r.event, text: r.detail });
     }

@@ -404,6 +404,14 @@ void hOfflineTest() {
 /// Nhật ký sự kiện (cập nhật, duyệt, quay về bản cũ, ghép/đăng nhập PC…) — 100 dòng mới nhất; trạng thái cập nhật firmware.
 void hEvents() { send(200, "{\"Ok\":true,\"Events\":" + evRecent(100) + "}"); }
 void hOtaState() { send(200, otaStatusJson()); }
+/// Board là slave của gateway PC (không tự lên cloud): gateway PC chuyển tiếp lệnh "cho phép cập nhật" do SERVER ký (xem ota.cpp).
+void hOtaNonce() { JsonDocument o; o["Nonce"] = otaNonce(); o["CloudId"] = g_cfg.mqttId; String s; serializeJson(o, s); send(200, s); }
+void hOtaAllow() {
+  JsonDocument d; if (!body(d)) return;
+  String e;
+  if (!otaAllowRelay(String(d["Packet"] | ""), "gateway LAN " + q_->ip.toString(), e)) { err(e, e == "bad_sig" ? 403 : 400); return; }
+  send(200, otaStatusJson());
+}
 
 struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
@@ -412,7 +420,7 @@ const Route kRoutes[] = {
   {"GET", "/api/state", hState, true}, {"GET", "/api/config", hGetConfig, true}, {"GET", "/api/config-message", hConfigMessage, true}, {"PUT", "/api/config", hPutConfig, true},
   {"POST", "/api/write", hWrite, true}, {"POST", "/api/lease", hLease, true}, {"POST", "/api/run", hRun, true}, {"POST", "/api/device", hDevice, true},
   {"POST", "/api/cloud", hCloud, true}, {"GET", "/api/admins", hAdmins, true}, {"POST", "/api/admins", hAdminAction, true}, {"GET", "/api/network", hGetNetwork, true}, {"PUT", "/api/network", hPutNetwork, true}, {"POST", "/api/ota", hOta, true},
-  {"GET", "/api/events", hEvents, true}, {"GET", "/api/ota", hOtaState, true},
+  {"GET", "/api/events", hEvents, true}, {"GET", "/api/ota", hOtaState, true}, {"GET", "/api/ota/nonce", hOtaNonce, true}, {"POST", "/api/ota/allow", hOtaAllow, true},
   {"GET", "/api/offline", hOfflineGet, true}, {"PUT", "/api/offline", hOfflinePut, true}, {"POST", "/api/offline/test", hOfflineTest, true},
   {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
 };

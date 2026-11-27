@@ -13,7 +13,7 @@ static class Program
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--offlinetest", "--pclogictest", "--boardlogictest", "--pccloudlogictest", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--lanwifi", "--lanui", "--wifisetup", "--devshot" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--offlinetest", "--pclogictest", "--boardlogictest", "--pccloudlogictest", "--boardotarelaytest", "--lanotapush", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--lanwifi", "--lanui", "--wifisetup", "--devshot" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -51,6 +51,10 @@ static class Program
                 if (oft >= 0 && oft + 1 < args.Length) form.Shown += async (_, _) => await form.OfflineTestAsync(args[oft + 1]);
                 var pcl = Array.IndexOf(args, "--pccloudlogictest");
                 if (pcl >= 0 && pcl + 1 < args.Length) form.Shown += async (_, _) => await form.PcCloudLogicTestAsync(args[pcl + 1]);
+                var lop = Array.IndexOf(args, "--lanotapush");
+                if (lop >= 0 && lop + 1 < args.Length) form.Shown += async (_, _) => await form.LanOtaPushAsync(args[lop + 1]);
+                var bor = Array.IndexOf(args, "--boardotarelaytest");
+                if (bor >= 0 && bor + 1 < args.Length) form.Shown += async (_, _) => await form.BoardOtaRelayTestAsync(args[bor + 1]);
                 var blt = Array.IndexOf(args, "--boardlogictest");
                 if (blt >= 0 && blt + 1 < args.Length) form.Shown += async (_, _) => await form.BoardLogicTestAsync(args[blt + 1]);
                 var plt = Array.IndexOf(args, "--pclogictest");

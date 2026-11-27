@@ -256,7 +256,12 @@ public sealed partial class MainForm : Form, IGatewayApp
         _ui.Tick += (_, _) => Tick();
         _ui.Start();
         StartHistory();
-        _lease = new BoardLease(() => _cfg, () => Running, Identity()); _lease.Start();   // board Waveshare đọc bằng Modbus TCP → giữ lease chế độ gateway
+        _lease = new BoardLease(() => _cfg, () => Running, Identity())
+        {
+            // board slave không tự lên cloud: gateway PC hỏi server + chuyển lệnh cho phép (server ký) + đẩy firmware qua LAN
+            Ota = new BoardOtaRelay(() => CloudPage.ServerOf(_cfg)) { Log = m => _log.Add("GW→Board", "firmware", m) },
+        };
+        _lease.Start();   // board Waveshare đọc bằng Modbus TCP → giữ lease chế độ gateway
         if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng
         {
             _login = _carry.Login; _loginAt = _carry.At; _localUnlocked = _carryLocal; var t = _carry.Toast; _carry = default; _carryLocal = false;

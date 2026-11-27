@@ -89,6 +89,26 @@ ok(h.j.events.some((e) => e.type === 'ota_approve' && e.text.includes('mcu-0.4.0
 ok(h.j.events.some((e) => e.src === 'gateway' && e.type === 'ota_badsig' && e.alert) && !h.j.events.some((e) => e.text === 'Mức nước cao'), 'lịch sử có cảnh báo bảo mật của board, không lẫn cảnh báo dữ liệu');
 ok((await call('other1', 'GET', '/api/v1/system-history?gw=siteA/gw01')).j.error === 'forbidden_gateway', 'người khác không xem được lịch sử');
 
+// Board là SLAVE của gateway PC: gateway PC hỏi thay (id board + nonce board cấp) → server ký ota_allow kèm nonce
+{
+  const N = 'a1'.repeat(12);
+  ok((await call('', 'POST', '/api/v1/mcu-firmware/allow', { id: 'xyz', nonce: N })).status === 400, 'chuyển tiếp: id sai → 400');
+  ok((await call('', 'POST', '/api/v1/mcu-firmware/allow', { id: '0000000000000000', nonce: N })).j.error === 'unknown_gateway', 'chuyển tiếp: board lạ → unknown_gateway');
+  const na = await call('', 'POST', '/api/v1/mcu-firmware/allow', { id: 'c1c2c3d4e5f60718', nonce: N, version: 'mcu-0.3.6' });
+  ok(na.status === 404 && na.j.error === 'not_approved' && na.j.release?.version === 'mcu-0.4.0', 'chuyển tiếp: chủ trạm chưa cho phép → not_approved (kèm bản mới)');
+  const r = await call('', 'POST', '/api/v1/mcu-firmware/allow', { id: MQ, nonce: N, version: 'mcu-0.3.7' });
+  ok(r.status === 200 && r.j.ttl > 800 && r.j.release?.sha256 === sha, 'chuyển tiếp: đã cho phép → gói + thời gian còn lại + bản mới');
+  ok(verifySignedCmd(MQ, r.j.packet), 'gói ký bằng khoá lệnh server, gắn mqttId board (board kiểm như lệnh MQTT)');
+  ok(!verifySignedCmd('c1c2c3d4e5f60718', r.j.packet), 'gói không dùng được cho board khác');
+  const pj = JSON.parse(r.j.packet.slice(0, r.j.packet.lastIndexOf(',"sig":"')) + '}');
+  ok(pj.sys === 'ota_allow' && pj.nonce === N && pj.by === 'owner1', 'gói có nonce của board + người duyệt');
+  ok(db.prepare("SELECT version FROM gateway_clients WHERE site='siteA' AND device='gw01'").get().version === 'mcu-0.3.7', 'phiên bản board (báo qua gateway PC) được ghi để webapp hiện bản mới');
+  db.prepare("UPDATE audit_log SET ts = ts - 16 * 60000 WHERE event = 'ota_approve'").run();
+  ok((await call('', 'POST', '/api/v1/mcu-firmware/allow', { id: MQ, nonce: N })).j.error === 'not_approved', 'quá 15 phút → hết quyền');
+  const h2 = await call('owner1', 'GET', '/api/v1/system-history?gw=siteA/gw01');
+  ok(h2.j.events.some((e) => e.type === 'ota_relay'), 'lịch sử ghi lần chuyển lệnh qua gateway PC');
+}
+
 const { forwardGatewayAlert } = await import('../src/pushAlerts.js');
 ok(typeof forwardGatewayAlert === 'function', 'cảnh báo sec.* đi qua forwardGatewayAlert (tiêu đề "Cảnh báo bảo mật")');
 ok(readMcuRelease(path.join(tmp, 'khong-co')) === null, 'thư mục phát hành hỏng/thiếu → không phát gì');

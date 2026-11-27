@@ -227,13 +227,16 @@ void timeFromDate(const String& date) {
 }
 
 /// HTTPS (chứng chỉ CA của ESP-IDF) tới VPS, hoặc http:// tới server cài trên PC trong LAN (trường hợp offline, không có CA công khai).
+String s_httpsErr;   // lỗi HTTPS gần nhất (để nhật ký sự kiện nói rõ vì sao, không chỉ "HTTP -1")
+
 int httpsJson(const String& url, const String& body, const String& bearer, String& resp, bool get = false) {
   HttpBuf b;
+  s_httpsErr = "";
   esp_http_client_config_t c = {};
   c.url = url.c_str(); c.method = get ? HTTP_METHOD_GET : HTTP_METHOD_POST; c.timeout_ms = 30000;
   c.crt_bundle_attach = esp_crt_bundle_attach; c.event_handler = httpEvent; c.user_data = &b;
   esp_http_client_handle_t h = esp_http_client_init(&c);
-  if (!h) return -1;
+  if (!h) { s_httpsErr = "init_failed"; return -1; }
   esp_http_client_set_header(h, "Content-Type", "application/json");
   esp_http_client_set_header(h, "X-Gateway-Version", FW_VERSION);
   esp_http_client_set_header(h, "X-Gateway-Kind", "mcu");
@@ -245,7 +248,7 @@ int httpsJson(const String& url, const String& body, const String& bearer, Strin
   esp_http_client_cleanup(h);
   timeFromDate(b.date);
   resp = b.body;
-  if (e != ESP_OK) logf("HTTPS %s lỗi: %s", url.c_str(), esp_err_to_name(e));
+  if (e != ESP_OK) { s_httpsErr = esp_err_to_name(e); logf("HTTPS %s lỗi: %s", url.c_str(), s_httpsErr.c_str()); }
   return st;
 }
 
@@ -578,3 +581,4 @@ void cloudLoop() {
 
 /// GET HTTPS cho ota.cpp (thông tin bản firmware mới trên server).
 int httpsGet(const String& url, String& resp) { return httpsJson(url, "", "", resp, true); }
+String httpsLastError() { return s_httpsErr; }

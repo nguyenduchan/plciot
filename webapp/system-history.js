@@ -19,7 +19,7 @@
   const when = (ts) => (ts ? new Date(ts).toLocaleString('vi-VN') : '—');
   const TYPE = {
     logic_propose: 'Đề xuất đổi logic', logic_approve: 'Duyệt logic', logic_reject: 'Từ chối logic', logic_timer: 'Hẹn giờ', logic_changed: 'Logic gateway đổi', rpc_badsig: 'Cài đặt từ xa sai chữ ký',
-    ota_approve: 'Duyệt cập nhật', radmin_rpc: 'Cài đặt từ xa', radmin_consent_on: 'Bật hỗ trợ từ xa', radmin_consent_off: 'Tắt hỗ trợ từ xa',
+    ota_approve: 'Duyệt cập nhật', ota_relay: 'Chuyển lệnh cập nhật qua gateway PC', radmin_rpc: 'Cài đặt từ xa', radmin_consent_on: 'Bật hỗ trợ từ xa', radmin_consent_off: 'Tắt hỗ trợ từ xa',
     gateway_lost_report: 'Báo mất', ota_rollback: 'Quay về bản cũ', ota_badsig: 'Firmware sai chữ ký', ota_denied: 'Từ chối cập nhật',
     pc_paired: 'Ghép PC quản trị', pc_pair_request: 'PC lạ xin ghép', login_fail: 'Đăng nhập sai', safe_mode: 'Chế độ an toàn', factory_reset: 'Xoá cấu hình',
   };
