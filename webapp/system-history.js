@@ -19,17 +19,17 @@
   const when = (ts) => (ts ? new Date(ts).toLocaleString('vi-VN') : '—');
   const TYPE = {
     logic_propose: 'Đề xuất đổi logic', logic_approve: 'Duyệt logic', logic_reject: 'Từ chối logic', logic_timer: 'Hẹn giờ', logic_changed: 'Logic gateway đổi', rpc_badsig: 'Cài đặt từ xa sai chữ ký',
-    ota_approve: 'Duyệt cập nhật', ota_relay: 'Chuyển lệnh cập nhật qua gateway PC', radmin_rpc: 'Cài đặt từ xa', radmin_consent_on: 'Bật hỗ trợ từ xa', radmin_consent_off: 'Tắt hỗ trợ từ xa',
+    ota_approve: 'Duyệt cập nhật', ota_relay: 'Chuyển lệnh cập nhật qua gateway PC', ota_mqtt: 'Tải firmware qua MQTT', gateway_reboot: 'Khởi động lại từ xa', reboot_remote: 'Board khởi động lại từ xa', radmin_rpc: 'Cài đặt từ xa', radmin_consent_on: 'Bật hỗ trợ từ xa', radmin_consent_off: 'Tắt hỗ trợ từ xa',
     gateway_lost_report: 'Báo mất', ota_rollback: 'Quay về bản cũ', ota_badsig: 'Firmware sai chữ ký', ota_denied: 'Từ chối cập nhật',
     pc_paired: 'Ghép PC quản trị', pc_pair_request: 'PC lạ xin ghép', login_fail: 'Đăng nhập sai', safe_mode: 'Chế độ an toàn', factory_reset: 'Xoá cấu hình',
   };
 
-  async function withStepUp(method, path, payload) {
+  async function withStepUp(method, path, payload, title = 'Xác nhận cho phép cập nhật firmware') {
     for (let attempt = 0; attempt < 3; attempt++) {
       const r = await api(method, path, payload);
       if (r.status === 401 && r.body.error === 'step_up_required') {
         LS.del('ctl');
-        if (attempt < 2 && await unlock({ ...r.body, title: 'Xác nhận cho phép cập nhật firmware' })) continue;
+        if (attempt < 2 && await unlock({ ...r.body, title })) continue;
         return { ok: false, body: { error: 'cancelled' } };
       }
       return r;
@@ -48,12 +48,17 @@
           <button class="primary fit" data-ota="${esc(`${h.site}/${h.device}`)}">Cho phép cập nhật (15 phút)</button>
         </div>`
       : (h.kind === 'mcu' && h.release ? '<div class="muted">Đang chạy bản mới nhất.</div>' : '');
+    const reboot = h.kind === 'mcu'
+      ? `<div style="margin:6px 0"><button class="fit" data-reboot="${esc(`${h.site}/${h.device}`)}">Khởi động lại board</button>
+          <span class="muted"> — gỡ kẹt từ xa (vd. không tải được bản mới); các đầu ra được TẮT trong ~20 giây.</span></div>`
+      : '';
     const ev = (h.events || []).slice(0, 30).map((e) => `<div style="display:flex;gap:8px;padding:4px 0;border-top:1px dashed var(--line,#333)">
         <span class="muted" style="flex:0 0 auto;min-width:9.5em">${esc(when(e.ts))}</span>
         <span style="${e.alert ? 'color:var(--bad,#e5484d)' : ''}">${e.alert ? '🔴 ' : ''}<b>${esc(TYPE[e.type] || e.type)}</b> · ${esc(e.text)}</span></div>`).join('');
     return `<div style="border-top:1px solid var(--line,#333);padding:10px 0">
       <div><b>${esc(names.get(`${h.site}/${h.device}`) || h.device)}</b> <span class="muted">· ID ${esc(h.device)} · ${kind} · phiên bản ${esc(h.version || '—')} · liên lạc lần cuối ${esc(when(h.lastSeen))}</span></div>
       ${upd}
+      ${reboot}
       <div style="margin-top:6px">${ev || '<span class="muted">Chưa có sự kiện.</span>'}</div>
     </div>`;
   }
@@ -76,6 +81,18 @@
       if (!r.ok) return msg(S.errText(r.body.error), true);
       msg(`Đã cho phép ${gw} cập nhật lên ${r.body.version} — gateway sẽ tự cài trong vài phút.`);
       setTimeout(load, 1500);
+    }));
+    body.querySelectorAll('[data-reboot]').forEach((b) => b.addEventListener('click', async () => {
+      const gw = b.dataset.reboot;
+      if (!confirm(`Khởi động lại gateway ${gw}?
+
+Các đầu ra (bơm, van…) được TẮT, board khởi động lại khoảng 20 giây rồi chạy lại chương trình logic.`)) return;
+      b.disabled = true;
+      const r = await withStepUp('POST', '/api/v1/gateway/reboot', { gw }, 'Xác nhận khởi động lại gateway');
+      b.disabled = false;
+      if (!r.ok) return msg(S.errText(r.body.error), true);
+      msg(`Đã gửi lệnh khởi động lại ${gw} — board sẽ trở lại sau khoảng 20–30 giây.`);
+      setTimeout(load, 30000);
     }));
   }
   sec.addEventListener('toggle', () => { if (sec.open) load(); });

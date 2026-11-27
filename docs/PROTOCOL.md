@@ -46,7 +46,8 @@ Base topic: **`gw/<mqttId>`** — một dạng duy nhất.
 
 - Cấp một lần, **giữ nguyên khi xoay mật khẩu MQTT**; chỉ đổi khi cấp lại thiết bị (thu hồi + enroll mới).
 - Ingest tra ngược `gw/<id>/<kind>` → thiết bị trong DB; id lạ, đã thu hồi hoặc bị khoá thì **bỏ gói** (không ghi gì).
-- ACL Mosquitto: mỗi gateway chỉ ghi `gw/<id của mình>/{telemetry,status,ack,history,config,alert}` và đọc `gw/<id>/cmd`; user app chỉ đọc topic của gateway được xem; chỉ `ctl` ghi `gw/+/cmd`.
+- ACL Mosquitto: mỗi gateway chỉ ghi `gw/<id của mình>/{telemetry,status,ack,history,config,alert,rpcr,fwq}` và đọc `gw/<id>/{cmd,rpc,fw}`; user app chỉ đọc topic của gateway được xem; chỉ `ctl` ghi `gw/+/{cmd,rpc,fw}`.
+- `rpc`/`rpcr`: cài đặt từ xa (docs/REMOTE-ADMIN.md). `fwq`/`fw`: board Waveshare tải firmware qua MQTT khi HTTPS hỏng (docs/OTA-APPROVAL.md).
 - **Đã bỏ** hẳn `plc/<site>/<device>` và `iot/<tenant>/<site>/<device>` trên cloud (không còn song song). Gateway/firmware cũ phải **đăng ký lại** để nhận id (firmware: đặt `MQTT_ID` trong `config.h`). Gateway chưa đăng ký chỉ dùng topic cục bộ `plc/<site>/<device>` trên broker LAN của chính nó (cloud không nhận dạng).
 - DB cũ: lần mở đầu tiên server thêm cột `mqtt_id` và cấp id ngẫu nhiên cho thiết bị đã có (`ensureMqttIdColumn`).
 

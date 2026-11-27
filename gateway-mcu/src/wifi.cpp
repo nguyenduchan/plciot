@@ -24,14 +24,15 @@ const uint32_t kConnectMs = 15000;
 }
 
 namespace {
-/// Đường ra Internet của netif MẶC ĐỊNH có thông không: TCP :443 tới 8.8.8.8 / 1.1.1.1 (không cần DNS, không tốn băng thông).
+/// Đường ra Internet của netif MẶC ĐỊNH có thông không: TCP tới CHÍNH máy chủ cloud (broker MQTTS của VPS, không cần DNS khi là IP).
+/// Gateway chỉ nói chuyện với máy chủ của hệ thống — không thăm dò máy chủ bên thứ ba (8.8.8.8 / 1.1.1.1…).
+/// Chưa cài cloud: không có gì để thăm dò → coi như thông (không đổi đường).
 bool internetReachable() {
-  static const IPAddress hosts[] = { IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1) };
-  for (const IPAddress& h : hosts) {
-    WiFiClient c;
-    if (c.connect(h, 443, 2500)) { c.stop(); return true; }
-  }
-  return false;
+  if (!g_cfg.cloudHost.length() || g_cfg.cloudPort <= 0) return true;
+  WiFiClient c;
+  bool ok = c.connect(g_cfg.cloudHost.c_str(), g_cfg.cloudPort, 2500);
+  c.stop();
+  return ok;
 }
 bool sameNet(const IPAddress& a, const IPAddress& b, const IPAddress& m) { return ((uint32_t)a & (uint32_t)m) == ((uint32_t)b & (uint32_t)m); }
 void setDns(esp_netif_t* h, const IPAddress& a, const IPAddress& b) {

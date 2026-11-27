@@ -62,6 +62,29 @@ Kiểm thử thật: `GATEWAYAPP_SETTINGS=<bản sao cấu hình gateway PC> Gat
 - Từ 0.4.10, khi DNS của Wi-Fi nằm trong dải Ethernet, board dùng DNS 8.8.8.8 / 1.1.1.1 (đi theo đường mặc định = Wi-Fi), kiểm lại mỗi phút.
 - Từ 0.4.13, tải lỗi thì **thử lại mỗi phút** trong cửa sổ cho phép, nhật ký ghi tên lỗi ESP-IDF + RAM trống.
 
+## Cập nhật được khi HTTPS hỏng mà MQTT vẫn nối (từ mcu-0.4.16-dev)
+
+Sự cố 2026-11-27 (u15/gw03, board ở nhà, người ở văn phòng): board nhận `ota_allow` qua MQTT, nhưng mọi HTTPS tới server đều `ESP_ERR_HTTP_CONNECT` từ khoảng 1 giờ sau khi khởi động. MQTT theo IP vẫn chạy. Không tải được firmware, không khởi động lại được, không biết lỗi do đâu.
+- **Nguyên nhân nghi nhiều nhất:** framework build với `CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=y`, tức mọi bộ đệm TLS nằm trong RAM trong, không dùng PSRAM. Kết nối MQTT TLS mở từ lúc khởi động nên không sao. Mỗi lần HTTPS mới cần một khối RAM trong liền khoảng 17 KB; RAM trong bị phân mảnh thì bắt tay hỏng. Nhật ký cũ chỉ ghi "khối lớn nhất 8063 KB", là PSRAM, nên không thấy được.
+- **Sửa (ba phần):**
+  1. **Tải firmware qua MQTT:** HTTPS lỗi (lấy thông tin hoặc tải giữa chừng) mà MQTT đang nối thì board chuyển sang kết nối MQTT có sẵn.
+     - Board → `gw/<id>/fwq`: `{q:"info",ch}` / `{q:"get",ch,ver,off,n}`. Server → `gw/<id>/fw`: `{t:"info",…}` / `{t:"data",ver,off,z}` (8 KB/đoạn, base64) / `{t:"err",e}`.
+     - Board hỏi từng đoạn, hỏi lại sau 15 s (tối đa 6 lần). Mất MQTT hoặc hết cửa sổ cho phép thì bỏ, 1 phút sau thử lại từ HTTPS.
+     - An toàn như HTTPS: chữ ký nhà phát triển kiểm trước khi ghi, SHA-256 thật kiểm sau khi ghi, chỉ cài trong cửa sổ chủ trạm cho phép. Chỉ server (user `ctl`) ghi được `fw` (ACL). Server giới hạn 100 yêu cầu / 10 s / board.
+     - Kiểm tra sức khoẻ bản mới: HTTPS hỏng nhưng hỏi được thông tin qua MQTT thì vẫn tính là "còn cập nhật được", không quay về oan.
+     - Mã: `ota.cpp` (`otaOnFw`, `mqStart`), `mcuOta.js` (`onFwRequest`), `mqttIngest.js`, ACL trong `mqttProvision.js`.
+  2. **Khởi động lại từ xa:** webapp → Cài đặt → Lịch sử hệ thống → **Khởi động lại board** (Face ID/TOTP).
+     - Server gửi `POST /api/v1/gateway/reboot` → `{sys:"reboot", by, id}`, ký `cmd1`; `id` + `ts` chống phát lại.
+     - Board ack, gửi cảnh báo đỏ `sec.reboot_remote`, TẮT mọi DO rồi khởi động lại sau 3 s. Ghi `audit_log` `gateway_reboot`.
+  3. **Chẩn đoán + DNS dự phòng:**
+     - HTTPS lỗi thì nhật ký ghi rõ: DNS lỗi / TCP 443 không nối được / TCP nối được nhưng bắt tay TLS lỗi, kèm **RAM trong** trống và khối liền lớn nhất (`netDiag`, `heapText`).
+     - Mỗi phút điền DNS phụ 1.1.1.1 (hoặc 8.8.8.8) nếu ô DNS phụ còn trống (IP tĩnh và đa số DHCP chỉ có một DNS); lwIP tự chuyển sang DNS phụ khi DNS chính không trả lời.
+  4. **Giờ không cần DNS:** NTP thêm hai máy chủ theo IP (`216.239.35.0` time.google.com, `162.159.200.123` time.cloudflare.com).
+     Lý do: sau khi tắt/bật nguồn lúc 11:58, board nối lại MQTT nhưng **không lấy được giờ** (`clock_not_synced`), vì NTP theo tên và giờ lấy từ HTTPS đều cần DNS. Không có giờ thì board từ chối mọi lệnh ký (kể cả `ota_allow`, `reboot`, rpc).
+     Từ đó suy ra sự cố 27/11 nhiều khả năng do **DNS ở mạng nhà**, hơn là do RAM.
+- **Lưu ý:** board chạy bản cũ hơn 0.4.16-dev chưa có các phần trên. Bản đầu tiên có chúng phải vào board bằng đường cũ (HTTPS chạy, hoặc LAN qua GatewayApp).
+- Sau khi deploy server phải dựng lại ACL broker: `docker exec plciot-app node scripts/sync-mqtt-acl.js`, cho các quyền `fwq`/`fw`.
+
 ## Nhật ký & cảnh báo đỏ
 
 - Board: `/events.log` (LittleFS, vòng ~24 KB), `GET /api/events` (LAN; GatewayAdmin đọc được qua cloud), `GET /api/ota` (phiên bản, đang được duyệt không, ai duyệt, chờ xác nhận).
@@ -72,17 +95,26 @@ Kiểm thử thật: `GATEWAYAPP_SETTINGS=<bản sao cấu hình gateway PC> Gat
 
 ## Kiểm thử
 
-- Server: `node cloud/app/scripts/smoke-mcu-ota.js` (28 kiểm tra, gồm đường chuyển tiếp qua gateway PC).
+- Server: `node cloud/app/scripts/smoke-mcu-ota.js` (51 kiểm tra, gồm đường chuyển tiếp qua gateway PC, tải qua MQTT, khởi động lại từ xa).
+- Tải qua MQTT + khởi động lại trên gw-sim (HTTPS cố ý hỏng): `node cloud/app/scripts/sim-ota-mqtt-e2e.js --fw <firmware.bin đã ký, có .bin.json>`.
+  Script tự chạy bản sao gw-sim + broker thử. Lần chạy ngày 2026-11-27: 22/22, 199 đoạn trong 48 s, SHA-256 đúng.
+- Board thật qua internet (chạy trong container VPS): `docker exec -w /app plciot-app node scripts/live-board-internet.js <site/device> status|logic|ota`.
 - Board (gw-sim hoặc board thật, bản Debug): `GatewayApp.exe --otatest KQ.txt --noauth --lan-target IP:CỔNG --fw firmware.bin [--io-data SIM_DATA]` — không chữ ký / sai chữ ký / file cụt / có chủ chưa duyệt bị từ chối, nhật ký có sự kiện, chưa có chủ + đúng chữ ký thì nạp được.
 - Bản giả lập không chạy được firmware mới: sau "khởi động lại" nó báo `ota_rollback` (đúng — phiên bản không đổi). Xác nhận / quay về thật chỉ kiểm được trên board.
 
 ## Kênh phát hành dev (thử OTA thật mà không cần khoá phát hành)
 
-- Env `waveshare-dev` trong `gateway-mcu/platformio.ini` tin THÊM khoá dev `FW_DEV_PUBKEY` (khoá riêng `~/.plciot/fw-sign-dev.pem`, KHÔNG phải khoá phát hành) và tải bản mới ở `?ch=dev`.
+- Env `waveshare-dev` trong `gateway-mcu/platformio.ini` tin THÊM khoá dev (KHÔNG phải khoá phát hành) và tải bản mới ở `?ch=dev`.
+- **Khoá dev nằm trên VPS** (từ mcu-0.4.16-dev, `FW_DEV_PUBKEY2`): `/root/.plciot/fw-sign-dev.pem`, chỉ root đọc, ngoài container app. PC dev không giữ khoá.
+  - Ký + đưa lên kênh dev: `.\cloud\scripts\sign-fw-vps.ps1 -Bin <firmware.bin> -Version mcu-x.y.z-dev -Notes "…"`. Ký trong container dùng một lần (`--network none`, khoá gắn chỉ đọc); bản trước sao lưu ở `releases/mcu-dev-bak/`.
+  - Ai có SSH root vào VPS thì phát hành được bản dev. Chiếm root VPS = có cả khoá ký firmware dev lẫn khoá lệnh (`ota_allow`) → cài được firmware tuỳ ý lên **board dev**. Board phát hành không tin khoá này.
+  - `FW_DEV_PUBKEY` (khoá cũ ở PC nhà, `~/.plciot/fw-sign-dev.pem`) còn giữ để chuyển tiếp; bỏ khi không dùng nữa.
+  - Chuyển board dev đang chạy ở xa sang khoá mới: bản chuyển tiếp 0.4.16-dev ký **một lần** bằng khoá phát hành (chỉ để ở kênh dev, thay ngay bằng 0.4.17-dev do VPS ký) — 2026-11-27.
+- Bản **phát hành chính thức** vẫn ký bằng khoá trên PC (`~/.plciot/fw-sign.pem`) — chưa quyết chuyển.
   - Server: `releases/mcu-dev/`. Kênh của board suy ra từ phiên bản (đuôi `-dev`), dùng cho cả nút duyệt lẫn mục "Bản mới".
   - Env chính (bản phát hành) không có hai cờ này, nên không bao giờ nhận bản ký bằng khoá dev.
 - Build: `$env:PLATFORMIO_BUILD_FLAGS='-DFW_VERSION=\"mcu-0.4.6-dev\"'; pio run -e waveshare-dev`. Thêm `-DFW_TEST_BREAK_CLOUD` để có bản **hỏng có chủ đích** (không nối cloud), dùng thử tự quay về.
-- Ký: cùng định dạng `sign-mcu-firmware.js` (`FW_SIGN_KEY=~/.plciot/fw-sign-dev.pem`); manifest + bin chép vào `/root/plciot/releases/mcu-dev/` trên VPS.
+- Ký: `cloud/scripts/sign-fw-vps.ps1` (khoá VPS, ở trên) → `/root/plciot/releases/mcu-dev/`.
 - Đã kiểm trên board thật u15/gw03 qua Wi-Fi (2026-11-27):
   - 0.4.1 → 0.4.2 → 0.4.4 → 0.4.6: tải từ server, kiểm chữ ký, xác nhận sau 60 s.
   - 0.4.5 / 0.4.7 (hỏng): sau 5 phút tự quay về, lý do "không nối lại được cloud".

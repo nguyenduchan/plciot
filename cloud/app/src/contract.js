@@ -17,7 +17,8 @@ export const SCHEMA_VERSION = 1;
 /** Schema telemetry IoT (monitor + UI bind). */
 export const TELEMETRY_SCHEMA = 2;
 // rpc / rpcr: cài đặt từ xa (GatewayAdmin, remoteAdmin.js) — server ghi rpc, gateway trả rpcr; người dùng app KHÔNG đọc/ghi được
-export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert', 'rpc', 'rpcr']);
+// fwq / fw: firmware board Waveshare QUA MQTT khi HTTPS hỏng (mcuOta.js) — gateway ghi fwq, server ghi fw; người dùng app không đọc/ghi
+export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert', 'rpc', 'rpcr', 'fwq', 'fw']);
 /** Tiền tố topic của mọi gateway. */
 export const GW_NS = 'gw';
 export const DEFAULT_TENANT = 'default';

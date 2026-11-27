@@ -109,6 +109,60 @@ ok((await call('other1', 'GET', '/api/v1/system-history?gw=siteA/gw01')).j.error
   ok(h2.j.events.some((e) => e.type === 'ota_relay'), 'lịch sử ghi lần chuyển lệnh qua gateway PC');
 }
 
+// Firmware QUA MQTT (HTTPS của board hỏng, MQTT vẫn nối): board hỏi fwq → server trả fw từng đoạn; ghép lại phải đúng từng byte
+{
+  const { onFwRequest, FW_CHUNK_MAX } = await import('../src/mcuOta.js');
+  const sent = [];
+  const pub = async (id, kind, raw) => { sent.push({ id, kind, raw, m: JSON.parse(raw) }); };
+  const ask = async (q, id = MQ) => { sent.length = 0; await onFwRequest(db, id, Buffer.from(JSON.stringify(q)), { publish: pub, releasesDir: rel }); return sent[0]; };
+  const info = await ask({ q: 'info', ch: '' });
+  ok(info?.id === MQ && info.kind === 'fw' && info.m.t === 'info' && info.m.version === 'mcu-0.4.0' && info.m.sha256 === sha && info.m.sig === meta.j.sig && info.m.size === 70_000, 'MQTT: thông tin bản mới (gw/<id>/fw) giống HTTPS');
+  const parts = []; let off = 0, rounds = 0;
+  while (off < info.m.size && rounds++ < 50) {
+    const d = await ask({ q: 'get', ch: '', ver: 'mcu-0.4.0', off, n: 99_999 });
+    if (d?.m.t !== 'data' || d.m.off !== off) break;
+    const b = Buffer.from(d.m.z, 'base64'); parts.push(b); off += b.length;
+    ok(b.length <= FW_CHUNK_MAX && JSON.stringify(d.m).length < 16_000 || rounds > 1, 'MQTT: mỗi gói ≤ 8 KB dữ liệu, < 16 KB bản tin (giới hạn broker)');
+  }
+  ok(Buffer.concat(parts).equals(fs.readFileSync(bin)), `MQTT: ghép ${parts.length} đoạn = đúng từng byte firmware`);
+  ok((await ask({ q: 'get', ch: '', ver: 'mcu-0.3.9', off: 0 })).m.e === 'version_changed', 'MQTT: hỏi đoạn của phiên bản khác → version_changed (board bỏ, hỏi lại từ đầu)');
+  ok((await ask({ q: 'get', ch: '', ver: 'mcu-0.4.0', off: 70_000 })).m.e === 'bad_offset' && (await ask({ q: 'get', ch: '', ver: 'mcu-0.4.0', off: -5 })).m.e === 'bad_offset', 'MQTT: offset ngoài file → bad_offset');
+  ok((await ask({ q: 'info', ch: 'dev' })).m.e === 'no_release', 'MQTT: kênh dev chưa có bản → no_release');
+  ok((await ask({ q: 'info' }, '0123456789abcdef')) === undefined, 'MQTT: board lạ (không có trong devices) → im lặng');
+  {
+    const N = 'ab'.repeat(12);
+    const t = await ask({ q: 'time', n: N });
+    ok(t?.kind === 'fw' && t.m.sys === 'time' && t.m.n === N && Math.abs(t.m.ms - Date.now()) < 5000, 'giờ: server trả {sys:"time", ms, n} trên gw/<id>/fw (không cần NTP/DNS)');
+    ok(verifySignedCmd(MQ, t.raw) && !verifySignedCmd('c1c2c3d4e5f60718', t.raw), 'giờ: ký bằng khoá lệnh server, gắn đúng board');
+    ok(verifySignedCmd(MQ, t.raw.replace(/"ms":\d+/, '"ms":1')) === false, 'giờ: sửa giờ → sai chữ ký');
+    ok((await ask({ q: 'time', n: 'xyz' })) === undefined, 'giờ: nonce sai dạng → im lặng');
+  }
+  let silent = 0; for (let i = 0; i < 120; i++) if (!(await ask({ q: 'info' }))) silent++;
+  ok(silent > 0, 'MQTT: quá 100 yêu cầu / 10 s / board → bỏ (chống spam)');
+  const h3 = await call('owner1', 'GET', '/api/v1/system-history?gw=siteA/gw01');
+  ok(h3.j.events.some((e) => e.type === 'ota_mqtt' && e.text.includes('đã nhận đủ')), 'lịch sử: tải firmware qua MQTT');
+  const { deviceAclBlock } = await import('../src/mqttProvision.js');
+  const acl = deviceAclBlock('d1', { mqttId: MQ });
+  ok(acl.includes(`topic write gw/${MQ}/fwq`) && acl.includes(`topic read gw/${MQ}/fw`) && !acl.includes(`topic write gw/${MQ}/fw\n`), 'ACL: board ghi fwq, chỉ ĐỌC fw (không tự đóng vai server)');
+}
+
+// Chủ trạm khởi động lại board từ xa
+{
+  published.length = 0; stepUp = false;
+  ok((await call('other1', 'POST', '/api/v1/gateway/reboot', { gw: 'siteA/gw01' })).j.error === 'forbidden_gateway', 'khởi động lại: người khác → forbidden_gateway');
+  db.prepare("UPDATE gateway_clients SET version = 'abc123' WHERE site = 'siteA' AND device = 'pc01'").run();   // bước chuyển tiếp ở trên đã ghi pc01 thành mcu-…
+  ok((await call('owner1', 'POST', '/api/v1/gateway/reboot', { gw: 'siteA/pc01' })).j?.error === 'not_mcu', 'khởi động lại: gateway PC → not_mcu');
+  const ns = await call('owner1', 'POST', '/api/v1/gateway/reboot', { gw: 'siteA/gw01' });
+  ok(ns.j?.error === 'step_up_required' && published.length === 0, 'khởi động lại: chưa Face ID/TOTP → step_up_required, chưa gửi gì');
+  stepUp = true;
+  const rb = await call('owner1', 'POST', '/api/v1/gateway/reboot', { gw: 'siteA/gw01' });
+  await new Promise((r) => setTimeout(r, 50));
+  const q = published.at(-1);
+  ok(rb.status === 200 && q?.opts.mqttId === MQ && q.payload.sys === 'reboot' && q.payload.by === 'owner1' && /^rb-[0-9a-f]{12}$/.test(q.payload.id), 'khởi động lại: gửi {sys:"reboot", by, id} (id chống phát lại) tới đúng board');
+  const h4 = await call('owner1', 'GET', '/api/v1/system-history?gw=siteA/gw01');
+  ok(h4.j.events.some((e) => e.type === 'gateway_reboot'), 'lịch sử: khởi động lại từ xa');
+}
+
 const { forwardGatewayAlert } = await import('../src/pushAlerts.js');
 ok(typeof forwardGatewayAlert === 'function', 'cảnh báo sec.* đi qua forwardGatewayAlert (tiêu đề "Cảnh báo bảo mật")');
 ok(readMcuRelease(path.join(tmp, 'khong-co')) === null, 'thư mục phát hành hỏng/thiếu → không phát gì');

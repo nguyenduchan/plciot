@@ -32,9 +32,13 @@
 #include <time.h>
 #include <esp_crt_bundle.h>
 #include <esp_random.h>
+#include <mbedtls/base64.h>
+#include <vector>
 #ifndef GW_SIM
 #include <esp_ota_ops.h>
 #include <esp_heap_caps.h>
+#include <Network.h>
+#include <NetworkClient.h>
 #endif
 
 /// Arduino-ESP32: không tự xác nhận bản đang chạy lúc khởi động — otaLoop() xác nhận khi đã "khoẻ".
@@ -59,6 +63,7 @@ bool s_chkNet = false, s_chkOta = false, s_chkIo = false, s_srvOk = false;
 uint32_t s_seq0 = 0, s_srvTry = 0;
 String s_chkWhy;
 uint32_t s_restartAt = 0;
+const char* s_restartWhy = "cập nhật firmware";
 
 // ---- ghi đang chạy
 struct Job { bool on = false; size_t total = 0, got = 0; String ver, sha, sig, src; mbedtls_sha256_context ctx; } s_job;
@@ -201,6 +206,9 @@ bool otaStart(size_t total, const String& ver, const String& shaHex, const Strin
 #ifdef FW_DEV_PUBKEY
   if (!sigOk) sigOk = verifySig(FW_DEV_PUBKEY, "fw1|" + sh + "|" + ver, sig);   // bản build dev: tin thêm khoá dev
 #endif
+#ifdef FW_DEV_PUBKEY2
+  if (!sigOk) sigOk = verifySig(FW_DEV_PUBKEY2, "fw1|" + sh + "|" + ver, sig);  // khoá dev nằm trên VPS (ký qua SSH)
+#endif
   if (!sigOk) {
     evLog("ota_badsig", "Từ chối firmware " + ver + " (" + src + "): CHỮ KÝ KHÔNG HỢP LỆ", true);
     err = "ota_bad_signature"; return false;
@@ -240,6 +248,100 @@ bool otaFinish(String& err) {
   return true;
 }
 
+// ------------------------------------------------------------------ chẩn đoán HTTPS lỗi
+/// Lỗi HTTPS (esp_http_client chỉ báo ESP_ERR_HTTP_CONNECT): tách DNS / TCP 443 / bắt tay TLS để biết sửa ở đâu mà không cần cổng USB.
+String netDiag(const String& url) {
+#ifndef GW_SIM
+  String host = url; int s = host.indexOf("://"); if (s >= 0) host = host.substring(s + 3);
+  int e = host.indexOf('/'); if (e >= 0) host = host.substring(0, e);
+  e = host.indexOf(':'); if (e >= 0) host = host.substring(0, e);
+  IPAddress ip;
+  if (!Network.hostByName(host.c_str(), ip) || ip == IPAddress(0, 0, 0, 0)) return "DNS lỗi: không phân giải được " + host;
+  wdtFeed(WD_LOOP);
+  NetworkClient c;
+  bool tcp = c.connect(ip, 443, 4000); c.stop();
+  if (!tcp) return "DNS ok (" + ip.toString() + "), TCP 443 KHÔNG nối được";
+  return "DNS ok (" + ip.toString() + "), TCP 443 nối được → lỗi ở bắt tay TLS";
+#else
+  return "";
+#endif
+}
+
+// ------------------------------------------------------------------ tải firmware QUA MQTT (dự phòng khi HTTPS hỏng)
+// Board → gw/<id>/fwq: {q:"info",ch} | {q:"get",ch,ver,off,n}. Server → gw/<id>/fw: {t:"info",version,size,sha256,sig} | {t:"data",ver,off,z(base64)}
+// | {t:"err",e}. Mỗi lần một đoạn (board hỏi đoạn kế khi đã ghi xong đoạn trước), hỏi lại khi quá 15 s. Kết nối MQTT TLS mở sẵn → không cần
+// bắt tay TLS mới (đường HTTPS hỏng vì RAM trong phân mảnh / DNS vẫn tải được). An toàn như HTTPS: chữ ký nhà phát triển kiểm trước khi
+// xoá phân vùng (otaStart), SHA-256 thật đối chiếu sau khi ghi (otaFinish). Gói "fw" chỉ server (user ctl) ghi được (ACL).
+namespace {
+const size_t kMqChunk = 8192;            // base64 ~11 KB: dưới giới hạn gói 16 KB của broker và bộ đệm PubSubClient
+const uint32_t kMqWaitMs = 15000;
+const int kMqTries = 6;
+struct Mq { bool on = false, info = false, health = false; String ver; size_t off = 0, size = 0; uint32_t at = 0; int tries = 0; int pct = 0; } s_mq;
+
+void mqSend() {
+  JsonDocument d;
+  d["q"] = s_mq.info ? "get" : "info"; d["ch"] = FW_CHANNEL;
+  if (s_mq.info) { d["ver"] = s_mq.ver; d["off"] = (uint32_t)s_mq.off; d["n"] = (uint32_t)kMqChunk; }
+  String s; serializeJson(d, s);
+  s_mq.at = millis(); if (!s_mq.at) s_mq.at = 1;
+  if (!cloudPublishFwq(s)) logf("OTA MQTT: chưa gửi được yêu cầu (MQTT chưa nối)");
+}
+/// health = chỉ hỏi thông tin (kiểm tra sức khoẻ bản mới: còn lấy được thông tin firmware từ server không).
+void mqStart(bool health) { s_mq = Mq(); s_mq.on = true; s_mq.health = health; mqSend(); }
+void mqFail(const String& why) {
+  bool job = s_mq.info;
+  s_mq.on = false;
+  if (job) otaAbort();
+  if (!s_mq.health) { s_pullTried = false; evLog("ota_fail", "Tải firmware qua MQTT lỗi: " + why + " — thử lại sau 1 phút"); }
+}
+}  // namespace
+
+void otaOnFw(const uint8_t* p, size_t n) {
+  if (!s_mq.on) return;
+  JsonDocument d;
+  if (deserializeJson(d, (const char*)p, n)) return;
+  String t = d["t"] | "";
+  if (t == "err") { mqFail(String("server báo ") + (d["e"] | "?")); return; }
+  if (t == "info" && !s_mq.info) {
+    String ver = d["version"] | "", sha = d["sha256"] | "", sig = d["sig"] | ""; size_t size = d["size"] | 0;
+    if (s_mq.health) { s_mq.on = false; s_srvOk = ver.length() > 0; logf("Kiểm tra sau cập nhật: lấy được thông tin firmware qua MQTT (%s)", ver.c_str()); return; }
+    if (ver == FW_VERSION) { s_mq.on = false; evLog("ota_info", "Đã là bản mới nhất (" + ver + ", hỏi qua MQTT)"); return; }
+    String err;
+    if (!otaStart(size, ver, sha, sig, "server qua MQTT", err)) { s_mq.on = false; return; }   // otaStart đã ghi sự kiện (chưa duyệt / sai chữ ký)
+    s_mq.info = true; s_mq.ver = ver; s_mq.size = size; s_mq.off = 0; s_mq.tries = 0;
+    evLog("ota_info", "HTTPS tới server lỗi — tải firmware " + ver + " (" + String((unsigned)(size / 1024)) + " KB) qua MQTT");
+    mqSend();
+    return;
+  }
+  if (t == "data" && s_mq.info) {
+    if (String(d["ver"] | "") != s_mq.ver || (size_t)(d["off"] | 0) != s_mq.off) return;   // gói cũ / trùng (đã hỏi lại): bỏ
+    const char* z = d["z"] | "";
+    size_t zl = strlen(z), m = 0;
+    std::vector<uint8_t> buf(zl * 3 / 4 + 4);
+    if (!zl || mbedtls_base64_decode(buf.data(), buf.size(), &m, (const uint8_t*)z, zl) || !m || s_mq.off + m > s_mq.size) return;   // hỏng: chờ hỏi lại
+    wdtFeed(WD_LOOP);
+    String err;
+    if (!otaWrite(buf.data(), m, err)) { s_mq.on = false; s_pullTried = false; evLog("ota_fail", "Ghi firmware " + s_mq.ver + " (MQTT) lỗi: " + err + " — thử lại sau 1 phút"); return; }
+    s_mq.off += m; s_mq.tries = 0;
+    int pct = (int)(s_mq.off * 100 / s_mq.size);
+    if (pct / 25 != s_mq.pct / 25) logf("OTA MQTT: %d%% (%u/%u)", pct, (unsigned)s_mq.off, (unsigned)s_mq.size);
+    s_mq.pct = pct;
+    if (s_mq.off >= s_mq.size) {
+      s_mq.on = false;
+      if (!otaFinish(err)) { s_pullTried = false; evLog("ota_fail", "Cài firmware " + s_mq.ver + " (MQTT) lỗi: " + err + " — thử lại sau 1 phút"); }
+      return;
+    }
+    mqSend();
+  }
+}
+
+void otaRemoteReboot(const String& by) {
+  evLog("reboot_remote", "Chủ trạm (" + (by.length() ? by : String("?")) + ") khởi động lại board từ xa — TẮT đầu ra, khởi động lại", true);
+  if (s_mq.on) { s_mq.on = false; otaAbort(); }
+  s_restartWhy = "chủ trạm khởi động lại từ xa";
+  s_restartAt = millis() + 3000; if (!s_restartAt) s_restartAt = 1;   // 3 s: kịp gửi cảnh báo + ack lên cloud
+}
+
 // ------------------------------------------------------------------ tải từ server
 namespace {
 /// Kênh phát hành: "" = chính thức (releases/mcu), "dev" = bản thử (releases/mcu-dev) — chỉ bản build dev.
@@ -256,7 +358,10 @@ esp_err_t dlEvent(esp_http_client_event_t* e) {
 
 String heapText() {
 #ifndef GW_SIM
-  return ", RAM trống " + String(ESP.getFreeHeap() / 1024) + " KB, khối lớn nhất " + String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + " KB";
+  // mbedTLS của framework cấp phát CHỈ trong RAM trong (CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC): bắt tay TLS mới cần khối liền ~17 KB.
+  // Khối lớn nhất 8BIT gồm cả PSRAM (8 MB) nên không nói lên gì — báo riêng RAM trong.
+  return ", RAM trong trống " + String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024) + " KB, khối liền lớn nhất " +
+         String(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024) + " KB";
 #else
   return "";
 #endif
@@ -269,10 +374,13 @@ void pullFromServer() {
   int st = httpsGet(base + "/api/v1/mcu-firmware" + chq(), resp);
   JsonDocument m;
   if (st != 200 || deserializeJson(m, resp)) {
-    // lỗi mạng: để otaLoop thử lại sau 1 phút (s_pullTried = false). Ghi rõ lỗi + RAM để chẩn đoán không cần cổng USB.
-    s_pullTried = false;
-    evLog("ota_info", "Đã duyệt nhưng chưa lấy được thông tin bản mới từ server (HTTP " + String(st) + (httpsLastError().length() ? " " + httpsLastError() : String("")) +
-          heapText() + ") — thử lại sau 1 phút");
+    // HTTPS hỏng: ghi rõ lỗi (DNS / TCP / TLS) + RAM trong để chẩn đoán không cần cổng USB, rồi tải QUA MQTT nếu MQTT đang nối.
+    // MQTT cũng không có: otaLoop thử lại HTTPS sau 1 phút (s_pullTried = false).
+    String diag = st < 0 ? netDiag(base) : String("");
+    bool viaMqtt = cloudLinkOk();
+    evLog("ota_info", "Đã duyệt nhưng chưa lấy được thông tin bản mới từ server qua HTTPS (HTTP " + String(st) + (httpsLastError().length() ? " " + httpsLastError() : String("")) +
+          (diag.length() ? "; " + diag : String("")) + heapText() + ")" + (viaMqtt ? " — chuyển sang tải qua MQTT" : " — thử lại sau 1 phút"));
+    if (viaMqtt) mqStart(false); else s_pullTried = false;
     return;
   }
   String ver = m["version"] | "", sha = m["sha256"] | "", sig = m["sig"] | ""; size_t size = m["size"] | 0;
@@ -292,8 +400,12 @@ void pullFromServer() {
   int code = h ? esp_http_client_get_status_code(h) : -1;
   if (h) esp_http_client_cleanup(h);
   if (e != ESP_OK || code != 200 || d.err.length()) {
-    otaAbort(); s_pullTried = false;   // lỗi mạng giữa chừng: thử lại sau 1 phút (còn trong cửa sổ cho phép)
-    evLog("ota_fail", "Tải firmware " + ver + " lỗi: " + (d.err.length() ? d.err : "HTTP " + String(code) + (e != ESP_OK ? String(" ") + esp_err_to_name(e) : String(""))) + heapText() + " — thử lại sau 1 phút");
+    otaAbort();
+    // lỗi ghi flash (d.err): thử lại sau 1 phút. Lỗi mạng giữa chừng: chuyển sang MQTT nếu đang nối, không thì thử lại sau 1 phút.
+    bool viaMqtt = !d.err.length() && cloudLinkOk();
+    evLog("ota_fail", "Tải firmware " + ver + " qua HTTPS lỗi: " + (d.err.length() ? d.err : "HTTP " + String(code) + (e != ESP_OK ? String(" ") + esp_err_to_name(e) : String(""))) + heapText() +
+          (viaMqtt ? " — chuyển sang tải qua MQTT" : " — thử lại sau 1 phút"));
+    if (viaMqtt) mqStart(false); else s_pullTried = false;
     return;
   }
   if (!otaFinish(err)) evLog("ota_fail", "Cài firmware " + ver + " lỗi: " + err);
@@ -376,7 +488,8 @@ void healthCheck() {
     String resp; JsonDocument m;
     int st = httpsGet(base + "/api/v1/mcu-firmware" + chq(), resp);
     s_srvOk = (st == 200 || st == 404) && (st == 404 || (!deserializeJson(m, resp) && m["version"].is<const char*>()));   // 404 = server chưa phát bản nào: vẫn là HTTPS tới server được
-    if (!s_srvOk) logf("Kiểm tra sau cập nhật: chưa tải được thông tin firmware từ server (HTTP %d)", st);
+    // HTTPS hỏng nhưng MQTT nối: đường cập nhật qua MQTT vẫn còn → hỏi thông tin qua MQTT (trả lời đặt s_srvOk). Không quay về oan vì HTTPS.
+    if (!s_srvOk) { logf("Kiểm tra sau cập nhật: chưa tải được thông tin firmware qua HTTPS (HTTP %d) — hỏi qua MQTT", st); if (!s_mq.on) mqStart(true); }
   }
   s_chkOta = part && (apiStarted() || !netUp()) && (need != 2 || s_srvOk);
   // I/O + vòng đọc
@@ -391,7 +504,7 @@ void healthCheck() {
 void otaLoop() {
   if (s_restartAt && (int32_t)(millis() - s_restartAt) >= 0) {
     s_restartAt = 0;
-    enterSafeState("cập nhật firmware");
+    enterSafeState(s_restartWhy);
     delay(200);
     ESP.restart();
   }
@@ -415,6 +528,15 @@ void otaLoop() {
       logf("Không có bản cũ để quay về — giữ bản đang chạy");
     }
   }
-  if (windowOpen() && !s_pullTried && enrolled() && cloudLinkOk() && (!s_pullAt || millis() - s_pullAt >= 60000)) { s_pullTried = true; s_pullAt = millis(); if (!s_pullAt) s_pullAt = 1; pullFromServer(); }
+  // tải qua MQTT: chờ trả lời quá 15 s → hỏi lại; quá kMqTries lần / mất MQTT / hết cửa sổ cho phép → bỏ (thử lại sau 1 phút)
+  if (s_mq.on) {
+    if (!s_mq.health && s_mq.info && !windowOpen()) mqFail("hết thời gian cho phép giữa chừng");
+    else if (!cloudLinkOk()) mqFail("mất kết nối MQTT");
+    else if (millis() - s_mq.at >= kMqWaitMs) {
+      if (++s_mq.tries > kMqTries) mqFail("server không trả lời (" + String(s_mq.info ? "đoạn " + String((unsigned)s_mq.off) : String("thông tin")) + ")");
+      else mqSend();
+    }
+  }
+  if (windowOpen() && !s_pullTried && !s_mq.on && enrolled() && cloudLinkOk() && (!s_pullAt || millis() - s_pullAt >= 60000)) { s_pullTried = true; s_pullAt = millis(); if (!s_pullAt) s_pullAt = 1; pullFromServer(); }
   if (s_until && !windowOpen()) { s_until = 0; logf("Hết thời gian cho phép cập nhật"); }
 }

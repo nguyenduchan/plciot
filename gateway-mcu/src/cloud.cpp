@@ -11,6 +11,7 @@
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <mbedtls/base64.h>
+#include <esp_random.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -18,7 +19,7 @@ namespace {
 NetworkClientSecure s_tls;
 PubSubClient s_mqtt(s_tls);
 enum class St { Disabled, Disconnected, Connecting, Connected } s_state = St::Disabled;
-bool s_restart = false, s_ntpStarted = false;
+bool s_restart = false;
 uint32_t s_nextTry = 0, s_backoff = 2000;
 uint32_t s_lastTele = 0, s_expediteUntil = 0, s_liveUntil = 0;
 uint32_t s_lastSeq = 0; bool s_telePending = false;
@@ -78,7 +79,9 @@ bool takeToken() {
 
 /// Chống phát lại: "ts" lệch quá CmdMaxAgeSec → stale_cmd; id đã thấy trong 5 phút → replayed_cmd.
 String checkReplay(JsonObjectConst r, const String& id) {
-  if (g_cfg.cmdMaxAgeSec > 0 && r["ts"].is<long long>()) {
+  // lệnh KHÔNG có ts thì không kiểm được độ tươi → từ chối (trước đây bỏ qua kiểm: gói ký cũ không ts phát lại được mãi)
+  if (g_cfg.cmdMaxAgeSec > 0 && !r["ts"].is<long long>()) return "stale_cmd";
+  if (g_cfg.cmdMaxAgeSec > 0) {
     if (!timeSynced()) return "clock_not_synced";   // không biết giờ thì không kiểm được độ tươi của lệnh → từ chối (an toàn)
     long long d = nowMs() - r["ts"].as<long long>();
     if (llabs(d) > (long long)g_cfg.cmdMaxAgeSec * 1000) { logf("Từ chối lệnh cũ/lệch đồng hồ: lệch %lld s", d / 1000); return "stale_cmd"; }
@@ -149,7 +152,45 @@ void onRpc(const String& raw) {
   rpcReply(rid, st, resp);
 }
 
+// ---------------------------------------------------------------- GIỜ TỪ SERVER (không NTP bên thứ ba, không cần DNS)
+// Board chỉ nói chuyện với máy chủ của hệ thống: giờ lấy từ VPS. Qua kết nối MQTT đang có (broker theo IP): board hỏi gw/<id>/fwq
+// {q:"time", n:<nonce>} → server trả gw/<id>/fw gói {sys:"time", ms, n} KÝ bằng khoá lệnh (cmd1, gắn mqttId). Nonce một lần + trả lời trong
+// 10 s → không phát lại được giờ cũ. Đường phụ: header Date của HTTPS tới plc.dieukhientudong.net (timeFromDate). Không có giờ là board
+// từ chối mọi lệnh ký (ts) — kể cả cho phép cập nhật / khởi động lại từ xa (sự cố 2026-11-27: DNS nhà hỏng → NTP hỏng → mất đường sửa).
+String s_timeNonce; uint32_t s_timeAskAt = 0, s_timeOkAt = 0;
+const uint32_t kTimeResyncMs = 6UL * 3600 * 1000;   // chỉnh lại giờ mỗi 6 giờ (trôi đồng hồ ESP32 vài giây / ngày)
+void askServerTime() {
+  uint8_t r[12]; esp_fill_random(r, sizeof r);
+  s_timeNonce = ""; char b[3]; for (uint8_t x : r) { snprintf(b, sizeof b, "%02x", x); s_timeNonce += b; }
+  s_timeAskAt = millis(); if (!s_timeAskAt) s_timeAskAt = 1;
+  JsonDocument d; d["q"] = "time"; d["n"] = s_timeNonce;
+  String j; serializeJson(d, j); publish("fwq", j, false);
+}
+void onServerTime(const String& raw) {
+  String plain;
+  if (!g_cfg.cmdKey.length() || !verifyCmd(raw, g_cfg.mqttId, g_cfg.cmdKey, plain)) { logf("Bỏ gói giờ: thiếu/sai chữ ký server"); return; }
+  JsonDocument d;
+  if (deserializeJson(d, plain) || String(d["sys"] | "") != "time") return;
+  if (!s_timeNonce.length() || String(d["n"] | "") != s_timeNonce || millis() - s_timeAskAt > 10000) { logf("Bỏ gói giờ: sai nonce / quá hạn"); return; }
+  s_timeNonce = "";
+  long long ms = d["ms"] | 0LL;
+  if (ms < 1700000000000LL) return;
+  ms += (millis() - s_timeAskAt) / 2;   // bù nửa thời gian đi-về
+  struct timeval tv = {}; tv.tv_sec = (time_t)(ms / 1000); tv.tv_usec = (long)((ms % 1000) * 1000);
+  bool first = !timeSynced();
+  settimeofday(&tv, nullptr);
+  rtcNoteNetTime();
+  s_timeOkAt = millis(); if (!s_timeOkAt) s_timeOkAt = 1;
+  if (first) logf("Đặt giờ theo server (MQTT, có chữ ký)");
+}
+
 void onMessage(char* topic, uint8_t* payload, unsigned int len) {
+  if (String(topic) == base() + "/fw") {   // chỉ server (ctl) ghi được — ACL. Giờ (có chữ ký) hoặc firmware (chữ ký nhà phát triển kiểm ở otaStart)
+    if (len == 0) return;
+    String raw((const char*)payload, len);
+    if (len < 1024 && raw.indexOf("\"sys\":\"time\"") >= 0) onServerTime(raw); else otaOnFw(payload, len);
+    return;
+  }   // firmware qua MQTT (chỉ server ghi được — ACL; chữ ký kiểm ở otaStart)
   if (String(topic) == base() + "/rpc") { if (len > 0 && len <= 16000) onRpc(String((const char*)payload, len)); return; }
   if (String(topic) != base() + "/cmd" || len == 0) return;
   if (len > 1024) { logf("Cloud→GW: bỏ lệnh quá dài (%u byte)", len); return; }
@@ -185,6 +226,11 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
       // chủ trạm bấm "Cho phép cập nhật" trên webapp (đã qua Face ID/TOTP ở server) — chỉ nhận khi có chữ ký server
       if (!trusted) { logf("Bỏ ota_allow không có chữ ký server"); return; }
       otaAllow(r["ttl"] | 900, String(r["by"] | ""));
+    } else if (sys == "reboot") {
+      // chủ trạm bấm "Khởi động lại" trên webapp (Face ID/TOTP ở server). Chữ ký server + ts/id (checkReplay) chặn phát lại.
+      if (!trusted || !id.length()) { logf("Bỏ lệnh reboot không có chữ ký server / id"); return; }
+      sendAck(ack(id, true));
+      otaRemoteReboot(String(r["by"] | ""));
     } else if (sys == "live") {
       int ttl = constrain((int)(r["ttl"] | 60), 5, 600);
       if (!live()) logf("Có người xem webapp — gửi dữ liệu nhanh");
@@ -448,6 +494,7 @@ bool connectMqtt() {
   }
   s_mqtt.subscribe((base() + "/cmd").c_str(), 0);
   s_mqtt.subscribe((base() + "/rpc").c_str(), 1);   // cài đặt từ xa (GatewayAdmin): chương trình logic, xem trạng thái/nhật ký
+  s_mqtt.subscribe((base() + "/fw").c_str(), 0);    // firmware qua MQTT khi HTTPS hỏng (board hỏi lại khi mất gói)
   s_connKey = connKey();
   logf("Đã nối cloud %s:%d (mqtts, TLS, chứng chỉ đã ghim)", g_cfg.cloudHost.c_str(), g_cfg.cloudPort);
   // đồng bộ lại trạng thái hiện tại lên cloud (các bản tin retain)
@@ -476,6 +523,11 @@ void cloudBegin() {
 /// Cấu hình đổi: CHỈ nối lại khi thông số kết nối cloud đổi (như gateway C# không ngắt cloud khi tạm dừng thiết bị) —
 /// đổi khác (thiết bị, nhãn, chu kỳ…) chỉ gửi lại bản tin config, webapp không thấy gateway "offline" chớp nhoáng.
 bool cloudLinkOk() { return s_mqtt.connected(); }   // MQTT đang nối = đường mạng hiện tại ra được Internet
+bool cloudPublishFwq(const String& json) {          // gọi trong loop() (cùng task với cloudLoop / callback MQTT)
+  if (!s_mqtt.connected()) return false;
+  String t = base() + "/fwq";
+  return s_mqtt.publish(t.c_str(), (const uint8_t*)json.c_str(), json.length(), false);
+}
 void cloudRestart() {
   String k = connKey();
   if (k != s_connKey) s_restart = true; else s_republish = true;
@@ -510,7 +562,7 @@ void cloudLoop() {
   return;   // CHỈ bản thử quay về firmware cũ (build dev): giả lập firmware mới làm mất kết nối cloud
 #endif
   bool hasIp = netUp();
-  if (hasIp && !s_ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); s_ntpStarted = true; }
+  // không dùng NTP bên thứ ba: giờ lấy từ server (askServerTime / header Date HTTPS tới plc.dieukhientudong.net)
 
   // dữ liệu mới của vòng đọc: cảnh báo + hàng đợi gửi bù + đánh dấu cần gửi telemetry
   uint32_t seq = engineSeq();
@@ -553,6 +605,14 @@ void cloudLoop() {
     return;
   }
   s_mqtt.loop();
+
+  // giờ từ server: chưa có giờ → hỏi mỗi 15 s; đã có → chỉnh lại mỗi 6 giờ
+  if (s_mqtt.connected() && g_cfg.cmdKey.length()) {
+    uint32_t now = millis();
+    bool due = !timeSynced() ? (!s_timeAskAt || now - s_timeAskAt >= 15000)
+                             : (!s_timeOkAt || now - s_timeOkAt >= kTimeResyncMs) && (!s_timeAskAt || now - s_timeAskAt >= 60000);
+    if (due) askServerTime();
+  }
 
   // status đổi (online ↔ plc_fault)
   String st = g_status == "plc_fault" ? "plc_fault" : "online";

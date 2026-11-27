@@ -205,6 +205,7 @@ void cloudRestart();                             // cấu hình cloud đổi: n�
 bool cloudLinkOk();                              // MQTT đang nối (đường mạng hiện tại ra được Internet)
 void cloudExpedite();                            // logic tại biên vừa đổi đầu ra: gửi telemetry ngay
 String cloudStateName();                         // Disabled | Disconnected | Connecting | Connected (CloudState của C#)
+bool cloudPublishFwq(const String& json);        // gw/<id>/fwq: hỏi server thông tin / một đoạn firmware qua MQTT (khi HTTPS hỏng)
 // Việc cloud do admin yêu cầu (POST /api/cloud): register (value = LoginResult JSON) | enroll (value = QR). Trả (ok, câu báo).
 bool cloudAction(const String& action, const String& api, const String& value, String& msg);
 /// Ghép PC bằng webapp (OTP) thay cho nút BOOT: hỏi server (VPS hoặc server cài trên PC trong LAN) tài khoản của phiên webapp
@@ -257,6 +258,12 @@ bool otaStart(size_t total, const String& ver, const String& shaHex, const Strin
 bool otaWrite(const uint8_t* p, size_t n, String& err);
 bool otaFinish(String& err);                     // đối chiếu SHA-256 → đặt bản mới → khởi động lại sau 1,5 s (qua enterSafeState)
 void otaAbort();
+/// gw/<id>/fw (server → board): thông tin firmware / một đoạn firmware qua MQTT. Đường dự phòng khi HTTPS tới server hỏng mà MQTT vẫn nối
+/// (vd. RAM trong phân mảnh: mbedTLS chỉ cấp phát RAM trong, kết nối MQTT TLS mở sẵn thì không cần cấp mới). Chữ ký + SHA-256 kiểm như mọi đường.
+void otaOnFw(const uint8_t* p, size_t n);
+/// Lệnh {sys:"reboot"} có chữ ký server (chủ trạm bấm trên webapp, step-up): TẮT DO rồi khởi động lại sau vài giây.
+void otaRemoteReboot(const String& by);
+String netDiag(const String& url);               // chẩn đoán HTTPS lỗi: DNS / TCP 443 / TLS + RAM trong (câu tiếng Việt)
 void enterSafeState(const char* why);            // TẮT mọi DO + lưu bộ đếm DI — gọi trước MỌI lần khởi động lại có chủ đích
 /// Nhật ký sự kiện (/events.log). alertOwner = cảnh báo bảo mật: gửi gw/<id>/alert k="sec.<type>" → thông báo đỏ về điện thoại chủ trạm.
 void evLog(const char* type, const String& text, bool alertOwner = false);

@@ -1,6 +1,7 @@
 import { shardCount, shardUrls } from './shards.js';
 import { recordReportedLogic } from './gatewayLogic.js';
 import { onRpcReply } from './remoteAdmin.js';
+import { onFwRequest } from './mcuOta.js';
 import mqtt from 'mqtt';
 import { insertEvent } from './historyStore.js';
 import { evaluateBackfill } from './backfill.js';
@@ -145,6 +146,7 @@ export function startMqttIngest(db) {
       if (!parsed) return;
       const { site, device, kind } = parsed;
       if (kind === 'rpcr') { onRpcReply(parsed.mqttId, buf); return; }   // trả lời cài đặt từ xa: không lưu, chỉ chuyển cho yêu cầu đang chờ
+      if (kind === 'fwq') { onFwRequest(db, parsed.mqttId, buf); return; }   // board hỏi firmware qua MQTT (HTTPS hỏng): không lưu
       if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config', 'alert'].includes(kind)) return;
 
       const verdict = evaluateIngest(db, { topic: t, parsed, payloadBuf: buf });
