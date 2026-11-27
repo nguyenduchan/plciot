@@ -3,7 +3,8 @@
  * Sinh cấu hình broker THỬ cho smoke-mqtt-id-broker.js (không đụng DB/broker thật):
  *   node scripts/gen-broker-test-config.js <thư-mục-ra>
  * → <ra>/acl, <ra>/acl-monitor, <ra>/users.json (user/mật khẩu để tạo file passwd bằng mosquitto_passwd) và <ra>/info.json
- * Hai gateway (A, B) có id MQTT ngẫu nhiên khác nhau + hai user app (xem gateway A / gateway B).
+ * Hai gateway (A, B) có id MQTT ngẫu nhiên khác nhau + hai user app (xem gateway A / gateway B)
+ * + gateway no-code C (mua sẵn: chỉ ghi raw/status, chỉ trên listener mã hoá — nocode.js).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,6 +27,10 @@ const db = openDb(tmp);
 ensureDefaultTenant(db);
 const gwA = provisionDevice(db, 'default', { site: 'siteA', device: 'gwA' });
 const gwB = provisionDevice(db, 'default', { site: 'siteB', device: 'gwB' });
+const { migrateNocode } = await import('../src/nocode.js');
+migrateNocode(db);
+db.prepare('INSERT INTO nocode_gateways (site, device, owner_id, map_json, map_rev, created_at, updated_at) VALUES (?, ?, NULL, NULL, 0, ?, ?)').run('siteC', 'gwC', Date.now(), Date.now());
+const gwC = provisionDevice(db, 'default', { site: 'siteC', device: 'gwC' });
 
 const mkUser = (name, site, device) => {
   const u = upsertUser(db, { username: name, passwordHash: hashPassword('x'), folderPath: `f_${name}`, version: '1', notifySite: site, notifyDevice: device });
@@ -39,6 +44,7 @@ rebuildAclFromUsers(db);
 const users = [
   { username: gwA.mqtt.username, password: gwA.mqtt.password },
   { username: gwB.mqtt.username, password: gwB.mqtt.password },
+  { username: gwC.mqtt.username, password: gwC.mqtt.password },
   userA, userB,
   { username: 'ingest', password: 'ingest-pw' }, { username: 'ctl', password: 'ctl-pw' },
 ];
@@ -48,6 +54,7 @@ fs.writeFileSync(path.join(out, 'mkpw.sh'), ['#!/bin/sh', 'rm -f /c/passwd; touc
 fs.writeFileSync(path.join(out, 'info.json'), JSON.stringify({
   gwA: { user: gwA.mqtt.username, pass: gwA.mqtt.password, id: gwA.device.mqttId },
   gwB: { user: gwB.mqtt.username, pass: gwB.mqtt.password, id: gwB.device.mqttId },
+  gwC: { user: gwC.mqtt.username, pass: gwC.mqtt.password, id: gwC.device.mqttId },
   userA: { ...userA, id: gwA.device.mqttId }, userB: { ...userB, id: gwB.device.mqttId },
   ingest: { user: 'ingest', pass: 'ingest-pw' }, ctl: { user: 'ctl', pass: 'ctl-pw' },
 }));

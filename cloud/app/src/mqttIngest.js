@@ -19,6 +19,7 @@ import { planTelemetryMinMs, planStoreEveryMs } from './entitlements.js';
 import { createTeleAggregator } from './aggregate.js';
 import { evaluateStatusAlert, parseGatewayAlert, forwardGatewayAlert } from './pushAlerts.js';
 import { featureOn } from './serverProfile.js';
+import { onNocodeRaw, onNocodeStatus, onNocodeAckRaw } from './nocode.js';
 
 /** Tem chưa có user? Cache 5 giây để không truy vấn DB cho từng gói telemetry (gateway cũng đã ngừng gửi khi chưa claim). */
 const unclaimedCache = new Map();
@@ -147,6 +148,21 @@ export function startMqttIngest(db) {
       const { site, device, kind } = parsed;
       if (kind === 'rpcr') { onRpcReply(parsed.mqttId, buf); return; }   // trả lời cài đặt từ xa: không lưu, chỉ chuyển cho yêu cầu đang chờ
       if (kind === 'fwq') { onFwRequest(db, parsed.mqttId, buf); return; }   // board hỏi firmware qua MQTT (HTTPS hỏng): không lưu
+      if (kind === 'ackraw') {
+        // Phản hồi lệnh của gateway no-code → server phát ack chuẩn (quay lại đây như ack thường)
+        const r = onNocodeAckRaw(db, parsed, buf);
+        if (!r.ok && r.reason !== 'unknown_id') recordDeny(db, { reason: `nocode_${r.reason}`, detail: 'ackraw', site, device, tenantId: parsed.tenant, kind });
+        return;
+      }
+      if (kind === 'cmdraw') return;   // lệnh server gửi gateway no-code: không lưu
+      if (kind === 'raw') {
+        // Gateway no-code: chuẩn hoá theo ánh xạ rồi server phát lại lên <base>/telemetry (quay lại đây như telemetry thường)
+        const r = onNocodeRaw(db, parsed, buf, ts);
+        if (!r.ok && (r.reason === 'not_nocode' || r.reason === 'rate_limited')) {
+          recordDeny(db, { reason: `nocode_${r.reason}`, detail: 'raw', site, device, tenantId: parsed.tenant, kind });
+        }
+        return;
+      }
       if (!['telemetry', 'status', 'history', 'ack', 'cmd', 'config', 'alert'].includes(kind)) return;
 
       const verdict = evaluateIngest(db, { topic: t, parsed, payloadBuf: buf });
@@ -254,6 +270,7 @@ export function startMqttIngest(db) {
         forwardGatewayAlert(db, { site, device, alert });
       }
 
+      if (kind === 'status') onNocodeStatus(db, parsed, text);   // gateway no-code: theo dõi online/offline để server tự báo offline
       if (kind === 'status' && tenantId) {
         const sk = `${tenantId}/${site}/${device}`;
         const was = prevStatus.get(sk);

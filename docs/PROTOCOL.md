@@ -62,6 +62,9 @@ Cùng các `kind` dưới đây. Chi tiết onboard partner, MQTTS, schema: [PAR
 | `<base>/alert` | gw → app | `{"schema":1,"k":"tank1.level","lv":"high","v":95.2,"txt":"Bồn nước: Mức nước vượt ngưỡng cao (95.2 %)","ts":…}` — cảnh báo ngưỡng low/high do **gateway tự tính** (`AlertEngine`, báo khi chuyển trạng thái, tối thiểu 5 phút giữa hai lần cùng mức); server chỉ lưu vào DB và chuyển tiếp Web Push tới đúng tài khoản của gateway | không |
 | `<base>/ack` | gw → app | `{"id":"x","ok":true}`; từ chối: `{"id":"x","ok":false,"err":"…"}` — `toggle_too_fast` (đầu ra số đổi trạng thái sớm hơn `toggleMs`) kèm `"waitMs"` = số ms còn phải chờ (gateway C#; firmware board chỉ trả `err`) | không |
 | `<base>/cmd` (đọc) | app → gw | `{"id":"x","op":"read","a":100,"n":4}` → ack `{"id":"x","ok":true,"a":100,"v":[..4 số..]}` | không |
+| `<base>/raw` | gateway **no-code** → server | payload JSON bất kỳ của hãng (≤ 16 KB); server áp ánh xạ rồi user `ctl` phát lại `<base>/telemetry` `{schema:2,d}` + `status`/`config` thay gateway. Gateway no-code chỉ ghi `raw` + `status`, chỉ qua MQTTS — [NOCODE-GATEWAY.md](NOCODE-GATEWAY.md) | không |
+| `<base>/cmdraw` | server (`ctl`) → gateway **no-code** | lệnh đã dịch sang định dạng của hãng (vd. USR `{"rw_prot":{…"dir":"down"…}}`), **không ký**, QoS 0, không retain | không |
+| `<base>/ackraw` | gateway **no-code** → server | phản hồi lệnh của hãng; server đổi thành `<base>/ack` chuẩn (`ctl` phát), hết giờ → `no_confirm` | không |
 
 Tài khoản `gw` / `edge` (thiết bị) và user app được phân quyền riêng trong `cloud/config/acl`:
 app không thể giả mạo telemetry; chỉ `ctl` (app server) được ghi lệnh.

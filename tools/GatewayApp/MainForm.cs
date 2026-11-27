@@ -191,6 +191,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         _cloud = new CloudPage(this) { Dock = DockStyle.Fill };
         _backupPage = new BackupPage(this) { Dock = DockStyle.Fill };
         _logicPage = new LogicPage(this) { Dock = DockStyle.Fill };
+        _nocodePage = new NocodePage(this) { Dock = DockStyle.Fill };   // gateway mua sẵn (USR-M100…): cài đặt CHỈ ở đây, webapp không có
         _log.Dock = DockStyle.Fill;
 
         // thanh bên
@@ -198,7 +199,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         var brand = new Brand { Title = SolutionHost.Title.Length > 0 ? SolutionHost.Title : "Gateway", IconId = SolutionHost.Icon.Length > 0 ? SolutionHost.Icon : "grid", Sub = _customer ? "PLCIOT · BẢN KHÁCH" : "PLCIOT · BẢN ĐẦY ĐỦ" };
         var items = new (string Icon, string Name, Control Page)[]
         {
-            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("⚙", "Logic", _logicPage), ("💾", "Sao lưu", _backupPage), ("list", "Nhật ký", _log),
+            ("grid", "Tổng quan", _dash), ("device", "Thiết bị", _devices), ("cloud", "Cloud", _cloud), ("⚙", "Logic", _logicPage), ("🔗", "Gateway mua sẵn", _nocodePage), ("💾", "Sao lưu", _backupPage), ("list", "Nhật ký", _log),
         };   // tool Admin đã gộp vào đây: không còn trang "Kết nối admin" (không mở cổng cho tool ngoài)
         // bản khách: chỉ xem + điều khiển — và trang Logic (chủ trạm duyệt đề xuất logic tại gateway)
         if (!_editUi) items = items.Where(x => x.Page == _dash || x.Page == _log || x.Page == _logicPage).ToArray();

@@ -94,6 +94,49 @@ ok(from(seenIng, 'RPCR-A').length >= 1 && from(seenIng, 'RPC-A').length === 0, '
 ok(from(seenUA, 'RPC').length === 0, 'user app không đọc rpc/rpcr');
 ok(![...seenIng, ...seenA, ...seenB].some((x) => x[1].includes('FAKE')), 'gateway ghi rpcr/rpc của gateway khác, user ghi rpc: bị chặn');
 
+// 5) gateway no-code C (mua sẵn): chỉ ghi raw + status, chỉ qua listener mã hoá; server (ctl) phát thay telemetry/status/config
+if (info.gwC) {
+  const C = info.gwC;
+  const cPlain = await connect(C);
+  const c = await connect(C, urlCtl);
+  ok(Boolean(c), 'no-code C đăng nhập qua listener mã hoá');
+  if (c) {
+    const seenC = collect(c);
+    await sub(ing, `gw/${C.id}/raw`, `gw/${C.id}/telemetry`, `gw/${C.id}/config`);
+    await sub(c, `gw/${C.id}/cmd`, `gw/${C.id}/telemetry`, '#');
+    c.publish(`gw/${C.id}/raw`, '{"tag":"C-raw"}', { qos: 1 });
+    c.publish(`gw/${C.id}/status`, 'C-online', { qos: 1 });
+    c.publish(`gw/${C.id}/telemetry`, '{"tag":"FAKE-C1"}', { qos: 1 });
+    c.publish(`gw/${C.id}/config`, '{"tag":"FAKE-C2"}', { qos: 1 });
+    c.publish(`gw/${A.id}/raw`, '{"tag":"FAKE-C3"}', { qos: 1 });
+    cPlain?.publish(`gw/${C.id}/raw`, '{"tag":"FAKE-C4"}', { qos: 1 });
+    ctl.publish(`gw/${C.id}/telemetry`, '{"tag":"C-norm"}', { qos: 1 });
+    ctl.publish(`gw/${C.id}/cmd`, '{"tag":"C-cmd"}', { qos: 1 });
+    await wait(800);
+    ok(from(seenIng, 'C-raw').length >= 1 && from(seenIng, 'C-online').length >= 1, 'ingest nhận raw + status của no-code C');
+    ok(from(seenIng, 'C-norm').length >= 1, 'ctl phát telemetry đã chuẩn hoá cho C → ingest nhận');
+    ok(![...seenIng, ...seenA].some((x) => x[1].includes('FAKE-C')), 'no-code C không ghi được telemetry/config, raw của gateway khác, hay raw qua kênh không mã hoá');
+    ok(from(seenC, 'C-cmd').length === 0 && from(seenC, 'C-norm').length === 0, 'no-code C không đọc được cmd/telemetry');
+    // Điều khiển (giai đoạn 4): ctl → cmdraw → C; C → ackraw → ingest; ctl phát ack chuẩn
+    await sub(c, `gw/${C.id}/cmdraw`, `gw/${A.id}/cmdraw`);
+    await sub(ing, `gw/${C.id}/ackraw`, `gw/${C.id}/ack`);
+    await sub(ua, `gw/${C.id}/cmdraw`);
+    ctl.publish(`gw/${C.id}/cmdraw`, '{"tag":"C-cmdraw"}', { qos: 0 });
+    ctl.publish(`gw/${A.id}/cmdraw`, '{"tag":"A-cmdraw"}', { qos: 0 });
+    c.publish(`gw/${C.id}/ackraw`, '{"tag":"C-ackraw"}', { qos: 1 });
+    c.publish(`gw/${C.id}/ack`, '{"tag":"FAKE-C5"}', { qos: 1 });
+    c.publish(`gw/${C.id}/cmdraw`, '{"tag":"FAKE-C6"}', { qos: 1 });
+    a.publish(`gw/${C.id}/ackraw`, '{"tag":"FAKE-C7"}', { qos: 1 });
+    ctl.publish(`gw/${C.id}/ack`, '{"tag":"C-ack"}', { qos: 1 });
+    await wait(800);
+    ok(from(seenC, 'C-cmdraw').length >= 1 && from(seenC, 'A-cmdraw').length === 0, 'ctl ghi cmdraw: chỉ đúng gateway no-code nhận');
+    ok(from(seenIng, 'C-ackraw').length >= 1 && from(seenIng, 'C-ack').length >= 1, 'ingest nhận ackraw của C và ack chuẩn do ctl phát');
+    ok(from(seenUA, 'C-cmdraw').length === 0, 'user app không đọc được cmdraw');
+    ok(![...seenIng, ...seenC].some((x) => x[1].includes('FAKE-C5') || x[1].includes('FAKE-C6') || x[1].includes('FAKE-C7')), 'C không ghi được ack/cmdraw; gateway khác không ghi được ackraw của C');
+    c.end(true); cPlain?.end(true);
+  }
+}
+
 [a, b, ua, ub, ing, ctl].forEach((c) => c.end(true));
 console.log(fails ? `\n${fails} test hỏng` : '\nTất cả đạt');
 process.exit(fails ? 1 : 0);

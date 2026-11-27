@@ -18,7 +18,9 @@ export const SCHEMA_VERSION = 1;
 export const TELEMETRY_SCHEMA = 2;
 // rpc / rpcr: cài đặt từ xa (GatewayAdmin, remoteAdmin.js) — server ghi rpc, gateway trả rpcr; người dùng app KHÔNG đọc/ghi được
 // fwq / fw: firmware board Waveshare QUA MQTT khi HTTPS hỏng (mcuOta.js) — gateway ghi fwq, server ghi fw; người dùng app không đọc/ghi
-export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert', 'rpc', 'rpcr', 'fwq', 'fw']);
+// raw: gateway no-code (mua sẵn) gửi payload của hãng; server chuẩn hoá rồi phát lại lên telemetry (nocode.js, docs/NOCODE-GATEWAY.md)
+// cmdraw / ackraw: lệnh theo định dạng của hãng (server → gateway no-code) và phản hồi của hãng (→ server đổi thành ack)
+export const KINDS = Object.freeze(['telemetry', 'status', 'history', 'cmd', 'ack', 'config', 'alert', 'rpc', 'rpcr', 'fwq', 'fw', 'raw', 'cmdraw', 'ackraw']);
 /** Tiền tố topic của mọi gateway. */
 export const GW_NS = 'gw';
 export const DEFAULT_TENANT = 'default';

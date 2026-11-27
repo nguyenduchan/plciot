@@ -70,6 +70,23 @@ public sealed class GatewayEnrollClient
         await ReadAsync(res, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Gateway mua sẵn (no-code, vd. USR-M100) — CHỈ cài đặt qua GatewayApp (cloud/app/src/nocode.js, docs/NOCODE-GATEWAY.md).
+    /// POST /api/v1/gateway/nocode/{op}, ký bằng khoá gateway PC: kind "nocode-{op}" hoặc "nocode-{op}-{target}" (gắn với đúng
+    /// gateway no-code đích). op: list | create {name} | get | preview {map, raw?} | map {map} | rotate.
+    /// </summary>
+    public async Task<JsonElement> NocodeAsync(string op, string site, string device, GatewayIdentity id, string? target = null,
+        IReadOnlyDictionary<string, object?>? extra = null, CancellationToken ct = default)
+    {
+        var kind = target is null ? $"nocode-{op}" : $"nocode-{op}-{target}";
+        var (ts, sig) = id.RequestProof(kind, site, device);
+        var body = new Dictionary<string, object?> { ["site"] = site, ["device"] = device, ["pubkey"] = id.PublicKey, ["ts"] = ts, ["sig"] = sig };
+        if (target is not null) body["target"] = target;
+        if (extra is not null) foreach (var (k, v) in extra) body[k] = v;
+        using var res = await _http.PostAsJsonAsync($"/api/v1/gateway/nocode/{op}", body, JsonOpts, ct).ConfigureAwait(false);
+        return (await ReadAsync(res, ct).ConfigureAwait(false)).Clone();
+    }
+
     /// <summary>Lỗi do QR trên máy đã cũ (server không còn nhận) — gọi RefreshQrAsync rồi thử lại.</summary>
     public static bool IsStaleQr(Exception ex) => ex is InvalidOperationException { Message: "invalid_claim_signature" or "invalid_claim_secret" or "invalid_claim_payload" };
 

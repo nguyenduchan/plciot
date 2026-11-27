@@ -43,10 +43,18 @@ function staticHeader(secure) {
     lines.push(`topic write ${GW_NS}/+/cmd`);
     lines.push(`topic write ${GW_NS}/+/rpc`);   // cài đặt từ xa (remoteAdmin.js) — chỉ server
     lines.push(`topic write ${GW_NS}/+/fw`);    // firmware board qua MQTT (mcuOta.js) — chỉ server
+    // Gateway no-code (nocode.js): server phát thay telemetry đã chuẩn hoá + status + config (gateway đó chỉ ghi được raw/status)
+    lines.push(`topic write ${GW_NS}/+/telemetry`);
+    lines.push(`topic write ${GW_NS}/+/status`);
+    lines.push(`topic write ${GW_NS}/+/config`);
+    lines.push(`topic write ${GW_NS}/+/ack`);      // phản hồi lệnh của gateway no-code đã đổi sang ack chuẩn
+    lines.push(`topic write ${GW_NS}/+/cmdraw`);   // lệnh đã dịch sang định dạng của hãng (gateway no-code)
     lines.push('');
   }
   lines.push('user ingest');
   lines.push(...DEVICE_WRITE_KINDS.map((k) => `topic read ${GW_NS}/+/${k}`));
+  lines.push(`topic read ${GW_NS}/+/raw`);
+  lines.push(`topic read ${GW_NS}/+/ackraw`);
   lines.push(`topic read ${GW_NS}/+/rpcr`);
   lines.push(`topic read ${GW_NS}/+/fwq`);
   lines.push('');
@@ -122,6 +130,23 @@ export function deviceAclBlock(mqttUser, { mqttId }) {
 }
 
 /**
+ * ACL cho gateway no-code (mua sẵn): GHI raw (payload của hãng) + status (LWT) + ackraw (phản hồi lệnh của hãng),
+ * ĐỌC cmdraw (lệnh server đã dịch). Không ghi telemetry/config/ack (server phát thay), không đọc cmd/rpc/fw. Chỉ có trên kênh mã hoá.
+ */
+export function nocodeAclBlock(mqttUser, { mqttId }) {
+  const base = topicBase({ mqttId });
+  return [`user ${sanitizeId(mqttUser)}`, `topic write ${base}/raw`, `topic write ${base}/status`,
+    `topic write ${base}/ackraw`, `topic read ${base}/cmdraw`, ''].join('\n');
+}
+
+function nocodeIdSet(db) {
+  try {
+    return new Set(db.prepare(`SELECT d.mqtt_id FROM nocode_gateways n JOIN devices d ON d.site = n.site AND d.device = n.device
+      WHERE d.mqtt_id IS NOT NULL`).all().map((r) => r.mqtt_id));
+  } catch { return new Set(); }   // chưa có bảng (DB cũ / chưa mount nocode)
+}
+
+/**
  * Rebuild acl file from DB users + devices.
  * Keeps gw + ingest (+ ctl trên kênh mã hoá); drops shared wildcard "app".
  */
@@ -145,6 +170,7 @@ export function rebuildAclFromUsers(db) {
   } catch {
     devices = [];
   }
+  const nocode = nocodeIdSet(db);
   // Mỗi nhóm có ACL riêng: người xem chỉ có mặt ở nhóm nào chứa gateway của họ (xem nhiều nhóm = có mặt ở nhiều nhóm),
   // gateway chỉ có mặt ở đúng nhóm của nó. N=1: giống hành vi cũ (mọi user đều có khối ACL).
   const userIds = users.map((u) => {
@@ -163,6 +189,7 @@ export function rebuildAclFromUsers(db) {
     }
     for (const d of devices) {
       if (shardOf(d.mqtt_id, N) !== k) continue;
+      if (nocode.has(d.mqtt_id)) { secure += nocodeAclBlock(d.mqtt_user, { mqttId: d.mqtt_id }); continue; }   // no-code: chỉ MQTTS
       const block = deviceAclBlock(d.mqtt_user, { mqttId: d.mqtt_id });
       // Thiết bị được publish trên cả listener (monitor-only vẫn nhận telemetry)
       secure += block;

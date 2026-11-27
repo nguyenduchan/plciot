@@ -14,6 +14,10 @@ const CONNECT_WAIT_MS = 2500;
 /** Dùng trong test: thay đường publish thật. */
 export function setPublisher(fn) { override = fn; }
 
+let cmdInterceptor = null;
+/** (mqttId, payload) → kết quả nếu đã tự xử lý lệnh (gateway no-code), null nếu không phải việc của nó. */
+export function setCmdInterceptor(fn) { cmdInterceptor = fn || null; }
+
 function ensure(shard = 0) {
   if (clients.has(shard)) return clients.get(shard);
   const urls = shardUrls('MQTT_CONTROL_URLS', 'MQTT_CONTROL_URL', 1884);
@@ -58,6 +62,22 @@ export async function publishSigned(mqttId, kind, raw) {
 }
 
 /**
+ * Server phát thay gateway no-code (nocode.js): telemetry đã chuẩn hoá, status, config — KHÔNG ký (không phải lệnh).
+ * Chỉ dùng cho kind telemetry | status | config | ack | cmdraw (ACL `ctl` chỉ cho các kind này ngoài cmd/rpc/fw).
+ */
+export async function publishAsServer(mqttId, kind, payload, { retain = false, qos = 1 } = {}) {
+  if (!['telemetry', 'status', 'config', 'ack', 'cmdraw'].includes(kind)) throw new Error(`bad_server_kind:${kind}`);
+  const raw = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  if (override) return override(null, null, raw, { mqttId, kind, retain });
+  const c = ensure(shardOf(mqttId));
+  await whenConnected(c);
+  const topic = topicOf({ mqttId }, kind);
+  return new Promise((resolve, reject) => {
+    c.publish(topic, raw, { qos, retain }, (err) => (err ? reject(err) : resolve({ topic })));
+  });
+}
+
+/**
  * @param {string} site
  * @param {string} device
  * @param {object} cmd
@@ -66,6 +86,11 @@ export async function publishSigned(mqttId, kind, raw) {
 export async function publishCmd(site, device, cmd, opts = {}) {
   // ts = lúc server phát lệnh (ms epoch): gateway dùng để đo thời gian server → gateway
   const payload = withSchema({ ...cmd, ts: Date.now() });
+  // Gateway no-code (nocode.js): lệnh được dịch sang định dạng của hãng và đi gw/<id>/cmdraw thay cho cmd
+  if (cmdInterceptor && opts.mqttId) {
+    const handled = await cmdInterceptor(opts.mqttId, payload);
+    if (handled) return handled;
+  }
   if (override) return override(site, device, payload, opts);
   const c = ensure(shardOf(opts.mqttId));   // lệnh tới đúng nhóm broker chứa gateway
   await whenConnected(c);

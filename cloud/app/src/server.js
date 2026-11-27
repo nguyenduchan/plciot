@@ -37,6 +37,7 @@ import { mountAdminOps } from './adminOps.js';
 import { mountRemoteAdmin } from './remoteAdmin.js';
 import { mountGatewayLogic } from './gatewayLogic.js';
 import { mountGatewayNames } from './gatewayNames.js';
+import { mountNocode, startNocodeSweep } from './nocode.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext, setSolutionChangedHook } from './gatewaySolution.js';
@@ -298,6 +299,7 @@ setInterval(sweepTems, 3600_000).unref();
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
 mountGatewayNames(app, { db, requireAuth });   // tên hiển thị gateway do chủ đặt (ID do hệ thống cấp, không đổi)
+mountNocode(app, { db });   // gateway mua sẵn (no-code): chỉ GatewayApp tạo/ánh xạ (ký khoá máy) — docs/NOCODE-GATEWAY.md
 setSolutionsContext(WEBAPP_SRC);
 setGatewayAddedHook((d, u, hw) => adoptSolution(d, u.id, gatewaySolution(d, hw.site, hw.device), { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
 // Gateway đổi giải pháp UI → dựng lại bundle webapp của mọi người dùng gateway đó (webapp tải giao diện mới, không giữ giao diện cũ)
@@ -503,5 +505,6 @@ app.listen(PORT, '0.0.0.0', () => {
   // ACL gateway cần cho phép ghi kind 'alert' (sự kiện cảnh báo do gateway tự tính): dựng lại từ DB mỗi lần khởi động
   try { rebuildAclFromUsers(db); reloadMosquitto(); } catch (e) { console.error('acl rebuild', e.message); }
   startMqttIngest(db);
+  startNocodeSweep();   // gateway no-code im lặng quá lâu → server báo offline
   startHistoryPurge(db);
 });
