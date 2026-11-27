@@ -12,6 +12,7 @@ import { parsePubkey, verifyProof, pairMessage, ensureKeyColumns } from './gatew
 import { sanitizeConfig, applyGatewayConfig, MAX_CONFIG_BYTES } from './gatewayConfig.js';
 import { attachGatewayBundle, enrollGateway } from './gatewayEnroll.js';
 import { cleanSolution, setGatewaySolution, migrateGatewaySolutions } from './gatewaySolution.js';
+import { defaultGatewayName } from './gatewayNames.js';
 
 const ALPHABET = '0123456789';   // mã ghép / OTP CHỈ gồm chữ số (dễ gõ trên bàn phím số, không nhầm O/0, I/1)
 const CODE_RE = /^\d{8}$/;
@@ -204,20 +205,36 @@ export function reassignPairing(db, pairingId, toUserId) {
   db.prepare('UPDATE gateway_pairings SET user_id = ?, label = ? WHERE id = ?').run(toUserId, `user:${toUserId}`, pairingId);
 }
 
-/** Chọn mã tem còn trống trong site: gw01, gw02… */
-function freeDevice(db, site, wanted) {
+/**
+ * ID gateway do HỆ THỐNG cấp lúc đăng ký, suy từ mã phần cứng (hw = băm khoá công khai của máy, gatewayKey.parsePubkey):
+ * "g" + 10 ký tự đầu của hw (thường). Mỗi máy một ID, ID không bị cấp lại cho máy khác sau khi xoá (kiểu gw01, gw02… cũ thì có).
+ * Người dùng không chọn ID — chỉ đặt tên hiển thị (gatewayNames.js). Trùng tiền tố (rất hiếm) → lấy dài thêm.
+ */
+export function gatewayIdFor(db, site, hw) {
+  const h = String(hw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (h.length < 10) return null;
+  const taken = (d) => db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, d);
+  for (let n = 10; n <= h.length; n += 2) { const d = `g${h.slice(0, n)}`; if (!taken(d)) return d; }
+  return null;
+}
+
+/** Chọn mã tem còn trống: admin đặt sẵn (wanted) → theo mã phần cứng (hw) → gw01, gw02… (chỉ khi không có hw, vd. tem cấp tay). */
+function freeDevice(db, site, wanted, hw) {
   const taken = (d) => db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ?').get(site, d);
   if (wanted) return taken(wanted) ? null : wanted;
+  if (hw) return gatewayIdFor(db, site, hw);
   for (let i = 1; i < 100; i++) { const d = `gw${String(i).padStart(2, '0')}`; if (!taken(d)) return d; }
   return null;
 }
 
 /** Tự duyệt ngay khi gateway gửi bản khai: cấp tem + MQTT, trả kit để gateway tự enroll (không cần dán QR). */
 function autoApprove(db, row, hw) {
-  const device = freeDevice(db, row.site_pre, row.device_pre);
+  const device = freeDevice(db, row.site_pre, row.device_pre, hw);
   if (!device) return { approved: false, error: 'site_device_taken' };
   const ap = approvePairing(db, { id: row.id, site: row.site_pre, device, label: row.label || '' });
   if (ap.error) return { approved: false, error: ap.error };
+  // ID là mã máy (khó đọc): đặt sẵn tên hiển thị "Gateway N", chủ đổi tên trên webapp
+  if (row.user_id) { try { defaultGatewayName(db, row.site_pre, device, userGatewayCount(db, row.user_id)); } catch (e) { console.error('gateway name', e.message); } }
   audit(db, 'pairing_auto_approve', { detail: `${row.id} → ${row.site_pre}/${device}` });
   return autoResult(db, { ...row, site: row.site_pre, device }, hw, ap);
 }

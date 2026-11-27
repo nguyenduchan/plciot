@@ -202,11 +202,12 @@ function syncUserDevices(db, { site, device, devices }) {
   const ids = devices.map((d) => d.id);
   for (const u of users) {
     for (const d of devices) {
-      const ex = db.prepare('SELECT id, type FROM user_devices WHERE user_id = ? AND site = ? AND child_id = ?')
-        .get(u.id, site, d.id);
+      // khoá theo gateway: gateway khác cùng site trùng id thiết bị con là thẻ KHÁC, không kéo thẻ của nó về đây
+      const ex = db.prepare('SELECT id, type FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ? AND child_id = ?')
+        .get(u.id, site, device, d.id);
       if (ex) {
         if (ex.type === 'dynamic') {
-          db.prepare('UPDATE user_devices SET title = ?, gateway_device = ? WHERE id = ?').run(d.name, device, ex.id);
+          db.prepare('UPDATE user_devices SET title = ? WHERE id = ?').run(d.name, ex.id);
         }
         continue;
       }

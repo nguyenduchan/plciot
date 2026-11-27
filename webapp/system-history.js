@@ -37,6 +37,7 @@
     return { ok: false, body: { error: 'cancelled' } };
   }
 
+  const names = new Map();   // "site/device" → tên hiển thị
   function card(h) {
     const kind = h.kind === 'mcu' ? 'Waveshare' : 'Gateway PC';
     const upd = h.updateAvailable && h.release
@@ -51,7 +52,7 @@
         <span class="muted" style="flex:0 0 auto;min-width:9.5em">${esc(when(e.ts))}</span>
         <span style="${e.alert ? 'color:var(--bad,#e5484d)' : ''}">${e.alert ? '🔴 ' : ''}<b>${esc(TYPE[e.type] || e.type)}</b> · ${esc(e.text)}</span></div>`).join('');
     return `<div style="border-top:1px solid var(--line,#333);padding:10px 0">
-      <div><b>${esc(`${h.site}/${h.device}`)}</b> <span class="muted">· ${kind} · phiên bản ${esc(h.version || '—')} · liên lạc lần cuối ${esc(when(h.lastSeen))}</span></div>
+      <div><b>${esc(names.get(`${h.site}/${h.device}`) || h.device)}</b> <span class="muted">· ID ${esc(h.device)} · ${kind} · phiên bản ${esc(h.version || '—')} · liên lạc lần cuối ${esc(when(h.lastSeen))}</span></div>
       ${upd}
       <div style="margin-top:6px">${ev || '<span class="muted">Chưa có sự kiện.</span>'}</div>
     </div>`;
@@ -62,6 +63,7 @@
     const g = await api('GET', '/api/v1/remote-support');
     if (!g.ok) { body.textContent = ''; return msg(S.errText(g.body.error), true); }
     const gws = g.body.gateways || [];
+    for (const x of gws) names.set(`${x.site}/${x.device}`, x.name || '');
     if (!gws.length) { body.innerHTML = '<span class="muted">Chưa có gateway nào.</span>'; return; }
     const hs = await Promise.all(gws.map((x) => api('GET', `/api/v1/system-history?gw=${encodeURIComponent(`${x.site}/${x.device}`)}`)));
     body.innerHTML = hs.filter((h) => h.ok).map((h) => card(h.body)).join('');

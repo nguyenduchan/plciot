@@ -18,6 +18,7 @@
  *   rpcr (gateway → server): {"rid","i","n","st","z":<một phần base64 của gzip(thân trả lời)>} — chia phần ≤ 3000 ký tự
  *                            vì đường ingest chặn gói > 4 KB.
  */
+import { gatewayName } from './gatewayNames.js';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { audit, rateLimit, clientIp } from '@plciot/security';
@@ -195,7 +196,7 @@ export function mountRemoteAdmin(app, { db, requireAuth }) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     const mine = db.prepare('SELECT DISTINCT site, gateway_device AS device FROM user_devices WHERE user_id = ?').all(u.id);
     if (u.notify_site && u.notify_device && !mine.some((g) => g.site === u.notify_site && g.device === u.notify_device)) mine.unshift({ site: u.notify_site, device: u.notify_device });
-    res.json({ gateways: mine.map((g) => ({ ...g, allowed: consentOf(g.site, g.device) })) });
+    res.json({ gateways: mine.map((g) => ({ ...g, name: gatewayName(db, g.site, g.device), allowed: consentOf(g.site, g.device) })) });
   });
 
   app.put('/api/v1/remote-support', requireAuth, (req, res) => {

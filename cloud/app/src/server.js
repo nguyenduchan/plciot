@@ -36,6 +36,7 @@ import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountRemoteAdmin } from './remoteAdmin.js';
 import { mountGatewayLogic } from './gatewayLogic.js';
+import { mountGatewayNames } from './gatewayNames.js';
 import { mountCapacity } from './vpsCapacity.js';
 import { mountUserDevices, setGatewayAddedHook } from './userDevices.js';
 import { gatewaySolution, setSolutionsContext, setSolutionChangedHook } from './gatewaySolution.js';
@@ -296,6 +297,7 @@ sweepTems();
 setInterval(sweepTems, 3600_000).unref();
 /* ---------- UI contract + thiết bị con dashboard (QR → widget tự động) ---------- */
 mountUserDevices(app, { db, requireAuth, sensitiveStrict, authorize: controlApi.authorize });
+mountGatewayNames(app, { db, requireAuth });   // tên hiển thị gateway do chủ đặt (ID do hệ thống cấp, không đổi)
 setSolutionsContext(WEBAPP_SRC);
 setGatewayAddedHook((d, u, hw) => adoptSolution(d, u.id, gatewaySolution(d, hw.site, hw.device), { shellDir: WEBAPP_SRC, dataDir: DATA_DIR }));
 // Gateway đổi giải pháp UI → dựng lại bundle webapp của mọi người dùng gateway đó (webapp tải giao diện mới, không giữ giao diện cũ)

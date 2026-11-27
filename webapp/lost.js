@@ -48,7 +48,7 @@
       const open = mine.find((r) => r.status === 'pending' || r.status === 'approved');
       const last = mine[0];
       return `<div class="row" style="justify-content:space-between;gap:8px;border-top:1px solid var(--line,#333);padding:8px 0">
-        <div><b>${esc(key)}</b>${open ? `<div class="muted">⚠ ${esc(STATE[open.status])} · ${new Date(open.createdAt).toLocaleString('vi-VN')}</div>`
+        <div><b>${esc(g.name || g.device)}</b> <span class="muted">ID ${esc(g.device)}</span>${open ? `<div class="muted">⚠ ${esc(STATE[open.status])} · ${new Date(open.createdAt).toLocaleString('vi-VN')}</div>`
           : last ? `<div class="muted">Báo cáo gần nhất: ${esc(STATE[last.status] || last.status)}</div>` : ''}</div>
         ${open && open.status === 'pending' ? `<button class="fit" data-cancel="${open.id}">Đã tìm thấy — mở khoá</button>`
           : open ? '' : `<button class="fit danger" data-lost="${esc(key)}">Báo mất</button>`}

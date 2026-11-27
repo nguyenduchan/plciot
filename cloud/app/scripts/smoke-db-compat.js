@@ -14,7 +14,10 @@ import { recordGatewayClient } from '../src/gatewayUpdate.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const roots = [path.join(here, '..', 'src'), path.join(here, '..', '..', '..', 'packages', 'security', 'src')];
-const ALLOW = [/ALTER TABLE user_devices RENAME TO user_devices_legacy_old/];   // chuyển bảng cũ sang bảng mới một lần (userDevices.js), dữ liệu được giữ
+const ALLOW = [
+  /ALTER TABLE user_devices RENAME TO user_devices_legacy_old/,   // chuyển bảng cũ sang bảng mới một lần (userDevices.js), dữ liệu được giữ
+  /ALTER TABLE user_devices RENAME TO user_devices_v6_old/,       // v7: thẻ khoá thêm gateway_device; bảng cũ GIỮ NGUYÊN, bảng mới đủ cột cũ (userDevices.js widenUserDevicesKey)
+];
 const bad = [];
 for (const root of roots) {
   if (!fs.existsSync(root)) continue;

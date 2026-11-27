@@ -48,6 +48,10 @@
     return null;
   }
 
+  const names = new Map();   // "site/device" → tên hiển thị do chủ đặt
+  const nameOf = (gw) => names.get(gw) || gw.split('/')[1] || gw;
+  const keepNames = (list) => { for (const x of list || []) if (x.name) names.set(`${x.site}/${x.device}`, x.name); };
+
   async function fetchLogic(gw) {
     const r = await api('GET', `/api/v1/gateway-logic?gw=${encodeURIComponent(gw)}`);
     if (r.ok) cache.set(gw, r.body);
@@ -58,6 +62,7 @@
     if (!LS.get('session', null)?.token) return;
     const g = await api('GET', '/api/v1/remote-support');
     if (!g.ok) return;
+    keepNames(g.body.gateways);
     await Promise.all((g.body.gateways || []).map((x) => fetchLogic(`${x.site}/${x.device}`)));
     window.DevicesUi?.render?.();
   }
@@ -93,7 +98,7 @@
       </div>` : '';
     const hist = (L.history || []).map((h) => `<div class="muted" style="font-size:13px">${esc(when(h.decidedAt || h.createdAt))} · ${esc(STATUS[h.status] || h.status)} · ${esc(h.by)}${h.note ? ` — ${esc(h.note)}` : ''}${h.decidedBy ? ` · ${esc(h.decidedBy)}` : ''}${h.result ? ` · ${esc(h.result)}` : ''}</div>`).join('');
     return `<div style="border-top:1px solid var(--line,#333);padding:10px 0">
-      <div><b>${esc(gw)}</b> <span class="muted">${cur ? `· bản ${cur.rev} · cập nhật ${esc(when(cur.updatedAt))}` : '· chưa nhận được logic từ gateway'}</span></div>
+      <div><b>${esc(nameOf(gw))}</b> <span class="muted">· ID ${esc(L.device)} ${cur ? `· bản ${cur.rev} · cập nhật ${esc(when(cur.updatedAt))}` : '· chưa nhận được logic từ gateway'}</span></div>
       ${prop}
       ${cur ? `<div class="muted" style="margin-top:6px">Đang chạy:</div>${table(cur.rows)}` : ''}
       ${hist ? `<details style="margin-top:4px"><summary class="muted">Lịch sử đề xuất</summary>${hist}</details>` : ''}
@@ -108,12 +113,13 @@
     body.innerHTML = '<span class="muted">Đang tải…</span>';
     const g = await api('GET', '/api/v1/remote-support');
     if (!g.ok) { body.textContent = ''; return msg(S.errText(g.body.error), true); }
+    keepNames(g.body.gateways);
     const rs = await Promise.all((g.body.gateways || []).map((x) => fetchLogic(`${x.site}/${x.device}`)));
     const html = rs.filter((r) => r.ok).map((r) => card(r.body)).join('');
     body.innerHTML = html || '<span class="muted">Chưa có gateway nào báo logic (cần firmware board 0.3.9+ hoặc phần mềm gateway PC mới).</span>';
     body.querySelectorAll('[data-gl-ok]').forEach((b) => b.addEventListener('click', async () => {
       const gw = b.dataset.glOk;
-      if (!confirm(`Áp dụng logic mới cho gateway ${gw}?\n\nCác hàng tô màu sẽ thay đổi cách gateway tự bật/tắt thiết bị (kể cả khi mất mạng).`)) return;
+      if (!confirm(`Áp dụng logic mới cho gateway ${nameOf(gw)}?\n\nCác hàng tô màu sẽ thay đổi cách gateway tự bật/tắt thiết bị (kể cả khi mất mạng).`)) return;
       b.disabled = true;
       const r = await withStepUp('POST', '/api/v1/gateway-logic/approve', { gw, id: Number(b.dataset.id) }, 'Xác nhận duyệt logic gateway');
       b.disabled = false;

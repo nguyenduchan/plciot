@@ -20,7 +20,7 @@
     const gws = r.body.gateways || [];
     if (!gws.length) { body.innerHTML = '<span class="muted">Chưa có gateway nào.</span>'; return; }
     body.innerHTML = gws.map((g) => `<label class="row" style="justify-content:space-between;gap:8px;border-top:1px solid var(--line,#333);padding:8px 0;cursor:pointer">
-        <span><b>${esc(`${g.site}/${g.device}`)}</b><span class="muted" style="display:block">${g.allowed ? 'Đang cho phép hỗ trợ từ xa' : 'Không cho phép'}</span></span>
+        <span><b>${esc(g.name || g.device)}</b><span class="muted" style="display:block">ID ${esc(g.device)} · ${g.allowed ? 'Đang cho phép hỗ trợ từ xa' : 'Không cho phép'}</span></span>
         <input type="checkbox" data-gw="${esc(`${g.site}/${g.device}`)}" ${g.allowed ? 'checked' : ''} style="width:22px;height:22px">
       </label>`).join('');
     body.querySelectorAll('[data-gw]').forEach((cb) => cb.addEventListener('change', async () => {

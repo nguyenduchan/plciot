@@ -88,5 +88,59 @@ ok(lv.kind === 'tank' && lv.low === 15 && lv.high === 92 && lv.max === 100, 'b�
 const rn = bn.widgets.find((w) => w.bind === 'run');
 ok(rn.kind === 'toggle' && rn.onText === 'Đang chạy' && rn.offText === 'Dừng', 'chữ Bật/Tắt do người dùng đặt');
 
+// Hai gateway CÙNG site (mọi gateway của một tài khoản chung site u<id>) trùng id thiết bị con: mỗi gateway giữ thẻ riêng
+db.prepare("INSERT INTO hardware_devices (site, device, claim_hash, claimed_by, created_at) VALUES ('tram1','GW02','x',1,1)").run();
+const pumpA = { id: 'pumpx', name: 'Bơm A', fields: [{ key: 'run', widget: 'switch', writable: true }] };
+const pumpB = { id: 'pumpx', name: 'Bơm B', fields: [{ key: 'run', widget: 'switch', writable: true }] };
+applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap, pumpA]) });
+applyGatewayConfig(db, { site: 'tram1', device: 'GW02', payload: { gw: 'GW02', devices: [pumpB] } });
+applyGatewayConfig(db, { site: 'tram1', device: 'GW01', payload: cfg([bienap, { ...pumpA, name: 'Bơm A2' }]) });
+const pumps = db.prepare("SELECT gateway_device g, title FROM user_devices WHERE user_id = 1 AND child_id = 'pumpx' ORDER BY g").all();
+ok(pumps.length === 2 && pumps[0].g === 'GW01' && pumps[0].title === 'Bơm A2' && pumps[1].g === 'GW02' && pumps[1].title === 'Bơm B', 'trùng id thiết bị con ở 2 gateway: 2 thẻ riêng, không giành nhau');
+
+// Migration DB cũ (khoá user/site/child) → khoá thêm gateway: giữ dữ liệu, giữ bảng cũ
+{
+  const Database = (await import('better-sqlite3')).default;
+  const old = new Database(':memory:');
+  old.exec(`CREATE TABLE user_devices (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, site TEXT NOT NULL, gateway_device TEXT NOT NULL,
+    child_id TEXT NOT NULL, type TEXT NOT NULL, title TEXT, binds TEXT, created_at INTEGER NOT NULL, critical_keys TEXT, UNIQUE(user_id, site, child_id))`);
+  old.prepare("INSERT INTO user_devices VALUES ('ud_a',1,'s','gw02','pump1','dynamic','A',NULL,1,'[\"run\"]')").run();
+  const { migrateUserDevices: mig } = await import('../src/userDevices.js');
+  try { mig(old); } catch { /* bảng phụ (gateway_configs…) không có trong DB thử: phần đổi khoá chạy sau cùng */ }
+  const uq = old.prepare("PRAGMA index_list('user_devices')").all().filter((i) => i.unique && i.origin === 'u')
+    .map((i) => old.prepare(`PRAGMA index_info('${i.name}')`).all().map((c) => c.name).join(','));
+  ok(uq.includes('user_id,site,gateway_device,child_id') && !uq.includes('user_id,site,child_id'), 'migration: khoá mới có gateway_device');
+  ok(old.prepare("SELECT critical_keys FROM user_devices WHERE id = 'ud_a'").get()?.critical_keys === '["run"]', 'migration: giữ dữ liệu');
+  ok(old.prepare("SELECT 1 FROM sqlite_master WHERE name = 'user_devices_v6_old'").get(), 'migration: bảng cũ được giữ');
+  old.prepare("INSERT INTO user_devices (id,user_id,site,gateway_device,child_id,type,created_at) VALUES ('ud_b',1,'s','gw03','pump1','dynamic',2)").run();
+  ok(old.prepare("SELECT COUNT(*) n FROM user_devices WHERE child_id='pump1'").get().n === 2, 'migration: gateway khác thêm được pump1');
+  mig(old);   // chạy lại (deploy lần sau) không làm gì
+  ok(old.prepare("SELECT COUNT(*) n FROM user_devices").get().n === 2, 'migration chạy lại an toàn');
+}
+
+// ID gateway do hệ thống cấp theo mã phần cứng; tên hiển thị tách riêng
+{
+  const { gatewayIdFor } = await import('../src/gatewayPairing.js');
+  const { setGatewayName, gatewayName, cleanName, defaultGatewayName } = await import('../src/gatewayNames.js');
+  const id1 = gatewayIdFor(db, 'u9', 'ABCDEFGHIJKLMNOPQRST');
+  ok(id1 === 'gabcdefghij', 'ID theo mã phần cứng: g + 10 ký tự');
+  db.prepare("INSERT INTO hardware_devices (site, device, claim_hash, created_at) VALUES ('u9', ?, 'x', 1)").run(id1);
+  ok(gatewayIdFor(db, 'u9', 'ABCDEFGHIJZZZZZZZZZZ') === 'gabcdefghijzz', 'trùng tiền tố → lấy dài thêm');
+  ok(gatewayIdFor(db, 'u9', '') === null, 'không có mã phần cứng → không cấp');
+  defaultGatewayName(db, 'u9', id1, 2);
+  ok(gatewayName(db, 'u9', id1) === 'Gateway 2', 'tên mặc định Gateway N');
+  setGatewayName(db, { site: 'u9', device: id1, name: '  Trạm   bơm <b>1</b> ' });
+  ok(gatewayName(db, 'u9', id1) === 'Trạm bơm b1/b', 'tên được làm sạch');
+  defaultGatewayName(db, 'u9', id1, 3);
+  ok(gatewayName(db, 'u9', id1) === 'Trạm bơm b1/b', 'tên đã đặt không bị ghi đè');
+  ok(cleanName('x'.repeat(80)).length === 40, 'tên tối đa 40 ký tự');
+  setGatewayName(db, { site: 'u9', device: id1, name: '' });
+  ok(gatewayName(db, 'u9', id1) === '', 'xoá tên → hiện ID');
+  const { gatewaysOfUser } = await import('../src/mqttIds.js');
+  setGatewayName(db, { site: 'tram1', device: 'GW01', name: 'Nhà máy' });
+  ok(gatewaysOfUser(db, { id: 1, notify_site: 'tram1', notify_device: 'GW01' }).find((g) => g.device === 'GW01')?.name === 'Nhà máy', 'danh sách gateway mang tên hiển thị');
+  ok(getDashboardFor(db, { id: 1, notify_site: 'tram1', notify_device: 'GW01' }, 'simple').gateways.find((g) => g.device === 'GW01')?.name === 'Nhà máy', 'dashboard webapp mang tên hiển thị');
+}
+
 console.log(fails ? `FAILED ${fails}` : 'gateway-config smoke OK');
 process.exit(fails ? 1 : 0);

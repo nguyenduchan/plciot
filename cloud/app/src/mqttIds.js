@@ -74,7 +74,10 @@ export function gatewaysOfUser(db, user) {
   const add = (site, device) => {
     if (!site || !device) return;
     const k = `${site}/${device}`;
-    if (!seen.has(k)) seen.set(k, { site, device, mqttId: mqttIdFor(db, tenant, site, device) });
+    if (seen.has(k)) return;
+    let name = '';   // tên hiển thị do chủ đặt (gatewayNames.js); ID site/device không đổi
+    try { name = db.prepare('SELECT name FROM gateway_names WHERE site = ? AND device = ?').get(site, device)?.name || ''; } catch { /* chưa có bảng */ }
+    seen.set(k, { site, device, name, mqttId: mqttIdFor(db, tenant, site, device) });
   };
   add(user?.notify_site, user?.notify_device);
   try {

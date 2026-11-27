@@ -51,12 +51,48 @@ export function migrateUserDevices(db) {
       title TEXT,
       binds TEXT,
       created_at INTEGER NOT NULL,
-      UNIQUE(user_id, site, child_id)
+      UNIQUE(user_id, site, gateway_device, child_id)
     );
     CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id);
   `);
   const cols = db.prepare("PRAGMA table_info('user_devices')").all().map((c) => c.name);
   if (!cols.includes('critical_keys')) db.exec('ALTER TABLE user_devices ADD COLUMN critical_keys TEXT');
+  widenUserDevicesKey(db);
+}
+
+/**
+ * Schema ≤ v6 khoá thẻ theo (user, site, child_id): mọi gateway của một tài khoản chung site u<id>, nên hai gateway có cùng
+ * id thiết bị con (vd. "pump1") GIÀNH thẻ của nhau. Từ v7 khoá thêm gateway_device. SQLite không đổi ràng buộc tại chỗ
+ * → đổi tên bảng cũ thành user_devices_v6_old (GIỮ NGUYÊN, không xoá), dựng bảng mới đủ cột cũ, chép dữ liệu. Chạy một lần.
+ * Tương thích ngược: bảng mới có đủ cột như cũ, chỉ nới ràng buộc — code bản cũ vẫn đọc/ghi được.
+ * (smoke-db-compat.js cho phép đúng câu đổi tên này.)
+ */
+function widenUserDevicesKey(db) {
+  const keyCols = (idx) => db.prepare(`PRAGMA index_info('${idx}')`).all().map((c) => c.name).join(',');
+  const uniq = db.prepare("PRAGMA index_list('user_devices')").all().filter((i) => i.unique && i.origin === 'u').map((i) => keyCols(i.name));
+  if (!uniq.includes('user_id,site,child_id')) return;
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_devices_v6_old'").get()) {
+    throw new Error('user_devices_v6_old đã tồn tại mà user_devices vẫn khoá cũ — kiểm tra DB bằng tay trước khi migrate');
+  }
+  const list = db.prepare("PRAGMA table_info('user_devices')").all().map((c) => c.name).join(', ');
+  db.transaction(() => {
+    db.exec('ALTER TABLE user_devices RENAME TO user_devices_v6_old');
+    db.exec(`CREATE TABLE user_devices (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      site TEXT NOT NULL,
+      gateway_device TEXT NOT NULL,
+      child_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT,
+      binds TEXT,
+      created_at INTEGER NOT NULL,
+      critical_keys TEXT,
+      UNIQUE(user_id, site, gateway_device, child_id)
+    )`);
+    db.exec(`INSERT INTO user_devices (${list}) SELECT ${list} FROM user_devices_v6_old`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_user_devices_user_v7 ON user_devices(user_id)');
+  })();
 }
 
 function parseUiMeta(raw) {
@@ -103,12 +139,12 @@ function upsertDevice(db, {
   userId, site, gatewayDevice, childId, type, title,
 }) {
   const existing = db.prepare(
-    'SELECT id FROM user_devices WHERE user_id = ? AND site = ? AND child_id = ?',
-  ).get(userId, site, childId);
+    'SELECT id FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ? AND child_id = ?',
+  ).get(userId, site, gatewayDevice, childId);
   if (existing) {
-    // quét lại tem của gateway khác: thiết bị con chuyển về gateway mới (limits/critical lấy theo tem đó)
-    db.prepare('UPDATE user_devices SET type = ?, title = ?, gateway_device = ? WHERE id = ?')
-      .run(type, title || null, gatewayDevice, existing.id);
+    // quét lại tem của CHÍNH gateway này: cập nhật kiểu/tên. Gateway khác trùng id thiết bị con = thẻ riêng (khoá theo gateway)
+    db.prepare('UPDATE user_devices SET type = ?, title = ? WHERE id = ?')
+      .run(type, title || null, existing.id);
     return { id: existing.id, already: true };
   }
   const id = `ud_${crypto.randomBytes(6).toString('hex')}`;
@@ -297,13 +333,7 @@ function addAdditionalGateway(db, u, hw, { ip } = {}) {
     const owner = db.prepare('SELECT id, disabled, setup_complete FROM users WHERE id = ?').get(hw.claimed_by);
     if (owner && !owner.disabled && owner.setup_complete !== 0) return { error: 'device_already_claimed', status: 409 };
   }
-  // Cùng site + trùng id thiết bị con với gateway đã có sẽ ghi đè nhau (UNIQUE user/site/child) → chặn rõ ràng
-  const seeds = Array.isArray(parseUiMeta(hw.ui_meta)?.seed) ? parseUiMeta(hw.ui_meta).seed : [];
-  const clash = seeds.map((s) => String(s.childId || s.id || '')).find((c) => c && db.prepare(
-    'SELECT 1 FROM user_devices WHERE user_id = ? AND site = ? AND child_id = ? AND gateway_device != ?',
-  ).get(u.id, hw.site, c, hw.device));
-  if (clash) return { error: 'child_id_clash', status: 409, childId: clash };
-
+  // Thẻ khoá theo (user, site, gateway, thiết bị con): gateway khác trùng id thiết bị con không còn giành thẻ của nhau
   const before = gatewaysOfUser(db, u).length;
   db.prepare('UPDATE hardware_devices SET claimed_by = ?, claimed_at = ? WHERE site = ? AND device = ?').run(u.id, Date.now(), hw.site, hw.device);
   const result = addFromHardwareRow(db, { ...u, notify_site: hw.site, notify_device: hw.device }, hw);

@@ -321,7 +321,7 @@ export function resolveDashboard({ user, devices, mode = 'simple', mqttId = null
     },
     devices: nodes,
     plan: { id: planId, label: planLabel, widgetLimit, deviceLimit, widgetCount: lim.total, locked: lim.locked },
-    gateways: (gateways || []).map((g) => ({ site: g.site, device: g.device, solution: g.solution || '', mqttId: g.mqttId || null, base: g.mqttId ? `gw/${g.mqttId}` : null })),
+    gateways: (gateways || []).map((g) => ({ site: g.site, device: g.device, name: g.name || '', solution: g.solution || '', mqttId: g.mqttId || null, base: g.mqttId ? `gw/${g.mqttId}` : null })),
     layout: {
       simple: { columns: 2, order },
       pro: {
