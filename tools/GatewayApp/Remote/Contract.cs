@@ -74,4 +74,7 @@ public sealed class ApiNetwork
     public bool Dhcp { get; set; }
     public string Ip { get; set; } = ""; public string Mask { get; set; } = ""; public string Gateway { get; set; } = ""; public string Dns { get; set; } = "";
     public string Mac { get; set; } = ""; public string Current { get; set; } = "";
+    /// <summary>Đường ra Internet ưu tiên khi board có cả dây và Wi-Fi: "auto" (Wi-Fi; lên dây chỉ khi dây ra được Internet) | "wifi" | "eth".
+    /// Rỗng = firmware cũ chưa hỗ trợ (ẩn ô chọn; gửi rỗng thì board giữ nguyên).</summary>
+    public string Pref { get; set; } = "";
 }

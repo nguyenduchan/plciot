@@ -7,7 +7,11 @@
   Version = băm nội dung các file build (không phụ thuộc thời điểm build): build lại mà code không đổi thì version giữ nguyên.
   Bản framework-dependent (cần .NET 8 Desktop Runtime — máy gateway đang chạy app là đã có).
 #>
-param([switch] $Force)
+param(
+  [switch] $Force,
+  [switch] $LocalSign,               # ký bằng khoá trên máy này (cần node + ~/.plciot/gw-sign.pem); mặc định ký trên VPS
+  [string] $VpsHost = 'plciot-vps'
+)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $out = Join-Path $repo 'releases\gateway'
@@ -44,11 +48,44 @@ $zipName = "GatewayApp-$version.zip"
 $zip = Join-Path $out $zipName
 Get-ChildItem $out -Filter 'GatewayApp-*.zip' | Remove-Item -Force
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
-# Ký gói (khoá ~/.plciot/gw-sign.pem hoặc GW_SIGN_KEY, NGOÀI repo): gateway từ chối gói không có chữ ký khớp UpdateSignature.TrustedKeys
-$signJs = Join-Path $repo 'cloud\app\scripts\sign-gateway-release.js'
-$signed = & node $signJs sign $zip $version $apiLevel
-if ($LASTEXITCODE -ne 0) { Remove-Item -Force $zip; throw "Ky goi gateway that bai - can khoa ~/.plciot/gw-sign.pem (chep tu may phat hanh) hoac chay sync-vps -SkipGateway" }
-$signed = $signed | ConvertFrom-Json
+# Ký gói: gateway từ chối gói không có chữ ký khớp UpdateSignature.TrustedKeys.
+# MẶC ĐỊNH ký TRÊN VPS (khoá /root/.plciot/gw-sign.pem, ngoài repo và ngoài container app): máy build không giữ khoá, không cần node —
+# build được trên nhiều PC. Ký trong container dùng một lần (--network none, khoá chỉ đọc), như sign-fw-vps.ps1. Đưa khoá lên VPS một lần:
+# cloud/scripts/push-gw-key-vps.ps1 (chạy trên máy đang giữ khoá). -LocalSign: ký bằng khoá ~/.plciot/gw-sign.pem / GW_SIGN_KEY trên máy này.
+function Sign-OnVps([string] $zipPath) {
+  $tmp = "/tmp/gwsign-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
+  ssh $VpsHost "mkdir -p $tmp && chmod 700 $tmp"
+  if ($LASTEXITCODE) { throw 'ssh VPS loi' }
+  scp -q $zipPath "${VpsHost}:$tmp/pkg.zip"
+  if ($LASTEXITCODE) { throw 'scp goi gateway len VPS loi' }
+  # lệnh chạy bằng FILE (UTF-8 không BOM): PowerShell 5.1 làm hỏng dấu " khi truyền tham số sang ssh và chèn BOM khi pipe
+  $sh = @"
+K=/root/.plciot/gw-sign.pem
+[ -f "`$K" ] || { echo "Thieu khoa `$K tren VPS - chay cloud/scripts/push-gw-key-vps.ps1 tren may giu khoa" >&2; rm -rf $tmp; exit 3; }
+docker run --rm --network none --entrypoint node -e GW_SIGN_KEY=/k/key.pem -v "`$K":/k/key.pem:ro -v $($tmp):/in:ro -w /app plciot-app \
+  scripts/sign-gateway-release.js sign /in/pkg.zip $version $apiLevel
+rc=`$?; rm -rf $tmp; exit `$rc
+"@ -replace "`r", ''
+  $local = Join-Path ([IO.Path]::GetTempPath()) ("gwsign-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + ".sh")
+  [IO.File]::WriteAllText($local, $sh, (New-Object Text.UTF8Encoding $false))
+  scp -q $local "${VpsHost}:$tmp/run.sh"; $rcScp = $LASTEXITCODE
+  Remove-Item $local
+  if ($rcScp) { throw 'scp lenh ky len VPS loi' }
+  $outp = ssh $VpsHost "bash $tmp/run.sh"
+  if ($LASTEXITCODE) { throw "Ky tren VPS loi ($LASTEXITCODE)" }
+  return ($outp | Where-Object { $_ -match '^\{' } | Select-Object -Last 1)
+}
+try {
+  if ($LocalSign) {
+    $signed = & node (Join-Path $repo 'cloud\app\scripts\sign-gateway-release.js') sign $zip $version $apiLevel
+    if ($LASTEXITCODE -ne 0) { throw 'can khoa ~/.plciot/gw-sign.pem va node tren may nay' }
+  } else {
+    Write-Host "==> Ky goi gateway $version tren VPS ($VpsHost)"
+    $signed = Sign-OnVps $zip
+  }
+  $signed = $signed | ConvertFrom-Json
+  if (-not $signed.sig) { throw 'khong nhan duoc chu ky' }
+} catch { Remove-Item -Force $zip; throw "Ky goi gateway that bai: $($_.Exception.Message) (hoac chay sync-vps -SkipGateway)" }
 $trusted = Get-Content (Join-Path $repo 'tools\GatewayApp\UpdateSignature.cs') -Raw
 if (-not $trusted.Contains('"' + $signed.pub + '"')) { Remove-Item -Force $zip; throw "Khoa ky ($($signed.pub.Substring(0,24))...) khong nam trong UpdateSignature.TrustedKeys - gateway se tu choi goi nay" }
 $man = [ordered]@{ version = $version; apiLevel = $apiLevel; file = $zipName; sha256 = $signed.sha256; sig = $signed.sig; size = (Get-Item $zip).Length; builtAt = (Get-Date).ToUniversalTime().ToString('o') }

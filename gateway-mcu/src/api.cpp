@@ -305,7 +305,7 @@ void hGetNetwork() {
   NetCfg n = netLoad();
   JsonDocument d;
   d["Dhcp"] = n.dhcp; d["Ip"] = n.ip; d["Mask"] = n.mask; d["Gateway"] = n.gw; d["Dns"] = n.dns;
-  d["Mac"] = ETH.macAddress(); d["Current"] = netIp().toString();
+  d["Mac"] = ETH.macAddress(); d["Current"] = netIp().toString(); d["Pref"] = netPref();
   String s; serializeJson(d, s); send(200, s);
 }
 
@@ -318,9 +318,12 @@ void hPutNetwork() {
     n.ip = String(d["Ip"] | ""); n.mask = String(d["Mask"] | NET_DEFAULT_MASK); n.gw = String(d["Gateway"] | ""); n.dns = String(d["Dns"] | NET_DEFAULT_DNS);
     n.ip.trim(); n.mask.trim(); n.gw.trim(); n.dns.trim();
   }
+  String pref = String(d["Pref"] | "");   // đường ra Internet ưu tiên (tuỳ chọn): auto | wifi | eth
+  if (pref.length() && pref != "auto" && pref != "wifi" && pref != "eth") { err("Đường ưu tiên phải là auto, wifi hoặc eth."); return; }
   String e = netValidate(n);
   if (e.length()) { err(e); return; }
   netSave(n);
+  if (pref.length()) secretSet("net_pref", pref);
   logf("Admin đổi mạng: %s — khởi động lại", n.dhcp ? "DHCP" : (n.ip + "/" + n.mask + " gw " + n.gw).c_str());
   s_restartAt = millis() + 1500;
   JsonDocument o; o["Ok"] = true; o["Running"] = g_running; o["Msg"] = n.dhcp ? String("Board khởi động lại và xin IP bằng DHCP.") : "Board khởi động lại với IP " + n.ip + ".";

@@ -16,9 +16,10 @@ Không cần "cài ca-certificates" thêm: board và Windows đã có kho CA. **
 
 ## Ký gói cập nhật GatewayApp
 
-- Khoá riêng: `%USERPROFILE%\.plciot\gw-sign.pem` (hoặc env `GW_SIGN_KEY`), **ngoài repo**, khác khoá firmware. Sao lưu ra USB.
-- `publish-gateway.ps1` (gọi từ `sync-vps.ps1`) tự ký → `manifest.json` có `sig`; thiếu khoá thì dừng (dùng `-SkipGateway` trên máy không có khoá, hoặc chép khoá qua USB).
-- Thông điệp ký: `gw1|<sha256 zip>|<version>|<apiLevel>`. Server chỉ chuyển tiếp `sig`, không giữ khoá → chiếm VPS/Cloudflare cũng không phát được exe lạ.
+- Khoá riêng nằm **trên VPS**: `/root/.plciot/gw-sign.pem` (600, root) — ngoài repo, ngoài `/root/plciot` (sync không ghi đè), ngoài container app; khác khoá firmware. Giữ thêm bản sao lưu ngoài VPS (USB).
+- `publish-gateway.ps1` (gọi từ `sync-vps.ps1`) gửi zip lên VPS, ký trong container dùng một lần (`--network none`, khoá chỉ đọc) → `manifest.json` có `sig`. PC build **không cần khoá, không cần node** — build được trên nhiều máy. VPS thiếu khoá → dừng (dùng `-SkipGateway`). `-LocalSign`: ký bằng `%USERPROFILE%\.plciot\gw-sign.pem` / env `GW_SIGN_KEY` trên máy đó (cần node).
+- Đưa khoá lên VPS (một lần, trên máy đang giữ khoá): `.\cloud\scripts\push-gw-key-vps.ps1` — kiểm khoá công khai nằm trong `TrustedKeys`, không ghi đè khoá khác (trừ `-Overwrite`).
+- Thông điệp ký: `gw1|<sha256 zip>|<version>|<apiLevel>`. App đang chạy (tiến trình node của server) không đọc được khoá; nhưng **ai chiếm quyền root VPS ký được gói** mà gateway tin (người dùng vẫn phải bấm **Cập nhật**, trừ khi gói giả nâng `apiLevel` thành "bắt buộc"). Chiếm Cloudflare / tên miền thì không ký được. Lộ / nghi lộ → đổi khoá (dưới).
 - Đổi khoá: thêm khoá công khai mới vào `UpdateSignature.TrustedKeys`, phát hành bằng khoá CŨ, đợi mọi gateway lên bản đó (bảng `gateway_clients`), rồi mới ký bằng khoá mới và bỏ khoá cũ.
 - Bản GatewayApp cũ (trước khi có chữ ký) vẫn cập nhật được lên bản mới; từ bản mới trở đi gói không ký bị từ chối.
 

@@ -152,12 +152,14 @@ async function ota() {
   if (rel.version === verBefore) { log('  board đã chạy đúng bản này — không có gì để cập nhật'); return; }
 
   audit(db, 'ota_approve', { userId: 15, ip: 'vps-test', detail: `${site}/${device} ${verBefore} → ${rel.version} (15 phút) — test tự động qua internet` });
+  const sentAt = Math.floor(Date.now() / 1000) - 5;
+  const allowSeen = async () => (await events(40)).some((e) => e?.k === 'ota_allow' && Number(e.t) >= sentAt);
   notifyGateway(db, site, device, 'ota_allow', { ttl: 900, by: `${BY} (test)`, ver: rel.version });
   log('  đã gửi ota_allow (ký) → chờ board tải + cài…');
   await sleep(8000);
   const o1 = (await rpc('GET', '/api/ota')).b;
   log('  /api/ota sau cho phép', JSON.stringify(o1));
-  check(o1 && (o1.Allowed || o1.allowed || o1.AllowUntil || o1.Window || JSON.stringify(o1).includes(BY)), 'board mở cửa sổ cho phép');
+  // cửa sổ cho phép ĐÓNG ngay khi cài xong (board tải ~10 s) nên không xét Approved ở đây: sau khi board lên lại, xét nhật ký board có ota_allow
 
   // chờ board mất liên lạc (khởi động lại) rồi trở lại với bản mới
   const end = Date.now() + 10 * 60e3;
@@ -170,6 +172,7 @@ async function ota() {
     if (v === rel.version) { log('  board đã lên', v, JSON.stringify(now)); break; }
     log('  vẫn', v, JSON.stringify(now).slice(0, 160));
   }
+  check(await allowSeen().catch(() => false), 'board nhận lệnh cho phép (ota_allow trong nhật ký board)');
   check((now?.Version || now?.version) === rel.version, `board chạy ${rel.version} sau cập nhật qua internet`);
   if ((now?.Version || now?.version) !== rel.version) { pe(await events(20)); return; }
 

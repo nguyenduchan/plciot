@@ -42,6 +42,13 @@ rm -rf $tmp
 echo "pub: `$(grep -o '"pub": *"[^"]*"' "`$D/manifest.json")"
 "@
 $remote = $remote -replace "`r", ''
-ssh $VpsHost $remote
+# chạy bằng FILE (UTF-8 không BOM, chép lên bằng scp), không qua tham số/stdin: PowerShell 5.1 làm hỏng dấu " khi truyền tham số sang ssh
+# ("unexpected EOF while looking for matching") và chèn BOM khi pipe ("﻿set: command not found").
+$local = Join-Path ([IO.Path]::GetTempPath()) ("fwsign-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + ".sh")
+[IO.File]::WriteAllText($local, $remote, (New-Object Text.UTF8Encoding $false))
+scp -q $local "${VpsHost}:$tmp/run.sh"
+Remove-Item $local
+if ($LASTEXITCODE) { throw 'scp lỗi' }
+ssh $VpsHost "bash $tmp/run.sh"
 if ($LASTEXITCODE) { throw "Ký trên VPS lỗi ($LASTEXITCODE)" }
 Write-Host "Đã ký $Version bằng khoá VPS và đưa lên kênh dev." -ForegroundColor Green

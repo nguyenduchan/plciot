@@ -100,6 +100,8 @@ String netValidate(const NetCfg& n);             // "" = hợp lệ
 void netSave(const NetCfg& n);
 void netReset();                                 // về mặc định 192.168.1.200/24
 void netApply();                                 // gọi sau ETH.begin(): IP tĩnh → ETH.config, DHCP → để nguyên
+bool netDnsAuto();                               // IP tĩnh mà DNS để trống (hoặc DNS công cộng cũ) → dùng DNS của mạng (wifi.cpp đồng bộ)
+String netPref();                               // đường ra Internet ưu tiên: "auto" | "wifi" | "eth" (NVS net_pref, PUT /api/network {Pref})
 // wifi.cpp: Wi-Fi station song song với Ethernet (cấu hình qua LAN: API /api/wifi*)
 void wifiBegin();
 void wifiLoop();

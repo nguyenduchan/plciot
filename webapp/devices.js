@@ -471,7 +471,10 @@
     if (el.__h === html) return;   // mỗi gói telemetry gọi tới đây: không đổi thì không dựng lại DOM + gắn lại sự kiện
     el.__h = html; el.innerHTML = html;
     el.querySelectorAll('button').forEach((b) => {
-      b.onclick = () => { activeGw = b.dataset.gw; try { LS.set('activeGw', activeGw); } catch { /* */ } lastSig = ''; render(); };
+      b.onclick = () => {
+        activeGw = b.dataset.gw; try { LS.set('activeGw', activeGw); } catch { /* */ } lastSig = ''; render();
+        document.dispatchEvent(new Event('gw-active-changed'));   // app.js: trạng thái kết nối theo gateway đang chọn
+      };
     });
   }
   const unseen = {};   // base gateway → số cảnh báo chưa xem (engine giải pháp báo lên)
@@ -1139,7 +1142,8 @@
   }
   document.addEventListener('DOMContentLoaded', renderSample);
 
-  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard, catchUp, render: () => render() };
+  window.DevicesUi = { load, onConfig, onTelemetry, onAck, openModal, getDashboard: () => dashboard, catchUp, render: () => render(),
+    activeBase: () => currentGw()?.base || '' };   // topic gốc gw/<mqttId> của tab gateway đang chọn
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#dev-add')?.addEventListener('click', openModal);

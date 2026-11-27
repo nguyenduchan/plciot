@@ -53,6 +53,21 @@ class MqttLink {
       ['telemetry', 'status', 'ack', 'history', 'config'].forEach((k) => this.c.subscribe(`${b}/${k}`));
     });
   }
+  /**
+   * Trạng thái của GATEWAY ĐANG CHỌN (tab), không phải tin `status` đến sau cùng: tài khoản nhiều gateway nhận `status` của tất cả —
+   * trước đây một gateway khác đang offline (vd. u15/gw02) ghi đè làm cả app báo "Mất kết nối máy chủ" và khoá điều khiển dù gateway
+   * đang xem vẫn online (sự cố 2026-11-27, ndhan1 + Waveshare). Chưa biết tab nào: một gateway → của nó; nhiều → online nếu có cái online.
+   */
+  effStatus() {
+    const st = this.gwSt || {}, keys = Object.keys(st);
+    if (!keys.length) return null;
+    const cur = window.DevicesUi?.activeBase?.();
+    if (cur && st[cur]) return st[cur];
+    if (cur && this.bases.includes(cur)) return 'offline';   // tab đang chọn chưa từng báo online
+    return keys.length === 1 ? st[keys[0]] : (keys.some((k) => st[k] === 'online') ? 'online' : st[keys[keys.length - 1]]);
+  }
+  /** Đổi tab gateway → tính lại trạng thái (MQTT đang nối mới có nghĩa; đang mất máy chủ thì giữ "offline"/"connecting"). */
+  restatus() { if (!this.stopped && this.c.ready) { const s = this.effStatus(); if (s) this.h.status(s); } }
   start() { this.h.status('offline'); this.c.connect(); }
   kick() { this.c.kick(); }
   stop() { this.stopped = true; this.c.close(); }   // link đã dừng thì không được ghi đè trạng thái của link mới
@@ -62,7 +77,7 @@ class MqttLink {
     if (!base) return;
     const k = t.slice(base.length + 1);
     try {
-      if (k === 'status') this.h.status(p);
+      if (k === 'status') { (this.gwSt ||= {})[base] = String(p); this.h.status(this.effStatus()); }
       else if (k === 'telemetry') {
         const j = JSON.parse(p);
         if (Array.isArray(j.r)) this.h.regs(j.r);   // schema:2 chỉ có `d` (không có `r`) — không được gọi regs(undefined) làm đứt onTelemetry
@@ -630,6 +645,7 @@ function connect() {
   S.status = 'offline';
   const h = { status: onStatus, regs: onRegs, ack: onAck, history: onHist, tick: () => { S.ts = Date.now(); } };
   link = new MqttLink(h);
+  if (!connect.gwEv) { connect.gwEv = true; document.addEventListener('gw-active-changed', () => link?.restatus?.()); }
   link.start();
 }
 function loadSettings() {

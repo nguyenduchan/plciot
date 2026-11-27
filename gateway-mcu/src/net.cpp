@@ -54,9 +54,10 @@ void netApply() {
   IPAddress ip, m, g, d;
   parseIp(n.ip, ip); parseIp(n.mask, m);
   if (!parseIp(n.gw, g)) g = IPAddress(0, 0, 0, 0);
-  if (!parseIp(n.dns, d)) d = IPAddress(8, 8, 8, 8);
+  bool autoDns = netDnsAuto();
+  if (autoDns || !parseIp(n.dns, d)) d = g;   // DNS tự động: tạm dùng router; wifiLoop đổi sang DNS DHCP của Wi-Fi khi có
   ETH.config(ip, g, m, d);
-  logf("Mạng: IP tĩnh %s/%s, gateway %s, DNS %s", n.ip.c_str(), n.mask.c_str(), n.gw.c_str(), n.dns.c_str());
+  logf("Mạng: IP tĩnh %s/%s, gateway %s, DNS %s", n.ip.c_str(), n.mask.c_str(), n.gw.c_str(), autoDns ? "tự động (theo mạng)" : n.dns.c_str());
 }
 
 static bool wifiUp() {
@@ -111,3 +112,13 @@ String netMaskFor(const IPAddress& peer) {
 }
 
 String netMask() { NetCfg n = netLoad(); return n.dhcp ? ETH.subnetMask().toString() : n.mask; }
+
+/// DNS của Ethernet IP tĩnh là "tự động": người dùng không đặt, hoặc còn giá trị mặc định cũ là DNS công cộng (8.8.8.8 / 1.1.1.1 —
+/// firmware trước tự điền; mạng công ty chặn DNS ngoài nên không dùng nữa). Board chỉ nói chuyện với plc.dieukhientudong.net qua DNS của mạng.
+bool netDnsAuto() {
+  String d = secretGet("net_dns"); d.trim();
+  return !d.length() || d == "8.8.8.8" || d == "8.8.4.4" || d == "1.1.1.1" || d == "1.0.0.1";
+}
+
+/// Đường ra Internet ưu tiên khi có cả dây và Wi-Fi (wifi.cpp): "auto" (mặc định — Wi-Fi, chỉ lên dây khi thử qua dây ra được Internet) | "wifi" | "eth".
+String netPref() { String p = secretGet("net_pref"); return p == "wifi" || p == "eth" ? p : String("auto"); }
