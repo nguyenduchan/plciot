@@ -13,6 +13,7 @@
     forbidden_gateway: 'Gateway này không thuộc tài khoản của bạn.',
     not_mcu: 'Gateway PC tự cập nhật qua phần mềm gateway (nút Cập nhật trên máy).',
     no_release: 'Chưa có bản firmware mới trên máy chủ.',
+    already_latest: 'Gateway đã chạy bản mới nhất — không cần cập nhật.',
   });
   const esc = (t) => S.escHtml(String(t ?? ''));
   const msg = (t, bad) => { if (msgEl) { msgEl.textContent = t || ''; msgEl.style.color = bad ? 'var(--bad,#c33)' : ''; } };
@@ -40,7 +41,14 @@
   const names = new Map();   // "site/device" → tên hiển thị
   function card(h) {
     const kind = h.kind === 'mcu' ? 'Waveshare' : 'Gateway PC';
-    const upd = h.updateAvailable && h.release
+    const left = h.pending ? Math.max(1, Math.ceil((h.pending.until - Date.now()) / 60000)) : 0;
+    const upd = h.updateAvailable && h.release && h.pending
+      // đã cho phép, board đang tải/cài: KHÔNG hiện lại nút (tránh duyệt hai lần); trang tự làm mới tới khi board báo bản mới
+      ? `<div style="border:1px solid var(--line,#444);border-radius:10px;padding:10px;margin:8px 0">
+          <b>Đang cập nhật lên ${esc(h.release.version)}</b>
+          <div class="muted" style="margin:6px 0">${esc(h.pending.by || 'Bạn')} đã cho phép lúc ${esc(when(h.pending.at))}. Gateway đang tự tải và cài, sẽ tự khởi động lại (~20 giây) rồi báo phiên bản mới — trang tự cập nhật. Quyền cài còn ${left} phút.</div>
+        </div>`
+      : h.updateAvailable && h.release
       ? `<div style="border:1px solid var(--line,#444);border-radius:10px;padding:10px;margin:8px 0">
           <b>Bản mới: ${esc(h.release.version)}</b> <span class="muted">${esc(when(h.release.builtAt && Date.parse(h.release.builtAt)))}</span>
           ${h.release.notes ? `<div class="muted" style="white-space:pre-wrap;margin:6px 0">${esc(h.release.notes)}</div>` : ''}
@@ -63,8 +71,9 @@
     </div>`;
   }
 
-  async function load() {
-    body.innerHTML = '<span class="muted">Đang tải…</span>';
+  let pollT = 0;
+  async function load(quiet) {
+    if (!quiet) body.innerHTML = '<span class="muted">Đang tải…</span>';
     const g = await api('GET', '/api/v1/remote-support');
     if (!g.ok) { body.textContent = ''; return msg(S.errText(g.body.error), true); }
     const gws = g.body.gateways || [];
@@ -72,6 +81,9 @@
     if (!gws.length) { body.innerHTML = '<span class="muted">Chưa có gateway nào.</span>'; return; }
     const hs = await Promise.all(gws.map((x) => api('GET', `/api/v1/system-history?gw=${encodeURIComponent(`${x.site}/${x.device}`)}`)));
     body.innerHTML = hs.filter((h) => h.ok).map((h) => card(h.body)).join('');
+    // còn gateway đang chờ cài: hỏi lại mỗi 15 s (khi mục đang mở) để đổi sang "Đang chạy bản mới nhất" ngay khi board báo phiên bản mới
+    clearTimeout(pollT);
+    if (hs.some((h) => h.ok && h.body.pending)) pollT = setTimeout(() => { if (sec.open) load(true); }, 15000);
     body.querySelectorAll('[data-ota]').forEach((b) => b.addEventListener('click', async () => {
       const gw = b.dataset.ota;
       if (!confirm(`Cho phép gateway ${gw} cập nhật firmware trong 15 phút tới?\n\nGateway sẽ tự tải bản mới, kiểm chữ ký nhà phát triển rồi cài. Các đầu ra (bơm, van…) được TẮT trong lúc khởi động lại (~20 giây).`)) return;

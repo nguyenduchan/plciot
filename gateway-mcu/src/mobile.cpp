@@ -283,6 +283,7 @@ void tplPack(JsonObject tpl, int unit, const String& child, JsonArrayConst show,
     pr["unit"] = String(unit); pr["fc"] = String((int)(f["fc"] | 3));
     if ((int)(f["wfc"] | 0) == 16) pr["wfc"] = "16";
     if (order == "BA" || order == "BADC" || order == "DCBA") pr["bswap"] = "1";
+    for (const char* k : {"raddr", "von", "voff", "ron"}) if (!f[k].isNull()) pr[k] = String((long)(f[k] | 0L));   // nút bật/tắt kiểu biến tần (deviceLibrary.js)
     if (!fieldsMeta.isNull()) {
       JsonObject m = fieldsMeta[child + "." + key].to<JsonObject>();
       m["Kind"] = String(f["kind"] | "auto"); m["Unit"] = String(f["unit"] | ""); m["Title"] = f["label"].is<const char*>() ? String(f["label"].as<const char*>()) : key;

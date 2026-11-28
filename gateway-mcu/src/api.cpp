@@ -233,6 +233,18 @@ void hPutConfig() {
   if (!body(in)) return;
   JsonObject c = in["Config"];
   if (c.isNull()) { err("bad_request"); return; }
+  if (s_rpcAdm.length()) {
+    // GatewayAdmin qua cloud (chủ trạm đã bật "Hỗ trợ từ xa"): sửa được thiết bị/field/chu kỳ… như gateway PC, nhưng GIỮ thông số cloud và
+    // danh tính (giống MainForm.Remote.cs fromCloud) — sửa nhầm là cắt luôn kết nối đang dùng, phải ra tủ điện mới cứu được.
+    auto pinned = [](const String& k) { return k.startsWith("Cloud") || k == "Site" || k == "Device" || k == "Mobile" || k == "MqttId" || k == "GatewayQr" || k == "Solution"; };
+    std::vector<String> drop;
+    for (JsonPair kv : c) { String k = kv.key().c_str(); if (pinned(k)) drop.push_back(k); }
+    for (auto& k : drop) c.remove(k);   // không xoá trong lúc duyệt
+    JsonDocument cur;
+    { Lock l; cur.set(g_raw["Config"]); }
+    for (JsonPair kv : cur.as<JsonObject>()) { String k = kv.key().c_str(); if (pinned(k)) c[k] = kv.value(); }
+    c["CloudPassword"] = "";   // để trống = giữ mật khẩu MQTT hiện có
+  }
   String e = storeValidate(c);
   if (e.length()) { err(e); return; }
   String pw = c["CloudPassword"] | "";
@@ -524,6 +536,7 @@ int apiRpc(const String& method, const String& path, const String& body, const S
   // ghi DO, đổi cấu hình thiết bị/mạng/cloud, OTA, PC quản trị: CHỈ tại chỗ.
   static const char* const kRemote[][2] = {
     {"GET", "/api/state"}, {"GET", "/api/config"}, {"GET", "/api/config-message"},
+    {"PUT", "/api/config"},   // cửa sổ cài đặt đầy đủ của GatewayAdmin: hPutConfig giữ nguyên thông số cloud + danh tính khi đi từ xa
     {"GET", "/api/offline"}, {"PUT", "/api/offline"}, {"GET", "/api/events"}, {"GET", "/api/ota"},
     {"GET", "/api/mobile"}, {"PUT", "/api/mobile"},   // bật lại trang cài đặt điện thoại cho kỹ thuật viên (GatewayAdmin hỗ trợ từ xa)
     // cài đặt hiện trường cùng lúc với KTV (mobile.cpp tự chặn sửa khi trang đã tắt; ghi thử / DO / hoàn tất chỉ tại chỗ)

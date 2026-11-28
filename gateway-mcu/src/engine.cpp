@@ -48,6 +48,13 @@ bool encode(double raw, DType t, bool swap, uint16_t* w, int& n, bool bswap = fa
   return true;
 }
 
+/// Giá trị kỹ thuật của field từ các word đọc được: chia hệ số; nút bật/tắt có ánh xạ (von/ron) → 1 khi số thô = ron, còn lại 0.
+double valueOf(const Field& f, const uint16_t* w) {
+  double raw = decode(w, f.type, f.swap, f.bswap);
+  if (f.vmap) return (long)raw == (long)f.ron ? 1 : 0;
+  return raw / (f.scale > 0 ? f.scale : 1);
+}
+
 String keyOf(const Field& f) { return f.protocol + "|" + String(f.unit) + "|" + String(f.fc); }   // FC03 và FC04 là hai vùng nhớ khác nhau: không gom chung
 
 /// Một chu kỳ đọc: gom field cùng PLC (giao thức + unit), cách nhau ≤ 8 word, tối đa 100 word/lần.
@@ -58,14 +65,14 @@ void pollOnce() {
   std::vector<const Field*> rd;
   for (auto& f : fields) if (f.enabled && f.access != Access::Write && (f.proto == Proto::ModbusRtu || f.proto == Proto::ModbusTcp) && (!leaseActive() || f.localIo())) rd.push_back(&f);   // chế độ gateway: PC lo thiết bị ngoài, board chỉ đọc I/O của chính nó
   if (rd.empty()) { Lock l; s_values.clear(); g_status = fields.empty() ? "no_devices" : "online"; s_seq++; return; }
-  std::sort(rd.begin(), rd.end(), [](const Field* a, const Field* b) { String ka = keyOf(*a), kb = keyOf(*b); return ka != kb ? ka < kb : a->addr < b->addr; });
+  std::sort(rd.begin(), rd.end(), [](const Field* a, const Field* b) { String ka = keyOf(*a), kb = keyOf(*b); return ka != kb ? ka < kb : a->rdAddr() < b->rdAddr(); });
   int okReads = 0, badReads = 0;
   std::map<String, double> next;
   size_t i = 0;
   while (i < rd.size()) {
-    size_t j = i; int start = rd[i]->addr, end = rd[i]->addr + rd[i]->words();
-    while (j + 1 < rd.size() && keyOf(*rd[j + 1]) == keyOf(*rd[i]) && rd[j + 1]->addr - end <= 8 && max(end, rd[j + 1]->addr + rd[j + 1]->words()) - start <= 100) {
-      j++; end = max(end, rd[j]->addr + rd[j]->words());
+    size_t j = i; int start = rd[i]->rdAddr(), end = rd[i]->rdAddr() + rd[i]->words();
+    while (j + 1 < rd.size() && keyOf(*rd[j + 1]) == keyOf(*rd[i]) && rd[j + 1]->rdAddr() - end <= 8 && max(end, rd[j + 1]->rdAddr() + rd[j + 1]->words()) - start <= 100) {
+      j++; end = max(end, rd[j]->rdAddr() + rd[j]->words());
     }
     uint16_t buf[100]; String err;
     wdtFeed(WD_POLL);
@@ -75,7 +82,7 @@ void pollOnce() {
       okReads++;
       for (size_t k = i; k <= j; k++) {
         const Field& f = *rd[k];
-        next[f.child + "." + f.field] = decode(buf + (f.addr - start), f.type, f.swap, f.bswap) / (f.scale > 0 ? f.scale : 1);
+        next[f.child + "." + f.field] = valueOf(f, buf + (f.rdAddr() - start));
       }
     } else {
       badReads++;
@@ -120,8 +127,8 @@ void engineProbe(const std::vector<Field>& fs, std::vector<double>& out, std::ve
     const Field& f = fs[i];
     uint16_t buf[4]; String err;
     bool ok;
-    { BusLockIf bus(!f.localIo()); ok = mbRead(f, f.addr, f.words(), buf, err); }
-    if (ok) out[i] = decode(buf, f.type, f.swap, f.bswap) / (f.scale > 0 ? f.scale : 1);
+    { BusLockIf bus(!f.localIo()); ok = mbRead(f, f.rdAddr(), f.words(), buf, err); }
+    if (ok) out[i] = valueOf(f, buf);
     else errs[i] = err;
     wdtFeed(WD_LOOP);
   }
@@ -143,7 +150,8 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   if (f->access == Access::Read) return "read_only";
   if (!f->enabled) return "device_paused";
   uint16_t w[4]; int n = 0;
-  if (!encode(v * f->scale, f->type, f->swap, w, n, f->bswap)) return "bad_value";
+  if (f->vmap && v != 0 && v != 1) return "value_out_of_range";   // nút bật/tắt có giá trị ghi riêng: chỉ nhận 1/0
+  if (!encode(f->vmap ? (v != 0 ? f->von : f->voff) : v * f->scale, f->type, f->swap, w, n, f->bswap)) return "bad_value";
   const String fk = f->child + "." + f->field;
   if (!f->localIo()) {   // DO trên board có chặn riêng (localWrite); thiết bị RS485/TCP: chặn theo chương trình logic ở đây
     String why, g = offlineGuardField(fk, v, byLogic, why);

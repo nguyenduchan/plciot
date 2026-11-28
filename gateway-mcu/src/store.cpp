@@ -163,6 +163,9 @@ void storeApply() {
     f.fc = String(p["Params"]["fc"] | "3") == "4" ? 4 : 3;
     f.wfc = String(p["Params"]["wfc"] | "") == "16" ? 16 : 0;
     f.bswap = String(p["Params"]["bswap"] | "") == "1";
+    { String ra = p["Params"]["raddr"] | ""; f.raddr = ra.length() ? (int)ra.toInt() : -1; }
+    { String a = p["Params"]["von"] | "", b = p["Params"]["voff"] | "", c = p["Params"]["ron"] | "";
+      if (a.length() || b.length()) { f.vmap = true; f.von = a.length() ? a.toInt() : 1; f.voff = b.length() ? b.toInt() : 0; f.ron = c.length() ? c.toInt() : f.von; } }
     f.minToggleMs = constrain((long)(p["MinToggleMs"] | 0), 0L, 3600000L);
     f.lossOffSec = constrain((long)(p["LossOffSec"] | 0), 0L, 86400L);
     n.pack.push_back(f);
@@ -216,6 +219,14 @@ String storeValidate(JsonObjectConst c) {
     if (proto == "ModbusRtu" && unit == "0") { if (addr + tmp.words() > 300) return what + ": I/O trên board vượt quá D299."; }
     else if (addr + tmp.words() > 65536) return what + ": địa chỉ thanh ghi vượt quá 65535.";
     { String fc = p["Params"]["fc"] | "3"; if (fc != "3" && fc != "4") return what + ": chỉ đọc được FC03 hoặc FC04."; if (fc == "4" && String(p["Access"] | "ReadWrite") != "Read") return what + ": thanh ghi FC04 (input) chỉ đọc."; }
+    {   // tuỳ chọn của mẫu thiết bị: thanh ghi trạng thái riêng + giá trị ghi bật/tắt (chỉ kiểu 1 word)
+      auto u16ok = [&](const char* k) { String s = p["Params"][k] | ""; if (!s.length()) return true; long n = s.toInt(); return (String(n) == s) && n >= 0 && n <= 65535; };
+      for (const char* k : {"raddr", "von", "voff", "ron"}) if (!u16ok(k)) return what + ": Params." + k + " phải là số 0–65535.";
+      String ra = p["Params"]["raddr"] | "";
+      if (ra.length() && ra.toInt() + tmp.words() > 65536) return what + ": thanh ghi trạng thái vượt quá 65535.";
+      bool vm = String(p["Params"]["von"] | "").length() || String(p["Params"]["voff"] | "").length();
+      if (vm && tmp.words() != 1) return what + ": giá trị ghi bật/tắt chỉ dùng cho kiểu 1 thanh ghi (UInt16/Int16/Bool).";
+    }
     if (proto == "ModbusRtu") useRtu = true; else useTcp = true;
     String mk = p["MqttKey"] | ""; mk.trim(); String wire = mk.length() ? mk : field;
     if (!wireOk(wire)) return "Pack: khoá MQTT \"" + wire + "\" của " + what + " chỉ gồm chữ, số, '_' (tối đa 32 ký tự).";

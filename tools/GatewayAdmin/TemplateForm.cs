@@ -15,7 +15,8 @@ sealed class TemplateForm : Form
     const string Hint =
         "Giá trị hiển thị = số thô ÷ hệ số chia (vd. 5000 ÷ 100 = 50.00 Hz; ghi 30 Hz → gửi 3000).  Địa chỉ: 0x3000 hoặc 12288 — số thanh ghi PDU bắt đầu từ 0 " +
         "(tài liệu ghi 40001 → nhập 0; 30001 → FC04, nhập 0).  Thứ tự byte: 16 bit AB / BA; 32 bit ABCD (word cao trước), CDAB (đảo word), BADC, DCBA.  " +
-        "\"Hiện\" = thợ thấy sẵn dấu tích; \"Đọc thử\" = tối đa 3 số hiện khi bấm Đọc thử.  Ctrl+S = lưu lên server.";
+        "\"Hiện\" = thợ thấy sẵn dấu tích; \"Đọc thử\" = tối đa 3 số hiện khi bấm Đọc thử.  Công tắc biến tần: Ghi khi Bật/Tắt = số thô gửi đi (vd 1 / 5), " +
+        "Đọc trạng thái tại = thanh ghi trạng thái (vd 0x2100), Đọc = Bật khi = số thô nghĩa là đang chạy (vd 1).  Ctrl+S = lưu lên server.";
     static readonly string[] AccessNames = { "Chỉ đọc", "Đọc & ghi", "Chỉ ghi" }, AccessKeys = { "r", "rw", "w" };
     static readonly string[] FcNames = { "03 Holding", "04 Input" };
     static readonly string[] Types = { "UInt16", "Int16", "UInt32", "Int32", "Float32", "Float64", "Bool" };
@@ -51,6 +52,8 @@ sealed class TemplateForm : Form
         Combo("fc", "FC đọc", FcNames, 100); Text_("addr", "Địa chỉ", 90); Combo("type", "Kiểu dữ liệu", Types, 90); Combo("order", "Thứ tự byte", Orders, 80);
         Text_("scale", "Hệ số chia", 80); Text_("unit", "Đơn vị", 60); Combo("kind", "Hiển thị", KindNames, 100); Text_("min", "Min", 60); Text_("max", "Max", 60);
         Check("show", "Hiện", 50); Check("test", "Đọc thử", 64); Check("wfc", "Ghi FC16", 70); Text_("on", "Chữ khi 1", 80); Text_("off", "Chữ khi 0", 80);
+        // nút bật/tắt kiểu biến tần: số ghi khi Bật/Tắt (vd GD20 2000H: chạy 1, dừng 5) + thanh ghi trạng thái để biết đang chạy hay dừng
+        Text_("von", "Ghi khi Bật", 76); Text_("voff", "Ghi khi Tắt", 76); Text_("raddr", "Đọc trạng thái tại", 110); Text_("ron", "Đọc = Bật khi", 90);
         _g.Columns["label"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         _g.DefaultValuesNeeded += (_, e) => { e.Row.Cells["access"].Value = AccessNames[0]; e.Row.Cells["fc"].Value = FcNames[0]; e.Row.Cells["type"].Value = "UInt16"; e.Row.Cells["order"].Value = "AB"; e.Row.Cells["scale"].Value = "1"; e.Row.Cells["kind"].Value = KindNames[0]; e.Row.Cells["show"].Value = true; };
         _g.CellValueChanged += (_, _) => _dirty = true;
@@ -101,7 +104,8 @@ sealed class TemplateForm : Form
     void Combo(string n, string t, string[] items, int w) { var c = new DataGridViewComboBoxColumn { Name = n, HeaderText = t, Width = w, FlatStyle = FlatStyle.Flat, DisplayStyle = DataGridViewComboBoxDisplayStyle.ComboBox }; c.Items.AddRange(items); _g.Columns.Add(c); }
     void Check(string n, string t, int w) { _g.Columns.Add(new DataGridViewCheckBoxColumn { Name = n, HeaderText = t, Width = w }); }
     void Status(string s, bool err = false) { _status.Text = s; _status.ForeColor = err ? Theme.Red : Theme.Muted; }
-    bool ConfirmLeave() => !_dirty || MessageBox.Show(this, "Mẫu đang sửa chưa lưu lên server. Bỏ thay đổi?", "Thư viện thiết bị", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+    bool _noAsk;   // kiểm thử không giao diện: không hỏi khi đóng
+    bool ConfirmLeave() => _noAsk || !_dirty || MessageBox.Show(this, "Mẫu đang sửa chưa lưu lên server. Bỏ thay đổi?", "Thư viện thiết bị", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
 
     async Task Guard(Func<Task> act)
     {
@@ -144,7 +148,8 @@ sealed class TemplateForm : Form
                 addr >= 10 ? "0x" + addr.ToString("X4") : addr.ToString(), S(f["type"]) is { Length: > 0 } ty ? ty : "UInt16", S(f["order"]) is { Length: > 0 } o ? o : "AB",
                 f["scale"] is { } sc ? Num(sc.GetValue<double>()) : "1", S(f["unit"]), KindNames[Math.Max(0, Array.IndexOf(KindKeys, S(f["kind"])))],
                 f["min"] is { } mn ? Num(mn.GetValue<double>()) : "", f["max"] is { } mx ? Num(mx.GetValue<double>()) : "",
-                f["show"]?.GetValue<bool>() != false, test.Contains(S(f["key"])), (f["wfc"]?.GetValue<int>() ?? 0) == 16, S(f["on"]), S(f["off"]));
+                f["show"]?.GetValue<bool>() != false, test.Contains(S(f["key"])), (f["wfc"]?.GetValue<int>() ?? 0) == 16, S(f["on"]), S(f["off"]), S(f["von"]), S(f["voff"]),
+                f["raddr"] is { } ra ? "0x" + ra.GetValue<int>().ToString("X4") : "", S(f["ron"]));
         }
         _dirty = false;
         Status(t == null ? "Mẫu mới — điền mã (vd. invt-gd20), tên, rồi bảng thanh ghi." : $"Mẫu {S(t["id"])} · bản {S(t["rev"])} · sửa lần cuối bởi {S(t["updatedBy"])}");
@@ -190,6 +195,12 @@ sealed class TemplateForm : Form
             if (mn is { } a) f["min"] = a; if (mx is { } b) f["max"] = b;
             if (B("wfc")) f["wfc"] = 16;
             if (C("on").Length > 0) f["on"] = C("on"); if (C("off").Length > 0) f["off"] = C("off");
+            foreach (var k in new[] { "von", "voff", "raddr", "ron" })
+            {
+                if (C(k).Length == 0) continue;
+                if (!TryAddr(C(k), out var n) || n < 0 || n > 65535) { if (strict) { Status($"{line}: \"{_g.Columns[k]!.HeaderText}\" phải là số 0–65535 (hoặc hex 0x2100).", true); return null; } continue; }
+                f[k] = n;
+            }
             if (B("test")) test.Add(key);
             fields.Add(f);
         }
@@ -200,6 +211,13 @@ sealed class TemplateForm : Form
             ["serial"] = new JsonObject { ["baud"] = int.TryParse(_baud.SelectedItem as string, out var bd) ? bd : 9600, ["parity"] = _parity.SelectedItem as string ?? "None" },
             ["test"] = test, ["fields"] = fields,
         };
+    }
+
+    /// <summary>Kiểm thử (Program --templateput): đưa JSON lên form rồi lưu — đi đúng đường bảng → JSON như kỹ sư bấm Lưu.</summary>
+    internal async Task<string> SaveForTestAsync(JsonObject t)
+    {
+        _noAsk = true; Show(t); _id.ReadOnly = false; await SaveAsync();
+        return _status.Text;
     }
 
     async Task SaveAsync()

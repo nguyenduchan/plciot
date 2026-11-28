@@ -88,6 +88,15 @@ ok(h.status === 200 && h.j.kind === 'mcu' && h.j.version === 'mcu-0.3.6' && h.j.
 ok(h.j.events.some((e) => e.type === 'ota_approve' && e.text.includes('mcu-0.4.0')), 'lịch sử có lần duyệt cập nhật (server)');
 ok(h.j.events.some((e) => e.src === 'gateway' && e.type === 'ota_badsig' && e.alert) && !h.j.events.some((e) => e.text === 'Mức nước cao'), 'lịch sử có cảnh báo bảo mật của board, không lẫn cảnh báo dữ liệu');
 ok((await call('other1', 'GET', '/api/v1/system-history?gw=siteA/gw01')).j.error === 'forbidden_gateway', 'người khác không xem được lịch sử');
+ok(h.j.pending && h.j.pending.by === 'owner1' && h.j.pending.until > Date.now() + 800_000, 'vừa duyệt → lịch sử báo đang chờ board cài (webapp ẩn nút duyệt)');
+db.prepare("UPDATE gateway_clients SET version = 'mcu-0.4.0' WHERE site = 'siteA' AND device = 'gw01'").run();
+{
+  const hl = await call('owner1', 'GET', '/api/v1/system-history?gw=siteA/gw01');
+  ok(!hl.j.updateAvailable && hl.j.pending === null, 'board báo bản mới nhất → hết "bản mới", hết "đang chờ"');
+  const al = await call('owner1', 'POST', '/api/v1/ota/approve', { gw: 'siteA/gw01' });
+  ok(al.status === 409 && al.j.error === 'already_latest', 'đã bản mới nhất → không duyệt được (409 already_latest)');
+}
+db.prepare("UPDATE gateway_clients SET version = 'mcu-0.3.6' WHERE site = 'siteA' AND device = 'gw01'").run();
 
 // Board là SLAVE của gateway PC: gateway PC hỏi thay (id board + nonce board cấp) → server ký ota_allow kèm nonce
 {

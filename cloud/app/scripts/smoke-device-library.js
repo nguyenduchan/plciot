@@ -53,6 +53,21 @@ for (const [patch, part] of [
 }
 ok(throwsMsg(() => L.validateTemplate(GD20, 'Bad Id')).includes('Mã mẫu'), 'từ chối mã mẫu sai');
 
+// nút Chạy/Dừng kiểu biến tần: ghi 1/5 vào 2000H, đọc trạng thái 2100H (1 = đang chạy)
+const RUN = { key: 'run', label: 'Chạy / Dừng', addr: 0x2000, access: 'w', kind: 'toggle', von: 1, voff: 5, raddr: 0x2100, ron: 1, on: 'Đang chạy', off: 'Dừng' };
+const vr = L.validateTemplate({ ...GD20, fields: [RUN, GD20.fields[0]] }, 'x-1').fields[0];
+ok(vr.von === 1 && vr.voff === 5 && vr.raddr === 0x2100 && vr.ron === 1 && vr.access === 'rw', 'nút biến tần: von/voff/raddr/ron, có trạng thái → đọc được (rw)');
+for (const [patch, part] of [
+  [{ kind: 'gauge' }, 'nút bật/tắt'],
+  [{ raddr: undefined }, 'thanh ghi trạng thái'],
+  [{ voff: 1 }, 'khác nhau'],
+  [{ von: 70000 }, '0–65535'],
+  [{ type: 'Float32', order: 'ABCD' }, '1 thanh ghi'],
+]) {
+  const m = throwsMsg(() => L.validateTemplate({ ...GD20, fields: [{ ...RUN, ...patch }, GD20.fields[0]] }, 'x-1'));
+  ok(m.includes(part), `từ chối nút biến tần: ${JSON.stringify(patch)} → ${m}`);
+}
+
 // ---------------------------------------------------------------- API
 const db = openDb(tmp);
 const app = express();

@@ -70,6 +70,25 @@ export function validateTemplate(t, idFromPath) {
     if (max !== null) o.max = max;
     if (wfc) o.wfc = wfc;
     if (kind === 'toggle') { const on = str(f.on, 16), off = str(f.off, 16); if (on) o.on = on; if (off) o.off = off; }
+    // Nút bật/tắt kiểu biến tần: ghi số thô riêng cho Bật/Tắt (von/voff, vd GD20 chạy = 1, dừng = 5 vào 2000H) và đọc trạng thái
+    // ở thanh ghi khác (raddr, vd 2100H), ron = số thô nghĩa là "đang bật" (mặc định = von). Board báo 1/0 cho webapp.
+    const vm = ['raddr', 'von', 'voff', 'ron'].filter((k) => num(f[k]) !== null);
+    if (vm.length) {
+      if (kind !== 'toggle' || access === 'r') throw new Error(`${line}: giá trị Bật/Tắt và thanh ghi trạng thái chỉ dùng cho nút bật/tắt (ghi được).`);
+      if (words !== 1) throw new Error(`${line}: giá trị Bật/Tắt chỉ dùng cho kiểu 1 thanh ghi (UInt16/Int16/Bool).`);
+      for (const k of vm) {
+        const n = num(f[k]);
+        if (!Number.isInteger(n) || n < 0 || n > 65535) throw new Error(`${line}: ${k} phải là số nguyên 0–65535.`);
+        o[k] = n;
+      }
+      if (o.von === undefined && o.voff === undefined && (o.ron !== undefined)) throw new Error(`${line}: "đọc = Bật" cần kèm giá trị ghi Bật/Tắt.`);
+      if (o.von !== undefined && o.voff !== undefined && o.von === o.voff) throw new Error(`${line}: giá trị ghi Bật và Tắt phải khác nhau.`);
+      if (access === 'w' && o.raddr === undefined && (o.von !== undefined || o.voff !== undefined)) {
+        // chỉ ghi + không đọc trạng thái: webapp không biết đang bật hay tắt → bắt khai thanh ghi trạng thái
+        throw new Error(`${line}: nút chỉ ghi cần "thanh ghi trạng thái" (raddr) để biết đang Bật hay Tắt — hoặc đặt quyền rw.`);
+      }
+      if (o.raddr !== undefined) o.access = 'rw';   // có thanh ghi trạng thái = đọc được (board đọc raddr, ghi addr)
+    }
     return o;
   });
   let test = (Array.isArray(t.test) ? t.test : []).map((k) => str(k, 32)).filter((k) => out.some((f) => f.key === k && f.access !== 'w'));

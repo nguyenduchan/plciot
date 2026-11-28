@@ -85,7 +85,10 @@ TPL = {'rev': 1, 'templates': [
         {'key': 'a', 'label': 'Dòng điện', 'fc': 3, 'addr': 0x3004, 'type': 'UInt16', 'order': 'AB', 'scale': 10, 'unit': 'A', 'access': 'r', 'kind': 'gauge', 'show': True},
         {'key': 'kw', 'label': 'Công suất', 'fc': 3, 'addr': 0x3006, 'type': 'Float32', 'order': 'CDAB', 'scale': 1, 'unit': 'kW', 'access': 'r', 'kind': 'gauge', 'show': False},
         {'key': 'sp', 'label': 'Cài đặt tần số', 'fc': 3, 'addr': 0x2001, 'type': 'UInt16', 'order': 'AB', 'scale': 100, 'unit': 'Hz', 'access': 'rw', 'kind': 'slider', 'show': True, 'min': 0, 'max': 50},
-        {'key': 'cmd', 'label': 'Lệnh chạy/dừng', 'fc': 3, 'addr': 0x2000, 'type': 'UInt16', 'order': 'AB', 'scale': 1, 'unit': '', 'access': 'w', 'kind': 'number', 'show': True, 'wfc': 16}]},
+        {'key': 'cmd', 'label': 'Lệnh chạy/dừng', 'fc': 3, 'addr': 0x2000, 'type': 'UInt16', 'order': 'AB', 'scale': 1, 'unit': '', 'access': 'w', 'kind': 'number', 'show': True, 'wfc': 16},
+        # nút Chạy/Dừng kiểu biến tần: ghi 1 / 5 vào 2000H, đọc trạng thái 2100H (1 = đang chạy)
+        {'key': 'run', 'label': 'Chạy / Dừng', 'fc': 3, 'addr': 0x2000, 'type': 'UInt16', 'order': 'AB', 'scale': 1, 'unit': '', 'access': 'rw', 'kind': 'toggle', 'show': False,
+         'von': 1, 'voff': 5, 'raddr': 0x2100, 'ron': 1}]},
     {'id': 'xy-md02', 'name': 'Cảm biến nhiệt ẩm XY-MD02', 'brand': 'XY', 'model': 'MD02', 'icon': 'env', 'note': '', 'serial': {'baud': 9600, 'parity': 'None'},
      'test': ['t', 'h'], 'fields': [
         {'key': 't', 'label': 'Nhiệt độ', 'fc': 4, 'addr': 1, 'type': 'Int16', 'order': 'AB', 'scale': 10, 'unit': '°C', 'access': 'r', 'kind': 'gauge', 'show': True},
@@ -214,6 +217,18 @@ try:
     ok(j.get('Ok') and (1, 16, 0x2000, [1]) in WR, 'ghi thử lệnh bằng FC16 (wfc 16)')
     st, j = req('POST', '/api/m/write', {'Child': gd, 'Field': 'sp', 'Value': 80})
     ok(not j.get('Ok') and 'khoảng' in j.get('Msg', ''), 'ghi ngoài Min/Max bị chặn')
+    st, j = req('POST', '/api/m/device', {'Child': gd, 'Template': 'invt-gd20', 'Unit': 1, 'Title': 'Quạt hút xưởng 1', 'Show': ['f', 'kw', 'sp', 'cmd', 'run']})
+    ok(j.get('Ok'), 'hiện thêm nút Chạy/Dừng (von/voff/raddr)')
+    H[1][0x2100] = 3
+    st, j = req('POST', '/api/m/probe', {'Child': gd}); pv = {x['Field']: x.get('Value') for x in j.get('Items', [])}
+    H[1][0x2100] = 1
+    st, j = req('POST', '/api/m/probe', {'Child': gd}); pv2 = {x['Field']: x.get('Value') for x in j.get('Items', [])}
+    ok(pv.get('run') == 0 and pv2.get('run') == 1, f'Chạy/Dừng đọc trạng thái ở 2100H: dừng (3) → 0, chạy (1) → 1: {pv.get("run")}, {pv2.get("run")}')
+    WR.clear()
+    req('POST', '/api/m/write', {'Child': gd, 'Field': 'run', 'Value': 1}); req('POST', '/api/m/write', {'Child': gd, 'Field': 'run', 'Value': 0})
+    st, j = req('POST', '/api/m/write', {'Child': gd, 'Field': 'run', 'Value': 2})
+    ok((1, 6, 0x2000, [1]) in WR and (1, 6, 0x2000, [5]) in WR and not j.get('Ok'), f'Bật → ghi 1, Tắt → ghi 5 vào 2000H, giá trị khác bị chặn: {WR}')
+    req('POST', '/api/m/device', {'Child': gd, 'Template': 'invt-gd20', 'Unit': 1, 'Title': 'Quạt hút xưởng 1', 'Show': ['f', 'kw', 'sp', 'cmd']})
     st, j = req('POST', '/api/m/dio', {'Kind': 'do', 'Ch': 2, 'Title': 'Đèn kho', 'Icon': 'bulb', 'Fb': 3})
     ok(j.get('Ok'), 'đặt tên DO2 + phản hồi DI3')
     st, j = req('POST', '/api/m/dio', {'Kind': 'do', 'Ch': 2, 'Title': 'Trùng'})
@@ -244,6 +259,14 @@ try:
     ok(j.get('Ok') and rs['Port']['PollMs'] == 2000 and rs['LastChange']['By'].startswith('KTV'), 'GatewayAdmin thấy thay đổi của KTV')
     st, j = rpc('POST', '/api/m/probe', {'Template': 'xy-md02', 'Unit': 3})
     ok(st == 200, 'GatewayAdmin đọc thử từ xa')
+    # cửa sổ cài đặt đầy đủ của GatewayAdmin qua cloud: sửa được, nhưng board GIỮ thông số cloud + danh tính
+    st, cf = rpc('GET', '/api/config')
+    api0, site0 = cf['Config'].get('CloudApiUrl'), cf['Config'].get('Site')
+    cf['Config'].update({'PollMs': 1500, 'CloudApiUrl': 'https://la.example', 'Site': 'khac', 'CloudHost': '1.2.3.4'})
+    st, j = rpc('PUT', '/api/config', cf)
+    st2, c2 = rpc('GET', '/api/config')
+    ok(st == 200 and c2['Config']['PollMs'] == 1500 and c2['Config'].get('CloudApiUrl') == api0 and c2['Config'].get('Site') == site0
+       and c2['Config'].get('CloudHost', '') != '1.2.3.4', f'GatewayAdmin lưu cấu hình đầy đủ qua cloud: PollMs đổi, thông số cloud/danh tính giữ nguyên ({st} {j})')
     st, j = rpc('POST', '/api/m/write', {'Child': gd, 'Field': 'sp', 'Value': 10})
     ok(st == 403, 'GatewayAdmin KHÔNG ghi thử từ xa (chỉ tại chỗ)')
     st, j = rpc('POST', '/api/m/account/start', {})

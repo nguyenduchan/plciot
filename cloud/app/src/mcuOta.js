@@ -126,6 +126,7 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
     if (kindOf(cl?.version) !== 'mcu') return out(res, 400, { error: 'not_mcu' });
     const rel = readMcuRelease(releasesDir, channelOf(cl?.version));   // board build dev ("…-dev") tải kênh dev
     if (!rel) return out(res, 404, { error: 'no_release' });
+    if (cl?.version === rel.version) return out(res, 409, { error: 'already_latest', version: rel.version });   // webapp đã ẩn nút; chặn cả gọi thẳng API
     const a = authorize(req);
     if (a.error) { audit(db, 'control_denied', { userId: req.user.id, ip: clientIp(req), detail: `ota_approve ${a.reason || a.error}` }); return out(res, a.status || 401, a); }
     const by = String(req.user.username || `user${req.user.id}`).slice(0, 40);
@@ -203,10 +204,19 @@ export function mountMcuOta(app, { db, requireAuth, security, releasesDir }) {
       }
     } catch { /* chưa có bảng lịch sử */ }
     events.sort((x, y) => y.ts - x.ts);
+    const updateAvailable = Boolean(rel && cl?.version && rel.version !== cl.version);
+    // Đã cho phép (≤ 15 phút) đúng bản mới này mà board chưa báo phiên bản mới → webapp hiện "đang chờ board cài", KHÔNG hiện lại nút duyệt
+    let pending = null;
+    if (updateAvailable) {
+      const ap = db.prepare(`SELECT a.ts, a.detail, u.username FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+          WHERE a.event = 'ota_approve' AND a.detail LIKE ? ORDER BY a.ts DESC LIMIT 1`).get(`${key} %`);
+      const until = ap ? Number(ap.ts) + OTA_WINDOW_SEC * 1000 : 0;
+      if (ap && until > Date.now() && String(ap.detail).includes(`→ ${rel.version} `)) pending = { at: Number(ap.ts), until, by: ap.username || '' };
+    }
     res.json({
       site: g.site, device: g.device, kind, version: cl?.version || null, lastSeen: cl?.lastSeen || null,
       release: rel ? { version: rel.version, builtAt: rel.builtAt, notes: rel.notes } : null,
-      updateAvailable: Boolean(rel && cl?.version && rel.version !== cl.version),
+      updateAvailable, pending,
       events: events.slice(0, 100),
     });
   });

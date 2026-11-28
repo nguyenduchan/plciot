@@ -27,6 +27,13 @@ static class Program
             var gw = j >= 0 && j + 1 < args.Length ? args[j + 1] : "";
             form.Shown += async (_, _) => { await RelayTest.RunAsync(form, args[i + 1], gw); form.Close(); };
         }
+        // --fieldtest THƯ_MỤC --gw site/device [--child c]: board Waveshare qua internet — xem toàn bộ cấu hình, sửa ở cửa sổ cài đặt + 📱 Cài đặt hiện trường
+        var ft = Array.IndexOf(args, "--fieldtest");
+        if (ft >= 0 && ft + 1 < args.Length)
+        {
+            string A(string n) { var x = Array.IndexOf(args, n); return x >= 0 && x + 1 < args.Length ? args[x + 1] : ""; }
+            form.Shown += async (_, _) => { await FieldTest.RunAsync(form, args[ft + 1], A("--gw"), A("--child") is { Length: > 0 } ch ? ch : "invt-gd20"); form.Close(); };
+        }
         // --rpcget KQ.txt --gw site/device --path /api/events: đọc một route GET của gateway qua relay cloud (cần "Hỗ trợ từ xa" bật)
         var rg = Array.IndexOf(args, "--rpcget");
         if (rg >= 0 && rg + 1 < args.Length)
@@ -63,6 +70,27 @@ static class Program
                 }
                 catch (Exception e) { lines.Add("FAIL " + AdminApi.Explain(e)); }
                 File.WriteAllLines(outFile, lines);
+                form.Close();
+            };
+        }
+        // --templateput KQ.txt --file mau.json: mở 📚 Thiết bị mẫu, đưa JSON lên bảng rồi bấm Lưu (đúng đường kỹ sư lưu mẫu lên server)
+        var tp = Array.IndexOf(args, "--templateput");
+        if (tp >= 0 && tp + 1 < args.Length)
+        {
+            string A(string n) { var x = Array.IndexOf(args, n); return x >= 0 && x + 1 < args.Length ? args[x + 1] : ""; }
+            form.Shown += async (_, _) =>
+            {
+                string text;
+                try
+                {
+                    var tf = new TemplateForm(form.Api); tf.Show(form);
+                    var res = await tf.SaveForTestAsync(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(A("--file")))!.AsObject());
+                    var all = await form.Api.TemplatesAsync();
+                    text = (res.StartsWith("Đã lưu") ? "PASS " : "FAIL ") + res + Environment.NewLine + all;
+                    tf.Close();
+                }
+                catch (Exception e) { text = "FAIL " + AdminApi.Explain(e); }
+                File.WriteAllText(args[tp + 1], text);
                 form.Close();
             };
         }

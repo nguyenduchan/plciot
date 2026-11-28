@@ -714,12 +714,22 @@ sealed class DeviceDialog : Form
         foreach (var (p, m) in packs)
             if (m.Feedback.Length > 0 && !packs.Any(x => x.Item1.Field == m.Feedback)) { _err.Text = $"Field phản hồi \"{m.Feedback}\" của \"{p.Field}\" không có trong thiết bị này."; return; }
 
+        // Thiết bị tạo từ mẫu (điện thoại KTV, board Waveshare) có tuỳ chọn RIÊNG từng field trong Params (fc, wfc, bswap, raddr, von/voff/ron)
+        // mà hộp thoại này không có ô sửa: giữ nguyên, chỉ ghi đè các khoá của giao thức (unit…). Không thì GD20 "Chạy/Dừng" ghi 1/0 thay vì 1/5.
+        foreach (var (p, _) in packs)
+        {
+            var old = _app.Config.Pack.FirstOrDefault(x => x.Child == (_edit ?? child) && x.Field == p.Field);
+            if (old == null) continue;
+            foreach (var kv in old.Params) if (!prm.ContainsKey(kv.Key)) p.Params[kv.Key] = kv.Value;
+        }
+        var model = _app.Meta.Devices.TryGetValue(_edit ?? child, out var oldMeta) ? oldMeta.Model : "";
+
         // áp vào cấu hình
         foreach (var old in _app.Config.Pack.Where(p => p.Child == child).ToList()) { _app.Config.Pack.Remove(old); _app.Meta.Remove(child, old.Field); }
         foreach (var (p, m) in packs) { _app.Config.Pack.Add(p); _app.Meta.Set(child, p.Field, m); }
         _app.Config.Connections.RemoveAll(c => c.Protocol == src);
         _app.Config.Connections.Add(conn);
-        _app.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id, Icon = IconValue(), Color = DeviceStyle.ColorKeys[Math.Max(0, _color.SelectedIndex)] });
+        _app.Meta.SetDevice(child, new DeviceMeta { Title = _title.Text.Trim(), Template = _tpl.Id, Icon = IconValue(), Color = DeviceStyle.ColorKeys[Math.Max(0, _color.SelectedIndex)], Model = model });
         DialogResult = DialogResult.OK; Close();
     }
 

@@ -28,4 +28,8 @@ GatewayAdmin ──HTTPS, ký bằng khoá máy──▶ server (remoteAdmin.js)
 
 - Server: `node cloud/app/scripts/smoke-remote-admin.js` (26 kiểm tra: chữ ký, phát lại, lệch giờ, sửa thân, quyền chủ, route bị chặn, tách miền chữ ký, ghép trả lời lớn, gateway khác trả lời, ACL).
 - Qua internet thật (bản Debug): `GatewayAdmin.exe --relaytest KQ --gw site/device` — đọc trạng thái/cấu hình, lưu cấu hình (gateway khởi động lại và nối lại cloud), thông số cloud không đổi được, route bị chặn, mở cửa sổ. 2026-11-26: 11/11 với gateway PC thử trên VPS, ~390 ms mỗi vòng.
-- Board Waveshare (từ `mcu-0.3.9`): nghe `rpc`, thân gói base64 thường (`"enc":"b64"`), chỉ mở route xem + `PUT /api/offline` có mã duyệt của chủ trạm — xem `GATEWAY-LOGIC.md`. Chưa kiểm chứng qua VPS thật.
+- Board Waveshare (từ `mcu-0.3.9`): nghe `rpc`, thân gói base64 thường (`"enc":"b64"`). Route mở từ xa (`kRemote` trong `gateway-mcu/src/api.cpp`): xem trạng thái/cấu hình/nhật ký,
+  `PUT /api/config` (cửa sổ cài đặt đầy đủ — board GIỮ mọi khoá `Cloud*`, `Site`, `Device`, `Mobile`, `MqttId`, `GatewayQr`, `Solution`, mật khẩu MQTT như gateway PC),
+  `PUT /api/offline` có mã duyệt của chủ trạm (`GATEWAY-LOGIC.md`), `/api/mobile` + `/api/m/*` cài đặt hiện trường (`MOBILE-SETUP.md`). Ghi thử, DO, hoàn tất, gắn tài khoản: chỉ tại chỗ.
+- Board qua internet thật (bản Debug): `GatewayAdmin.exe --fieldtest KQ --gw site/device [--child c]` — xem toàn bộ cấu hình, lưu từ cửa sổ cài đặt đầy đủ (tuỳ chọn mẫu + `Model`
+  không mất), 📱 Cài đặt hiện trường (sửa, xung đột `Rev`, đọc thử, ghi thử bị chặn), chụp hai cửa sổ. 2026-11-28: đạt hết với board giả lập (gw-sim) nối VPS thật, ~130 ms mỗi vòng.

@@ -69,6 +69,9 @@ public sealed class DeviceMeta
     public string Icon { get; set; } = "";
     /// <summary>Màu nhấn của thẻ (khoá trong <see cref="DeviceStyle.ColorKeys"/>); rỗng = mặc định.</summary>
     public string Color { get; set; } = "";
+    /// <summary>Mã mẫu thiết bị RS485 (thư viện mẫu, board Waveshare — trang cài đặt điện thoại) đã dùng để tạo thiết bị; rỗng = khai báo tay.
+    /// Phải giữ khi lưu từ GatewayApp/GatewayAdmin, không thì điện thoại kỹ thuật viên không "Sửa" theo mẫu được nữa.</summary>
+    public string Model { get; set; } = "";
 }
 
 /// <summary>Bảng màu nhấn người dùng chọn cho thẻ thiết bị.</summary>

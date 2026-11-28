@@ -41,6 +41,10 @@ struct Field {
   uint8_t fc = 3;                    // Params.fc: 3 = đọc holding (FC03), 4 = đọc input register (FC04, chỉ đọc)
   uint8_t wfc = 0;                   // Params.wfc: 16 = luôn ghi bằng FC16 (thiết bị không nhận FC06); 0 = tự chọn (1 word → FC06)
   bool bswap = false;                // Params.bswap = "1": đảo 2 byte trong mỗi word (thứ tự BA / BADC / DCBA)
+  int raddr = -1;                    // Params.raddr: ĐỌC trạng thái ở thanh ghi khác (vd biến tần: ghi lệnh 2000H, đọc trạng thái 2100H); -1 = đọc tại addr
+  bool vmap = false;                 // Params.von/voff: nút bật/tắt ghi số thô riêng (vd GD20: chạy = 1, dừng = 5) thay cho 1/0
+  uint16_t von = 1, voff = 0, ron = 1;   // ron (Params.ron, mặc định = von): giá trị đọc được nghĩa là "đang bật" → báo 1, khác → 0
+  int rdAddr() const { return raddr >= 0 ? raddr : addr; }
   int words() const { return type == DType::Float64 ? 4 : (type == DType::UInt32 || type == DType::Int32 || type == DType::Float32) ? 2 : 1; }
   bool localIo() const { return proto == Proto::ModbusRtu && unit == 0; }
 };

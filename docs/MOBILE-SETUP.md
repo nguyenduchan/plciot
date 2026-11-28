@@ -75,6 +75,10 @@ DI/DO + trạng thái, giá trị, KTV nào đang đăng nhập, ai sửa gần 
 - `access` r / rw / w · `fc` 3 (holding) / 4 (input, chỉ đọc) · `addr` 0–65535 (địa chỉ PDU, 40001 → 0) · `type` UInt16 Int16 UInt32 Int32 Float32 Float64 Bool
 - `order`: 16 bit AB / BA; 32–64 bit ABCD / CDAB (đảo word) / BADC (đảo byte) / DCBA · `scale` = hệ số CHIA (giá trị = thô ÷ scale)
 - `wfc: 16` = luôn ghi bằng FC16 (thiết bị không nhận FC06); mặc định 1 word → FC06, nhiều word → FC16
+- Nút Chạy/Dừng kiểu biến tần (chỉ `kind: toggle`, kiểu 1 thanh ghi): `von` / `voff` = số thô ghi khi Bật / Tắt (vd GD20 2000H: 1 / 5, thay cho 1 / 0);
+  `raddr` = đọc trạng thái ở thanh ghi khác (vd 2100H) — có `raddr` thì field tự thành đọc-ghi; `ron` = số thô nghĩa là "đang bật" (mặc định = `von`), khác → 0.
+  Board báo 1/0 cho webapp; ghi giá trị khác 0/1 bị chặn. Trên board: `Params.raddr/von/voff/ron`. GatewayApp/GatewayAdmin lưu từ trang Thiết bị vẫn GIỮ các
+  khoá Params riêng này (và `Devices.<child>.Model`).
 - `show` = dấu tích mặc định "hiện trên app chủ xưởng" (bỏ tích = không đọc, không tốn đường truyền) · `test` = tối đa 3 thông số hiện khi "Đọc thử"
 - Trên board: `Params.fc`, `Params.wfc`, `Params.bswap` của Pack (gateway PC giữ nguyên nhưng CHƯA dùng — chỉ firmware Waveshare đọc FC04/đảo byte/ép FC16).
   Vòng đọc tự gom thanh ghi gần nhau (≤ 8 word cách, ≤ 100 word/lần, tách FC03/FC04).
@@ -93,6 +97,11 @@ DI/DO + trạng thái, giá trị, KTV nào đang đăng nhập, ai sửa gần 
 
 ## Thử
 
-- Firmware (bản giả lập, không cần board): `.\gateway-mcu\build.ps1 -Sim` rồi `python tools\mobile_setup_test.py` (55 kiểm tra: HTTPS/cổng 80, BOOT, phạm vi phiên,
-  tải mẫu/304/offline, GatewayAdmin qua relay + xung đột Rev, gắn tài khoản, FC03/04/06/16, CDAB, đảo byte, địa chỉ 0x3000, trùng ID/kênh, ẩn/hiện, DI/DO, hoàn tất → tắt).
+- Firmware (bản giả lập, không cần board): `.\gateway-mcu\build.ps1 -Sim` rồi `python tools\mobile_setup_test.py` (59 kiểm tra: HTTPS/cổng 80, BOOT, phạm vi phiên,
+  tải mẫu/304/offline, GatewayAdmin qua relay + xung đột Rev, gắn tài khoản, FC03/04/06/16, CDAB, đảo byte, địa chỉ 0x3000, Chạy/Dừng ghi 1/5 + đọc 2100H, GatewayAdmin lưu cấu hình đầy đủ giữ thông số cloud, trùng ID/kênh, ẩn/hiện, DI/DO, hoàn tất → tắt).
 - Server: `node cloud/app/scripts/smoke-device-library.js`.
+- Trọn vòng thật (2026-11-28, biến tần GD20 giả `python tools/gd20_sim.py --port 5490` + gw-sim `SIM_RS485_TCP=127.0.0.1:5490` nối VPS thật):
+  GatewayAdmin `--templateput KQ.txt --file templates/invt-gd20.json` (qua bảng 📚) → board tải mẫu từ server → KTV (API của trang `/m`) đặt cổng 19200 8E1, đọc thử,
+  thêm "Bơm cấp nước 1", ghi thử → lấy mã → chủ trạm Duyệt trên `gateway-login.html` → board tự đăng ký, nối MQTTS → webapp: Chạy (2000H=1), 35 Hz (2001H=3500),
+  thấy tần số/dòng, Dừng (2000H=5) → chủ trạm bật Hỗ trợ từ xa → `GatewayAdmin --fieldtest` (xem REMOTE-ADMIN.md). Trình duyệt tích hợp của Claude không mở được
+  HTTPS tự ký của board, nên bước KTV gọi đúng API của trang thay vì bấm trên trang.
