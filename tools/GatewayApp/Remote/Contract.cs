@@ -33,6 +33,25 @@ public sealed class ApiDevice { public string Child { get; set; } = ""; public b
 /// <summary>Trả lời POST /api/lease: Mode sau khi xử lý, TtlMs còn lại, Port = cổng Modbus TCP slave của board.</summary>
 public sealed class ApiLease { public bool Ok { get; set; } public string? Err { get; set; } public string Mode { get; set; } = ""; public int TtlMs { get; set; } public int Port { get; set; } }
 public sealed class ApiResult { public bool Ok { get; set; } public string? Err { get; set; } public bool Running { get; set; } public string? Msg { get; set; } }
+/// <summary>
+/// Giờ của board MCU (GET/PUT /api/time, firmware ≥ mcu-0.4.26): quản lý giờ khi offline. Source: "ntp" = giờ server (ưu tiên nhất),
+/// "pc" = PC quản trị đặt qua LAN, "rtc" = đồng hồ RTC trên board (giữ giờ khi mất điện), "none" = chưa có giờ → mọi hẹn giờ TẮT.
+/// Thời điểm đều là ms UTC; 0/null = không có.
+/// </summary>
+public sealed class ApiTime
+{
+    public bool Ok { get; set; }
+    public long NowMs { get; set; }
+    public string Source { get; set; } = "";
+    public bool Trusted { get; set; }
+    public bool RtcFound { get; set; }
+    public bool RtcValid { get; set; }
+    public long? RtcMs { get; set; }
+    public long? RtcDriftMs { get; set; }
+    public long? LastSyncMs { get; set; }
+    public string? LastSyncBy { get; set; }
+    public long UpSec { get; set; }
+}
 /// <summary>Việc cloud do gateway làm: ghép cặp bằng mã admin hoặc enroll bằng QR.</summary>
 public sealed class ApiCloud { public string Action { get; set; } = ""; public string Api { get; set; } = ""; public string Value { get; set; } = ""; }
 /// <summary>

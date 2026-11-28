@@ -65,6 +65,16 @@ export function initGatewayLogicTables(db) {
       result TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_logic_prop_gw ON gateway_logic_proposals (site, device, created_at);
+    -- schema v9: mốc hẹn giờ ĐANG TẮT (công tắc như báo thức điện thoại). KHÔNG gửi xuống gateway — firmware/GatewayApp cũ không biết
+    -- cờ "tắt" sẽ vẫn chạy mốc đó; gateway chỉ nhận mốc đang bật. out = idOf(đầu ra) ("1".."8" DO board, hoặc "thiết bị.field").
+    CREATE TABLE IF NOT EXISTS gateway_timers_off (
+      site TEXT NOT NULL,
+      device TEXT NOT NULL,
+      out TEXT NOT NULL,
+      timers TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (site, device, out)
+    );
   `);
   inited = true;
 }
@@ -178,6 +188,36 @@ export function cleanTimers(list, tzMin = 420) {
     out.push(e);
   }
   return out;
+}
+
+/**
+ * Danh sách mốc từ webapp (kiểu báo thức điện thoại, mỗi mốc có công tắc En) → { on: mốc gửi xuống gateway, off: mốc chỉ lưu server }.
+ * Tổng tối đa 4 mốc / đầu ra. Mốc đang tắt giữ nguyên ngày chạy 1 lần dù đã qua (bật lại thì webapp tính ngày mới).
+ */
+export function splitTimers(list, tzMin = 420) {
+  if (!Array.isArray(list) || list.length > 4) return 'timer_invalid';
+  const isOff = (t) => t?.En === false;
+  const on = cleanTimers(list.filter((t) => !isOff(t)), tzMin);
+  if (typeof on === 'string') return on;
+  const off = [];
+  for (const t of list.filter(isOff)) {
+    // kiểm như mốc bật nhưng KHÔNG bỏ mốc 1 lần đã qua (đặt ngày giả ở tương lai để qua bước "đã qua: bỏ", rồi trả ngày thật)
+    const probe = t?.Date != null ? { ...t, Date: validDate(t.Date) ? '2999-12-31' : t.Date } : t;
+    const c = cleanTimers([probe], tzMin);
+    if (typeof c === 'string' || c.length !== 1) return 'timer_invalid';
+    off.push(t?.Date != null ? { ...c[0], Date: t.Date } : c[0]);
+  }
+  return { on, off };
+}
+
+/** Mốc đang tắt của một gateway: { "<out>": [mốc…] }. */
+export function timersOffOf(db, site, device) {
+  initGatewayLogicTables(db);
+  const m = {};
+  for (const r of db.prepare('SELECT out, timers FROM gateway_timers_off WHERE site = ? AND device = ?').all(site, device)) {
+    const l = j(r.timers, []); if (l.length) m[r.out] = l;
+  }
+  return m;
 }
 
 /**
@@ -303,7 +343,8 @@ export function mountGatewayLogic(app, { db, requireAuth, security, admin }) {
     for (const o of cur?.program?.Do || []) if (o.Timer?.length) timers[idOf(o)] = o.Timer;
     res.json({
       site: g.site, device: g.device, kind,
-      current: cur ? { rev: cur.rev, updatedAt: cur.updatedAt, tz: cur.program.TzMin ?? 420, rows: describeLogic(cur.program, cur.names), keys: cur.keys, names: cur.names, timers } : null,
+      current: cur ? { rev: cur.rev, updatedAt: cur.updatedAt, tz: cur.program.TzMin ?? 420, rows: describeLogic(cur.program, cur.names), keys: cur.keys, names: cur.names, timers,
+        timersOff: timersOffOf(db, g.site, g.device) } : null,   // mốc đang tắt (chỉ ở server) — webapp hiện cùng danh sách, công tắc tắt
       pending: pending ? propRow(pending, cur) : null,
       history: props.filter((p) => p.status !== 'pending').slice(0, 8).map((p) => ({ id: p.id, status: p.status, note: p.note || '', by: p.proposed_by, createdAt: p.created_at, decidedBy: p.decided_by, decidedAt: p.decided_at, result: p.result || '' })),
     });
@@ -360,8 +401,9 @@ export function mountGatewayLogic(app, { db, requireAuth, security, admin }) {
     const isField = /^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(id);
     const ch = kind === 'mcu' && !isField ? Number(id) : id;
     if (!isField && !(kind === 'mcu' && Number.isInteger(ch) && ch >= 1 && ch <= 8)) return out(res, 400, { error: 'bad_request' });
-    const timers = cleanTimers(req.body?.timers, currentLogic(db, g.site, g.device)?.program?.TzMin ?? 420);
-    if (typeof timers === 'string') return out(res, 400, { error: timers });
+    const split = splitTimers(req.body?.timers, currentLogic(db, g.site, g.device)?.program?.TzMin ?? 420);
+    if (typeof split === 'string') return out(res, 400, { error: split });
+    const timers = split.on;
     const cur = currentLogic(db, g.site, g.device);
     if (!cur) return out(res, 409, { error: 'logic_unknown' });   // gateway chưa báo chương trình (firmware / app cũ, chưa nối)
     if (isField && !Object.prototype.hasOwnProperty.call(cur.keys || {}, id)) return out(res, 400, { error: 'bad_request' });   // không phải đầu ra gateway báo
@@ -374,11 +416,17 @@ export function mountGatewayLogic(app, { db, requireAuth, security, admin }) {
       o = { ...(isField ? { Out: ch } : { Ch: ch }), Mode: 'hold', DelaySec: 60 };
       program.Do.push(o); program.Do = sortOuts(program.Do);
     }
+    const same = JSON.stringify(o.Timer || []) === JSON.stringify(timers);   // chỉ đổi mốc ĐANG TẮT: không cần gửi xuống gateway
     if (timers.length) o.Timer = timers; else delete o.Timer;
-    const r = await sendProgram(db, { site: g.site, device: g.device, program, rev: cur.rev, label: 'webapp', appr: `${by}#timer` });
-    const txt = timers.map((t) => `${t.On || '—'}→${t.Off || '—'}${t.Days ? ` [${t.Days.join(',')}]` : ''}`).join(' · ') || 'xoá';
-    audit(db, 'logic_timer', { userId: req.user.id, ip: clientIp(req), detail: `${g.site}/${g.device} ${isField ? ch : `DO${ch}`}: ${txt} → ${r.ok ? `rev ${r.rev}` : `lỗi ${r.error}`}`.slice(0, 500) });
+    const r = same ? { ok: true, rev: cur.rev } : await sendProgram(db, { site: g.site, device: g.device, program, rev: cur.rev, label: 'webapp', appr: `${by}#timer` });
+    const fmt = (l) => l.map((t) => `${t.On || '—'}→${t.Off || '—'}${t.Date ? ` (${t.Date})` : t.Days ? ` [${t.Days.join(',')}]` : ''}`).join(' · ');
+    const txt = `${fmt(timers) || 'không mốc bật'}${split.off.length ? ` | tắt: ${fmt(split.off)}` : ''}`;
+    audit(db, 'logic_timer', { userId: req.user.id, ip: clientIp(req), detail: `${g.site}/${g.device} ${isField ? ch : `DO${ch}`}: ${txt} → ${r.ok ? (same ? 'chỉ đổi mốc tắt' : `rev ${r.rev}`) : `lỗi ${r.error}`}`.slice(0, 500) });
     if (!r.ok) return out(res, r.status, { error: r.error, message: r.detail });
+    // gateway đã nhận mốc bật → lưu mốc tắt (gateway lỗi thì không đổi gì: danh sách giữ như trước)
+    if (split.off.length) db.prepare('INSERT INTO gateway_timers_off (site, device, out, timers, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(site, device, out) DO UPDATE SET timers = excluded.timers, updated_at = excluded.updated_at')
+      .run(g.site, g.device, String(ch), JSON.stringify(split.off), Date.now());
+    else db.prepare('DELETE FROM gateway_timers_off WHERE site = ? AND device = ? AND out = ?').run(g.site, g.device, String(ch));
     res.json({ ok: true, rev: r.rev });
   });
 }

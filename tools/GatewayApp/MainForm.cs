@@ -261,6 +261,7 @@ public sealed partial class MainForm : Form, IGatewayApp
         {
             // board slave không tự lên cloud: gateway PC hỏi server + chuyển lệnh cho phép (server ký) + đẩy firmware qua LAN
             Ota = new BoardOtaRelay(() => CloudPage.ServerOf(_cfg)) { Log = m => _log.Add("GW→Board", "firmware", m) },
+            Time = new BoardTimeSync { Log = m => _log.Add("GW→Board", "giờ", m) },
         };
         _lease.Start();   // board Waveshare đọc bằng Modbus TCP → giữ lease chế độ gateway
         if (_carry.Login != null || _carry.Toast != null || _carryLocal)   // vừa dựng lại cửa sổ vì đổi giao diện: giữ trạng thái mở khoá, báo đã áp dụng

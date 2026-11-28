@@ -40,10 +40,45 @@ export function cmdPublicKey() { return load().spki; }
 
 export const cmdMessage = (mqttId, json) => `cmd1|${mqttId}|${json}`;
 
-/** Trả chuỗi JSON đã ký (`...,"sig":"…"}`) để publish. */
+// ---- "mac": lệnh nhanh cho board Waveshare ----
+// Board kiểm ECDSA bằng phần mềm mất ~228 ms / lệnh (ESP32-S3). Có khoá danh tính của gateway (hardware_devices.gw_pubkey) → thêm
+// "mac" = HMAC-SHA256(K, cmdMessage(mqttId, json không mac)), K = HMAC-SHA256(Z, "plciot-cmdmac1|<mqttId>"), Z = ECDH(khoá riêng lệnh,
+// khoá danh tính gateway). "sig" vẫn ký trên chuỗi CÓ mac → gateway cũ (board cũ, GatewayApp) kiểm sig như trước, bỏ qua mac.
+// Firmware mới (gateway-mcu/src/crypto.cpp verifyMac) kiểm mac (< 1 ms); mac sai/thiếu → kiểm sig như cũ.
+let macPeer = null;                 // (mqttId) => spki base64url khoá danh tính gateway | null — server.js gắn (tra DB)
+const macCache = new Map();         // mqttId → { spki, key, at }
+const MAC_TTL = 5 * 60_000;         // đổi khoá gateway (ghép lại) → hết hạn cache trong 5 phút
+export function setMacPeerResolver(fn) { macPeer = typeof fn === 'function' ? fn : null; macCache.clear(); }
+export const macInfo = (mqttId) => `plciot-cmdmac1|${mqttId}`;
+/** K của gateway (Buffer 32 byte) hoặc null (không biết khoá gateway / khoá không phải P-256). */
+export function cmdMacKey(mqttId, spki = null) {
+  const now = Date.now();
+  if (!spki) {
+    const c = macCache.get(mqttId);
+    if (c && now - c.at < MAC_TTL) return c.key;
+    try { spki = macPeer ? macPeer(mqttId) : null; } catch { spki = null; }
+  }
+  let key = null;
+  if (spki) {
+    try {
+      const pub = crypto.createPublicKey({ key: Buffer.from(spki, 'base64url'), format: 'der', type: 'spki' });
+      if (pub.asymmetricKeyDetails?.namedCurve === 'prime256v1') {
+        const z = crypto.diffieHellman({ privateKey: load().priv, publicKey: pub });
+        key = crypto.createHmac('sha256', z).update(macInfo(mqttId), 'utf8').digest();
+      }
+    } catch { key = null; }
+  }
+  if (macCache.size > 5000) macCache.clear();
+  macCache.set(mqttId, { key, at: now });
+  return key;
+}
+
+/** Trả chuỗi JSON đã ký (`...,"mac":"…","sig":"…"}` — mac chỉ khi biết khoá gateway) để publish. */
 export function signCmd(mqttId, payload) {
   if (!mqttId) return JSON.stringify(payload);
-  const json = JSON.stringify(payload);
+  let json = JSON.stringify(payload);
+  const k = cmdMacKey(mqttId);
+  if (k) json = `${json.slice(0, -1)},"mac":"${crypto.createHmac('sha256', k).update(cmdMessage(mqttId, json), 'utf8').digest('base64url')}"}`;
   const sig = crypto.sign('sha256', Buffer.from(cmdMessage(mqttId, json), 'utf8'), { key: load().priv, dsaEncoding: 'ieee-p1363' });
   return `${json.slice(0, -1)},"sig":"${sig.toString('base64url')}"}`;
 }

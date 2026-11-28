@@ -123,6 +123,7 @@ String idPublicKey();                            // SPKI DER base64url
 String idHw();                                   // 20 ký tự Crockford của SHA-256(SPKI)
 String idSign(const String& msg);                // chữ ký IEEE P1363 base64url
 bool verifyCmd(const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);   // miền "cmd1"
+void cmdMacWarmup(const String& mqttId, const String& keyB64u);  // tính sẵn khoá HMAC lệnh (ECDH, một lần) — gọi sau khi nối MQTT
 bool verifySigned(const char* domain, const String& payload, const String& mqttId, const String& keyB64u, String& unsignedOut);   // "<domain>|<mqttId>|<json>" (rpc1…)
 bool verifySig(const String& spkiB64u, const String& msg, const String& sigB64u);   // ECDSA P-256 P1363, khoá SPKI
 std::vector<uint8_t> tlsCertDer();               // chứng chỉ TLS tự ký từ khoá danh tính (dấu nhận dạng = idHw)
@@ -290,8 +291,10 @@ String bootReason();                             // lý do lần khởi động 
 void rtcBegin();                                 // sau ioBegin (Wire đã chạy)
 void rtcLoop();                                  // trong loop(): ghi giờ mạng xuống RTC khi cần
 void rtcNoteNetTime();                           // giờ hệ thống vừa được đặt theo mạng
-bool timeTrusted();                              // có giờ tin được (mạng hoặc RTC hợp lệ) — logic theo lịch dùng cờ này
-const char* timeSource();                        // ntp | rtc | none
+bool timeTrusted();                              // có giờ tin được (server, PC đặt, hoặc RTC hợp lệ) — logic theo lịch dùng cờ này
+const char* timeSource();                        // ntp (server) | pc (GatewayApp đặt qua LAN) | rtc | none
+bool rtcSetFromPc(int64_t ms, const String& by, bool force, String& err);   // PC quản trị đặt giờ (offline); giờ server ưu tiên trừ khi force
+String rtcStatusJson();                          // GET /api/time
 
 // ---------------------------------------------------------------- tiện ích
 void logf(const char* fmt, ...);

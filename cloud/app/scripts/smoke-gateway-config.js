@@ -16,6 +16,10 @@ const ok = (c, m) => { if (c) console.log('OK', m); else { fails++; console.erro
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gwcfg-'));
 // schema THẬT của server (openDb) — bảng tự dựng tay cũ lệch dần (thiếu tenant_id, claimed_by…) và làm test hỏng
 process.env.DATA_DIR = tmp;
+// BẮT BUỘC: removeGateway gọi rebuildAclFromUsers + reloadMosquitto. Không trỏ ra thư mục tạm thì chạy trong container plciot-app sẽ GHI ĐÈ
+// ACL THẬT của broker bằng user test (sự cố 2026-11-27: mọi user/gateway mất quyền ~2 phút, khôi phục bằng khởi động lại app) và HUP broker thật.
+process.env.MQTT_CONFIG_DIR = path.join(tmp, 'mqtt');
+process.env.MQTT_DOCKER_CONTAINER = 'plciot-smoke-none';
 const { openDb } = await import('../src/db.js');
 const db = openDb(tmp);
 db.prepare(`INSERT INTO users (id, username, password_hash, folder_path, role, notify_site, notify_device) VALUES
@@ -140,6 +144,17 @@ ok(pumps.length === 2 && pumps[0].g === 'GW01' && pumps[0].title === 'Bơm A2' &
   setGatewayName(db, { site: 'tram1', device: 'GW01', name: 'Nhà máy' });
   ok(gatewaysOfUser(db, { id: 1, notify_site: 'tram1', notify_device: 'GW01' }).find((g) => g.device === 'GW01')?.name === 'Nhà máy', 'danh sách gateway mang tên hiển thị');
   ok(getDashboardFor(db, { id: 1, notify_site: 'tram1', notify_device: 'GW01' }, 'simple').gateways.find((g) => g.device === 'GW01')?.name === 'Nhà máy', 'dashboard webapp mang tên hiển thị');
+  // vùng riêng mặc định d_u<id>/plc01 rỗng KHÔNG phải gateway (trước: tab "plc01 · d_u<id>" trống, không gỡ được)
+  ok(!gatewaysOfUser(db, { id: 3, notify_site: 'd_u3', notify_device: 'plc01' }).length, 'vùng riêng d_u<id> rỗng không liệt kê');
+  // gateway RỖNG (là gateway thông báo, chưa có thiết bị) gỡ được — trước trả 404 not_found
+  const { removeGateway } = await import('../src/userDevices.js');
+  db.prepare(`INSERT INTO users (id, username, password_hash, folder_path, role, notify_site, notify_device) VALUES (4, 'u4', 'x', 'f', 'operator', 'tramX', 'GWX')`).run();
+  const u4 = db.prepare('SELECT * FROM users WHERE id = 4').get();
+  ok(gatewaysOfUser(db, u4).some((g) => g.device === 'GWX'), 'gateway rỗng có trong danh sách (để gỡ được)');
+  const rm = removeGateway(db, u4, 'tramX', 'GWX', { ip: 'test' });
+  ok(rm.ok === true, `gỡ được gateway rỗng (${rm.error || 'ok'})`);
+  ok(!gatewaysOfUser(db, db.prepare('SELECT * FROM users WHERE id = 4').get()).some((g) => g.device === 'GWX'), 'gỡ xong không còn trong danh sách');
+  ok(removeGateway(db, u4, 'khac', 'GWZ', { ip: 'test' }).status === 404, 'gateway không phải của mình → 404');
 }
 
 console.log(fails ? `FAILED ${fails}` : 'gateway-config smoke OK');

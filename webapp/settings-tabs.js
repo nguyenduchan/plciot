@@ -1,10 +1,10 @@
 'use strict';
-/* Cài đặt chia 3 tab: Thông tin tài khoản · Giao diện · Gói dịch vụ. Nhớ tab đang xem trên máy này. */
+/* Cài đặt chia 4 tab: Thông tin tài khoản · Gateway (đổi tên, gỡ, logic, cập nhật, hỗ trợ từ xa, báo mất) · Giao diện · Gói dịch vụ. Nhớ tab đang xem trên máy này. */
 (function () {
   const bar = document.querySelector('.set-tabs');
   if (!bar) return;
   const KEY = 'setTab';
-  const names = ['acct', 'ui', 'plan'];
+  const names = ['acct', 'gw', 'ui', 'plan'];
   function show(name, { remember = true } = {}) {
     if (!names.includes(name)) name = 'acct';
     bar.querySelectorAll('button[data-sub]').forEach((b) => { const on = b.dataset.sub === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });

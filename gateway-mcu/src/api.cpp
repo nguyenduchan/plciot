@@ -423,6 +423,20 @@ void hOtaAllow() {
   send(200, otaStatusJson());
 }
 
+/// Giờ của board (quản lý giờ khi offline — rtc.cpp): nguồn giờ, RTC, độ lệch, lần đặt gần nhất.
+void hTimeGet() { send(200, rtcStatusJson()); }
+/// PC quản trị đặt giờ theo đồng hồ PC: {Ms: UTC ms, Force?}. Đã có giờ server thì cần Force (409 time_from_server).
+void hTimePut() {
+  JsonDocument d; if (!body(d)) return;
+  int64_t ms = d["Ms"] | (int64_t)0;
+  String name;
+  { JsonDocument a = loadAdmins(); for (JsonObject x : a.as<JsonArray>()) if (String(x["Pk"] | "") == s_sessionPk) { name = x["Name"] | ""; break; } }
+  String by = "PC " + (name.length() ? "\"" + name + "\"" : String("quản trị")) + " (" + q_->ip.toString() + ")";
+  String e;
+  if (!rtcSetFromPc(ms, by, d["Force"] | false, e)) { err(e, e == "time_from_server" ? 409 : 400); return; }
+  send(200, rtcStatusJson());
+}
+
 struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
@@ -433,6 +447,7 @@ const Route kRoutes[] = {
   {"GET", "/api/events", hEvents, true}, {"GET", "/api/ota", hOtaState, true}, {"GET", "/api/ota/nonce", hOtaNonce, true}, {"POST", "/api/ota/allow", hOtaAllow, true},
   {"GET", "/api/offline", hOfflineGet, true}, {"PUT", "/api/offline", hOfflinePut, true}, {"POST", "/api/offline/test", hOfflineTest, true},
   {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
+  {"GET", "/api/time", hTimeGet, true}, {"PUT", "/api/time", hTimePut, true},
 };
 
 void dispatch(const HttpRequest& q, HttpResponse& r) {

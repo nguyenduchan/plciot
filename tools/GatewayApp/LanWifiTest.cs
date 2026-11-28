@@ -80,6 +80,54 @@ public sealed partial class MainForm
         Close();
     }
 
+    /// <summary>
+    /// --lantime KQ.txt --lan-target IP:443 [--time-force]: giờ của board THẬT (quản lý giờ khi offline). Đọc → đặt theo PC (không force:
+    /// board đang có giờ server phải trả time_from_server) → [--time-force: ghi đè] → đọc lại, so độ lệch với PC.
+    /// </summary>
+    public async Task LanTimeAsync(string result)
+    {
+        var args = RunOptions.Args;
+        var target = ArgValue(args, "--lan-target"); var i = target.LastIndexOf(':');
+        var host = i > 0 ? target[..i] : target; var port = i > 0 ? int.Parse(target[(i + 1)..]) : 443;
+        var lines = new List<string>();
+        try
+        {
+            var c = (await RemoteClient.ConnectMcuAsync(host, port, Identity(), _ => true)).Client;
+            var watch = ArgValue(args, "--time-watch");   // chỉ ĐỌC N lần, cách 20 s (không đặt giờ): giờ board có chạy đúng khi không có giờ server
+            if (int.TryParse(watch, out var n) && n > 0)
+            {
+                for (var k = 0; k < n; k++)
+                {
+                    if (k > 0) await Task.Delay(20_000);
+                    var tw = await c.TimeAsync(); var st = await c.StateAsync();
+                    var pcw = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    lines.Add($"WATCH {DateTime.Now:HH:mm:ss} cloud={st.Cloud} source={tw.Source} trusted={tw.Trusted} lechPC={tw.NowMs - pcw}ms rtcDrift={tw.RtcDriftMs}ms up={tw.UpSec}s lastSync={tw.LastSyncBy}");
+                    File.WriteAllLines(result, lines);
+                }
+                c.Dispose(); Close(); return;
+            }
+            var t0 = await c.TimeAsync();
+            var pc0 = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            lines.Add($"INFO source={t0.Source} trusted={t0.Trusted} rtc={t0.RtcFound}/{t0.RtcValid} rtcDrift={t0.RtcDriftMs} lechPC={t0.NowMs - pc0}ms lastSync={t0.LastSyncBy}");
+            lines.Add($"{(t0.Ok && t0.NowMs > 0 ? "PASS" : "FAIL")} đọc giờ board");
+            string code;
+            try { await c.PutTimeAsync(false); code = "ok"; } catch (RemoteException e) { code = e.Code; }
+            if (t0.Source == "ntp") lines.Add($"{(code == "time_from_server" ? "PASS" : "FAIL")} đang có giờ server: không ghi đè khi không force ({code})");
+            else lines.Add($"{(code == "ok" ? "PASS" : "FAIL")} chưa có giờ server: đặt theo PC ({code})");
+            if (args.Contains("--time-force") || t0.Source != "ntp")
+            {
+                if (args.Contains("--time-force")) { try { await c.PutTimeAsync(true); code = "ok"; } catch (RemoteException e) { code = e.Code; } lines.Add($"{(code == "ok" ? "PASS" : "FAIL")} force: ghi đè ({code})"); }
+                var t1 = await c.TimeAsync();
+                var d = t1.NowMs - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                lines.Add($"{(Math.Abs(d) < 2000 ? "PASS" : "FAIL")} sau khi đặt: lệch PC {d} ms, nguồn {t1.Source}, RTC {t1.RtcValid} (lệch {t1.RtcDriftMs} ms), đặt bởi {t1.LastSyncBy}");
+            }
+            c.Dispose();
+        }
+        catch (Exception e) { lines.Add("FAIL " + RemoteClient.Explain(e) + " | " + e.GetType().Name); }
+        File.WriteAllLines(result, lines);
+        Close();
+    }
+
     /// <summary>--lanui --lan-target IP:443: chỉ mở cửa sổ cài đặt Waveshare (như nút "Kết nối Waveshare (LAN)") cho người dùng thao tác tay, không bật gateway PC.</summary>
     public async Task LanUiAsync()
     {

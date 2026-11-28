@@ -44,6 +44,8 @@ public sealed class RemoteForm : Form, IGatewayApp
     readonly FlatButton _fwBtn = new() { Caption = "Firmware…", Width = 120, Visible = false };
     /// <summary>Wi-Fi của board (quét, nhập mật khẩu, nối) — chỉ board MCU.</summary>
     readonly FlatButton _wifiBtn = new() { Caption = "Wi-Fi…", Width = 100, Visible = false };
+    /// <summary>Giờ của board (quản lý giờ khi offline: xem, đồng bộ từ PC) — chỉ board MCU.</summary>
+    readonly FlatButton _timeBtn = new() { Caption = "Giờ…", Width = 80, Visible = false };
     /// <summary>Chế độ board: chạy độc lập (tự nối cloud) hoặc slave của gateway C# này — chỉ board MCU.</summary>
     readonly FlatButton _modeBtn = new() { Caption = "Chế độ…", Width = 230, Visible = false };
     readonly Label _toast = new() { AutoSize = false, Height = 40, Visible = false, ForeColor = Color.White, BackColor = Theme.Accent, Font = Theme.Semi, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 14, 0) };
@@ -93,14 +95,15 @@ public sealed class RemoteForm : Form, IGatewayApp
         _side.Controls.Add(new Label { Text = "Đang thiết lập thiết bị qua mạng — không phải gateway trên PC này", ForeColor = Theme.Muted, Font = Theme.Small, AutoSize = false, Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(20, 0, 8, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Side });
 
         _head.Controls.Add(_pageTitle);
-        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _fwBtn, _wifiBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _fwBtn, _wifiBtn, _timeBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink }) _head.Controls.Add(c);
         _closeBtn.Click += (_, _) => Close();
         _netBtn.Click += async (_, _) => { if (RequireEdit()) await ChangeNetworkAsync(); };
         _adminBtn.Click += (_, _) => { if (RequireEdit()) AdminsDialog.Run(this, _client); };
         _fwBtn.Click += (_, _) => { if (RequireEdit()) UpdateFirmware(); };
         _wifiBtn.Click += (_, _) => { if (RequireEdit()) SetupWifi(); };
+        _timeBtn.Click += async (_, _) => { if (RequireEdit()) await TimeDialog.RunAsync(this, _client); };
         _modeBtn.Click += async (_, _) => { if (RequireEdit()) await ChooseModeAsync(); };
-        Shown += async (_, _) => { if (_relay) return; try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _wifiBtn.Visible = _modeBtn.Visible = _client.Tls; ShowMode(); LayoutHead(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
+        Shown += async (_, _) => { if (_relay) return; try { await _client.NetworkAsync(); _netBtn.Visible = true; _adminBtn.Visible = _fwBtn.Visible = _wifiBtn.Visible = _timeBtn.Visible = _modeBtn.Visible = _client.Tls; ShowMode(); LayoutHead(); if (_client.Tls) await CheckBoardTimeAsync(); } catch (Exception) { /* gateway PC: không có API mạng */ } };
         _head.Resize += (_, _) => LayoutHead();
 
         Controls.Add(_body); Controls.Add(_head); Controls.Add(_side); Controls.Add(_toast);
@@ -330,11 +333,34 @@ public sealed class RemoteForm : Form, IGatewayApp
     void LayoutHead()
     {
         var x = _head.Width - 18;
-        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _wifiBtn, _fwBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink })
+        foreach (var c in new Control[] { _closeBtn, _netBtn, _adminBtn, _wifiBtn, _timeBtn, _fwBtn, _modeBtn, _chipCloud, _chipPlc, _chipLink })
         {
-            if (!c.Visible && (c == _netBtn || c == _adminBtn || c == _fwBtn || c == _wifiBtn || c == _modeBtn)) continue;
+            if (!c.Visible && (c == _netBtn || c == _adminBtn || c == _fwBtn || c == _wifiBtn || c == _timeBtn || c == _modeBtn)) continue;
             x -= c.Width + 8; c.Location = new Point(x, c is StatusChip ? 17 : 14);
         }
+    }
+
+    /// <summary>
+    /// Mở cửa sổ board: board CHƯA có giờ tin được (offline, RTC mất nguồn nuôi) → mọi hẹn giờ đang tắt → tự đặt theo giờ PC (đã đăng nhập
+    /// bằng khoá PC quản trị). Có giờ nhưng không phải giờ server và lệch PC → chỉ báo, người dùng bấm "Giờ…" để đồng bộ.
+    /// </summary>
+    async Task CheckBoardTimeAsync()
+    {
+        try
+        {
+            var t = await _client.TimeAsync();
+            var why = BoardTimeSync.Reason(t, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            if (why == null) return;
+            if (!t.Trusted)
+            {
+                var r = await _client.PutTimeAsync();
+                Log("INFO", "lan", $"board chưa có giờ → đặt theo giờ PC (nguồn {r.Source})");
+                Toast("Board chưa có giờ (mọi hẹn giờ đang tắt) — đã đặt theo giờ PC này.");
+            }
+            else Toast($"Giờ board {why} so với PC — bấm \"Giờ…\" để đồng bộ.", true);
+        }
+        catch (RemoteException e) when (e.Code == "not_found") { _timeBtn.Visible = false; LayoutHead(); }   // firmware cũ
+        catch (Exception e) { Log("WARN", "lan", "không đọc được giờ board: " + RemoteClient.Explain(e)); }
     }
 
     bool Standalone => _hello.Hw.Length > 0 && TrustedBoards.ModeOf(_hello.Hw) == TrustedBoards.Standalone;

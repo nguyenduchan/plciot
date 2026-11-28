@@ -1,3 +1,4 @@
+import { setMacPeerResolver } from './cmdSign.js';
 import { serverProfileInfo } from './serverProfile.js';   // PHẢI đứng đầu: đặt mặc định biến môi trường theo cỡ VPS trước khi module khác đọc
 import express from 'express';
 import cors from 'cors';
@@ -501,6 +502,9 @@ app.listen(PORT, '0.0.0.0', () => {
   { const p = serverProfileInfo(); console.log(`SERVER_PROFILE=${p.profile} (${p.label})` + (p.applied.length ? ` — hồ sơ đặt: ${p.applied.join(', ')}` : '') + (p.overridden.length ? ` — .env ghi đè: ${p.overridden.join(', ')}` : '')); }
   console.log(`DATA_DIR=${DATA_DIR}`);
   console.log(`SHELL_DIR=${SHELL_DIR}`);
+  // lệnh nhanh cho board (cmdSign.js "mac"): khoá danh tính gateway theo mqttId — ECDH một lần, mỗi lệnh board chỉ kiểm HMAC
+  setMacPeerResolver((mqttId) => db.prepare(`SELECT h.gw_pubkey AS pk FROM devices d JOIN hardware_devices h ON h.site = d.site AND h.device = d.device
+    WHERE d.mqtt_id = ? AND h.gw_pubkey IS NOT NULL`).get(mqttId)?.pk || null);
   startControlPublisher();
   startBundleSync(db, { dataDir: DATA_DIR, shellDir: SHELL_DIR });
   // ACL gateway cần cho phép ghi kind 'alert' (sự kiện cảnh báo do gateway tự tính): dựng lại từ DB mỗi lần khởi động

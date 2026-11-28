@@ -381,6 +381,26 @@ body:not(.ui-simple) .dev-widgets .dw{border-radius:4px}
 .gl-days{display:flex;gap:3px;flex-wrap:wrap}
 .gl-days label{border:1px solid var(--line,#444);border-radius:6px;padding:2px 6px;font-size:12px;cursor:pointer}
 .gl-days input{display:none}.gl-days label.on{background:var(--accent,#2563eb);color:#fff;border-color:transparent}
+/* Hẹn giờ kiểu báo thức điện thoại (gateway-logic.js openTimer): danh sách mốc + công tắc; màn sửa có "Lặp lại" */
+.al-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}.al-top h3{flex:1;margin:0;font-size:17px;text-align:center}
+.al-top .al-x{min-width:38px}.al-sub{font-size:13px;margin:0 0 10px}
+.al-list{display:grid;gap:8px;margin-bottom:10px}.al-empty{text-align:center;padding:14px 0}
+.al-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--bg2,rgba(127,127,127,.12))}
+.al-open{flex:1;display:grid;gap:2px;text-align:left;background:none;border:0;padding:0;color:inherit;cursor:pointer;min-height:44px}
+.al-time{font-size:26px;font-weight:600;letter-spacing:.5px;font-variant-numeric:tabular-nums}.al-open small{opacity:.7;font-size:13px}
+.al-item.off .al-time,.al-item.off small{opacity:.45}
+.al-sw{position:relative;width:51px;height:31px;flex:none;cursor:pointer}.al-sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.al-sw span{position:absolute;inset:0;border-radius:31px;background:rgba(127,127,127,.4);transition:background .2s;pointer-events:none}
+.al-sw span::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.al-sw input:checked+span{background:var(--ok,#34c759)}.al-sw input:checked+span::after{transform:translateX(20px)}.al-sw input:disabled+span{opacity:.5}
+.al-add{width:100%;min-height:44px}.al-err{color:var(--bad,#c33);min-height:1.2em;font-size:13px;margin:4px 0}
+.al-form{display:grid;gap:10px}.al-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:12px;background:var(--bg2,rgba(127,127,127,.12));min-height:44px}
+.al-row input[type=time]{font-size:18px;width:8em}.al-hint{font-size:12px;margin:-4px 0 0}.al-days{justify-content:space-between}
+.al-days label{flex:1;text-align:center;padding:8px 0;font-size:14px;border-radius:10px}.al-del{min-height:44px;margin-top:6px}
+.al-days[hidden]{display:none!important}   /* .gl-days đặt display:flex — không thì tắt "Lặp lại" vẫn hiện hàng ngày */
+.al-item .al-open{background:transparent!important;box-shadow:none!important;border:0!important}
+.al-row input[type=time]{width:auto;min-width:9.5em}   /* trình duyệt 12 giờ hiện "09:16 AM": 8em bị cắt */
+.al-del{color:var(--bad,#e5484d)!important}
 .dw-star{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;padding:0 4px;color:var(--muted,#888)}.dw-star.on{color:#d97706}.dw-star:disabled{cursor:default;opacity:.85}
 .ctlw.crit{outline:1px solid #d9770655;border-radius:12px}.dw-info{font-size:12px;margin-top:4px}
 .dw-fb{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px;padding:5px 8px;border-radius:8px;background:rgba(127,127,127,.12)}
@@ -606,6 +626,12 @@ button.dev-add-btn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill
 .gw-title b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gw-title small { opacity: .7; }
 .gw-rm { min-height: 38px; padding: 0 14px; }
+/* Cài đặt → Gateway: mỗi gateway một hàng (tên + ID + số thiết bị), nút Đổi tên / Gỡ; màn hẹp thì nút xuống dòng */
+.gw-set-list { display: grid; gap: 8px; }
+.gw-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.gw-set-row .gw-title { flex: 1 1 180px; }
+.gw-set-act { display: flex; gap: 8px; flex-wrap: wrap; }
+.gw-set-act button { min-height: 38px; padding: 0 14px; }
 .gw-cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 720px) { body:not(.ui-simple) .gw-cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); } }
 [data-ic-style="scada"] .gw-head { border-radius: 4px; }

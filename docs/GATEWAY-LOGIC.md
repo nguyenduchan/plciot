@@ -54,6 +54,15 @@ do6: offline: cycle on 10m off 20m
 | `block do2[, do5]` | Liên động **hai chiều**: không bật khi DO kia đang bật. |
 | `maxon 30m` | Bật liên tục quá thời gian này thì tự tắt. |
 | `timer 06:00-06:30 [ngày]` · `timer on 06:00` · `timer off 22:00` | Hẹn giờ (tối đa 4 mốc). Đúng phút **On** thì bật, đúng phút **Off** thì tắt (chạy theo sự kiện, nên giữa hai mốc vẫn bật/tắt tay được). Ngày: `t2-t6`, `t2,t4,cn`, `t7-cn`. Không có giờ tin được thì bỏ qua. Lệnh bật vẫn phải qua `need`/`block`. | **Chạy 1 lần** (kiểu báo thức iPhone): `timer 06:00-06:30 2026-11-27`, JSON `{Date, Days:[]}`. Giờ tắt nhỏ hơn giờ bật thì tắt vào hôm sau. `Days` rỗng là cố ý: gateway bản cũ không hiểu `Date` sẽ từ chối, thay vì chạy mỗi ngày. Webapp ⏰: không chọn ngày nào = 1 lần (lần tới của giờ đã đặt); mốc 1 lần đã qua bị bỏ khi lưu.
+
+### Giờ của board khi offline (firmware ≥ mcu-0.4.26)
+
+Hẹn giờ chỉ chạy khi board có **giờ tin được**; không có thì mọi mốc tắt (an toàn). Thứ tự ưu tiên nguồn giờ (`GET /api/time` → `Source`):
+
+1. `ntp` — giờ **server** (MQTT `fw` có chữ ký, hoặc header `Date` HTTPS). Không bị PC ghi đè trừ khi bấm buộc (`Force`, trả 409 `time_from_server` nếu không).
+2. `pc` — **PC quản trị đặt qua LAN** (`PUT /api/time {Ms, Force}`, chỉ PC đã ghép): GatewayApp → cửa sổ Waveshare → **Giờ…** (xem giờ board / PC, độ lệch, RTC, lần đặt gần nhất, nút *Đồng bộ giờ từ PC này*). Mở cửa sổ board mà board chưa có giờ → GatewayApp tự đặt. Board là **slave** của gateway PC → gateway PC tự giữ giờ (`BoardTimeSync`, mỗi 10 phút, lệch > 2 s).
+3. `rtc` — đồng hồ RTC PCF85063 trên board (giữ giờ khi mất điện; ghi lại mỗi lần có giờ server/PC).
+4. `none` — chưa có giờ: hẹn giờ tắt. Mỗi lần đặt giờ ghi sự kiện `time_set` (nhật ký board). Test: GatewayApp Debug `--lantime KQ.txt --lan-target IP:443 [--time-force]`.
 | `offline [chờ]: <kiểu>` | Khi mất mạng quá thời gian chờ (mặc định 60 s): `hold`, `off`, `on`, `schedule 18:00-05:30`, `follow di2 [invert]`, `level tb.field on<=20 off>=90 [age 30s]`, `cycle on 10m off 20m`. Chi tiết trong `gateway-mcu/src/offline.cpp`. |
 
 ### Đầu ra là thiết bị RS485 / Modbus TCP (board, firmware ≥ mcu-0.4.0)

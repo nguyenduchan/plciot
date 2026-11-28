@@ -20,6 +20,8 @@ public sealed class BoardLease : IDisposable
     public int ApiPort { get; set; } = 443;   // kiểm thử trên bản giả lập đổi cổng
     /// <summary>Cập nhật firmware board đang là slave (không tự lên cloud) qua LAN — null = không tự cập nhật.</summary>
     public BoardOtaRelay? Ota { get; set; }
+    /// <summary>Giữ giờ cho board slave (không nhận giờ server): đặt theo đồng hồ PC khi board chưa có giờ / lệch.</summary>
+    public BoardTimeSync? Time { get; set; }
 
     public BoardLease(Func<ScadaConfig> cfg, Func<bool> running, GatewayIdentity id) { _cfg = cfg; _running = running; _id = id; }
 
@@ -72,6 +74,7 @@ public sealed class BoardLease : IDisposable
                 var r = await c.LeaseAsync(true, TtlSec, DoMinMs(_cfg()));
                 Status[h] = r.Mode == "gateway" ? "gateway" : "độc lập";
                 if (r.Mode == "gateway" && Ota != null) await Ota.TickAsync(h, c);   // board không tự lên cloud: gateway PC lo cập nhật firmware qua LAN
+                if (r.Mode == "gateway" && Time != null) await Time.TickAsync(h, c); // … và giữ giờ cho board (hẹn giờ cần giờ tin được)
             }
             catch (RemoteException e)
             {

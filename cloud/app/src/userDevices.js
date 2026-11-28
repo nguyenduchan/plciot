@@ -372,7 +372,12 @@ export function deleteUserDevice(db, user, id, { ip } = {}) {
  */
 export function removeGateway(db, user, site, device, { ip } = {}) {
   const rows = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ?').all(user.id, site, device);
-  if (!rows.length) return { error: 'not_found', status: 404 };
+  // Gateway RỖNG (chưa/không còn thiết bị nào): vẫn là gateway của user nếu là gateway thông báo (users.notify_*) hoặc user đang giữ
+  // phần cứng (hardware_devices.claimed_by) — trước đây trả 404 nên không gỡ được gateway rỗng.
+  const meRow = db.prepare('SELECT notify_site, notify_device FROM users WHERE id = ?').get(user.id) || {};
+  let claimed = false;
+  try { claimed = !!db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ? AND claimed_by = ?').get(site, device, user.id); } catch { /* chưa có bảng */ }
+  if (!rows.length && !claimed && !(meRow.notify_site === site && meRow.notify_device === device)) return { error: 'not_found', status: 404 };
   db.prepare('DELETE FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ?').run(user.id, site, device);
   db.prepare('UPDATE hardware_devices SET claimed_by = NULL, claimed_at = NULL WHERE site = ? AND device = ? AND claimed_by = ?').run(site, device, user.id);
   notifyGateway(db, site, device, 'unclaimed');   // gateway ngừng gửi data (best-effort)

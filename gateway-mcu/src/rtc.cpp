@@ -14,6 +14,8 @@
 namespace {
 bool s_found = false, s_valid = false;
 volatile bool s_netTime = false, s_needWrite = false;
+bool s_pcTime = false;                 // giờ do PC quản trị đặt qua LAN (GatewayApp) — dùng khi offline, không có giờ server
+int64_t s_lastSyncMs = 0; String s_lastSyncBy;   // lần đặt giờ gần nhất (ms UTC) + nguồn: "server" | "PC <tên> (<ip>)"
 uint32_t s_lastWrite = 0; bool s_wrote = false;
 
 uint8_t fromBcd(uint8_t v) { return (v >> 4) * 10 + (v & 0x0F); }
@@ -98,7 +100,7 @@ void rtcBegin() {
   }
 }
 
-void rtcNoteNetTime() { s_netTime = true; s_needWrite = true; }
+void rtcNoteNetTime() { s_netTime = true; s_needWrite = true; s_lastSyncMs = (int64_t)time(nullptr) * 1000; s_lastSyncBy = "server"; }
 
 void rtcLoop() {
   if (!s_found || !s_needWrite) return;
@@ -118,8 +120,40 @@ bool timeTrusted() {
 #ifdef GW_SIM
   return true;   // bản giả lập dùng giờ của PC
 #else
-  return s_netTime || s_valid;
+  return s_netTime || s_valid || s_pcTime;
 #endif
 }
 
-const char* timeSource() { return s_netTime ? "ntp" : s_valid ? "rtc" : "none"; }
+const char* timeSource() { return s_netTime ? "ntp" : s_pcTime ? "pc" : s_valid ? "rtc" : "none"; }
+
+// ---------------------------------------------------------------- QUẢN LÝ GIỜ KHI OFFLINE (GatewayApp qua LAN)
+// Board không có internet mà RTC mất giờ (mất nguồn nuôi / board mới) → không có giờ tin được → mọi hẹn giờ TẮT. PC quản trị đã ghép
+// (GatewayApp, kênh HTTPS ghim khoá) đặt giờ theo đồng hồ PC: ghi giờ hệ thống + RTC. Giờ SERVER luôn ưu tiên: đã có giờ server thì
+// PC chỉ đặt được khi Force (PC giờ sai sẽ làm lệch hẹn giờ + chống phát lại lệnh ký ±5 phút). Mỗi lần đặt ghi nhật ký sự kiện.
+bool rtcSetFromPc(int64_t ms, const String& by, bool force, String& err) {
+  if (ms < 1704067200000LL || ms > 4102444800000LL) { err = "bad_time"; return false; }   // 2024-01-01 … 2100-01-01
+  int64_t before = (int64_t)time(nullptr) * 1000;
+  if (s_netTime && !force) { err = "time_from_server"; return false; }
+  struct timeval tv = {}; tv.tv_sec = (time_t)(ms / 1000); tv.tv_usec = (long)((ms % 1000) * 1000);   // không dùng suseconds_t (bản giả lập MinGW)
+  settimeofday(&tv, nullptr);
+  s_pcTime = true;
+  bool rtcOk = !s_found || writeRtc((time_t)(ms / 1000));
+  if (s_found && rtcOk) { s_valid = true; s_wrote = true; s_lastWrite = millis(); }
+  s_lastSyncMs = ms; s_lastSyncBy = by;
+  long long d = before > 1700000000000LL ? (long long)(ms - before) : 0;
+  evLog("time_set", "Đặt giờ từ " + by + ": " + fmt((time_t)(ms / 1000)) + " UTC" + (before > 1700000000000LL ? " (lệch " + String((long)(d / 1000)) + " s)" : " (trước đó chưa có giờ)") + (rtcOk ? "" : " — ghi RTC lỗi"));
+  if (!rtcOk) { err = "rtc_write_failed"; return false; }
+  return true;
+}
+
+String rtcStatusJson() {
+  JsonDocument o;
+  int64_t now = (int64_t)time(nullptr) * 1000;
+  o["Ok"] = true; o["NowMs"] = now > 1700000000000LL ? now : 0; o["Source"] = timeSource(); o["Trusted"] = timeTrusted();
+  o["RtcFound"] = s_found; o["RtcValid"] = s_valid;
+  time_t rt;
+  if (s_found && readRtc(rt)) { o["RtcMs"] = (int64_t)rt * 1000; if (now > 1700000000000LL) o["RtcDriftMs"] = (int64_t)rt * 1000 - (now / 1000) * 1000; }
+  if (s_lastSyncMs) { o["LastSyncMs"] = s_lastSyncMs; o["LastSyncBy"] = s_lastSyncBy; }
+  o["UpSec"] = millis() / 1000;
+  String s; serializeJson(o, s); return s;
+}

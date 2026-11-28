@@ -487,7 +487,51 @@
     lastGwSig = sig;
     document.dispatchEvent(new CustomEvent('plc-gw-active', { detail: { gw: g, all: gwList() } }));
   }
-  function render() { clearTimeout(renderQ); renderQ = 0; renderGrid(); renderGwTabs(); announceGw(); }
+  /**
+   * Cài đặt → Gateway: MỌI gateway của tài khoản (kể cả chưa có thiết bị — trước đây không có chỗ gỡ) với ✎ Đổi tên / Gỡ gateway.
+   * Màn hình Thiết bị chỉ giám sát, điều khiển, hẹn giờ.
+   */
+  function renderGwSettings() {
+    const host = $('#gw-set-list'); if (!host) return;
+    const l = gwList();
+    const count = (g) => (dashboard?.devices || []).filter((d) => d.gw && d.gw.site === g.site && d.gw.device === g.device);
+    const html = l.length ? l.map((g) => {
+      const devs = count(g), nw = devs.reduce((n, d) => n + d.widgets.length, 0);
+      return `<div class="gw-set-row"><div class="gw-title"><b>${esc(g.name || g.device)}</b><small>ID ${esc(g.device)} · ${esc(g.site)} · ${devs.length ? `${devs.length} thiết bị · ${nw} widget` : 'chưa có thiết bị'}</small></div>
+        <div class="gw-set-act"><button type="button" class="fit gw-ren" data-site="${esc(g.site)}" data-device="${esc(g.device)}" title="Đổi tên hiển thị (ID không đổi)">✎ Đổi tên</button>
+        <button type="button" class="fit danger gw-rm" data-site="${esc(g.site)}" data-device="${esc(g.device)}" data-n="${devs.length}" title="Gỡ cả gateway khỏi tài khoản">Gỡ gateway</button></div></div>`;
+    }).join('') : '<p class="muted">Chưa có gateway. Bấm <b>+ Thêm</b> ở màn hình Thiết bị để quét QR trên tem.</p>';
+    if (host.__h === html) return;   // gọi mỗi lần vẽ (telemetry): không đổi thì không đụng DOM
+    host.__h = html; host.innerHTML = html;
+    host.querySelectorAll('.gw-ren').forEach((b) => {
+      b.onclick = async () => {
+        const gw = { site: b.dataset.site, device: b.dataset.device };
+        const cur = gwName(gw);
+        const name = prompt(`Tên hiển thị của gateway (ID ${gw.device} do hệ thống cấp, không đổi).\nĐể trống = hiện ID.`, cur === gw.device ? '' : cur);
+        if (name == null) return;
+        b.disabled = true;
+        const r = await api('PUT', `/api/gateways/${encodeURIComponent(gw.site)}/${encodeURIComponent(gw.device)}/name`, { name });
+        b.disabled = false;
+        if (!r.ok) return toast(`Không đổi được tên. ${window.ErrText(r.data?.error, r.status)}`, true);
+        toast(r.data?.name ? `Đã đổi tên thành “${r.data.name}”.` : 'Đã xoá tên — hiện ID.');
+        lastSig = '';   // tên nằm trong tiêu đề nhóm + tab: buộc dựng lại
+        await load();
+      };
+    });
+    host.querySelectorAll('.gw-rm').forEach((b) => {
+      b.onclick = async () => {
+        const name = `${gwName({ site: b.dataset.site, device: b.dataset.device })} (${b.dataset.device})`;
+        const n = Number(b.dataset.n) || 0;
+        if (!confirm(`Gỡ gateway ${name} khỏi tài khoản?\n${n ? `Toàn bộ ${n} thiết bị của gateway này sẽ bị gỡ cùng lúc (không gỡ lẻ từng thiết bị). ` : 'Gateway này chưa có thiết bị. '}Thêm lại bằng cách quét QR.`)) return;
+        b.disabled = true;
+        const r = await api('DELETE', `/api/gateways/${encodeURIComponent(b.dataset.site)}/${encodeURIComponent(b.dataset.device)}`);
+        if (!r.ok) { b.disabled = false; return toast(`Không gỡ được gateway. ${window.ErrText(r.data?.error, r.status)}`, true); }
+        toast(`Đã gỡ gateway ${name}.`);
+        await load();
+      };
+    });
+  }
+  function render() { clearTimeout(renderQ); renderQ = 0; renderGrid(); renderGwTabs(); renderGwSettings(); announceGw(); }
   // Telemetry nhiều gateway đến dồn (mỗi gói một lần vẽ): gộp lại tối đa ~6 lần/giây. App ở nền / lưới không hiện (tab khác)
   // thì không vẽ gì — chỉ đánh dấu, hiện lại thì vẽ một lần với số liệu mới nhất.
   var renderQ = 0, renderLate = false;   // var: render() có thể được gọi trước dòng này lúc khởi động
@@ -538,7 +582,7 @@
     const sig = structSig(order, byId, banner);
     if (sig === lastSig && host.querySelector('.dev-card')) { patchLive(host, order, byId); return; }   // chỉ số liệu đổi: vá tại chỗ
     lastSig = sig;
-    // Nhóm theo gateway: mỗi nhóm có tiêu đề + nút "Gỡ gateway" (gỡ cả gateway, không gỡ lẻ từng thiết bị/widget)
+    // Nhóm theo gateway: mỗi nhóm có tiêu đề (chỉ thông tin). Đổi tên / gỡ gateway nằm ở Cài đặt → Gateway (renderGwSettings)
     const groups = [];
     for (const id of order) {
       const d = byId[id]; if (!d) continue;
@@ -553,39 +597,9 @@
     host.innerHTML = banner + groups.map((g) => `
       <section class="gw-group" data-gw="${esc(g.key)}">
         <div class="gw-head"${g.gw ? '' : ' hidden'}><span class="gw-ic" aria-hidden="true">${window.PlcIcons ? window.PlcIcons.device('gear', { on: false }) : ''}</span>
-          <div class="gw-title"><b>${esc(g.gw ? gwName(g.gw) : 'Thiết bị')}</b><small>${g.devs.length} thiết bị · ${g.devs.reduce((n, d) => n + d.widgets.length, 0)} widget${g.gw ? ` · ID ${esc(g.gw.device)}` : ''}</small></div>
-          ${g.gw ? `<button type="button" class="fit gw-ren" data-site="${esc(g.gw.site)}" data-device="${esc(g.gw.device)}" title="Đổi tên hiển thị (ID không đổi)">✎ Đổi tên</button>` : ''}
-          ${g.gw ? `<button type="button" class="fit danger gw-rm" data-site="${esc(g.gw.site)}" data-device="${esc(g.gw.device)}" data-n="${g.devs.length}" title="Gỡ cả gateway khỏi tài khoản">Gỡ gateway</button>` : ''}</div>
+          <div class="gw-title"><b>${esc(g.gw ? gwName(g.gw) : 'Thiết bị')}</b><small>${g.devs.length} thiết bị · ${g.devs.reduce((n, d) => n + d.widgets.length, 0)} widget${g.gw ? ` · ID ${esc(g.gw.device)}` : ''}</small></div></div>
         <div class="gw-cards">${g.devs.filter((d) => !allLocked(d)).map((d) => cardHtml(d, false)).join('')}${lockedGroup(g.devs.filter(allLocked))}</div>
       </section>`).join('');
-
-    host.querySelectorAll('.gw-ren').forEach((b) => {
-      b.onclick = async () => {
-        const gw = { site: b.dataset.site, device: b.dataset.device };
-        const cur = gwName(gw);
-        const name = prompt(`Tên hiển thị của gateway (ID ${gw.device} do hệ thống cấp, không đổi).
-Để trống = hiện ID.`, cur === gw.device ? '' : cur);
-        if (name == null) return;
-        b.disabled = true;
-        const r = await api('PUT', `/api/gateways/${encodeURIComponent(gw.site)}/${encodeURIComponent(gw.device)}/name`, { name });
-        b.disabled = false;
-        if (!r.ok) return toast(`Không đổi được tên. ${window.ErrText(r.data?.error, r.status)}`, true);
-        toast(r.data?.name ? `Đã đổi tên thành “${r.data.name}”.` : 'Đã xoá tên — hiện ID.');
-        lastSig = '';   // tên nằm trong tiêu đề nhóm: buộc dựng lại (tab tự so HTML nên tự cập nhật)
-        await load();
-      };
-    });
-    host.querySelectorAll('.gw-rm').forEach((b) => {
-      b.onclick = async () => {
-        const name = `${gwName({ site: b.dataset.site, device: b.dataset.device })} (${b.dataset.device})`;
-        if (!confirm(`Gỡ gateway ${name} khỏi tài khoản?\nToàn bộ ${b.dataset.n} thiết bị của gateway này sẽ bị gỡ cùng lúc (không gỡ lẻ từng thiết bị). Thêm lại bằng cách quét QR.`)) return;
-        b.disabled = true;
-        const r = await api('DELETE', `/api/gateways/${encodeURIComponent(b.dataset.site)}/${encodeURIComponent(b.dataset.device)}`);
-        if (!r.ok) { b.disabled = false; return toast(`Không gỡ được gateway. ${window.ErrText(r.data?.error, r.status)}`, true); }
-        toast(`Đã gỡ gateway ${name}.`);
-        await load();
-      };
-    });
 
     host.querySelectorAll('.dw.locked').forEach((el) => {
       el.onclick = () => window.PlanUi?.show('widget_locked');

@@ -158,6 +158,11 @@ public sealed class RemoteClient : IDisposable
     /// <summary>Thử mất mạng sec giây (0 = dừng): logic chạy ngay, bỏ qua thời gian chờ.</summary>
     public Task<ApiResult> OfflineTestAsync(int sec) => SendAsync<ApiResult>(HttpMethod.Post, "api/offline/test", new { Sec = sec });
     public Task<ApiNetwork> NetworkAsync() => SendAsync<ApiNetwork>(HttpMethod.Get, "api/network", null);
+    /// <summary>Board MCU: giờ hiện tại, nguồn giờ, RTC, độ lệch (firmware cũ: not_found).</summary>
+    public Task<ApiTime> TimeAsync(CancellationToken ct = default) => SendAsync<ApiTime>(HttpMethod.Get, "api/time", null, ct);
+    /// <summary>Đặt giờ board theo đồng hồ PC này (ghi cả RTC). Board đã có giờ server → lỗi time_from_server trừ khi force.</summary>
+    public Task<ApiTime> PutTimeAsync(bool force = false, CancellationToken ct = default) =>
+        SendAsync<ApiTime>(HttpMethod.Put, "api/time", new { Ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Force = force }, ct);
     /// <summary>Board MCU: quét Wi-Fi (~3–5 giây). Trả mạng đã bỏ trùng SSID, mỗi mạng một dòng.</summary>
     public Task<List<ApiWifiNet>> WifiScanAsync() => SendAsync<List<ApiWifiNet>>(HttpMethod.Get, "api/wifi/scan", null, longOp: true);
     public Task<ApiWifi> WifiAsync() => SendAsync<ApiWifi>(HttpMethod.Get, "api/wifi", null);

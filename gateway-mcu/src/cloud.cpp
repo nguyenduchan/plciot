@@ -25,6 +25,7 @@ uint32_t s_lastTele = 0, s_expediteUntil = 0, s_liveUntil = 0;
 uint32_t s_lastSeq = 0; bool s_telePending = false;
 String s_lastStatus;
 uint32_t s_nextRefresh = 0, s_nextBackfill = 0;
+uint32_t s_refreshDueAt = 0, s_lastCmdAt = 0;   // hoãn đồng bộ cấu hình (HTTPS) khi đang có người điều khiển
 std::map<String, uint32_t> s_seenIds;   // id lệnh → millis (chặn phát lại)
 uint32_t s_rateSec = 0; int s_rateCount = 0;
 
@@ -184,7 +185,18 @@ void onServerTime(const String& raw) {
   if (first) logf("Đặt giờ theo server (MQTT, có chữ ký)");
 }
 
+// Đo độ trễ lệnh điều khiển NGAY TRÊN BOARD (gửi kèm ack: "t":[kiểm chữ ký ms, ghi đầu ra ms, lượt loop() dài nhất 10 s gần đây ms]).
+// Lệnh chỉ được xử lý khi loop() tới lượt cloudLoop(): việc khác trong loop() chặn lâu = lệnh chờ lâu.
+uint32_t s_loopPrev = 0, s_loopMax = 0, s_loopMaxPrev = 0, s_loopWin = 0;
+void noteLoopGap() {
+  uint32_t now = millis();
+  if (s_loopPrev) { uint32_t g = now - s_loopPrev; if (g > s_loopMax) s_loopMax = g; }
+  s_loopPrev = now;
+  if (now - s_loopWin >= 10000) { s_loopWin = now; s_loopMaxPrev = s_loopMax; s_loopMax = 0; }
+}
+
 void onMessage(char* topic, uint8_t* payload, unsigned int len) {
+  const uint32_t tIn = micros();
   if (String(topic) == base() + "/fw") {   // chỉ server (ctl) ghi được — ACL. Giờ (có chữ ký) hoặc firmware (chữ ký nhà phát triển kiểm ở otaStart)
     if (len == 0) return;
     String raw((const char*)payload, len);
@@ -207,6 +219,7 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
     }
     raw = plain; trusted = true;
   }
+  const uint32_t tSig = micros();
   JsonDocument d;
   if (deserializeJson(d, raw) || !d.is<JsonObject>()) { reject("", "bad_json"); return; }
   JsonObjectConst r = d.as<JsonObjectConst>();
@@ -239,13 +252,20 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
     return;
   }
   s_expediteUntil = millis() + 3000;   // trạng thái PLC sau lệnh phải lên webapp ngay
+  s_lastCmdAt = millis(); if (!s_lastCmdAt) s_lastCmdAt = 1;
   if (!r["key"].is<const char*>()) { reject(id, "use_key_command"); return; }   // board đọc theo field (Pack), không nhận lệnh thanh ghi thô
   if (!trusted) { reject(id, "otp_required"); return; }                          // không có khoá server: board không có cách mở khoá cục bộ → không nhận điều khiển
   if (!g_cfg.remoteControl()) { reject(id, "remote_disabled"); return; }
   if (!takeToken()) { reject(id, "rate_limited"); return; }
   if (!r["v"].is<double>()) { sendAck(ack(id, false, "bad_value")); return; }
+  const uint32_t tW0 = micros();
   String e = engineWrite(r["child"] | "", r["key"].as<const char*>(), r["v"].as<double>(), true);
-  sendAck(ack(id, e.length() == 0, e));
+  const uint32_t tW1 = micros();
+  JsonDocument a; deserializeJson(a, ack(id, e.length() == 0, e));
+  JsonArray t = a["t"].to<JsonArray>();   // chẩn đoán độ trễ (ms): kiểm chữ ký, ghi đầu ra, loop() dài nhất ~10 s gần đây
+  t.add((tSig - tIn) / 1000); t.add((tW1 - tW0) / 1000); t.add(max(s_loopMax, s_loopMaxPrev));
+  String s; serializeJson(a, s);
+  sendAck(s);
 }
 
 // ---------------------------------------------------------------- HTTPS tới server (chứng chỉ kiểm bằng bộ CA của ESP-IDF)
@@ -279,7 +299,7 @@ int httpsJson(const String& url, const String& body, const String& bearer, Strin
   HttpBuf b;
   s_httpsErr = "";
   esp_http_client_config_t c = {};
-  c.url = url.c_str(); c.method = get ? HTTP_METHOD_GET : HTTP_METHOD_POST; c.timeout_ms = 30000;
+  c.url = url.c_str(); c.method = get ? HTTP_METHOD_GET : HTTP_METHOD_POST; c.timeout_ms = 10000;   // chạy trong loop(): 30 s làm I/O + API LAN đứng lâu khi mạng chập chờn; JSON nhỏ, bình thường < 1 s
   c.crt_bundle_attach = esp_crt_bundle_attach; c.event_handler = httpEvent; c.user_data = &b;
   esp_http_client_handle_t h = esp_http_client_init(&c);
   if (!h) { s_httpsErr = "init_failed"; return -1; }
@@ -521,7 +541,9 @@ bool connectMqtt() {
   s_tls.stop();
   s_tls.setInsecure();                    // kiểm bằng ghim chứng chỉ ngay sau bắt tay (broker tự ký), như ValidateServerCert của C#
   s_tls.setHandshakeTimeout(10);
-  if (!s_tls.connect(g_cfg.cloudHost.c_str(), g_cfg.cloudPort)) { logf("Cloud: không nối được %s:%d", g_cfg.cloudHost.c_str(), g_cfg.cloudPort); return false; }
+  // Thời gian chờ nối TCP: mặc định của thư viện 30 s → mất internet thì MỖI lần thử nối chặn loop() 30 s (I/O, API cài đặt LAN đứng —
+  // đo 2026-11-28 khi chặn MQTTS: GatewayApp báo "thiết bị không trả lời kịp"). Broker trong nước: bắt tay TCP vài chục ms → 5 s là dư.
+  if (!s_tls.connect(g_cfg.cloudHost.c_str(), g_cfg.cloudPort, 5000)) { logf("Cloud: không nối được %s:%d", g_cfg.cloudHost.c_str(), g_cfg.cloudPort); return false; }
   if (!pinMatches(g_cfg.cloudPin, certSha256())) { logf("Cloud: chứng chỉ broker KHÔNG khớp dấu vân tay đã ghim — ngắt"); s_tls.stop(); return false; }
   String id = "scada-" + g_cfg.site + "-" + g_cfg.device + "-" + String((uint32_t)ESP.getEfuseMac(), HEX);
   String will = base() + "/status";
@@ -600,6 +622,7 @@ void cloudLoop() {
 #ifdef FW_TEST_BREAK_CLOUD
   return;   // CHỈ bản thử quay về firmware cũ (build dev): giả lập firmware mới làm mất kết nối cloud
 #endif
+  noteLoopGap();
   bool hasIp = netUp();
   // không dùng NTP bên thứ ba: giờ lấy từ server (askServerTime / header Date HTTPS tới plc.dieukhientudong.net)
 
@@ -639,7 +662,7 @@ void cloudLoop() {
     s_state = St::Disconnected;
     if ((int32_t)(millis() - s_nextTry) < 0) return;
     s_state = St::Connecting;
-    if (connectMqtt()) { s_state = St::Connected; s_backoff = 2000; s_nextRefresh = millis() + 5000; }
+    if (connectMqtt()) { s_state = St::Connected; s_backoff = 2000; s_nextRefresh = millis() + 5000; cmdMacWarmup(g_cfg.mqttId, g_cfg.cmdKey); }   // khoá HMAC lệnh tính sẵn: lệnh đầu cũng nhanh
     else { s_state = St::Disconnected; s_nextTry = millis() + s_backoff; s_backoff = min<uint32_t>(s_backoff * 2, 30000); }
     return;
   }
@@ -675,7 +698,15 @@ void cloudLoop() {
   }
 
   // hỏi lại server: chưa có user thì dày (60 s), đã có thì thưa (5 phút)
-  if ((int32_t)(millis() - s_nextRefresh) >= 0) { s_nextRefresh = millis() + (g_cfg.sendData ? 300000UL : 60000UL); refreshConfig(); }
+  // refreshConfig = HTTPS + ký (chặn loop() 1–3 s: đo 2026-11-28 loop dài nhất 2,9 s → lệnh bấm lúc đó chờ 2 s). Đang có người xem webapp
+  // hoặc vừa có lệnh: HOÃN (mỗi lần 60 s, tối đa 30 phút) để lệnh điều khiển không phải chờ; quá 30 phút thì vẫn chạy.
+  if ((int32_t)(millis() - s_nextRefresh) >= 0) {
+    uint32_t now = millis();
+    if (!s_refreshDueAt) s_refreshDueAt = now ? now : 1;
+    bool busy = live() || (s_lastCmdAt && now - s_lastCmdAt < 120000UL);
+    if (busy && now - s_refreshDueAt < 1800000UL) s_nextRefresh = now + 60000UL;
+    else { s_refreshDueAt = 0; s_nextRefresh = now + (g_cfg.sendData ? 300000UL : 60000UL); refreshConfig(); }
+  }
 }
 
 /// GET HTTPS cho ota.cpp (thông tin bản firmware mới trên server).

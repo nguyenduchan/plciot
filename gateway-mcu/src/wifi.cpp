@@ -90,6 +90,9 @@ void wifiBegin() {
   WiFi.mode(WIFI_STA);          // luôn bật radio để quét được kể cả khi chưa có mạng nào lưu
   WiFi.setAutoReconnect(true);
   WiFi.persistent(false);       // thông tin mạng nằm trong NVS của ta, không để lib ghi thêm vào flash
+  // TẮT tiết kiệm điện Wi-Fi (mặc định modem sleep): gói tới bị giữ tới beacon kế (100–300 ms) → lệnh điều khiển lúc nhanh lúc chậm
+  // (đo 2026-11-28: phần lớn ~50–70 ms nhưng có lần 144 / 374 ms). Board chạy nguồn công nghiệp, không dùng pin.
+  WiFi.setSleep(false);
   WiFi.setHostname("plciot-gw");
   String ssid = secretGet("wifi_ssid");
   if (ssid.length()) {

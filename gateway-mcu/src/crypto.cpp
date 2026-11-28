@@ -8,6 +8,8 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/x509_crt.h>
+#include <mbedtls/ecdh.h>
+#include <mbedtls/md.h>
 #include <esp_random.h>
 
 namespace {
@@ -154,8 +156,81 @@ bool verifySigned(const char* domain, const String& raw, const String& mqttId, c
   return true;
 }
 
+// ---- Lệnh nhanh: HMAC thay vì kiểm ECDSA mỗi lệnh ----
+// Kiểm chữ ký ECDSA P-256 bằng phần mềm mất ~228 ms / lệnh trên ESP32-S3 (đo 2026-11-28, ack.t[0]) — gần nửa thời gian bấm nút → nút đổi.
+// Server gửi thêm "mac" = HMAC-SHA256(K, "cmd1|<mqttId>|<json không có mac>"), K = HMAC-SHA256(Z, "plciot-cmdmac1|<mqttId>"),
+// Z = ECDH(khoá danh tính board, khoá lệnh server) — chỉ server (khoá riêng lệnh) và ĐÚNG board này (khoá riêng danh tính) tính được.
+// Board tính Z MỘT LẦN (cache theo khoá server + mqttId), mỗi lệnh chỉ còn HMAC (< 1 ms). "sig" vẫn ký trên chuỗi CÓ mac → firmware/
+// GatewayApp cũ kiểm sig như trước (bỏ qua mac). mac thiếu/sai → kiểm sig như cũ (không có đường nào yếu hơn trước).
+namespace {
+String s_macFor;            // keyB64u + "|" + mqttId của khoá đang cache
+uint8_t s_macK[32];
+bool s_macReady = false;
+
+bool hmac256(const uint8_t* key, size_t kl, const uint8_t* msg, size_t ml, uint8_t out[32]) {
+  const mbedtls_md_info_t* md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  return md && mbedtls_md_hmac(md, key, kl, msg, ml, out) == 0;
+}
+
+bool deriveMacKey(const String& keyB64u, const String& mqttId) {
+  String tag = keyB64u + "|" + mqttId;
+  if (s_macReady && s_macFor == tag) return true;
+  s_macReady = false;
+  auto spki = fromB64u(keyB64u);
+  if (spki.empty() || !mbedtls_pk_can_do(&s_pk, MBEDTLS_PK_ECKEY)) return false;
+  mbedtls_pk_context peer; mbedtls_pk_init(&peer);
+  mbedtls_ecp_group grp; mbedtls_ecp_group_init(&grp);
+  mbedtls_mpi d, z, d2; mbedtls_mpi_init(&d); mbedtls_mpi_init(&z); mbedtls_mpi_init(&d2);
+  mbedtls_ecp_point qMe, qPeer; mbedtls_ecp_point_init(&qMe); mbedtls_ecp_point_init(&qPeer);
+  mbedtls_ecp_group g2; mbedtls_ecp_group_init(&g2);
+  bool ok = false;
+  uint8_t zb[32];
+  if (mbedtls_pk_parse_public_key(&peer, spki.data(), spki.size()) == 0 && mbedtls_pk_can_do(&peer, MBEDTLS_PK_ECKEY)
+      && mbedtls_ecp_export(mbedtls_pk_ec(s_pk), &grp, &d, &qMe) == 0
+      && mbedtls_ecp_export(mbedtls_pk_ec(peer), &g2, &d2, &qPeer) == 0
+      && g2.id == grp.id && grp.id == MBEDTLS_ECP_DP_SECP256R1
+      && mbedtls_ecdh_compute_shared(&grp, &z, &qPeer, &d, rng, nullptr) == 0
+      && mbedtls_mpi_write_binary(&z, zb, sizeof zb) == 0) {
+    String info = "plciot-cmdmac1|" + mqttId;
+    ok = hmac256(zb, sizeof zb, (const uint8_t*)info.c_str(), info.length(), s_macK);
+  }
+  memset(zb, 0, sizeof zb);
+  mbedtls_pk_free(&peer); mbedtls_ecp_group_free(&grp); mbedtls_ecp_group_free(&g2);
+  mbedtls_mpi_free(&d); mbedtls_mpi_free(&z); mbedtls_mpi_free(&d2);
+  mbedtls_ecp_point_free(&qMe); mbedtls_ecp_point_free(&qPeer);
+  if (ok) { s_macFor = tag; s_macReady = true; }
+  return ok;
+}
+
+/// raw = {…,"mac":"M","sig":"S"} → json = {…} (không mac, không sig) nếu HMAC đúng.
+bool verifyMac(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
+  static const char* mk = ",\"mac\":\"";
+  static const char* sk = ",\"sig\":\"";
+  int im = raw.lastIndexOf(mk), is = raw.lastIndexOf(sk);
+  if (im < 0 || is <= im || !raw.endsWith("\"}")) return false;
+  int ms = im + (int)strlen(mk);
+  if (is - 1 <= ms || raw.charAt(is - 1) != '"') return false;
+  String mac = raw.substring(ms, is - 1);
+  if (mac.indexOf('"') >= 0) return false;
+  auto got = fromB64u(mac);
+  if (got.size() != 32 || !deriveMacKey(keyB64u, mqttId)) return false;
+  String json = raw.substring(0, im) + "}";
+  String msg = "cmd1|" + mqttId + "|" + json;
+  uint8_t want[32];
+  if (!hmac256(s_macK, sizeof s_macK, (const uint8_t*)msg.c_str(), msg.length(), want)) return false;
+  uint8_t diff = 0;
+  for (int i = 0; i < 32; i++) diff |= want[i] ^ got[i];   // so sánh thời gian hằng
+  if (diff) return false;
+  unsignedOut = json;
+  return true;
+}
+}  // namespace
+
+void cmdMacWarmup(const String& mqttId, const String& keyB64u) { if (keyB64u.length() && mqttId.length()) deriveMacKey(keyB64u, mqttId); }
+
 bool verifyCmd(const String& raw, const String& mqttId, const String& keyB64u, String& unsignedOut) {
-  return verifySigned("cmd1", raw, mqttId, keyB64u, unsignedOut);
+  if (verifyMac(raw, mqttId, keyB64u, unsignedOut)) return true;   // nhanh (< 1 ms)
+  return verifySigned("cmd1", raw, mqttId, keyB64u, unsignedOut);    // như cũ (~228 ms): server cũ / chưa có khoá board / mac sai
 }
 
 mbedtls_pk_context* idKey() { return &s_pk; }

@@ -79,7 +79,16 @@ export function gatewaysOfUser(db, user) {
     try { name = db.prepare('SELECT name FROM gateway_names WHERE site = ? AND device = ?').get(site, device)?.name || ''; } catch { /* chưa có bảng */ }
     seen.set(k, { site, device, name, mqttId: mqttIdFor(db, tenant, site, device) });
   };
-  add(user?.notify_site, user?.notify_device);
+  // Vùng riêng mặc định d_u<id>/plc01 (moveUser khi chưa/không còn gateway — sites.js) KHÔNG phải gateway: rỗng thì không liệt kê
+  // (trước đây hiện thành tab "plc01 · d_u<id>" trống, không gỡ được). Có thiết bị / phần cứng thật ở đó thì vẫn liệt kê.
+  const placeholder = user?.id && user?.notify_site === `d_u${user.id}` && (() => {
+    try {
+      if (db.prepare('SELECT 1 FROM user_devices WHERE user_id = ? AND site = ? AND gateway_device = ? LIMIT 1').get(user.id, user.notify_site, user.notify_device)) return false;
+      if (db.prepare('SELECT 1 FROM hardware_devices WHERE site = ? AND device = ? AND claimed_by IS NOT NULL').get(user.notify_site, user.notify_device)) return false;
+    } catch { /* bảng chưa có: coi như rỗng */ }
+    return true;
+  })();
+  if (!placeholder) add(user?.notify_site, user?.notify_device);
   try {
     for (const r of db.prepare('SELECT DISTINCT site, gateway_device FROM user_devices WHERE user_id = ? ORDER BY created_at').all(user.id)) add(r.site, r.gateway_device);
   } catch { /* chưa có bảng user_devices */ }

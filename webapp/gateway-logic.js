@@ -138,9 +138,11 @@
   }
   sec?.addEventListener('toggle', () => { if (sec.open) loadSection(); });
 
-  // ------------------------------------------------------------------ hộp hẹn giờ (nút ⏰)
-  // Kiểu báo thức iPhone: chọn ngày = LẶP LẠI các ngày đó; KHÔNG chọn ngày nào = chạy 1 LẦN (lần tới của giờ đã đặt).
-  // Mốc 1 lần gửi {Date:"YYYY-MM-DD", Days:[]} theo giờ địa phương của gateway (tz của chương trình).
+  // ------------------------------------------------------------------ hộp hẹn giờ (nút ⏰) — GIỐNG BÁO THỨC ĐIỆN THOẠI
+  // Danh sách: mỗi mốc = giờ lớn + "Lặp lại …" + CÔNG TẮC bật/tắt (gạt là lưu ngay, như báo thức). Chạm vào mốc → màn sửa: giờ bật,
+  // giờ tắt, công tắc "Lặp lại" (bật → chọn ngày trong tuần, mặc định mọi ngày; tắt → chạy 1 LẦN vào lần tới của giờ đã đặt), Xoá, Huỷ/Lưu.
+  // Mốc 1 lần đã chạy xong tự hiện công tắc TẮT (như báo thức "Không lặp lại" sau khi reo); bật lại → tính ngày mới.
+  // Mốc đang TẮT chỉ lưu trên server (current.timersOff) — gateway chỉ nhận mốc đang bật (firmware cũ không hiểu cờ tắt).
   const pad = (n) => String(n).padStart(2, '0');
   const localNow = (tzMin) => new Date(Date.now() + tzMin * 60000);   // đọc bằng getUTC*: giờ địa phương của gateway
   const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
@@ -152,76 +154,144 @@
     if (h * 60 + m <= n.getUTCHours() * 60 + n.getUTCMinutes()) n.setUTCDate(n.getUTCDate() + 1);
     return ymd(n);
   }
-  function repText(row, tzMin) {
-    const days = [...row.querySelectorAll('.gl-days input:checked')].map((x) => Number(x.value));
-    if (days.length === 7) return 'Lặp lại: hằng ngày';
-    if (days.length) return `Lặp lại: ${days.map((d) => DAYS[d - 1]).join(', ')}`;
-    const at = row.querySelector('.t-on').value || row.querySelector('.t-off').value;
-    const old = row.dataset.date;
-    if (old && row.dataset.dirty !== '1') return old < ymd(localNow(tzMin)) ? `1 lần — đã chạy ngày ${dmy(old)}` : `1 lần — ngày ${dmy(old)}`;
-    return at ? `Không lặp lại — chạy 1 lần, ngày ${dmy(onceDate(at, tzMin))}` : 'Không lặp lại — chạy 1 lần';
+  /** Mốc 1 lần đã qua (ngày trước hôm nay, hoặc hôm nay mà giờ cuối đã qua) = đã chạy xong. */
+  function expired(t, tzMin) {
+    if (!t.Date) return false;
+    const n = localNow(tzMin), today = ymd(n);
+    if (t.Date !== today) return t.Date < today;
+    const last = [t.On, t.Off].filter(Boolean).sort().pop();
+    const [h, m] = last.split(':').map(Number);
+    return h * 60 + m <= n.getUTCHours() * 60 + n.getUTCMinutes();
   }
-  function timerRow(t = {}) {
-    const days = t.Date ? [] : t.Days || [1, 2, 3, 4, 5, 6, 7];
-    return `<div class="gl-trow" ${t.Date ? `data-date="${esc(t.Date)}"` : ''}>
-      <label>Bật <input type="time" class="t-on" value="${esc(t.On || '')}"></label>
-      <label>Tắt <input type="time" class="t-off" value="${esc(t.Off || '')}"></label>
-      <span class="gl-days">${DAYS.map((d, i) => `<label class="${days.includes(i + 1) ? 'on' : ''}"><input type="checkbox" value="${i + 1}" ${days.includes(i + 1) ? 'checked' : ''}>${d}</label>`).join('')}</span>
-      <button type="button" class="fit t-del" title="Xoá mốc">✕</button>
-      <div class="muted t-rep" style="font-size:12px;flex-basis:100%"></div></div>`;
+  const timeText = (t) => (t.On && t.Off ? `${t.On} → ${t.Off}` : t.On ? `Bật ${t.On}` : `Tắt ${t.Off}`);
+  function repeatText(t, tzMin) {
+    if (t.Date) return expired(t, tzMin) ? `1 lần · đã chạy ${dmy(t.Date)}` : `1 lần · ${dmy(t.Date)}`;
+    const d = t.Days?.length ? t.Days : [1, 2, 3, 4, 5, 6, 7];
+    if (d.length === 7) return 'Hằng ngày';
+    if (d.join() === '1,2,3,4,5') return 'Ngày thường (T2–T6)';
+    if (d.join() === '6,7') return 'Cuối tuần';
+    return d.map((x) => DAYS[x - 1]).join(', ');
   }
 
   async function openTimer(gw, ch, label) {
     const L = cache.get(gw) || (await fetchLogic(gw)).body;
-    const list = L?.current?.timers?.[ch] || [];
     const tz = Number(L?.current?.tz ?? 420);
+    // danh sách làm việc: mốc đang bật (gateway báo) + mốc đang tắt (server); mốc 1 lần đã chạy → hiện tắt
+    let items = [
+      ...(L?.current?.timers?.[ch] || []).map((t) => ({ ...t, En: !expired(t, tz) })),
+      ...(L?.current?.timersOff?.[ch] || []).map((t) => ({ ...t, En: false })),
+    ];
     const box = document.createElement('div');
     box.className = 'gl-modal';
-    box.innerHTML = `<div role="dialog" aria-modal="true">
-      <h3 style="margin:0 0 4px">⏰ Hẹn giờ — ${esc(label)}</h3>
-      <div class="muted" style="font-size:13px">Gateway tự bật/tắt đúng giờ, kể cả khi mất mạng. Giữa hai mốc bạn vẫn bật/tắt tay được. Để trống "Bật" hoặc "Tắt" nếu chỉ cần một chiều. Không chọn ngày nào = chạy 1 lần.</div>
-      <div class="t-list">${list.map(timerRow).join('')}</div>
-      <button type="button" class="fit t-add" style="margin:6px 0">+ Thêm mốc</button>
-      <div class="t-err" style="color:var(--bad,#c33);min-height:1.2em"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="fit t-cancel">Huỷ</button><button type="button" class="primary fit t-save">Lưu xuống gateway</button></div>
-    </div>`;
+    box.innerHTML = `<div role="dialog" aria-modal="true" class="al-dlg"></div>`;
     document.body.append(box);
-    const lst = box.querySelector('.t-list'), err = box.querySelector('.t-err');
+    const dlg = box.firstElementChild;
     const close = () => box.remove();
-    const refresh = () => lst.querySelectorAll('.gl-trow').forEach((r) => { r.querySelector('.t-rep').textContent = repText(r, tz); });
-    refresh();
-    lst.addEventListener('input', (e) => { const r = e.target.closest('.gl-trow'); if (r) { r.dataset.dirty = '1'; refresh(); } });
-    box.addEventListener('click', (e) => {
-      if (e.target === box || e.target.closest('.t-cancel')) return close();
-      if (e.target.closest('.t-del')) return e.target.closest('.gl-trow').remove();
-      if (e.target.closest('.t-add')) { if (lst.children.length < 4) { lst.insertAdjacentHTML('beforeend', timerRow({ On: '06:00', Off: '18:00', Days: [] })); refresh(); } else err.textContent = 'Tối đa 4 mốc.'; return; }   // mốc mới: 1 lần (như báo thức mới trên iPhone)
-      const dl = e.target.closest('.gl-days label');
-      if (dl) { setTimeout(() => { dl.classList.toggle('on', dl.querySelector('input').checked); refresh(); }); }
-    });
-    box.querySelector('.t-save').addEventListener('click', async () => {
-      const timers = [];
-      for (const row of lst.querySelectorAll('.gl-trow')) {
-        const on = row.querySelector('.t-on').value, off = row.querySelector('.t-off').value;
-        const days = [...row.querySelectorAll('.gl-days input:checked')].map((x) => Number(x.value));
-        if (!on && !off) { err.textContent = 'Mỗi mốc cần giờ bật hoặc giờ tắt.'; return; }
-        if (on && on === off) { err.textContent = 'Giờ bật và giờ tắt phải khác nhau.'; return; }
-        const t = {}; if (on) t.On = on; if (off) t.Off = off;
-        if (!days.length) {   // chạy 1 lần: giữ ngày cũ nếu không sửa mốc, không thì lần tới của giờ đã đặt
-          t.Date = row.dataset.date && row.dataset.dirty !== '1' ? row.dataset.date : onceDate(on || off, tz);
-          t.Days = [];
-        } else if (days.length < 7) t.Days = days;
-        timers.push(t);
-      }
-      const btn = box.querySelector('.t-save');
-      btn.disabled = true; btn.textContent = 'Đang gửi…'; err.textContent = '';
-      const r = await withStepUp('PUT', '/api/v1/gateway-logic/timer', { gw, id: String(ch), timers }, 'Xác nhận đổi hẹn giờ');
-      btn.disabled = false; btn.textContent = 'Lưu xuống gateway';
-      if (!r.ok) { err.textContent = r.body.error === 'cancelled' ? 'Đã huỷ.' : S.errText(r.body.error); return; }
-      close();
+    let busy = false;
+
+    /** Gửi toàn bộ danh sách (mốc bật → gateway, mốc tắt → server). Lỗi: trả về thông báo, danh sách cũ giữ nguyên. */
+    async function save(next) {
+      const payload = next.map((t) => {
+        const o = { En: t.En !== false }; if (t.On) o.On = t.On; if (t.Off) o.Off = t.Off;
+        if (t.Date) { o.Date = o.En && expired(t, tz) ? onceDate(t.On || t.Off, tz) : t.Date; o.Days = []; }   // bật lại mốc 1 lần đã chạy: lần tới
+        else if (t.Days?.length && t.Days.length < 7) o.Days = t.Days;
+        return o;
+      });
+      busy = true;
+      const r = await withStepUp('PUT', '/api/v1/gateway-logic/timer', { gw, id: String(ch), timers: payload }, 'Xác nhận đổi hẹn giờ');
+      busy = false;
+      if (!r.ok) return r.body.error === 'cancelled' ? 'Đã huỷ.' : S.errText(r.body.error);
+      items = payload;
       await fetchLogic(gw);
       window.DevicesUi?.render?.();
-      window.toast?.(timers.length ? 'Đã lưu hẹn giờ xuống gateway.' : 'Đã xoá hẹn giờ.');
+      return null;
+    }
+
+    function list(msg = '') {
+      dlg.onclick = dlg.oninput = null;   // bỏ trình xử lý của màn sửa
+      dlg.innerHTML = `
+        <div class="al-top"><h3>⏰ Hẹn giờ — ${esc(label)}</h3><button type="button" class="fit al-x" aria-label="Đóng">✕</button></div>
+        <p class="muted al-sub">Gateway tự bật/tắt đúng giờ, kể cả khi mất mạng. Giữa hai mốc vẫn bật/tắt tay được.</p>
+        <div class="al-list">${items.length ? items.map((t, i) => `
+          <div class="al-item${t.En === false ? ' off' : ''}" data-i="${i}">
+            <button type="button" class="al-open" data-i="${i}"><b class="al-time">${esc(timeText(t))}</b><small>${esc(repeatText(t, tz))}</small></button>
+            <label class="al-sw" title="${t.En === false ? 'Đang tắt — gạt để bật' : 'Đang bật — gạt để tắt'}"><input type="checkbox" data-i="${i}" ${t.En === false ? '' : 'checked'}><span></span></label>
+          </div>`).join('') : '<p class="muted al-empty">Chưa có hẹn giờ.</p>'}</div>
+        <div class="al-err">${esc(msg)}</div>
+        <button type="button" class="primary al-add"${items.length >= 4 ? ' disabled title="Tối đa 4 hẹn giờ"' : ''}>+ Thêm hẹn giờ</button>`;
+    }
+
+    function edit(i) {
+      const isNew = i < 0;
+      const t = isNew ? { On: '06:00', Off: '18:00', En: true } : items[i];
+      const rep = !t.Date;   // đang lặp lại?
+      const days = t.Date ? [1, 2, 3, 4, 5, 6, 7] : (t.Days?.length ? t.Days : [1, 2, 3, 4, 5, 6, 7]);
+      dlg.innerHTML = `
+        <div class="al-top"><button type="button" class="fit al-back">Huỷ</button><h3>${isNew ? 'Thêm hẹn giờ' : 'Sửa hẹn giờ'}</h3><button type="button" class="primary fit al-ok">Lưu</button></div>
+        <div class="al-form">
+          <label class="al-row"><span>Bật lúc</span><input type="time" class="al-on" value="${esc(t.On || '')}"></label>
+          <label class="al-row"><span>Tắt lúc</span><input type="time" class="al-off" value="${esc(t.Off || '')}"></label>
+          <p class="muted al-hint">Để trống một ô nếu chỉ cần bật hoặc chỉ cần tắt.</p>
+          <div class="al-row"><span>Lặp lại</span><label class="al-sw"><input type="checkbox" class="al-rep" ${rep ? 'checked' : ''}><span></span></label></div>
+          <div class="gl-days al-days"${rep ? '' : ' hidden'}>${DAYS.map((d, k) => `<label class="${days.includes(k + 1) ? 'on' : ''}"><input type="checkbox" value="${k + 1}" ${days.includes(k + 1) ? 'checked' : ''}>${d}</label>`).join('')}</div>
+          <p class="muted al-hint al-once"></p>
+          <div class="al-err"></div>
+          ${isNew ? '' : '<button type="button" class="danger al-del">Xoá hẹn giờ</button>'}
+        </div>`;
+      const q = (s) => dlg.querySelector(s);
+      const hint = () => {
+        const on = q('.al-rep').checked, at = q('.al-on').value || q('.al-off').value;
+        q('.al-days').hidden = !on;
+        q('.al-once').textContent = on ? '' : (at ? `Không lặp lại — chạy 1 lần, ngày ${dmy(onceDate(at, tz))}.` : 'Không lặp lại — chạy 1 lần.');
+      };
+      hint();
+      dlg.oninput = hint;
+      dlg.onclick = async (e) => {
+        const dl = e.target.closest('.al-days label');
+        if (dl) { setTimeout(() => { dl.classList.toggle('on', dl.querySelector('input').checked); }); return; }
+        if (e.target.closest('.al-back')) return list();
+        if (busy) return;
+        if (e.target.closest('.al-del')) {
+          const err = await save(items.filter((_, k) => k !== i));
+          if (err) { q('.al-err').textContent = err; return; }
+          return list();
+        }
+        if (!e.target.closest('.al-ok')) return;
+        const on = q('.al-on').value, off = q('.al-off').value;
+        if (!on && !off) { q('.al-err').textContent = 'Cần giờ bật hoặc giờ tắt.'; return; }
+        if (on && on === off) { q('.al-err').textContent = 'Giờ bật và giờ tắt phải khác nhau.'; return; }
+        const n = { En: true }; if (on) n.On = on; if (off) n.Off = off;
+        if (q('.al-rep').checked) {
+          const d = [...dlg.querySelectorAll('.al-days input:checked')].map((x) => Number(x.value));
+          if (!d.length) { q('.al-err').textContent = 'Chọn ít nhất một ngày, hoặc tắt "Lặp lại".'; return; }
+          if (d.length < 7) n.Days = d;
+        } else {
+          n.Date = onceDate(on || off, tz); n.Days = [];
+        }
+        const okBtn = q('.al-ok'); okBtn.disabled = true; okBtn.textContent = 'Đang lưu…';
+        const err = await save(isNew ? [...items, n] : items.map((x, k) => (k === i ? n : x)));   // lưu = bật (như báo thức vừa chỉnh)
+        okBtn.disabled = false; okBtn.textContent = 'Lưu';
+        if (err) { q('.al-err').textContent = err; return; }
+        list();
+      };
+    }
+
+    box.addEventListener('click', (e) => { if (e.target === box) close(); });
+    dlg.addEventListener('click', async (e) => {
+      if (!dlg.querySelector('.al-list')) return;   // đang ở màn sửa: edit() tự xử lý
+      if (e.target.closest('.al-x')) return close();
+      if (e.target.closest('.al-add')) return edit(-1);
+      const o = e.target.closest('.al-open'); if (o) return edit(Number(o.dataset.i));
     });
+    dlg.addEventListener('change', async (e) => {
+      const sw = e.target.closest('.al-list .al-sw input'); if (!sw || busy) return;
+      const i = Number(sw.dataset.i);
+      const next = items.map((x, k) => (k === i ? { ...x, En: sw.checked } : x));
+      sw.disabled = true;
+      const err = await save(next);   // gạt công tắc = lưu ngay (như báo thức)
+      list(err || '');
+    });
+    list();
   }
   document.addEventListener('click', (e) => {
     const b = e.target.closest('.dw-timer');

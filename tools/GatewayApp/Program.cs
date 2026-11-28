@@ -13,7 +13,7 @@ static class Program
         var rt = Array.IndexOf(args, "--rollbacktest");
         if (rt >= 0 && rt + 1 < args.Length) { RollbackTest(args[rt + 1]); return; }
         if (args.Contains("--rollback")) { if (AppUpdate.PrevVersion != null) AppUpdate.LaunchRollback(auto: false); return; }   // GatewayApp.exe --rollback: quay về bản trước rồi mở lại
-        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--offlinetest", "--pclogictest", "--boardlogictest", "--pccloudlogictest", "--boardotarelaytest", "--lanotapush", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--lanwifi", "--lannet", "--lanui", "--wifisetup", "--devshot" }.Any(args.Contains);
+        var test = new[] { "--updatetest", "--backuptest", "--selftest", "--edittest", "--pairtest", "--freshtest", "--slottest", "--solshot", "--iconsheet", "--lantest", "--fbtest", "--iotest", "--offlinetest", "--pclogictest", "--boardlogictest", "--pccloudlogictest", "--boardotarelaytest", "--lanotapush", "--otatest", "--lancloud", "--boardctl", "--lanadmin", "--lansweep", "--boarddo", "--lanwifi", "--lannet", "--lantime", "--lanui", "--wifisetup", "--devshot" }.Any(args.Contains);
         if (!test && AppUpdate.StartupGuard()) return;   // bản mới vừa cập nhật mà khởi động lỗi nhiều lần → đã tự quay về bản trước
         var ut = Array.IndexOf(args, "--updatetest");
         if (ut >= 0 && ut + 1 < args.Length) { UpdateTest(args[ut + 1]); return; }
@@ -73,6 +73,8 @@ static class Program
                 if (bd >= 0 && bd + 1 < args.Length) form.Shown += async (_, _) => await form.BoardDoTestAsync(args[bd + 1]);
                 var lw = Array.IndexOf(args, "--lanwifi");
                 if (lw >= 0 && lw + 1 < args.Length) form.Shown += async (_, _) => await form.LanWifiAsync(args[lw + 1]);
+                var lt2 = Array.IndexOf(args, "--lantime");
+                if (lt2 >= 0 && lt2 + 1 < args.Length) form.Shown += async (_, _) => await form.LanTimeAsync(args[lt2 + 1]);
                 var ln = Array.IndexOf(args, "--lannet");
                 if (ln >= 0 && ln + 1 < args.Length) form.Shown += async (_, _) => await form.LanNetAsync(args[ln + 1]);
                 var lu = Array.IndexOf(args, "--lanui");
