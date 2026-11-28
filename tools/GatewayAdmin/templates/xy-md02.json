@@ -1,0 +1,48 @@
+{
+  "id": "xy-md02",
+  "name": "Cảm biến nhiệt ẩm XY-MD02",
+  "brand": "XY",
+  "model": "MD02 (SHT20)",
+  "icon": "env",
+  "note": "Mặc định ID 1, 9600 8-N-1",
+  "serial": {
+    "baud": 9600,
+    "parity": "None"
+  },
+  "test": [
+    "t",
+    "h"
+  ],
+  "fields": [
+    {
+      "key": "t",
+      "label": "Nhiệt độ",
+      "access": "r",
+      "fc": 4,
+      "addr": 1,
+      "type": "Int16",
+      "order": "AB",
+      "scale": 10,
+      "unit": "°C",
+      "kind": "gauge",
+      "min": -40,
+      "max": 125,
+      "show": true
+    },
+    {
+      "key": "h",
+      "label": "Độ ẩm",
+      "access": "r",
+      "fc": 4,
+      "addr": 2,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 10,
+      "unit": "%",
+      "kind": "gauge",
+      "min": 0,
+      "max": 100,
+      "show": true
+    }
+  ]
+}

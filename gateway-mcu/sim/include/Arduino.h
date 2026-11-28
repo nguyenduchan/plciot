@@ -56,6 +56,7 @@ class String {
   String& operator+=(const char* c) { if (c) s += c; return *this; }
   String& operator+=(char c) { s += c; return *this; }
   char operator[](size_t i) const { return i < s.size() ? s[i] : 0; }
+  char charAt(size_t i) const { return (*this)[i]; }
   char& operator[](size_t i) { return s[i]; }
   bool operator==(const String& o) const { return s == o.s; }
   bool operator==(const char* c) const { return s == (c ? c : ""); }
@@ -129,6 +130,7 @@ extern SerialPort Serial;
 // ---- thời gian / GPIO giả
 inline uint32_t millis() { return (uint32_t)GetTickCount(); }
 inline void delay(uint32_t ms) { Sleep(ms); }
+inline uint32_t micros() { LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c); return (uint32_t)(c.QuadPart * 1000000ULL / f.QuadPart); }
 #define INPUT 0
 #define OUTPUT 1
 #define INPUT_PULLUP 2

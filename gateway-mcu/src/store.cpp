@@ -160,6 +160,9 @@ void storeApply() {
     f.access = accessOf(p["Access"]); f.type = typeOf(p["DataType"]);
     f.swap = p["WordSwap"] | false; f.enabled = p["Enabled"] | true;
     f.unit = String(p["Params"]["unit"] | "1").toInt();
+    f.fc = String(p["Params"]["fc"] | "3") == "4" ? 4 : 3;
+    f.wfc = String(p["Params"]["wfc"] | "") == "16" ? 16 : 0;
+    f.bswap = String(p["Params"]["bswap"] | "") == "1";
     f.minToggleMs = constrain((long)(p["MinToggleMs"] | 0), 0L, 3600000L);
     f.lossOffSec = constrain((long)(p["LossOffSec"] | 0), 0L, 86400L);
     n.pack.push_back(f);
@@ -207,9 +210,12 @@ String storeValidate(JsonObjectConst c) {
     if (proto != "ModbusRtu" && proto != "ModbusTcp")
       return what + ": gateway Waveshare chỉ chạy Modbus RTU (RS485) và Modbus TCP" + (proto.length() ? " — không chạy " + proto + "." : " — field chưa gán giao thức.");
     Field tmp; tmp.type = typeOf(p["DataType"]);
-    if (addr + tmp.words() > 300) return what + ": vượt quá D299.";
     String unit = p["Params"]["unit"] | "";
     if (unit.length() == 0 || unit.toInt() < 0 || (unit.toInt() == 0 && unit != "0")) return what + ": thiếu Unit ID.";
+    // I/O trên board (Modbus RTU Unit 0) chỉ có D0..D55; thiết bị Modbus ngoài: đúng địa chỉ thanh ghi của hãng, 0..65535
+    if (proto == "ModbusRtu" && unit == "0") { if (addr + tmp.words() > 300) return what + ": I/O trên board vượt quá D299."; }
+    else if (addr + tmp.words() > 65536) return what + ": địa chỉ thanh ghi vượt quá 65535.";
+    { String fc = p["Params"]["fc"] | "3"; if (fc != "3" && fc != "4") return what + ": chỉ đọc được FC03 hoặc FC04."; if (fc == "4" && String(p["Access"] | "ReadWrite") != "Read") return what + ": thanh ghi FC04 (input) chỉ đọc."; }
     if (proto == "ModbusRtu") useRtu = true; else useTcp = true;
     String mk = p["MqttKey"] | ""; mk.trim(); String wire = mk.length() ? mk : field;
     if (!wireOk(wire)) return "Pack: khoá MQTT \"" + wire + "\" của " + what + " chỉ gồm chữ, số, '_' (tối đa 32 ký tự).";

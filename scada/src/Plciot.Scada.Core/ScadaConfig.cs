@@ -89,6 +89,11 @@ public sealed class PackMap
     [JsonIgnore] public PlcSource? Source => Enum.TryParse<PlcSource>(Protocol, out var s) ? s : null;
     [JsonIgnore] public int Words => PackCodec.Words(DataType);
     public string Param(string key) => Params.TryGetValue(key, out var v) ? v : "";
+    /// <summary>Địa chỉ tối đa (không gồm) của field: thiết bị Modbus ngoài dùng đúng địa chỉ thanh ghi của hãng (0–65535, vd. biến tần 0x3000);
+    /// I/O trên board Waveshare (Modbus RTU Unit 0) và nguồn chung giữ D0–D299.</summary>
+    [JsonIgnore] public int AddressLimit => AddressLimitFor(Source, Param("unit"));
+    public static int AddressLimitFor(PlcSource? src, string unit) =>
+        src is PlcSource.ModbusTcp || (src is PlcSource.ModbusRtu && unit.Trim() != "0") ? 65536 : Contract.MaxRegister;
 }
 
 public enum PlcSource { Gateway, ModbusTcp, ModbusRtu }   // giao thức khác (S7, EtherNet/IP, MC, FINS, ADS, OPC UA) đã gỡ; mở rộng sau
@@ -263,7 +268,7 @@ public sealed class ScadaConfig
             if (p.Source is not { } src || Array.IndexOf(ProtocolSpec.Streamable, src) < 0) return $"{what}: giao thức \"{p.Protocol}\" không hợp lệ.";
             var e = ProtocolSpec.ValidateParams(src, p.Params, what);
             if (e != null) return e;
-            if (p.Address + p.Words > Contract.MaxRegister) return $"{what}: kiểu {p.DataType} chiếm {p.Words} word từ D{p.Address}, vượt quá D{Contract.MaxRegister - 1}.";
+            if (p.Address + p.Words > p.AddressLimit) return $"{what}: kiểu {p.DataType} chiếm {p.Words} word từ D{p.Address}, vượt quá D{p.AddressLimit - 1}.";
             // hai field cùng một PLC (cùng giao thức + thông số) không được chồng lên nhau trên các word
             var key = PackDriverPool.Key(p);
             for (var i = 0; i < p.Words; i++)
@@ -316,8 +321,8 @@ public sealed class ScadaConfig
         if (PollMs < 100) return "Chu kỳ đọc tối thiểu 100 ms.";
         var unset = Pack.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Child) && !string.IsNullOrWhiteSpace(x.Field) && (x.Address < 0 || x.Scale <= 0));
         if (unset != null) return $"Pack: {unset.Child}.{unset.Field} chưa khai báo thanh ghi D / hệ số (mở trang Thiết bị để khai báo).";
-        if (Pack.Any(x => string.IsNullOrWhiteSpace(x.Child) || string.IsNullOrWhiteSpace(x.Field) || x.Address is < 0 or >= Contract.MaxRegister || x.Scale <= 0))
-            return "Pack: child/field không được trống, địa chỉ D 0–299, scale > 0.";
+        if (Pack.Any(x => string.IsNullOrWhiteSpace(x.Child) || string.IsNullOrWhiteSpace(x.Field) || x.Address < 0 || x.Address >= x.AddressLimit || x.Scale <= 0))
+            return "Pack: child/field không được trống, địa chỉ D 0–299 (thiết bị Modbus: 0–65535), scale > 0.";
         var packErr = ValidateBinding();
         if (packErr != null) return packErr;
         if (Pack.Any(x => x.Min.HasValue && x.Max.HasValue && x.Min > x.Max)) return "Pack: Min không được lớn hơn Max.";

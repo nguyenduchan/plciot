@@ -684,7 +684,8 @@ sealed class DeviceDialog : Form
             var ti = Array.IndexOf(TypeNames, Convert.ToString(r.Cells[ColType].Value));
             if (ai < 0 || ti < 0) { _err.Text = $"Dòng {line}: chọn quyền và kiểu dữ liệu."; return; }
             var type = (PlcDataType)ti; var words = PackCodec.Words(type);
-            if (!int.TryParse(Cell(r, ColD), out var addr) || addr < 0 || addr + words > Contract.MaxRegister) { _err.Text = $"Dòng {line}: thanh ghi D từ 0, kiểu {TypeNames[ti]} chiếm {words} word và phải nằm trong D0–D{Contract.MaxRegister - 1}."; return; }
+            var lim = PackMap.AddressLimitFor(src, prm.TryGetValue("unit", out var uu) ? uu : "");   // thiết bị Modbus: 0–65535; I/O board / nguồn chung: D0–D299
+            if (!int.TryParse(Cell(r, ColD), out var addr) || addr < 0 || addr + words > lim) { _err.Text = $"Dòng {line}: thanh ghi D từ 0, kiểu {TypeNames[ti]} chiếm {words} word và phải nằm trong D0–D{lim - 1}."; return; }
             for (var w = 0; w < words; w++) if (!used.Add(addr + w)) { _err.Text = $"Dòng {line}: D{addr + w} đã được dùng (cùng PLC)."; return; }
             if (!TryNum(Cell(r, ColScale), out var sc) || sc is null or <= 0) { _err.Text = $"Dòng {line}: hệ số phải là số dương."; return; }
             if (!TryNum(Cell(r, ColMin), out var mn) || !TryNum(Cell(r, ColMax), out var mx)) { _err.Text = $"Dòng {line}: Min/Max phải là số."; return; }

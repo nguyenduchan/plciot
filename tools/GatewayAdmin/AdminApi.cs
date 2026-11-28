@@ -85,6 +85,7 @@ public sealed class AdminApi : IDisposable
                 using var d = JsonDocument.Parse(text);
                 if (d.RootElement.TryGetProperty("error", out var e)) code = e.GetString() ?? code;
                 if (d.RootElement.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == JsonValueKind.String) detail = msgEl.GetString();
+                if (d.RootElement.TryGetProperty("detail", out var dtEl) && dtEl.ValueKind == JsonValueKind.String) detail = dtEl.GetString();
             }
             catch (JsonException) { }
             throw new AdminApiException(code, (int)res.StatusCode, detail);
@@ -116,6 +117,11 @@ public sealed class AdminApi : IDisposable
     public Task<string> LogicProposeAsync(string site, string device, string text, string note) =>
         SendAsync(HttpMethod.Post, "/api/v1/radmin/logic/propose", JsonSerializer.Serialize(new { site, device, text, note }));
 
+    // ---- thư viện thiết bị mẫu RS485 (cloud/app/src/deviceLibrary.js) — board Waveshare tải cho trang cài đặt điện thoại của kỹ thuật viên
+    public Task<string> TemplatesAsync() => SendAsync(HttpMethod.Get, "/api/v1/radmin/templates", "");
+    public Task<string> TemplatePutAsync(string id, string json) => SendAsync(HttpMethod.Put, "/api/v1/radmin/templates/" + Uri.EscapeDataString(id), json);
+    public Task<string> TemplateDeleteAsync(string id) => SendAsync(HttpMethod.Delete, "/api/v1/radmin/templates/" + Uri.EscapeDataString(id), "");
+
     public void Dispose() => _http.Dispose();
 
     /// <summary>Câu báo cho mã lỗi của server.</summary>
@@ -129,6 +135,8 @@ public sealed class AdminApi : IDisposable
         "gateway_not_found" => "Không thấy gateway này trên server.",
         "mqtt_unavailable" => "Server chưa nối được broker MQTT.",
         "logic_syntax" => a.Detail ?? "Lỗi cú pháp.",
+        "template_invalid" => a.Detail ?? "Mẫu không hợp lệ.",
+        "template_not_found" => "Không có mẫu này trên server.",
         "not_mcu" => "Chỉ board Waveshare có chương trình logic.",
         _ => "Server báo lỗi: " + a.Code,
     } : e is HttpRequestException ? "Không nối được server: " + e.Message : e.Message;

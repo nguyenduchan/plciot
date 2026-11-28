@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { initRemoteAdminTables } from './remoteAdmin.js';
+import { migrateDeviceLibrary } from './deviceLibrary.js';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { initHistoryTables } from './historyStore.js';
@@ -155,6 +156,7 @@ export function openDb(dataDir) {
   initPushTables(db);
   initHwBlockTable(db);
   initRemoteAdminTables(db);
+  migrateDeviceLibrary(db);
   loadOpsFlags(db);
   // Tránh import vòng: seed tenant mặc định bằng SQL thuần
   const def = db.prepare("SELECT id FROM tenants WHERE id = 'default'").get();
@@ -170,7 +172,7 @@ export function openDb(dataDir) {
  * Số phiên bản schema của DB (PRAGMA user_version). TĂNG 1 mỗi khi thêm migration mới (chỉ THÊM, xem CLAUDE.md).
  * Chỉ để theo dõi + cảnh báo: migration vẫn tự kiểm "đã có chưa" nên chạy lại an toàn; DB mới hơn mã server (vd. lùi code) vẫn chạy được vì mọi thay đổi đều tương thích ngược.
  */
-export const DB_SCHEMA_VERSION = 9;   // 2: gateway_clients.last_backup_at · 3: blocked_hw (khoá thiết bị mất trộm theo mã phần cứng) · 4: hw_reports (chủ báo mất → khoá tạm → admin duyệt) · 5: remote_admin_keys + remote_admin_consent (GatewayAdmin cài đặt từ xa) · 6: gateway_logic + gateway_logic_proposals (chương trình logic, chủ trạm duyệt) · 7: user_devices khoá thêm gateway_device (bảng cũ giữ ở user_devices_v6_old) + gateway_names (tên hiển thị) · 8: nocode_gateways (gateway mua sẵn: ánh xạ payload, nocode.js) · 9: gateway_timers_off (mốc hẹn giờ đang tắt, chỉ lưu server)
+export const DB_SCHEMA_VERSION = 10;   // 2: gateway_clients.last_backup_at · 3: blocked_hw (khoá thiết bị mất trộm theo mã phần cứng) · 4: hw_reports (chủ báo mất → khoá tạm → admin duyệt) · 5: remote_admin_keys + remote_admin_consent (GatewayAdmin cài đặt từ xa) · 6: gateway_logic + gateway_logic_proposals (chương trình logic, chủ trạm duyệt) · 7: user_devices khoá thêm gateway_device (bảng cũ giữ ở user_devices_v6_old) + gateway_names (tên hiển thị) · 8: nocode_gateways (gateway mua sẵn: ánh xạ payload, nocode.js) · 9: gateway_timers_off (mốc hẹn giờ đang tắt, chỉ lưu server) · 10: device_templates (thư viện thiết bị mẫu RS485 cho cài đặt bằng điện thoại, deviceLibrary.js)
 function stampSchemaVersion(db) {
   const cur = Number(db.pragma('user_version', { simple: true })) || 0;
   if (cur > DB_SCHEMA_VERSION) console.warn(`DB schema v${cur} mới hơn mã server (v${DB_SCHEMA_VERSION}): server chạy bản code cũ hơn DB — vẫn tương thích ngược, nhưng nên deploy lại bản mới.`);

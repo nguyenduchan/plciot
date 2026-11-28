@@ -107,6 +107,13 @@ Nguyên tắc: **ai cầm thiết bị được setup** (người cầm thiết 
 - Lưu ý: không giữ BOOT lúc cấp điện / bấm RESET (GPIO0 là chân chọn chế độ khởi động → vào chế độ nạp firmware).
 - Mật khẩu MQTT và danh sách PC lưu NVS, không bao giờ trả về qua API. Tối đa 8 PC quản trị, 4 phiên; phiên rảnh 30 phút thì hết; thử sai 5 lần/60 giây → khoá 60 giây.
 
+## Cài đặt bằng điện thoại (kỹ thuật viên)
+
+`https://<IP>/m` (cổng 80 có nút dẫn sang) — nhấn BOOT, nhập tên → cổng RS485, thêm thiết bị RS485 từ thư viện mẫu trên server (GatewayAdmin soạn),
+đặt tên DI/DO, đọc/ghi thử. Phiên kỹ thuật viên chỉ chạm thiết bị (không cloud/logic/PC quản trị/mạng). "Hoàn tất lắp đặt" tắt hẳn trang này;
+PC quản trị / GatewayAdmin bật lại (`PUT /api/mobile`). Field Modbus có thêm `Params.fc` (3/4), `Params.wfc` (16), `Params.bswap` (1); địa chỉ 0–65535.
+Chi tiết + thử tự động (`python tools/mobile_setup_test.py`): [../docs/MOBILE-SETUP.md](../docs/MOBILE-SETUP.md).
+
 ## LED
 
 xanh lá = PLC online + cloud ổn · vàng = PLC lỗi / chưa có thiết bị · xanh dương = đang nối cloud · đỏ = mất mạng · **tím nhấp nháy = TCA9554 (DO) không trả lời** · **cam nhấp nháy = chế độ an toàn**.

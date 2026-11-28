@@ -19,6 +19,7 @@ class NetworkClientSecure : public Client {
   void useSystemRoots() { insecure_ = false; }
   int connect(IPAddress ip, uint16_t port) override { return connect(ip.toString().c_str(), port); }
   int connect(const char* host, uint16_t port) override;
+  int connect(const char* host, uint16_t port, int32_t /*timeoutMs*/) { return connect(host, port); }   // Arduino-ESP32 3.x: có thời gian chờ
   size_t write(uint8_t c) override { return write(&c, 1); }
   size_t write(const uint8_t* p, size_t n) override;
   int available() override;

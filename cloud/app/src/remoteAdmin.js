@@ -39,7 +39,8 @@ export const ALLOWED = [
   // (kèm mã duyệt "appr" trong phần được ký — board không nhận PUT /api/offline từ xa nếu thiếu). Thử mất mạng (đóng/ngắt DO thật): chỉ tại chỗ.
   ['GET', '/api/offline'],
   ['GET', '/api/network'], ['GET', '/api/wifi'],
-  ['GET', '/api/events'], ['GET', '/api/ota'],   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
+  ['GET', '/api/events'], ['GET', '/api/ota'],
+  ['GET', '/api/mobile'], ['PUT', '/api/mobile'],   // board Waveshare: bật lại trang cài đặt điện thoại cho kỹ thuật viên (tắt khi chạy thật)   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
 ];
 export const isAllowed = (m, p) => ALLOWED.some(([am, ap]) => am === m && ap === p);
 

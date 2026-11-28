@@ -51,9 +51,7 @@ String hex(const uint8_t* p, size_t n) { String s; char b[3]; for (size_t i = 0;
 
 String s_sessionPk;   // khoá PC của phiên đang xử lý (authed() đặt)
 String s_rpcAdm;      // yêu cầu đang xử lý đến từ xa (rpc có chữ ký server, cloud.cpp đã kiểm): tên máy GatewayAdmin; "" = LAN
-bool authed() {
-  if (s_rpcAdm.length()) return true;
-  String a = q_->auth;
+bool tokenOk(const String& a) {
   if (!a.startsWith("Bearer ")) return false;
   String t = a.substring(7); t.trim();
   uint32_t now = millis();
@@ -64,6 +62,7 @@ bool authed() {
   }
   return false;
 }
+bool authed() { return s_rpcAdm.length() || tokenOk(q_->auth); }
 
 // ---------------------------------------------------------------- PC quản trị (NVS "admins"): [{Pk,Name,How,Active,Waited}]
 // Quy tắc (như chuyển chủ gateway trên server): board chưa có PC quản trị → ghép là dùng ngay (cài mới / vừa reset).
@@ -389,6 +388,11 @@ void hRoot() {
   row("Phiên bản", FW_VERSION);
   row("Ghép PC mới", windowOpen() ? "đang mở (GatewayApp → \"Kết nối Waveshare\")" : "nhấn nút BOOT trên board để mở 10 phút, hoặc đăng nhập webapp trong GatewayApp");
   h += "</table><p style='color:#666'>Cài đặt bằng GatewayApp (HTTPS cổng " + String(API_PORT) + ").</p>";
+  if (mobileEnabled() && !g_locked) {
+    String u = "https://" + netIp().toString() + (API_PORT == 443 ? String("") : ":" + String(API_PORT)) + "/m";
+    h += "<p><a href='" + u + "' style='display:inline-block;padding:14px 20px;background:#0a7;color:#fff;border-radius:10px;text-decoration:none;font-size:18px'>📱 Cài đặt bằng điện thoại</a></p>"
+         "<p style='color:#666;font-size:14px'>Trình duyệt sẽ báo \"kết nối không riêng tư\" (chứng chỉ của board tự ký) → bấm <b>Nâng cao → Tiếp tục</b>. Cần nhấn nút BOOT trên board để đăng nhập.</p>";
+  }
   r_->html(h);
 }
 
@@ -437,6 +441,15 @@ void hTimePut() {
   send(200, rtcStatusJson());
 }
 
+/// Trang cài đặt điện thoại (mobile.cpp): GET = đang bật?; PUT {Enabled} — PC quản trị (hoặc GatewayAdmin từ xa) bật lại sau khi KTV đã "Hoàn tất lắp đặt".
+void hMobileGet() { send(200, String("{\"Ok\":true,\"Enabled\":") + (mobileEnabled() ? "true" : "false") + "}"); }
+void hMobilePut() {
+  JsonDocument d; if (!body(d)) return;
+  if (!d["Enabled"].is<bool>()) { err("bad_request"); return; }
+  mobileSetEnabled(d["Enabled"].as<bool>(), s_rpcAdm.length() ? "từ xa: " + s_rpcAdm : "PC quản trị " + q_->ip.toString());
+  hMobileGet();
+}
+
 struct Route { const char* method; const char* path; void (*fn)(); bool auth; };
 const Route kRoutes[] = {
   {"GET", "/", hRoot, false},
@@ -448,6 +461,7 @@ const Route kRoutes[] = {
   {"GET", "/api/offline", hOfflineGet, true}, {"PUT", "/api/offline", hOfflinePut, true}, {"POST", "/api/offline/test", hOfflineTest, true},
   {"GET", "/api/wifi/scan", hWifiScan, true}, {"GET", "/api/wifi", hWifiGet, true}, {"PUT", "/api/wifi", hWifiPut, true},
   {"GET", "/api/time", hTimeGet, true}, {"PUT", "/api/time", hTimePut, true},
+  {"GET", "/api/mobile", hMobileGet, true}, {"PUT", "/api/mobile", hMobilePut, true},
 };
 
 void dispatch(const HttpRequest& q, HttpResponse& r) {
@@ -456,6 +470,7 @@ void dispatch(const HttpRequest& q, HttpResponse& r) {
     JsonDocument d; d["Ok"] = false; d["Err"] = "device_locked"; d["Reason"] = g_lockReason;
     String s; serializeJson(d, s); send(423, s); return;
   }
+  if (mobileHandle(q, r)) return;   // trang cài đặt điện thoại /m + /api/m/* (tự kiểm HTTPS, phiên KTV/PC, đã tắt hay chưa)
   if (!q.tls && q.path != "/") {   // cổng 80: chỉ trang trạng thái, không nhận lệnh cấu hình qua kênh không mã hoá
     JsonDocument d; d["Ok"] = false; d["Err"] = "use_https"; d["Port"] = API_PORT;
     String s; serializeJson(d, s); send(403, s); return;
@@ -502,6 +517,7 @@ int apiRpc(const String& method, const String& path, const String& body, const S
   static const char* const kRemote[][2] = {
     {"GET", "/api/state"}, {"GET", "/api/config"}, {"GET", "/api/config-message"},
     {"GET", "/api/offline"}, {"PUT", "/api/offline"}, {"GET", "/api/events"}, {"GET", "/api/ota"},
+    {"GET", "/api/mobile"}, {"PUT", "/api/mobile"},   // bật lại trang cài đặt điện thoại cho kỹ thuật viên (GatewayAdmin hỗ trợ từ xa)
   };
   bool allowed = false;
   for (auto& r : kRemote) if (method == r[0] && path == r[1]) { allowed = true; break; }
@@ -519,6 +535,9 @@ int apiRpc(const String& method, const String& path, const String& body, const S
 }
 
 bool apiStarted() { return s_started; }
+bool apiAdminToken(const String& a) { return tokenOk(a); }
+bool apiWindowOpen() { return windowOpen(); }
+void apiApplyChange(const char* why) { applyChange(why); }
 
 void apiBegin() {
   // Cấp điện chỉ mở cửa sổ ghép khi board CHƯA có PC admin nào (mới mua / vừa reset): người lạ rút điện cắm lại không ghép được.

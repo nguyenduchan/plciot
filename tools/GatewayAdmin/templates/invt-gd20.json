@@ -1,0 +1,93 @@
+{
+  "id": "invt-gd20",
+  "name": "Biến tần INVT GD20",
+  "brand": "INVT",
+  "model": "GD20",
+  "icon": "vfd",
+  "note": "Đặt P00.01=2 (lệnh qua truyền thông), P00.06=8 (tần số qua truyền thông), P14.00 = Slave ID",
+  "serial": {
+    "baud": 9600,
+    "parity": "Even"
+  },
+  "test": [
+    "f",
+    "a"
+  ],
+  "fields": [
+    {
+      "key": "f",
+      "label": "Tần số ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 12288,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 100,
+      "unit": "Hz",
+      "kind": "gauge",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "v",
+      "label": "Điện áp ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 12291,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 1,
+      "unit": "V",
+      "kind": "gauge",
+      "min": 0,
+      "max": 440,
+      "show": false
+    },
+    {
+      "key": "a",
+      "label": "Dòng điện ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 12292,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 10,
+      "unit": "A",
+      "kind": "gauge",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "sp",
+      "label": "Cài đặt tần số",
+      "access": "rw",
+      "fc": 3,
+      "addr": 8193,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 100,
+      "unit": "Hz",
+      "kind": "slider",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "cmd",
+      "label": "Lệnh (1 = chạy thuận, 5 = dừng)",
+      "access": "w",
+      "fc": 3,
+      "addr": 8192,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 1,
+      "unit": "",
+      "kind": "number",
+      "min": 1,
+      "max": 7,
+      "show": true
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "id": "delta-ms300",
+  "name": "Biến tần Delta MS300",
+  "brand": "Delta",
+  "model": "VFD-MS300",
+  "icon": "vfd",
+  "note": "Đặt P00-20=1, P00-21=2 (RS485), P09-00 = Slave ID",
+  "serial": {
+    "baud": 9600,
+    "parity": "Even"
+  },
+  "test": [
+    "f",
+    "a"
+  ],
+  "fields": [
+    {
+      "key": "f",
+      "label": "Tần số ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 8451,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 100,
+      "unit": "Hz",
+      "kind": "gauge",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "a",
+      "label": "Dòng điện ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 8452,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 100,
+      "unit": "A",
+      "kind": "gauge",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "v",
+      "label": "Điện áp ngõ ra",
+      "access": "r",
+      "fc": 3,
+      "addr": 8454,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 10,
+      "unit": "V",
+      "kind": "gauge",
+      "min": 0,
+      "max": 440,
+      "show": false
+    },
+    {
+      "key": "sp",
+      "label": "Cài đặt tần số",
+      "access": "rw",
+      "fc": 3,
+      "addr": 8193,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 100,
+      "unit": "Hz",
+      "kind": "slider",
+      "min": 0,
+      "max": 50,
+      "show": true
+    },
+    {
+      "key": "cmd",
+      "label": "Lệnh (18 = chạy thuận, 1 = dừng)",
+      "access": "w",
+      "fc": 3,
+      "addr": 8192,
+      "type": "UInt16",
+      "order": "AB",
+      "scale": 1,
+      "unit": "",
+      "kind": "number",
+      "min": 0,
+      "max": 255,
+      "show": true
+    }
+  ]
+}

@@ -15,9 +15,11 @@ std::map<String, uint32_t> s_lastOk; // "child.field" → millis lần đọc đ
 TaskHandle_t s_task = nullptr;
 std::atomic<uint32_t> s_seq{0};   // tăng ở luồng đọc, đọc ở loop() (cloud)
 
-double decode(const uint16_t* w0, DType t, bool swap) {
+uint16_t bs(uint16_t x) { return (uint16_t)((x << 8) | (x >> 8)); }
+
+double decode(const uint16_t* w0, DType t, bool swap, bool bswap = false) {
   uint16_t w[4]; int n = t == DType::Float64 ? 4 : (t == DType::UInt32 || t == DType::Int32 || t == DType::Float32) ? 2 : 1;
-  for (int i = 0; i < n; i++) w[i] = swap && n > 1 ? w0[n - 1 - i] : w0[i];
+  for (int i = 0; i < n; i++) { w[i] = swap && n > 1 ? w0[n - 1 - i] : w0[i]; if (bswap) w[i] = bs(w[i]); }
   switch (t) {
     case DType::UInt16: case DType::Bool: return w[0];
     case DType::Int16: return (int16_t)w[0];
@@ -29,7 +31,7 @@ double decode(const uint16_t* w0, DType t, bool swap) {
 }
 
 /// Mã hoá giá trị thô (đã nhân hệ số). false = ngoài khoảng của kiểu số nguyên.
-bool encode(double raw, DType t, bool swap, uint16_t* w, int& n) {
+bool encode(double raw, DType t, bool swap, uint16_t* w, int& n, bool bswap = false) {
   auto R = [](double x, double lo, double hi, double& out) { out = round(x); return !isnan(out) && out >= lo && out <= hi; };
   double r;
   switch (t) {
@@ -42,10 +44,11 @@ bool encode(double raw, DType t, bool swap, uint16_t* w, int& n) {
     default: { uint64_t u; memcpy(&u, &raw, 8); w[0] = u >> 48; w[1] = u >> 32; w[2] = u >> 16; w[3] = u; n = 4; break; }
   }
   if (swap && n > 1) std::reverse(w, w + n);
+  if (bswap) for (int i = 0; i < n; i++) w[i] = bs(w[i]);
   return true;
 }
 
-String keyOf(const Field& f) { return f.protocol + "|" + String(f.unit); }
+String keyOf(const Field& f) { return f.protocol + "|" + String(f.unit) + "|" + String(f.fc); }   // FC03 và FC04 là hai vùng nhớ khác nhau: không gom chung
 
 /// Một chu kỳ đọc: gom field cùng PLC (giao thức + unit), cách nhau ≤ 8 word, tối đa 100 word/lần.
 /// Khoá bus theo TỪNG giao dịch (không giữ cả vòng): lệnh ghi chen vào giữa hai lần đọc, không phải chờ hết vòng có PLC chậm/mất.
@@ -72,7 +75,7 @@ void pollOnce() {
       okReads++;
       for (size_t k = i; k <= j; k++) {
         const Field& f = *rd[k];
-        next[f.child + "." + f.field] = decode(buf + (f.addr - start), f.type, f.swap) / (f.scale > 0 ? f.scale : 1);
+        next[f.child + "." + f.field] = decode(buf + (f.addr - start), f.type, f.swap, f.bswap) / (f.scale > 0 ? f.scale : 1);
       }
     } else {
       badReads++;
@@ -110,6 +113,20 @@ void engineRestart() {
 
 uint32_t engineSeq() { return s_seq; }
 
+/// Đọc thử ngay (trang cài đặt điện thoại): đọc các field (gom như vòng đọc), không đụng giá trị/telemetry. out[i] = giá trị, err[i] = "" hoặc mã lỗi.
+void engineProbe(const std::vector<Field>& fs, std::vector<double>& out, std::vector<String>& errs) {
+  out.assign(fs.size(), 0); errs.assign(fs.size(), "");
+  for (size_t i = 0; i < fs.size(); i++) {
+    const Field& f = fs[i];
+    uint16_t buf[4]; String err;
+    bool ok;
+    { BusLockIf bus(!f.localIo()); ok = mbRead(f, f.addr, f.words(), buf, err); }
+    if (ok) out[i] = decode(buf, f.type, f.swap, f.bswap) / (f.scale > 0 ? f.scale : 1);
+    else errs[i] = err;
+    wdtFeed(WD_LOOP);
+  }
+}
+
 String engineWrite(const String& child, const String& key, double v, bool byWire, bool byLogic) {
   Field copy; bool found = false;
   {
@@ -126,7 +143,7 @@ String engineWrite(const String& child, const String& key, double v, bool byWire
   if (f->access == Access::Read) return "read_only";
   if (!f->enabled) return "device_paused";
   uint16_t w[4]; int n = 0;
-  if (!encode(v * f->scale, f->type, f->swap, w, n)) return "bad_value";
+  if (!encode(v * f->scale, f->type, f->swap, w, n, f->bswap)) return "bad_value";
   const String fk = f->child + "." + f->field;
   if (!f->localIo()) {   // DO trên board có chặn riêng (localWrite); thiết bị RS485/TCP: chặn theo chương trình logic ở đây
     String why, g = offlineGuardField(fk, v, byLogic, why);

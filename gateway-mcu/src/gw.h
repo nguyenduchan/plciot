@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <vector>
 #include <map>
+struct HttpRequest; struct HttpResponse;   // https.h
 
 #ifndef FW_VERSION
 #ifdef GW_SIM
@@ -36,6 +37,10 @@ struct Field {
   bool swap = false, enabled = true; int unit = 1;
   uint32_t minToggleMs = 0;          // đầu ra số: ms tối thiểu giữa hai lần ĐỔI trạng thái (PackMap.MinToggleMs), 0 = không giới hạn
   uint32_t lossOffSec = 0;           // DO board: mất người điều khiển quá ngần này giây → tự TẮT (PackMap.LossOffSec), 0 = giữ nguyên
+  // Tuỳ chọn Modbus riêng của board (PackMap.Params — gateway PC giữ nguyên nhưng không dùng): đặt bởi mẫu thiết bị (trang cài đặt điện thoại)
+  uint8_t fc = 3;                    // Params.fc: 3 = đọc holding (FC03), 4 = đọc input register (FC04, chỉ đọc)
+  uint8_t wfc = 0;                   // Params.wfc: 16 = luôn ghi bằng FC16 (thiết bị không nhận FC06); 0 = tự chọn (1 word → FC06)
+  bool bswap = false;                // Params.bswap = "1": đảo 2 byte trong mỗi word (thứ tự BA / BADC / DCBA)
   int words() const { return type == DType::Float64 ? 4 : (type == DType::UInt32 || type == DType::Int32 || type == DType::Float32) ? 2 : 1; }
   bool localIo() const { return proto == Proto::ModbusRtu && unit == 0; }
 };
@@ -182,7 +187,8 @@ String engineTelemetry();                        // {"schema":2,"d":{child:{kho�
 void engineAges(JsonObject out);                 // "child.field" → ms từ lần đọc được gần nhất (field chưa đọc được lần nào: không có)
 int32_t engineAgeMs(const String& key);
 bool engineValue(const String& key, double& v);  // giá trị mới nhất "child.field" (false = vòng đọc gần nhất không có)          // -1 = chưa từng đọc được (logic dùng: tuổi quá lớn → coi như mất cảm biến)
-uint32_t engineSeq();                            // tăng mỗi chu kỳ đọc xong
+uint32_t engineSeq();
+void engineProbe(const std::vector<Field>& fs, std::vector<double>& out, std::vector<String>& errs);   // đọc thử (không đụng giá trị đang chạy)                            // tăng mỗi chu kỳ đọc xong
 
 // ---------------------------------------------------------------- alert.cpp: cảnh báo ngưỡng tính tại gateway (AlertEngine.cs)
 void alertEvaluate(const String& telemetry, std::vector<String>& fired);
@@ -193,6 +199,14 @@ void backfillAck();                                           // gói vừa lấ
 size_t backfillPending();
 
 // ---------------------------------------------------------------- api.cpp: API LAN cho GatewayApp + tìm thiết bị UDP
+bool apiAdminToken(const String& authHeader);    // header "Bearer <token>" là phiên của PC quản trị đã đăng nhập
+bool apiWindowOpen();                            // đang trong cửa sổ cài đặt tại chỗ (nhấn BOOT / board mới)
+void apiApplyChange(const char* why);            // lưu g_raw → áp dụng → đọc lại → nối lại cloud, tăng g_rev
+// mobile.cpp: TRANG CÀI ĐẶT BẰNG ĐIỆN THOẠI cho kỹ thuật viên (https://<IP>/m) — RS485 theo mẫu thiết bị từ server + DI/DO + đọc/ghi thử.
+// Phiên "kỹ thuật viên": nhấn BOOT, chỉ chạm được thiết bị RS485/DI/DO (không thấy cloud/logic/PC quản trị). Tắt hẳn khi chạy thật (NVS m_off).
+bool mobileHandle(const HttpRequest& q, HttpResponse& r);   // true = đã xử lý (đường /m, /api/m/*)
+bool mobileEnabled();
+void mobileSetEnabled(bool on, const String& by);
 void apiBegin();
 void apiLoop();
 bool apiStarted();                               // cổng HTTPS/HTTP + tìm thiết bị đã mở (đường nạp firmware qua LAN còn dùng được)

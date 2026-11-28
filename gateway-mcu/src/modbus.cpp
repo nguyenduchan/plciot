@@ -1,5 +1,5 @@
 // Modbus master: RTU qua RS485 trên board (UART1, RTS đảo hướng tự động) và TCP qua Ethernet.
-// Chỉ dùng FC03 (đọc holding) + FC06 (ghi 1 word) / FC16 (ghi nhiều word) — giống driver Modbus của gateway PC.
+// FC03 (đọc holding; FC04 input register khi Params.fc = 4) + FC06 (ghi 1 word; FC16 khi Params.wfc = 16) / FC16 (ghi nhiều word).
 // Unit ID 0 trên Modbus RTU = I/O của chính board (xem gw.h), không ra bus.
 #include "gw.h"
 #include "board.h"
@@ -133,7 +133,7 @@ void modbusReconfigure() {
 bool mbRead(const Field& f, int addr, int count, uint16_t* out, String& err) {
   if (count < 1 || count > 125) { err = "bad_range"; return false; }
   if (f.localIo()) return localRead(addr, count, out, err);
-  uint8_t pdu[5] = {3, (uint8_t)(addr >> 8), (uint8_t)addr, (uint8_t)(count >> 8), (uint8_t)count};
+  uint8_t pdu[5] = {(uint8_t)(f.fc == 4 ? 4 : 3), (uint8_t)(addr >> 8), (uint8_t)addr, (uint8_t)(count >> 8), (uint8_t)count};
   uint8_t resp[260];
   if (f.proto == Proto::ModbusRtu) {
     uint8_t req[6] = {(uint8_t)f.unit}; memcpy(req + 1, pdu, 5);
@@ -153,7 +153,7 @@ bool mbRead(const Field& f, int addr, int count, uint16_t* out, String& err) {
 bool mbWrite(const Field& f, int addr, const uint16_t* w, int count, String& err) {
   if (f.localIo()) return localWrite(addr, w, count, err);
   uint8_t pdu[260]; size_t n;
-  if (count == 1) { pdu[0] = 6; pdu[1] = addr >> 8; pdu[2] = addr; pdu[3] = w[0] >> 8; pdu[4] = w[0]; n = 5; }
+  if (count == 1 && f.wfc != 16) { pdu[0] = 6; pdu[1] = addr >> 8; pdu[2] = addr; pdu[3] = w[0] >> 8; pdu[4] = w[0]; n = 5; }
   else {
     pdu[0] = 16; pdu[1] = addr >> 8; pdu[2] = addr; pdu[3] = count >> 8; pdu[4] = count; pdu[5] = count * 2; n = 6;
     for (int i = 0; i < count; i++) { pdu[n++] = w[i] >> 8; pdu[n++] = w[i]; }

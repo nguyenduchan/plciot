@@ -37,6 +37,7 @@ import { mountPartnerRoutes } from './partnerRoutes.js';
 import { mountAdminOps } from './adminOps.js';
 import { mountRemoteAdmin } from './remoteAdmin.js';
 import { mountGatewayLogic } from './gatewayLogic.js';
+import { mountDeviceLibrary } from './deviceLibrary.js';
 import { mountGatewayNames } from './gatewayNames.js';
 import { mountNocode, startNocodeSweep } from './nocode.js';
 import { mountCapacity } from './vpsCapacity.js';
@@ -316,6 +317,7 @@ setSolutionChangedHook((d, site, device, sol) => {
 /* ---------- Console vận hành: gói / thiết bị / DB ---------- */
 const radmin = mountRemoteAdmin(app, { db, requireAuth });   // GatewayAdmin cài đặt gateway từ xa (ký bằng khoá máy, chủ gateway phải cho phép)
 mountGatewayLogic(app, { db, requireAuth, security: controlApi, admin: radmin });   // chương trình logic: admin đề xuất (text) → chủ trạm duyệt; chủ trạm tự cài hẹn giờ
+mountDeviceLibrary(app, { db, admin: radmin });   // thư viện thiết bị mẫu RS485: GatewayAdmin soạn, board Waveshare tải cho trang cài đặt điện thoại (docs/MOBILE-SETUP.md)
 mountAdminOps(app, {
   db, requireAuth, requireAdmin, reauth,
   dataDir: DATA_DIR,

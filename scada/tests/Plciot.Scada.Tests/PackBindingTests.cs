@@ -89,7 +89,12 @@ public class PackBindingTests
         Assert.Contains("chồng nhau", c.Validate());
         c = Cfg(P("a", "x", 10), P("b", "y", 10, prm: new() { ["unit"] = "8" }));            // cùng D10 nhưng PLC (unit) khác → được
         Assert.Null(c.Validate());
-        c = Cfg(P("a", "x", 299, PlcDataType.Float32));
+        c = Cfg(P("a", "x", 0x3000, PlcDataType.Float32));                                   // thiết bị Modbus: đúng địa chỉ của hãng (0–65535)
+        Assert.Null(c.Validate());
+        c = Cfg(P("a", "x", 65535, PlcDataType.Float32));
+        Assert.Contains("vượt quá", c.Validate());
+        c = Cfg(P("a", "x", 299, PlcDataType.Float32, src: PlcSource.ModbusRtu, prm: new() { ["unit"] = "0" }));   // I/O trên board Waveshare: D0–D299
+        c.Connections[0] = new PlcConnection { Protocol = PlcSource.ModbusRtu, Host = "RS485", Port = 9600, Options = { ["parity"] = "None" } };
         Assert.Contains("vượt quá", c.Validate());
         c = Cfg(P("a", "x", 10), new PackMap { Child = "b", Field = "y", Address = 20, Scale = 1 });   // một field chưa gán
         Assert.Contains("chưa gán giao thức", c.Validate());
