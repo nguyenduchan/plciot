@@ -200,6 +200,7 @@ size_t backfillPending();
 
 // ---------------------------------------------------------------- api.cpp: API LAN cho GatewayApp + tìm thiết bị UDP
 bool apiAdminToken(const String& authHeader);    // header "Bearer <token>" là phiên của PC quản trị đã đăng nhập
+String apiRpcCaller();                           // yêu cầu đang xử lý đến từ GatewayAdmin qua relay: tên máy ("" = LAN)
 bool apiWindowOpen();                            // đang trong cửa sổ cài đặt tại chỗ (nhấn BOOT / board mới)
 void apiApplyChange(const char* why);            // lưu g_raw → áp dụng → đọc lại → nối lại cloud, tăng g_rev
 // mobile.cpp: TRANG CÀI ĐẶT BẰNG ĐIỆN THOẠI cho kỹ thuật viên (https://<IP>/m) — RS485 theo mẫu thiết bị từ server + DI/DO + đọc/ghi thử.
@@ -289,6 +290,7 @@ String evRecent(int n);                          // JSON array các sự kiện 
 bool evNextAlert(String& out);                   // cảnh báo bảo mật chờ gửi (cloudLoop)
 void evAlertSent();
 int httpsGet(const String& url, String& resp);
+int httpsPost(const String& path, const String& body, String& resp);   // cloud.cpp: POST JSON tới <server>/<path> (không token)
 String httpsLastError();                          // cloud.cpp: tên lỗi ESP-IDF của lần HTTPS gần nhất ("" = không lỗi)   // cloud.cpp: GET HTTPS (CA của ESP-IDF)
 
 // ---------------------------------------------------------------- wdt.cpp: watchdog phần mềm theo từng task + watchdog phần cứng cho chính nó

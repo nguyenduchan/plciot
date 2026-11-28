@@ -33,6 +33,9 @@ const char* kTplPath = "/tpl.json";
 const HttpRequest* q_ = nullptr;
 HttpResponse* r_ = nullptr;
 String s_who;   // người đang thao tác (nhật ký)
+// Thay đổi gần nhất (để điện thoại ↔ GatewayAdmin thấy việc của nhau): ai, làm gì, ở rev nào
+String s_lastBy, s_lastWhat; int s_lastRev = -1;
+String s_dc; uint32_t s_dcUntil = 0, s_dcLastPoll = 0;   // gắn tài khoản: deviceCode (bí mật, chỉ trong RAM board)
 
 void send(int st, const String& s) { r_->json(st, s); }
 void sendDoc(JsonDocument& d, int st = 200) { String s; serializeJson(d, s); send(st, s); }
@@ -140,8 +143,17 @@ bool commit(JsonDocument& nd, const String& why) {
   { Lock l; g_raw.set(nd); }
   String w = s_who + ": " + why;
   apiApplyChange(w.c_str());
+  s_lastBy = s_who; s_lastWhat = why; s_lastRev = g_rev;
   evLog("mobile_cfg", w);
   return true;
+}
+/// Sửa đồng thời: yêu cầu kèm Rev đã thấy mà cấu hình đã đổi (người kia vừa lưu) → 409, bên gửi tải lại rồi làm lại. Không gửi Rev = bỏ qua kiểm.
+bool revOk(JsonDocument& d) {
+  if (d["Rev"].isNull() || (int)(d["Rev"] | -1) == g_rev) return true;
+  JsonDocument o; o["Ok"] = false; o["Err"] = "rev_conflict"; o["Rev"] = g_rev;
+  o["Msg"] = s_lastRev == g_rev && s_lastBy.length() ? s_lastBy + " vừa sửa (" + s_lastWhat + ") — đã tải lại, kiểm tra rồi làm lại." : String("Cấu hình vừa được sửa ở nơi khác — đã tải lại, kiểm tra rồi làm lại.");
+  sendDoc(o, 409);
+  return false;
 }
 void copyRaw(JsonDocument& nd) {
   Lock l; nd.set(g_raw);
@@ -182,6 +194,10 @@ void hState() {
   d["Ok"] = true; d["Hw"] = idHw(); d["Version"] = FW_VERSION; d["Who"] = s_who; d["Cloud"] = cloudStateName();
   d["Status"] = g_running ? g_status : String("đã dừng"); d["Gateway"] = leaseActive();   // đang là slave của gateway PC: PC đọc thiết bị, board vẫn đọc thử được
   d["SafeMode"] = safeMode(); d["DoOk"] = ioDoOk();
+  { JsonObject a = d["Account"].to<JsonObject>(); a["Registered"] = g_cfg.mqttId.length() > 0; a["Site"] = g_cfg.site; a["Device"] = g_cfg.device; a["Pending"] = s_dc.length() > 0; }
+  d["Rev"] = g_rev; d["Enabled"] = mobileEnabled(); d["Remote"] = apiRpcCaller().length() > 0;
+  { JsonArray t = d["Techs"].to<JsonArray>(); uint32_t now = millis(); for (auto& x : s_tech) if (now - x.last <= kIdleMs) t.add(x.name); }
+  if (s_lastRev >= 0) { JsonObject lc = d["LastChange"].to<JsonObject>(); lc["By"] = s_lastBy; lc["What"] = s_lastWhat; lc["Rev"] = s_lastRev; }
   JsonDocument raw; copyRaw(raw);
   JsonObject cfg = raw["Config"];
   JsonObject port = d["Port"].to<JsonObject>();
@@ -234,6 +250,7 @@ void hCatalog() {
 
 void hPort() {
   JsonDocument d; if (!body(d)) return;
+  if (!revOk(d)) return;
   int baud = d["Baud"] | 0; String par = d["Parity"] | ""; int poll = d["PollMs"] | 0;
   static const int kBauds[] = {1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200};
   bool bok = false; for (int b : kBauds) if (b == baud) bok = true;
@@ -291,6 +308,7 @@ String unitOwner(JsonDocument& nd, int unit, const String& except, int& suggest)
 
 void hDevice() {
   JsonDocument d; if (!body(d)) return;
+  if (!revOk(d)) return;
   String tid = d["Template"] | "", title = d["Title"] | "", child = d["Child"] | ""; int unit = d["Unit"] | 0;
   title.trim(); if (title.length() > 40) title = title.substring(0, 40);
   if (unit < 1 || unit > 247) { fail("bad_unit", "Địa chỉ trạm (Slave ID) từ 1 đến 247."); return; }
@@ -326,6 +344,7 @@ void hDevice() {
 
 void hRemove() {
   JsonDocument d; if (!body(d)) return;
+  if (!revOk(d)) return;
   String child = d["Child"] | "";
   JsonDocument nd; copyRaw(nd);
   if (!childExists(nd, child)) { fail("no_device", "Không có thiết bị này."); return; }
@@ -337,6 +356,7 @@ void hRemove() {
 /// DI/DO của board: DO (tuỳ chọn DI phản hồi) hoặc DI. Child "do<n>"/"di<n>" — kênh đã gán cho thiết bị khác → báo trùng.
 void hDio() {
   JsonDocument d; if (!body(d)) return;
+  if (!revOk(d)) return;
   String kind = d["Kind"] | "", title = d["Title"] | "", icon = d["Icon"] | "", child = d["Child"] | "";
   int ch = d["Ch"] | 0, fb = d["Fb"] | 0;
   title.trim(); if (title.length() > 40) title = title.substring(0, 40);
@@ -456,6 +476,50 @@ void hDo() {
   okMsg();
 }
 
+// ---------------------------------------------------------------- gắn board vào tài khoản chủ trạm (giản lược "Đăng ký" của GatewayApp)
+// Kiểu "device code" (gatewayLogin.js): board xin mã 8 số → KTV đưa mã/link cho chủ trạm → chủ trạm mở webapp (Face ID/TOTP như thường) bấm Duyệt
+// → board hỏi poll, nhận token đăng ký ngắn hạn → tự ký register bằng khoá của board (cloudAction "register", như khi GatewayApp đăng ký board).
+// Điện thoại KHÔNG cầm mật khẩu/token; deviceCode chỉ nằm trong RAM board. Tài khoản khác đang giữ board → server tạo yêu cầu chuyển chủ.
+
+void hAccountStart() {
+  if (!netUp()) { fail("offline", "Board chưa có mạng (cắm dây mạng hoặc cài Wi-Fi bằng GatewayApp)."); return; }
+  String resp; int st = httpsPost("/api/v1/gateway/login/start", "{}", resp);
+  JsonDocument r;
+  if (st != 200 || deserializeJson(r, resp) || !r["deviceCode"].is<const char*>()) {
+    fail("server", st < 0 ? "Board không nối được server (" + httpsLastError() + ")." : "Server báo lỗi HTTP " + String(st) + "."); return;
+  }
+  s_dc = r["deviceCode"].as<const char*>(); s_dcUntil = millis() + (uint32_t)(r["expiresIn"] | 600) * 1000UL; s_dcLastPoll = 0;
+  logf("%s xin mã gắn tài khoản", s_who.c_str());
+  JsonDocument o; o["Ok"] = true; o["UserCode"] = String(r["userCode"] | ""); o["VerifyUrl"] = String(r["verifyUrl"] | ""); o["ExpiresIn"] = r["expiresIn"] | 600;
+  sendDoc(o);
+}
+
+void hAccountPoll() {
+  JsonDocument o; o["Ok"] = true;
+  if (!s_dc.length() || (int32_t)(millis() - s_dcUntil) > 0) { s_dc = ""; fail("expired", "Mã đã hết hạn — bấm lấy mã mới."); return; }
+  if (s_dcLastPoll && millis() - s_dcLastPoll < 2500) { o["Status"] = "pending"; sendDoc(o); return; }   // server chặn hỏi < 2 giây
+  s_dcLastPoll = millis();
+  String resp; int st = httpsPost("/api/v1/gateway/login/poll", "{\"deviceCode\":\"" + s_dc + "\"}", resp);
+  JsonDocument r; deserializeJson(r, resp);
+  String status = r["status"] | "", e = r["error"] | "";
+  if (st == 200 && status == "pending") { o["Status"] = "pending"; sendDoc(o); return; }
+  if (st == 429) { o["Status"] = "pending"; sendDoc(o); return; }
+  if (st != 200 || status != "approved") {
+    s_dc = "";
+    fail(e.length() ? e : String("server"), e == "denied" ? "Chủ trạm đã từ chối." : e == "expired" ? "Mã đã hết hạn — lấy mã mới." :
+         st < 0 ? "Board mất kết nối server." : "Server báo lỗi: " + (e.length() ? e : String(st)));
+    return;
+  }
+  s_dc = "";
+  JsonDocument login; login["Token"] = String(r["token"] | ""); login["Uid"] = r["uid"] | 0LL; login["User"] = String(r["user"] | "");
+  String lj, msg; serializeJson(login, lj);
+  bool ok = cloudAction("register", "", lj, msg);
+  evLog("tech_register", s_who + " gắn board vào tài khoản \"" + String(r["user"] | "") + "\": " + msg, false);
+  if (!ok) { fail("register", msg); return; }
+  g_rev++;
+  o["Status"] = "done"; o["User"] = String(r["user"] | ""); o["Msg"] = msg; sendDoc(o);
+}
+
 void hFinish() {
   mobileSetEnabled(false, s_who);
   s_tech.clear();
@@ -469,12 +533,15 @@ String offPage() {
          "<p>Muốn mở lại: dùng <b>GatewayApp</b> trên PC quản trị (cửa sổ Waveshare → Cài đặt điện thoại) hoặc liên hệ bộ phận hỗ trợ.</p>";
 }
 
-struct MRoute { const char* method; const char* path; void (*fn)(); };
+// remote = GatewayAdmin gọi được qua relay (cài đặt từ xa, chủ trạm cho phép hỗ trợ): XEM + SỬA cấu hình + ĐỌC thử — chỉ khi trang cài đặt
+// hiện trường đang BẬT (đang lắp đặt, có KTV tại chỗ kiểm tra). Ghi thử / bật-tắt DO / hoàn tất: CHỈ tại chỗ (đóng cắt thiết bị thật).
+struct MRoute { const char* method; const char* path; void (*fn)(); bool remote; };
 const MRoute kRoutes[] = {
-  {"GET", "/api/m/state", hState}, {"POST", "/api/m/catalog", hCatalog}, {"PUT", "/api/m/port", hPort},
-  {"POST", "/api/m/device", hDevice}, {"POST", "/api/m/remove", hRemove}, {"POST", "/api/m/dio", hDio},
-  {"POST", "/api/m/probe", hProbe}, {"POST", "/api/m/write", hWrite}, {"POST", "/api/m/do", hDo},
-  {"POST", "/api/m/finish", hFinish}, {"POST", "/api/m/logout", hLogout},
+  {"GET", "/api/m/state", hState, true}, {"POST", "/api/m/catalog", hCatalog, true}, {"PUT", "/api/m/port", hPort, true},
+  {"POST", "/api/m/device", hDevice, true}, {"POST", "/api/m/remove", hRemove, true}, {"POST", "/api/m/dio", hDio, true},
+  {"POST", "/api/m/probe", hProbe, true}, {"POST", "/api/m/write", hWrite, false}, {"POST", "/api/m/do", hDo, false},
+  {"POST", "/api/m/finish", hFinish, false}, {"POST", "/api/m/logout", hLogout, false},
+  {"POST", "/api/m/account/start", hAccountStart, false}, {"POST", "/api/m/account/poll", hAccountPoll, false},
 };
 }  // namespace
 
@@ -501,6 +568,18 @@ bool mobileHandle(const HttpRequest& q, HttpResponse& r) {
              "<p style='color:#555'>Trình duyệt sẽ báo \"kết nối không riêng tư\" vì chứng chỉ do board tự ký → bấm <b>Nâng cao → Tiếp tục</b>.</p>");
     } else send(403, "{\"Ok\":false,\"Err\":\"use_https\"}");
     return true;
+  }
+  String rpc = apiRpcCaller();
+  if (rpc.length()) {   // GatewayAdmin qua relay (cloud.cpp đã kiểm chữ ký server, apiRpc đã lọc route)
+    for (auto& rt : kRoutes) {
+      if (q.path != rt.path || q.method != rt.method) continue;
+      if (!rt.remote) { fail("remote_route_blocked", "Chỉ làm được tại chỗ.", 403); return true; }
+      // xem trạng thái luôn được; sửa / đọc thử chỉ khi đang lắp đặt (trang cài đặt hiện trường bật)
+      if (!mobileEnabled() && !(q.method == "GET")) { fail("mobile_off", "Board đang chạy thật (cài đặt hiện trường đã tắt) — bật lại trước khi sửa.", 403); return true; }
+      s_who = "GatewayAdmin (" + rpc + ")";
+      rt.fn(); return true;
+    }
+    fail("not_found", "not_found", 404); return true;
   }
   if (!mobileEnabled()) {
     if (page) { r.html(offPage()); r.code = 404; } else fail("mobile_off", "Trang cài đặt điện thoại đã tắt (board đang chạy thật).", 403);

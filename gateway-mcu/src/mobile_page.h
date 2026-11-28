@@ -35,13 +35,13 @@ button.sel{background:var(--ac);color:#04201d;border-color:var(--ac)}button.dan{
 .foot button{flex:1}
 </style></head><body>
 <header><b>Cài đặt gateway</b> <span id="hdr" class="sub"></span>
-<div class="tabs" id="tabs" style="display:none"><button id="tb-rs" class="sel" onclick="tab('rs')">RS485</button><button id="tb-io" onclick="tab('io')">DI / DO</button></div></header>
+<div class="tabs" id="tabs" style="display:none"><button id="tb-rs" class="sel" onclick="tab('rs')">RS485</button><button id="tb-io" onclick="tab('io')">DI / DO</button><button id="tb-ac" onclick="tab('ac')">Tài khoản</button></div></header>
 <main id="main"></main>
 <div class="foot" id="foot" style="display:none"><button onclick="finish()">✓ Hoàn tất lắp đặt</button><button onclick="logout()">Đăng xuất</button></div>
 <div class="sheet" id="sheet" onclick="if(event.target===this)closeSheet()"><div class="in" id="sheetIn"></div></div>
 <div class="toast" id="toast"></div>
 <script>
-let TOKEN=sessionStorage.getItem('mtok')||'',S=null,CAT=null,TAB='rs',PR={},SH=null,timer=null;
+let REV=-1,TOKEN=sessionStorage.getItem('mtok')||'',S=null,CAT=null,TAB='rs',PR={},SH=null,timer=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>typeof v!=='number'?'—':Math.abs(v)>=1000||Number.isInteger(v)?String(Math.round(v*100)/100):v.toFixed(Math.abs(v)<10?2:1);
@@ -51,7 +51,9 @@ async function api(m,p,b){
   if(!r)return{Ok:false,Msg:'Mất kết nối tới board — điện thoại còn chung mạng với board?'};
   let j={};try{j=await r.json()}catch(e){}
   if(r.status===401&&p!=='/api/m/login'){TOKEN='';sessionStorage.removeItem('mtok');login();}
-  if(j.Ok===undefined)j.Ok=r.ok;return j;
+  if(j.Ok===undefined)j.Ok=r.ok;
+  if(j.Err==='rev_conflict'){closeSheet();await refresh();REV=S?S.Rev:REV;render();}
+  return j;
 }
 function login(msg){
   clearInterval(timer);$('tabs').style.display='none';$('foot').style.display='none';$('hdr').textContent='';
@@ -66,12 +68,15 @@ async function doLogin(){
   if(!j.Ok){$('lerr').textContent=j.Msg||j.Err||'Lỗi';return}
   TOKEN=j.Token;sessionStorage.setItem('mtok',TOKEN);start();
 }
-async function start(){api('POST','/api/m/catalog',{}).then(j=>{if(j.Ok&&!CAT){CAT=j.Templates||[];if(!SH)render()}});$('tabs').style.display='flex';$('foot').style.display='flex';await refresh();render();clearInterval(timer);timer=setInterval(async()=>{if(SH)return;await refresh();renderLive()},2000)}
+async function mut(m,p,b){const j=await api(m,p,Object.assign({Rev:S?S.Rev:undefined},b));if(j.Ok){await refresh();REV=S.Rev;}return j}
+async function start(){api('POST','/api/m/catalog',{}).then(j=>{if(j.Ok&&!CAT){CAT=j.Templates||[];if(!SH)render()}});$('tabs').style.display='flex';$('foot').style.display='flex';await refresh();render();clearInterval(timer);timer=setInterval(async()=>{if(SH)return;await refresh();
+  if(S&&S.Rev!==REV){const lc=S.LastChange;if(REV>=0&&lc&&lc.Rev===S.Rev&&lc.By!==S.Who)toast(`${lc.By} vừa sửa: ${lc.What}`,'ok');REV=S.Rev;render()}else renderLive()},2000)}
 async function refresh(){const j=await api('GET','/api/m/state');if(j.Ok)S=j;
-  if(S)$('hdr').textContent=`· ${S.Who||''} · Cloud: ${({Connected:'đã nối',Connecting:'đang nối',Disconnected:'mất nối',Disabled:'chưa cài'})[S.Cloud]||S.Cloud}`+(S.Gateway?' · chế độ gateway PC':'')+(S.SafeMode?' · ⚠ an toàn':'')}
-function tab(t){TAB=t;$('tb-rs').className=t==='rs'?'sel':'';$('tb-io').className=t==='io'?'sel':'';render()}
-function render(){if(!S)return;$('main').innerHTML=TAB==='rs'?rsHtml():ioHtml()}
+  if(S)$('hdr').textContent=`· ${S.Who||''} · Cloud: ${({Connected:'đã nối',Connecting:'đang nối',Disconnected:'mất nối',Disabled:'chưa cài'})[S.Cloud]||S.Cloud}`+(S.Gateway?' · chế độ gateway PC':'')+(S.Techs&&S.Techs.length>1?' · cùng cài: '+S.Techs.join(', '):'')+(S.SafeMode?' · ⚠ an toàn':'')}
+function tab(t){TAB=t;for(const k of['rs','io','ac'])$('tb-'+k).className=t===k?'sel':'';render()}
+function render(){if(!S)return;$('main').innerHTML=TAB==='rs'?rsHtml():TAB==='io'?ioHtml():acHtml()}
 function renderLive(){if(!S)return;
+  if(TAB==='ac'){if(!AC)$('main').innerHTML=acHtml();return}
   if(TAB==='io'){$('main').innerHTML=ioHtml();return}
   for(const d of S.Devices.filter(d=>d.Kind==='rs485')){const e=$('v-'+d.Child);if(e)e.innerHTML=valsHtml(d)}}
 const devs=k=>S.Devices.filter(d=>d.Kind===k);
@@ -96,11 +101,11 @@ function rsHtml(){
   return h+`<button class="pri big" onclick="devSheet()">＋ Thêm thiết bị RS485</button>`;
 }
 const tplName=id=>(CAT&&CAT.find(t=>t.id===id)||{}).name||id||'';
-async function savePort(){const j=await api('PUT','/api/m/port',{Baud:+$('pb').value,Parity:$('pp').value,PollMs:[500,1000,2000,5000,10000][$('pr').value]});toast(j.Ok?(j.Msg||'Đã lưu'):(j.Msg||j.Err),j.Ok?'ok':'bad');await refresh();render()}
+async function savePort(){const j=await mut('PUT','/api/m/port',{Baud:+$('pb').value,Parity:$('pp').value,PollMs:[500,1000,2000,5000,10000][$('pr').value]});toast(j.Ok?(j.Msg||'Đã lưu'):(j.Msg||j.Err),j.Ok?'ok':'bad');await refresh();render()}
 async function probe(c){PR[c]={Ok:true,Items:[],Msg:''};const e=document.querySelector(`#v-${c}`);toast('Đang đọc thử…');
   const j=await api('POST','/api/m/probe',{Child:c});PR[c]=j;render();toast(j.Ok?'Đọc được — đấu dây đúng':'Không đọc được: '+(j.Msg||''),j.Ok?'ok':'bad')}
 async function removeDev(c){const d=S.Devices.find(x=>x.Child===c);if(!confirm(`Xoá "${d.Title}"? Thông số của thiết bị này sẽ không còn hiện trên app.`))return;
-  const j=await api('POST','/api/m/remove',{Child:c});toast(j.Msg||j.Err,j.Ok?'ok':'bad');await refresh();render()}
+  const j=await mut('POST','/api/m/remove',{Child:c});toast(j.Msg||j.Err,j.Ok?'ok':'bad');render()}
 function openSheet(h){SH=1;$('sheetIn').innerHTML=h;$('sheet').className='sheet open'}
 function closeSheet(){SH=null;$('sheet').className='sheet'}
 async function loadCat(){toast('Đang tải danh sách thiết bị mẫu…');const j=await api('POST','/api/m/catalog',{});if(j.Ok){CAT=j.Templates||[];if(j.Msg)toast(j.Msg,'bad');else $('toast').style.display='none'}else toast(j.Msg||'Lỗi','bad');return CAT||[]}
@@ -134,7 +139,7 @@ function tgl(k,on){F.show=F.show.filter(x=>x!==k);if(on)F.show.push(k)}
 async function probeTpl(){$('pp2').innerHTML='<div class="probe">Đang đọc thử…</div>';
   const j=await api('POST','/api/m/probe',{Template:F.tpl,Unit:F.unit});
   $('pp2').innerHTML=`<div class="probe"><span class="dot ${j.Ok?'on':'bad'}"></span>${j.Ok?j.Items.map(x=>x.Value!==undefined?`${esc(x.Label)}: <b>${fmt(x.Value)}</b> ${esc(x.Unit)}`:`${esc(x.Label)}: ${esc(x.Err)}`).join('<br>'):esc(j.Msg||j.Err||'Không đọc được')}</div>`}
-async function saveDev(){const j=await api('POST','/api/m/device',{Template:F.tpl,Unit:F.unit,Title:F.title.trim(),Show:F.show,Child:F.child||undefined});
+async function saveDev(){const j=await mut('POST','/api/m/device',{Template:F.tpl,Unit:F.unit,Title:F.title.trim(),Show:F.show,Child:F.child||undefined});
   if(!j.Ok){if(j.Suggest){F.unit=j.Suggest}toast(j.Msg||j.Err,'bad');return}
   closeSheet();toast(j.Msg||'Đã lưu — bấm "Đọc thử" để kiểm tra đấu dây',j.Msg?'':'ok');await refresh();render();if(j.Child)probe(j.Child)}
 function writeSheet(c){const d=S.Devices.find(x=>x.Child===c);
@@ -159,7 +164,7 @@ function ioHtml(){
   return h+'</div></div>';
 }
 async function doT(ch,on){const j=await api('POST','/api/m/do',{Ch:ch,On:!!on});if(!j.Ok)toast(j.Msg||j.Err,'bad');await refresh();render()}
-async function rmDio(c){const d=S.Devices.find(x=>x.Child===c);if(!confirm(`Bỏ "${d.Title}" khỏi app?`))return;const j=await api('POST','/api/m/remove',{Child:c});toast(j.Msg||j.Err,j.Ok?'ok':'bad');await refresh();render()}
+async function rmDio(c){const d=S.Devices.find(x=>x.Child===c);if(!confirm(`Bỏ "${d.Title}" khỏi app?`))return;const j=await mut('POST','/api/m/remove',{Child:c});toast(j.Msg||j.Err,j.Ok?'ok':'bad');render()}
 function dioSheet(kind,ch){const d=chOwner(kind,ch);let fb=0;
   if(d&&kind==='do'){const f=d.Fields.find(x=>x.Field==='fb');if(f){const m=/DI(\d)/.exec(f.Label);fb=m?+m[1]:0}}
   F={kind,ch,child:d?d.Child:'',icon:d?d.Icon:(kind==='do'?'bulb':'di')};
@@ -168,8 +173,26 @@ function dioSheet(kind,ch){const d=chOwner(kind,ch);let fb=0;
   ${kind==='do'?`<label>Tín hiệu phản hồi (DI nối tiếp điểm phụ / cảm biến chạy)</label><select id="fb"><option value="0">Không có</option>${[1,2,3,4,5,6,7,8].map(i=>`<option value="${i}" ${i===fb?'selected':''}>DI${i}</option>`).join('')}</select>`:''}
   <div class="acts" style="margin-top:16px"><button onclick="closeSheet()">Huỷ</button><button class="pri" onclick="saveDio()">Lưu</button></div>`)}
 async function saveDio(){const b={Kind:F.kind,Ch:F.ch,Title:$('dn').value.trim(),Icon:F.icon,Fb:F.kind==='do'?+$('fb').value:0,Child:F.child||undefined};
-  const j=await api('POST','/api/m/dio',b);if(!j.Ok){toast(j.Msg||j.Err,'bad');return}closeSheet();toast('Đã lưu','ok');await refresh();render()}
-async function finish(){if(!confirm('Hoàn tất lắp đặt?\n\nTrang cài đặt bằng điện thoại sẽ TẮT HẲN (kể cả khi nhấn BOOT). Muốn mở lại phải dùng PC quản trị hoặc nhờ hỗ trợ từ xa.'))return;
+  const j=await mut('POST','/api/m/dio',b);if(!j.Ok){toast(j.Msg||j.Err,'bad');return}closeSheet();toast('Đã lưu','ok');await refresh();render()}
+// ---------------- gắn tài khoản chủ trạm (mã 8 số, chủ trạm duyệt trên webapp — điện thoại không nhập mật khẩu)
+let AC=null,acT=null;
+function acHtml(){const a=S.Account||{};
+  if(AC)return`<div class="card"><h3>Mã gắn tài khoản</h3><div style="font-size:40px;letter-spacing:6px;text-align:center;font-weight:700;margin:12px 0">${esc(AC.UserCode)}</div>
+   <p class="muted">Chủ trạm mở webapp (đăng nhập như bình thường) → duyệt mã này. Có thể mở ngay trên điện thoại này nếu chủ trạm ở cạnh, hoặc gửi link cho chủ trạm.</p>
+   <div class="acts"><a href="${esc(AC.VerifyUrl)}" target="_blank" style="flex:1"><button class="pri" style="width:100%">Mở webapp để duyệt</button></a>${navigator.share?`<button onclick="navigator.share({title:'Duyệt gateway',text:'Mã gắn gateway: ${esc(AC.UserCode)}',url:'${esc(AC.VerifyUrl)}'})">Gửi cho chủ trạm</button>`:''}</div>
+   <p id="acst" class="muted">⏳ Đang chờ chủ trạm duyệt…</p><button onclick="acStop()">Huỷ</button></div>`;
+  return`<div class="card"><h3>Tài khoản chủ trạm</h3>${a.Registered?`<p><span class="dot on"></span>Đã gắn tài khoản · <b>${esc(a.Site)}/${esc(a.Device)}</b> · Cloud: ${esc(S.Cloud)}</p>
+   <p class="muted">Gắn sang tài khoản khác: chủ cũ phải đồng ý trên webapp.</p><button onclick="acStart()">Gắn sang tài khoản khác</button>`:
+   `<p class="muted">Board chưa gắn tài khoản nào nên chưa lên app. Bấm lấy mã → chủ trạm duyệt trên webapp → thiết bị đã cài hiện trên app của chủ trạm.</p>
+   <button class="pri big" onclick="acStart()">Lấy mã gắn tài khoản</button>`}</div>`}
+async function acStart(){const j=await api('POST','/api/m/account/start',{});if(!j.Ok){toast(j.Msg||j.Err,'bad');return}
+  AC=j;render();clearInterval(acT);acT=setInterval(acPoll,3000)}
+function acStop(){clearInterval(acT);AC=null;render()}
+async function acPoll(){const j=await api('POST','/api/m/account/poll',{});
+  if(j.Ok&&j.Status==='pending')return;
+  clearInterval(acT);AC=null;await refresh();render();toast(j.Ok?(j.Msg||'Đã gắn tài khoản '+j.User):(j.Msg||j.Err),j.Ok?'ok':'bad')}
+async function finish(){if(S&&S.Account&&!S.Account.Registered&&!confirm('Board CHƯA gắn tài khoản chủ trạm (chưa lên app). Vẫn hoàn tất?'))return;
+  if(!confirm('Hoàn tất lắp đặt?\n\nTrang cài đặt bằng điện thoại sẽ TẮT HẲN (kể cả khi nhấn BOOT). Muốn mở lại phải dùng PC quản trị hoặc nhờ hỗ trợ từ xa.'))return;
   const j=await api('POST','/api/m/finish',{});if(j.Ok){TOKEN='';sessionStorage.removeItem('mtok');clearInterval(timer);$('tabs').style.display='none';$('foot').style.display='none';$('main').innerHTML=`<div class="card"><h3>✓ Đã hoàn tất</h3><p>${esc(j.Msg)}</p></div>`}else toast(j.Msg||j.Err,'bad')}
 async function logout(){await api('POST','/api/m/logout',{});TOKEN='';sessionStorage.removeItem('mtok');login()}
 if(TOKEN)start();else login();

@@ -470,6 +470,14 @@ void dispatch(const HttpRequest& q, HttpResponse& r) {
     JsonDocument d; d["Ok"] = false; d["Err"] = "device_locked"; d["Reason"] = g_lockReason;
     String s; serializeJson(d, s); send(423, s); return;
   }
+#ifdef GW_SIM
+  // CHỈ bản giả lập (tools/mobile_setup_test.py): gọi apiRpc như gói rpc server đã ký (bỏ qua MQTT + chữ ký) để thử luật phía board
+  if (q.path == "/sim/rpc" && getenv("SIM_RPC_TEST")) {
+    JsonDocument d; deserializeJson(d, q.body);
+    String resp; int st = apiRpc(d["m"] | "GET", d["p"] | "", d["b"] | "", d["adm"] | "", "", resp);
+    r.json(st, resp); return;
+  }
+#endif
   if (mobileHandle(q, r)) return;   // trang cài đặt điện thoại /m + /api/m/* (tự kiểm HTTPS, phiên KTV/PC, đã tắt hay chưa)
   if (!q.tls && q.path != "/") {   // cổng 80: chỉ trang trạng thái, không nhận lệnh cấu hình qua kênh không mã hoá
     JsonDocument d; d["Ok"] = false; d["Err"] = "use_https"; d["Port"] = API_PORT;
@@ -518,6 +526,9 @@ int apiRpc(const String& method, const String& path, const String& body, const S
     {"GET", "/api/state"}, {"GET", "/api/config"}, {"GET", "/api/config-message"},
     {"GET", "/api/offline"}, {"PUT", "/api/offline"}, {"GET", "/api/events"}, {"GET", "/api/ota"},
     {"GET", "/api/mobile"}, {"PUT", "/api/mobile"},   // bật lại trang cài đặt điện thoại cho kỹ thuật viên (GatewayAdmin hỗ trợ từ xa)
+    // cài đặt hiện trường cùng lúc với KTV (mobile.cpp tự chặn sửa khi trang đã tắt; ghi thử / DO / hoàn tất chỉ tại chỗ)
+    {"GET", "/api/m/state"}, {"POST", "/api/m/catalog"}, {"PUT", "/api/m/port"}, {"POST", "/api/m/device"}, {"POST", "/api/m/remove"},
+    {"POST", "/api/m/dio"}, {"POST", "/api/m/probe"},
   };
   bool allowed = false;
   for (auto& r : kRemote) if (method == r[0] && path == r[1]) { allowed = true; break; }
@@ -536,6 +547,7 @@ int apiRpc(const String& method, const String& path, const String& body, const S
 
 bool apiStarted() { return s_started; }
 bool apiAdminToken(const String& a) { return tokenOk(a); }
+String apiRpcCaller() { return s_rpcAdm; }
 bool apiWindowOpen() { return windowOpen(); }
 void apiApplyChange(const char* why) { applyChange(why); }
 

@@ -90,8 +90,35 @@ TPL = {'rev': 1, 'templates': [
      'test': ['t', 'h'], 'fields': [
         {'key': 't', 'label': 'Nhiệt độ', 'fc': 4, 'addr': 1, 'type': 'Int16', 'order': 'AB', 'scale': 10, 'unit': '°C', 'access': 'r', 'kind': 'gauge', 'show': True},
         {'key': 'h', 'label': 'Độ ẩm', 'fc': 4, 'addr': 2, 'type': 'UInt16', 'order': 'BA', 'scale': 10, 'unit': '%', 'access': 'r', 'kind': 'gauge', 'show': True}]}]}
-with open(os.path.join(data, 'tpl.json'), 'w', encoding='utf-8') as fh: json.dump(TPL, fh, ensure_ascii=False)
-env = dict(os.environ, SIM_DATA=data, SIM_API_PORT=str(API), SIM_HTTP_PORT=str(HTTP), SIM_MBS_PORT='5503', SIM_RS485_TCP=f'127.0.0.1:{RS}', SIM_WINDOW_SEC='600')
+# "server" thư viện mẫu giả (http:// trong LAN được phép): board tải ?since=rev → 304 khi không đổi
+import http.server
+CAT_HITS = []
+class Cat(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        CAT_HITS.append(self.path)
+        if self.path.startswith('/api/v1/device-templates'):
+            if f'since={TPL["rev"]}' in self.path: self.send_response(304); self.end_headers(); return
+            b = json.dumps(TPL, ensure_ascii=False).encode(); self.send_response(200); self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b); return
+        self.send_response(404); self.end_headers()
+    def do_POST(self):
+        n = int(self.headers.get('Content-Length') or 0); body = json.loads(self.rfile.read(n) or b'{}')
+        CAT_HITS.append(self.path); ACC['calls'].append((self.path, body, self.headers.get('Authorization', '')))
+        def out(st, o):
+            b = json.dumps(o).encode(); self.send_response(st); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)
+        if self.path == '/api/v1/gateway/login/start': return out(200, {'deviceCode': 'dc-' + 'x' * 30, 'userCode': '12345678', 'expiresIn': 600, 'interval': 3, 'verifyUrl': 'https://web.test/gateway-login.html?code=12345678'})
+        if self.path == '/api/v1/gateway/login/poll':
+            if not ACC['approved']: return out(200, {'status': 'pending'})
+            return out(200, {'status': 'approved', 'token': 'regtok', 'uid': 42, 'user': 'chutram'})
+        if self.path == '/api/v1/gateway/register': return out(403, {'error': 'too_many_gateways'})
+        out(404, {})
+    def log_message(self, *a): pass
+ACC = {'approved': False, 'calls': []}
+cat_srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Cat); threading.Thread(target=cat_srv.serve_forever, daemon=True).start()
+with open(os.path.join(data, 'config.json'), 'w', encoding='utf-8') as fh:
+    json.dump({'Config': {'ConfigSchema': 1, 'Site': 'factory1', 'Device': 'wsh-test', 'Mobile': 'Off', 'PollMs': 1000, 'Pack': [], 'Connections': [],
+               'CloudApiUrl': f'http://127.0.0.1:{cat_srv.server_address[1]}'}, 'Fields': {}, 'Devices': {}}, fh)
+env = dict(os.environ, SIM_DATA=data, SIM_API_PORT=str(API), SIM_HTTP_PORT=str(HTTP), SIM_MBS_PORT='5503', SIM_RS485_TCP=f'127.0.0.1:{RS}', SIM_WINDOW_SEC='600', SIM_RPC_TEST='1')
 log = open(os.path.join(data, 'sim.log'), 'w', encoding='utf-8', errors='replace')
 proc = subprocess.Popen([EXE], env=env, cwd=data, stdout=log, stderr=subprocess.STDOUT)
 CTX = ssl.create_default_context(); CTX.check_hostname = False; CTX.verify_mode = ssl.CERT_NONE
@@ -131,7 +158,27 @@ try:
     st, j = req('GET', '/api/config')
     ok(st == 401, 'phiên KTV KHÔNG vào được API quản trị (/api/config)')
     st, j = req('POST', '/api/m/catalog', {})
-    ok(st == 200 and len(j.get('Templates', [])) == 2 and j.get('Msg'), f'danh sách mẫu: dùng bản đã lưu khi không tải được ({j.get("Msg", "")[:60]})')
+    ok(st == 200 and len(j.get('Templates', [])) == 2 and not j.get('Msg'), 'danh sách mẫu tải từ server')
+    TPL['rev'] = 2; TPL['templates'][0]['name'] = 'Biến tần INVT GD20 (bản mới)'
+    st, j = req('POST', '/api/m/catalog', {})
+    ok(j['Templates'][0]['name'].endswith('(bản mới)') and any('since=1' in h for h in CAT_HITS), 'kỹ sư sửa mẫu → KTV mở lại thấy ngay')
+    st, j = req('POST', '/api/m/catalog', {})
+    ok(j.get('Rev') == 2 and CAT_HITS[-1].endswith('since=2'), 'không đổi → server trả 304, dùng bản lưu')
+    # ---- gắn tài khoản chủ trạm (device code)
+    st, j = req('POST', '/api/m/account/start', {})
+    ok(j.get('Ok') and j.get('UserCode') == '12345678' and 'deviceCode' not in json.dumps(j) and 'dc-' not in json.dumps(j), 'lấy mã gắn tài khoản (deviceCode không lộ ra điện thoại)')
+    st, j = req('POST', '/api/m/account/poll', {})
+    ok(j.get('Status') == 'pending', 'chờ chủ trạm duyệt')
+    ACC['approved'] = True; time.sleep(3)
+    st, j = req('POST', '/api/m/account/poll', {})
+    reg = [c for c in ACC['calls'] if c[0] == '/api/v1/gateway/register']
+    ok(not j.get('Ok') and 'tối đa' in j.get('Msg', ''), f'duyệt → board tự đăng ký, báo lỗi server rõ ràng: {j.get("Msg")}')
+    ok(reg and reg[-1][2] == 'Bearer regtok' and reg[-1][1].get('pubkey') and reg[-1][1].get('sig'), 'board ký register bằng khoá của chính nó + token ngắn hạn')
+    st, j = req('GET', '/api/m/state')
+    ok(j['Account']['Registered'] is False and not j['Account']['Pending'], 'trạng thái tài khoản')
+    cat_srv.shutdown(); cat_srv.server_close()
+    st, j = req('POST', '/api/m/catalog', {})
+    ok(len(j.get('Templates', [])) == 2 and j.get('Msg'), f'server mất → dùng bản đã lưu ({j.get("Msg", "")[:50]})')
     st, j = req('PUT', '/api/m/port', {'Baud': 9600, 'Parity': 'None', 'PollMs': 1000})
     ok(j.get('Ok'), 'lưu cổng RS485 9600 8-N-1')
     st, j = req('PUT', '/api/m/port', {'Baud': 1234, 'Parity': 'None', 'PollMs': 1000})
@@ -181,6 +228,28 @@ try:
     ok(any(d.get('Ch') == 2 and d['Title'] == 'Đèn kho' for d in dio) and any(d.get('Ch') == -5 for d in dio), 'trạng thái: DO2/DI5 đã gán')
     st, j = req('POST', '/api/m/remove', {'Child': xy})
     ok(j.get('Ok') and not any(d['Child'] == xy for d in req('GET', '/api/m/state')[1]['Devices']), 'xoá thiết bị')
+    # ---- GatewayAdmin qua relay (apiRpc) cùng lúc với KTV
+    def rpc(m, p, b=None): return req('POST', '/sim/rpc', {'m': m, 'p': p, 'b': json.dumps(b) if b is not None else '', 'adm': 'PC kỹ sư'})
+    st, rs = rpc('GET', '/api/m/state')
+    ok(st == 200 and rs.get('Remote') and 'Anh Ba' in rs.get('Techs', []), 'GatewayAdmin xem trạng thái + thấy KTV đang đăng nhập')
+    rev0 = rs['Rev']
+    st, j = rpc('POST', '/api/m/device', {'Rev': rev0, 'Template': 'xy-md02', 'Unit': 4, 'Title': 'Nhiệt ẩm văn phòng'})
+    ok(j.get('Ok'), 'GatewayAdmin thêm thiết bị')
+    st, s2 = req('GET', '/api/m/state')
+    ok(s2['Rev'] != rev0 and s2['LastChange']['By'].startswith('GatewayAdmin') and any(d['Title'] == 'Nhiệt ẩm văn phòng' for d in s2['Devices']), 'điện thoại thấy ngay thay đổi của GatewayAdmin')
+    st, j = req('PUT', '/api/m/port', {'Rev': rev0, 'Baud': 19200, 'Parity': 'Even', 'PollMs': 1000})
+    ok(st == 409 and j.get('Err') == 'rev_conflict' and 'GatewayAdmin' in j.get('Msg', ''), f'KTV lưu với Rev cũ → 409: {j.get("Msg")}')
+    st, j = req('PUT', '/api/m/port', {'Rev': s2['Rev'], 'Baud': 9600, 'Parity': 'None', 'PollMs': 2000})
+    st, rs = rpc('GET', '/api/m/state')
+    ok(j.get('Ok') and rs['Port']['PollMs'] == 2000 and rs['LastChange']['By'].startswith('KTV'), 'GatewayAdmin thấy thay đổi của KTV')
+    st, j = rpc('POST', '/api/m/probe', {'Template': 'xy-md02', 'Unit': 3})
+    ok(st == 200, 'GatewayAdmin đọc thử từ xa')
+    st, j = rpc('POST', '/api/m/write', {'Child': gd, 'Field': 'sp', 'Value': 10})
+    ok(st == 403, 'GatewayAdmin KHÔNG ghi thử từ xa (chỉ tại chỗ)')
+    st, j = rpc('POST', '/api/m/account/start', {})
+    ok(st == 403, 'GatewayAdmin không gắn tài khoản thay KTV')
+    st, j = rpc('POST', '/api/m/finish', {})
+    ok(st == 403, 'GatewayAdmin không bấm hoàn tất thay KTV')
     st, j = req('POST', '/api/m/finish', {})
     ok(j.get('Ok'), 'hoàn tất lắp đặt')
     st, txt = req('GET', '/m', raw=True)
@@ -189,6 +258,13 @@ try:
     ok(st == 403 and j.get('Err') == 'mobile_off', 'đăng nhập bị từ chối sau khi tắt (kể cả trong cửa sổ BOOT)')
     st, j = req('GET', '/api/m/state')
     ok(st == 403, 'phiên cũ không dùng được nữa')
+    st, rs = rpc('GET', '/api/m/state')
+    ok(st == 200 and rs.get('Enabled') is False, 'sau khi hoàn tất: GatewayAdmin vẫn XEM được')
+    st, j = rpc('POST', '/api/m/device', {'Template': 'xy-md02', 'Unit': 9, 'Title': 'x'})
+    ok(st == 403 and j.get('Err') == 'mobile_off', 'sau khi hoàn tất: GatewayAdmin không sửa được (phải bật lại)')
+    st, j = rpc('PUT', '/api/mobile', {'Enabled': True})
+    st2, j2 = rpc('POST', '/api/m/device', {'Template': 'xy-md02', 'Unit': 9, 'Title': 'Kho 2'})
+    ok(st == 200 and j2.get('Ok'), 'GatewayAdmin bật lại → sửa được')
     with open(os.path.join(data, 'config.json'), encoding='utf-8') as fh: cfg = json.load(fh)
     pk = [p for p in cfg['Config']['Pack'] if p['Child'] == gd]
     ok(any(p['Field'] == 'kw' and p['WordSwap'] and p['Params']['fc'] == '3' for p in pk) and any(p['Field'] == 'cmd' and p['Params'].get('wfc') == '16' for p in pk), 'config.json: Params fc/wfc, WordSwap (GatewayApp đọc được)')

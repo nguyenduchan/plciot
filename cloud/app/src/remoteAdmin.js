@@ -40,7 +40,11 @@ export const ALLOWED = [
   ['GET', '/api/offline'],
   ['GET', '/api/network'], ['GET', '/api/wifi'],
   ['GET', '/api/events'], ['GET', '/api/ota'],
-  ['GET', '/api/mobile'], ['PUT', '/api/mobile'],   // board Waveshare: bật lại trang cài đặt điện thoại cho kỹ thuật viên (tắt khi chạy thật)   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
+  ['GET', '/api/mobile'], ['PUT', '/api/mobile'],   // board Waveshare: bật lại trang cài đặt điện thoại cho kỹ thuật viên (tắt khi chạy thật)
+  // board Waveshare: cài đặt hiện trường CÙNG kỹ thuật viên (docs/MOBILE-SETUP.md) — board chỉ cho sửa khi trang cài đặt điện thoại đang bật;
+  // ghi thử / bật-tắt DO / hoàn tất lắp đặt: chỉ tại chỗ (không có ở đây)
+  ['GET', '/api/m/state'], ['POST', '/api/m/catalog'], ['PUT', '/api/m/port'], ['POST', '/api/m/device'], ['POST', '/api/m/remove'],
+  ['POST', '/api/m/dio'], ['POST', '/api/m/probe'],   // xem nhật ký + trạng thái cập nhật; nạp firmware từ xa KHÔNG có ở đây (chủ trạm duyệt trên webapp, board tự tải)
 ];
 export const isAllowed = (m, p) => ALLOWED.some(([am, ap]) => am === m && ap === p);
 

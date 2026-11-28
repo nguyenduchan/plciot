@@ -34,10 +34,32 @@ board ──GET /api/v1/device-templates?since=<rev> (304 nếu không đổi)�
 - PC quản trị đã đăng nhập (token GatewayApp) cũng gọi được `/api/m/*`.
 - Ghi thử đi qua đúng đường ghi thật: Min/Max, chỉ đọc, thời gian tối thiểu bật/tắt DO, chế độ an toàn, chương trình logic vẫn chặn.
 
+## Gắn board vào tài khoản chủ trạm (tab "Tài khoản")
+
+Giản lược "Đăng ký" của GatewayApp — điện thoại KHÔNG nhập mật khẩu:
+1. KTV bấm **Lấy mã gắn tài khoản** → board gọi `POST /api/v1/gateway/login/start` (giữ `deviceCode` trong RAM), điện thoại chỉ thấy mã 8 số + link.
+2. Chủ trạm mở link (`gateway-login.html?code=…`) — trên chính điện thoại KTV nếu đứng cạnh, hoặc nút "Gửi cho chủ trạm" — đăng nhập như thường
+   (Face ID / TOTP) rồi **Duyệt**.
+3. Board hỏi `login/poll` → token đăng ký 30 phút → tự ký `register|uid|ts` bằng khoá của board (giống GatewayApp đăng ký board) → server cấp tem +
+   MQTT, bật cloud; thiết bị KTV đã cài hiện trên app chủ trạm. Board đang thuộc tài khoản khác → server tạo yêu cầu chuyển chủ (chủ cũ duyệt).
+- Chỉ KTV tại chỗ (không qua GatewayAdmin). "Hoàn tất lắp đặt" khi chưa gắn tài khoản → hỏi lại.
+- Cài đặt chuyên sâu (logic biên, cloud, mạng, cấu hình field tự do): GatewayApp (LAN) và GatewayAdmin (từ xa) như cũ.
+
+## GatewayAdmin cài cùng kỹ thuật viên (📱 Cài đặt hiện trường)
+
+GatewayAdmin → chọn board → **📱 Cài đặt hiện trường** (`tools/GatewayAdmin/FieldSetupForm.cs`): thấy đúng những gì KTV đang cài (cổng, thiết bị RS485,
+DI/DO + trạng thái, giá trị, KTV nào đang đăng nhập, ai sửa gần nhất) và sửa được — gọi cùng `/api/m/*` qua relay MQTT (chủ trạm phải bật
+"Cho phép hỗ trợ từ xa"). Tự làm mới mỗi 4 giây.
+- Từ xa được: xem, cổng RS485, thêm/sửa/xoá thiết bị RS485, đặt tên DI/DO, **đọc thử**. Chỉ tại chỗ: ghi thử, bật/tắt DO, hoàn tất, gắn tài khoản.
+- Board chỉ cho sửa từ xa khi cài đặt hiện trường đang BẬT (đang lắp đặt); đã tắt → chỉ xem, nút **⏻ Bật cài đặt hiện trường** mở lại.
+- Hai nơi sửa cùng lúc: mỗi lần lưu tăng `Rev` cấu hình; lưu với `Rev` cũ → 409 `rev_conflict` ("GatewayAdmin (PC kỹ sư) vừa sửa (…) — đã tải lại"),
+  bên kia tải lại rồi làm lại. Điện thoại tự vẽ lại + báo "… vừa sửa: …" khi thấy `Rev` đổi; `LastChange` trong `/api/m/state`.
+- Thêm loại thiết bị mới lên server: **📚 Thiết bị mẫu** (ở trên).
+
 ## Tắt khi chạy thật
 
 - Kỹ thuật viên bấm **✓ Hoàn tất lắp đặt** → NVS `m_off`: `/m` hiện "đã tắt", đăng nhập bị từ chối **kể cả khi nhấn BOOT**, phiên đang mở bị huỷ.
-- Bật lại: PC quản trị `PUT /api/mobile {"Enabled":true}` qua LAN, hoặc **GatewayAdmin → chọn board → 📱 Mở cài đặt ĐT** (relay, chủ trạm phải bật
+- Bật lại: PC quản trị `PUT /api/mobile {"Enabled":true}` qua LAN, hoặc **GatewayAdmin → 📱 Cài đặt hiện trường → ⏻ Bật** (relay, chủ trạm phải bật
   "Cho phép hỗ trợ từ xa"). `GET /api/mobile` xem trạng thái. Bật/tắt ghi nhật ký sự kiện (bật lại = cảnh báo chủ trạm).
 - Reset board (giữ BOOT 10 giây) KHÔNG đổi cờ này.
 
@@ -71,6 +93,6 @@ board ──GET /api/v1/device-templates?since=<rev> (304 nếu không đổi)�
 
 ## Thử
 
-- Firmware (bản giả lập, không cần board): `.\gateway-mcu\build.ps1 -Sim` rồi `python tools\mobile_setup_test.py` (33 kiểm tra: HTTPS/cổng 80, BOOT, phạm vi phiên,
-  mẫu offline, FC03/04/06/16, CDAB, đảo byte, địa chỉ 0x3000, trùng ID/kênh, ẩn/hiện, DI/DO, hoàn tất → tắt).
+- Firmware (bản giả lập, không cần board): `.\gateway-mcu\build.ps1 -Sim` rồi `python tools\mobile_setup_test.py` (55 kiểm tra: HTTPS/cổng 80, BOOT, phạm vi phiên,
+  tải mẫu/304/offline, GatewayAdmin qua relay + xung đột Rev, gắn tài khoản, FC03/04/06/16, CDAB, đảo byte, địa chỉ 0x3000, trùng ID/kênh, ẩn/hiện, DI/DO, hoàn tất → tắt).
 - Server: `node cloud/app/scripts/smoke-device-library.js`.

@@ -47,7 +47,13 @@ sealed class AdminForm : Form
             return Task.CompletedTask;
         }));
         bar.Controls.Add(Btn("📚 Thiết bị mẫu", 150, () => { new TemplateForm(_api).Show(this); return Task.CompletedTask; }));
-        bar.Controls.Add(Btn("📱 Mở cài đặt ĐT", 160, MobileOnAsync));
+        bar.Controls.Add(Btn("📱 Cài đặt hiện trường", 200, () =>
+        {
+            if (_tbl.CurrentRow is not { Index: >= 0 } r || r.Index >= _rows.Count) return Task.CompletedTask;
+            if (_rows[r.Index].Kind != "mcu") { Status("Chỉ board Waveshare có cài đặt hiện trường (điện thoại kỹ thuật viên).", true); return Task.CompletedTask; }
+            new FieldSetupForm(_api, _rows[r.Index]).Show(this);
+            return Task.CompletedTask;
+        }));
         bar.Controls.Add(Btn("↻ Tải lại", 110, LoadAsync));
         bar.Controls.Add(Btn("🔑 Khoá máy này", 160, () => { ShowKey(); return Task.CompletedTask; }));
         bar.Controls.Add(new Label { Text = $"Server: {_api.Server} · máy {_key.KeyId}", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(16, 12, 0, 0) });
@@ -56,22 +62,6 @@ sealed class AdminForm : Form
         card.Controls.Add(_tbl);
         Controls.Add(card); Controls.Add(_status); Controls.Add(bar);
         Shown += async (_, _) => await LoadAsync();
-    }
-
-    /// <summary>Bật lại trang cài đặt điện thoại của board Waveshare (kỹ thuật viên đã bấm "Hoàn tất lắp đặt" → tắt). Qua relay, chủ phải cho phép hỗ trợ từ xa.</summary>
-    async Task MobileOnAsync()
-    {
-        if (_tbl.CurrentRow is not { Index: >= 0 } r || r.Index >= _rows.Count) return;
-        var g = _rows[r.Index];
-        if (g.Kind != "mcu") { Status("Chỉ board Waveshare có trang cài đặt bằng điện thoại.", true); return; }
-        if (MessageBox.Show(this, $"Bật lại trang cài đặt điện thoại của {g.Site}/{g.Device}?\nKỹ thuật viên tại chỗ nhấn BOOT là đăng nhập được (chỉ sửa RS485/DI/DO). Họ bấm \"Hoàn tất lắp đặt\" để tắt lại.",
-            "Cài đặt bằng điện thoại", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-        try
-        {
-            var (st, body) = await _api.RpcAsync(g.Site, g.Device, "PUT", "/api/mobile", "{\"Enabled\":true}");
-            Status(st == 200 ? $"Đã bật trang cài đặt điện thoại của {g.Site}/{g.Device} — https://<IP board>/m" : $"Board trả lỗi {st}: {body} (firmware cũ chưa có tính năng này?)", st != 200);
-        }
-        catch (Exception e) { Status(AdminApi.Explain(e), true); }
     }
 
     void Status(string text, bool error = false) { _status.Text = text; _status.ForeColor = error ? Theme.Red : Theme.Muted; }

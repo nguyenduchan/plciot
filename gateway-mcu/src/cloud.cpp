@@ -711,4 +711,5 @@ void cloudLoop() {
 
 /// GET HTTPS cho ota.cpp (thông tin bản firmware mới trên server).
 int httpsGet(const String& url, String& resp) { return httpsJson(url, "", "", resp, true); }
+int httpsPost(const String& path, const String& body, String& resp) { return httpsJson(apiBase("") + path, body, "", resp); }   // POST JSON tới server cloud (đường dẫn /api/…)
 String httpsLastError() { return s_httpsErr; }
